@@ -66,13 +66,12 @@ export function renderModelCheckReport(report: ProviderHealth.HealthReport): str
                 }
                 lines.push("")
             }
-        }
 
-        if (index < report.accounts.length - 1) {
-            lines.push("---")
-            lines.push("")
+            if (index < report.accounts.length - 1) {
+                lines.push("---")
+                lines.push("")
+            }
         }
-    }
 
     lines.push("### 📊 Model Status Summary")
     lines.push("| Status | Count |")
