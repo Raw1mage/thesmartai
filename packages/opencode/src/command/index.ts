@@ -2,10 +2,13 @@ import { BusEvent } from "@/bus/bus-event"
 import z from "zod"
 import { Config } from "../config/config"
 import { Instance } from "../project/instance"
+import { Installation } from "../installation"
 import { Identifier } from "../id/id"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
 import { MCP } from "../mcp"
+import { Account } from "../account"
+import { renderModelCheckReport } from "../cli/cmd/model-check-report"
 
 export namespace Command {
   export const Event = {
@@ -32,13 +35,17 @@ export namespace Command {
       template: z.promise(z.string()).or(z.string()),
       subtask: z.boolean().optional(),
       hints: z.array(z.string()),
+      handler: z.function().optional(),
     })
     .meta({
       ref: "Command",
     })
 
   // for some reason zod is inferring `string` for z.promise(z.string()).or(z.string()) so we have to manually override it
-  export type Info = Omit<z.infer<typeof Info>, "template"> & { template: Promise<string> | string }
+  export type Info = Omit<z.infer<typeof Info>, "template" | "handler"> & {
+    template: Promise<string> | string
+    handler?: () => Promise<{ output: string; title?: string }>
+  }
 
   export function hints(template: string): string[] {
     const result: string[] = []
@@ -50,9 +57,59 @@ export namespace Command {
     return result
   }
 
+  async function formatAllAccounts(): Promise<{ output: string; title: string }> {
+    const allFamilies = await Account.listAll()
+
+    let output = ""
+    output += `# All Accounts\n\n`
+
+    const families = ["google", "openai", "anthropic", "antigravity", "gemini-cli"]
+    let hasAnyAccounts = false
+
+    for (const family of families) {
+      const familyData = allFamilies[family]
+      const accounts = familyData?.accounts ?? {}
+      const activeId = familyData?.activeAccount
+
+      const accountEntries = Object.entries(accounts)
+      if (accountEntries.length === 0) continue
+
+      hasAnyAccounts = true
+      output += `## ${family.charAt(0).toUpperCase() + family.slice(1)}\n\n`
+      output += `| # | Name | Type | Email/ID | Status |\n`
+      output += `| :--- | :--- | :--- | :--- | :--- |\n`
+
+      let index = 1
+      for (const [accountId, info] of accountEntries) {
+        const isActive = accountId === activeId
+        const typeLabel = info.type === "api" ? "API Key" : "Subscription"
+        const email = info.type === "subscription" ? (info.email || info.projectId || info.accountId || "-") : "-"
+        const status = isActive ? "✅ Active" : ""
+        output += `| ${index} | ${info.name} | ${typeLabel} | ${email} | ${status} |\n`
+        index++
+      }
+      output += `\n`
+    }
+
+    if (!hasAnyAccounts) {
+      output += `No accounts configured.\n\n`
+      output += `To add accounts, run:\n`
+      output += `- \`opencode auth login google\`\n`
+      output += `- \`opencode auth login openai\`\n`
+      output += `- \`opencode auth login anthropic\`\n`
+    }
+
+    output += `---\n`
+    output += `💡 *Use the TUI account picker (Ctrl+A) to switch between accounts interactively.*\n`
+
+    return { output, title: "All Accounts" }
+  }
+
   export const Default = {
     INIT: "init",
     REVIEW: "review",
+    MODEL_CHECK: "model-check",
+    ACCOUNT_SWITCH: "account-switch",
   } as const
 
   const state = Instance.state(async () => {
@@ -76,9 +133,50 @@ export namespace Command {
         subtask: true,
         hints: hints(PROMPT_REVIEW),
       },
+      [Default.MODEL_CHECK]: {
+        name: Default.MODEL_CHECK,
+        description: "perceive available models and account status",
+        get template() {
+          return `Perceiving available models and account status...`
+        },
+        subtask: false,
+        hints: [],
+        async handler() {
+          // Direct execution of model-check in perception mode
+          const { ProviderHealth } = await import("../provider/health")
+
+          // Suppress console errors during health check
+          const originalConsoleError = console.error
+          let report: any
+          try {
+            console.error = () => { }
+            report = await ProviderHealth.checkAll({ timeout: 10000, parallel: true, mode: "perception" })
+          } finally {
+            console.error = originalConsoleError
+          }
+
+          return {
+            output: renderModelCheckReport(report),
+            title: "Model Health Report",
+          }
+        },
+      },
+      [Default.ACCOUNT_SWITCH]: {
+        name: Default.ACCOUNT_SWITCH,
+        description: "manage all accounts (direct, no LLM)",
+        get template() {
+          return `Managing accounts...`
+        },
+        subtask: false,
+        hints: ["$1"],
+        async handler() {
+          return formatAllAccounts()
+        },
+      },
     }
 
     for (const [name, command] of Object.entries(cfg.command ?? {})) {
+      if (result[name] && result[name].handler) continue
       result[name] = {
         name,
         agent: command.agent,
@@ -92,6 +190,7 @@ export namespace Command {
       }
     }
     for (const [name, prompt] of Object.entries(await MCP.prompts())) {
+      if (result[name] && result[name].handler) continue
       result[name] = {
         name,
         mcp: true,
