@@ -26,6 +26,17 @@
 ### 驗證 (Verification)
 - [ ] 使用 Google API Key 帳號選擇 `gemini-2.5-pro`，不再出現 `API key is missing`。
 
+## 2026-01-29: Gemini Embedding 全面排除 (Global Gemini Embedding Exclusion)
+
+### 已識別問題 (Issues Identified)
+1. **Embedding 模型仍出現於帳號 provider**：`gemini-embedding-001` 在 `google-api-*` 與 `gemini-cli-subscription-*` 仍被列出，導致 `/model-check` 出現 `Skipping: Embedding models not supported for chat health check`。
+
+### 已實施修復 (Fixes Implemented)
+1. **全域排除**：在 `packages/opencode/src/provider/provider.ts` 的 `isModelIgnored` 增加 `modelID === "gemini-embedding-001"` 直接排除所有 provider 變體。
+
+### 驗證 (Verification)
+- [ ] `/model-check --json` 不再出現 `gemini-embedding-001` 的 unavailable entries。
+
 ## 2026-01-29: /models 只顯示 active 訂閱者並標示家族歸屬 (Active Subscription Labeling in /models)
 
 ### 已識別問題 (Issues Identified)

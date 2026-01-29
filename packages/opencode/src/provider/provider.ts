@@ -56,6 +56,7 @@ export namespace Provider {
   ])
 
   function isModelIgnored(providerID: string, modelID: string): boolean {
+    if (modelID === "gemini-embedding-001") return true
     if (IGNORED_MODELS.has(providerID) || IGNORED_MODELS.has(`${providerID}/*`)) return true
     if (IGNORED_MODELS.has(`${providerID}/${modelID}`)) return true
 
