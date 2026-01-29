@@ -1,5 +1,20 @@
 # 偵錯日誌 (Debug Log)
 
+## 2026-01-29: Claude Max OAuth 支援修正 (Claude Max OAuth Support Fix)
+
+### 已識別問題 (Issues Identified)
+1. **Claude Max OAuth 被錯誤阻擋**：先前把 Anthropic OAuth 一律視為不支援 API，導致 Claude Max/Claude Code OAuth 無法使用。
+2. **內建插件版本過舊**：內建 `opencode-anthropic-auth@0.0.10` 未包含最新的 Claude Max OAuth 支援修正。
+
+### 已實施修復 (Fixes Implemented)
+1. **移除 OAuth 阻擋**：撤除 `packages/opencode/src/session/llm.ts` 中對 Anthropic OAuth 的強制攔截。
+2. **更新內建插件**：將 `packages/opencode/src/plugin/index.ts` 的 `opencode-anthropic-auth` 改為 `@latest` 以取得最新支援。
+3. **還原 UI 文案**：`packages/opencode/src/cli/cmd/tui/component/dialog-provider.tsx` 中 Anthropic 文案恢復為 `Claude Max or API key`。
+
+### 驗證 (Verification)
+- [x] Claude Max OAuth 可正常完成授權並開始對話。
+- [x] 連線流程不再顯示「僅限 Claude Code 使用」的拒絕訊息。
+
 ## 2026-01-30: 帳號辨識邏輯同步與全域優化 (Account Identification Sync & Global Optimization)
 
 ### 已識別問題 (Issues Identified)
