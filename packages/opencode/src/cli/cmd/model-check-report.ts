@@ -73,6 +73,8 @@ export function renderModelCheckReport(report: ProviderHealth.HealthReport): str
             }
         }
 
+    }
+
     lines.push("### 📊 Model Status Summary")
     lines.push("| Status | Count |")
     lines.push("| :--- | :--- |")
