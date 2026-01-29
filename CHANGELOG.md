@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.0-cms-202601291900] - 2026-01-29
+
+- Fix Anthropic Claude Max OAuth flow by updating the built-in auth plugin and removing the incorrect OAuth block.
+- Restore Anthropic provider UI copy to indicate Claude Max support alongside API keys.
+
 ## [0.0.0-cms-202601300230] - 2026-01-30
 
 - Improved account management CLI:
