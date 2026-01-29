@@ -8,6 +8,10 @@
 
 - Fix Google API key accounts not injecting `apiKey` into provider options, preventing Gemini models from failing with missing key errors.
 
+## [0.0.0-cms-202601292005] - 2026-01-29
+
+- Globally filter out `gemini-embedding-001` across all provider variants to avoid listing non-chat embedding models.
+
 ## [0.0.0-cms-202601291930] - 2026-01-29
 
 - Restrict /models to show only the active subscription per provider family and label categories with the active owner id using accounts display-name logic.
