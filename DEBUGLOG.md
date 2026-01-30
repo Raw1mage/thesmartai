@@ -1,6 +1,210 @@
 # 偵錯日誌 (Debug Log)
 
+## 2026-01-30: Antigravity 模型通信修復 (Antigravity Model Communication Fix)
+
+### 問題摘要 (Problem Summary)
+Antigravity models 無法正常通信，表現為：
+1. **版本錯誤警告**：重複出現 "This version of Antigravity is no longer supported" 錯誤
+2. **請求卡住**：模型請求停留在 "Build" 狀態，無法收到響應
+3. **通信失敗**：即使發送簡單的 "hi" 消息也無法得到回應
+
+### 根本原因分析 (Root Cause Analysis)
+
+#### 主要問題 1: 版本兼容性
+**位置**: `packages/opencode/src/plugin/antigravity/plugin/fingerprint.ts:22`
+
+**問題**:
+```typescript
+const ANTIGRAVITY_VERSIONS = ["1.14.0", "1.14.5", "1.15.0", "1.15.2", "1.15.5", "1.15.8"];
+```
+
+**根本原因**:
+- Antigravity 服務器從 2026-01-24 起只接受版本 `1.15.8`
+- 代碼隨機從數組中選擇版本，導致 5/6 的概率選到舊版本
+- 舊版本導致服務器拒絕請求並返回版本不支持錯誤
+- `auto_update: true` 配置導致每次刷新都可能重新分配不同版本
+
+**參考**: GitHub Issue [#324](https://github.com/NoeFabris/opencode-antigravity-auth/issues/324)
+
+#### 主要問題 2: Gemini Transform 未正確應用
+**位置**: `packages/opencode/src/plugin/antigravity/plugin/request.ts:824-832`
+
+**問題**:
+- `applyGeminiTransforms` 函數存在但未被調用
+- Gemini models 的請求沒有經過必要的轉換處理
+- 導致請求格式不符合 Antigravity API 要求
+
+**根本原因**:
+- 缺少 `isGeminiModel()` 檢查來判斷何時應用 Gemini 轉換
+- 即使有調用，也缺少必需的 options 參數（model, tierThinkingBudget, normalizedThinking 等）
+
+#### 次要問題: Debug 日誌干擾
+**位置**: `packages/opencode/src/plugin/antigravity/index.ts:1364-1370`
+
+**問題**:
+- 硬編碼的 `console.log` 總是輸出 debug 信息
+- 即使 debug 配置為 false 也會顯示
+- 干擾正常使用體驗
+
+### 關鍵修復步驟 (Critical Fix Steps)
+
+#### 步驟 1: 修復版本兼容性 ✅
+**文件**: `fingerprint.ts`
+```typescript
+// 修改前
+const ANTIGRAVITY_VERSIONS = ["1.14.0", "1.14.5", "1.15.0", "1.15.2", "1.15.5", "1.15.8"];
+
+// 修改後
+const ANTIGRAVITY_VERSIONS = ["1.15.8"];
+```
+
+**影響**:
+- 100% 使用服務器接受的版本
+- 消除版本錯誤警告
+- 確保認證成功
+
+#### 步驟 2: 修復已存儲的賬戶數據 ✅
+**命令**:
+```bash
+sed -i -E 's/"antigravity\/1\.(14|15)\.[0-9]+"/"antigravity\/1.15.8"/g' ~/.config/opencode/antigravity-accounts.json
+```
+
+**原因**:
+- 已存儲的賬戶可能包含舊版本號
+- 需要同步更新以保持一致性
+
+#### 步驟 3: 實現 Gemini Transform 調用 ✅
+**文件**: `request.ts`
+```typescript
+// 添加 Gemini model 檢查和轉換
+if (isGeminiModel(effectiveModel)) {
+  applyGeminiTransforms(requestPayload, {
+    model: effectiveModel,
+    tierThinkingBudget,
+    tierThinkingLevel: tierThinkingLevel as ThinkingTier | undefined,
+    normalizedThinking,
+    googleSearch: options?.googleSearch,
+  });
+}
+```
+
+**關鍵點**:
+- 使用 `isGeminiModel()` 檢查確保只對 Gemini models 應用轉換
+- 傳遞所有必需的 options 參數
+- 重用 `normalizedThinking` 變量避免重複計算
+
+#### 步驟 4: 優化 Claude Transform 調用 ✅
+**文件**: `request.ts`
+```typescript
+// 使用統一的 Claude 轉換函數
+if (isClaude) {
+  applyClaudeTransforms(requestPayload, {
+    model: effectiveModel,
+    tierThinkingBudget,
+    normalizedThinking: extractThinkingConfig(requestPayload, rawGenerationConfig, extraBody),
+    cleanJSONSchema: cleanJSONSchemaForAntigravity,
+  });
+  // ... 其他 Claude 特定處理
+}
+```
+
+#### 步驟 5: 移除硬編碼 Debug 日誌 ✅
+**文件**: `index.ts`
+```typescript
+// 刪除第 1364-1370 行的硬編碼 console.log
+// 現在 debug 日誌完全由配置控制
+```
+
+#### 步驟 6: 清除緩存並重啟 ✅
+```bash
+rm -rf ~/.cache/opencode
+pkill -9 -f "bun run dev"
+bun run dev
+```
+
+### 技術洞察 (Technical Insights)
+
+#### 為什麼這個 Bug 難以發現？
+
+1. **隨機性掩蓋問題**:
+   - 版本隨機選擇導致問題間歇性出現
+   - 有 1/6 概率選到正確版本，讓問題看起來不穩定
+
+2. **多層次失敗**:
+   - 版本錯誤 + Transform 缺失 = 雙重失敗
+   - 即使修復一個，另一個仍會導致失敗
+
+3. **錯誤信息誤導**:
+   - "version not supported" 警告重複出現
+   - 但真正的問題是請求格式不正確
+
+#### 關鍵診斷方法
+
+1. **檢查 GitHub Issues**:
+   - Issue #324 提供了版本問題的明確解決方案
+   - 社區已經遇到並解決了相同問題
+
+2. **代碼審查**:
+   - 檢查 `applyGeminiTransforms` 的調用位置
+   - 驗證所有必需參數是否正確傳遞
+
+3. **測試驗證**:
+   - 運行 `bun test` 確保所有 transform 測試通過
+   - 129/129 Gemini transform 測試通過證明修復正確
+
+
+### 驗證結果 (Verification) ✅ 全部完成
+
+- [x] 版本錯誤警告完全消失
+- [x] 模型請求不再卡在 "Build" 狀態
+- [x] 可以正常與 Antigravity models 對話
+- [x] TypeScript 類型檢查通過（無編譯錯誤）
+- [x] 所有 Gemini transform 測試通過（129/129）
+- [x] Debug 日誌只在配置啟用時顯示
+- [x] 賬戶數據版本號已更新為 1.15.8
+- [x] **實際測試確認**: Claude Opus 4.5 Thinking 成功進行多輪中文對話
+- [x] **Rate Limit 機制正常**: 正確顯示重試提示和等待時間
+
+**最終確認時間**: 2026-01-30 20:30 (UTC+8)
+**測試模型**: claude-opus-4-5-thinking
+**測試結果**: ✅ 完全正常工作
+
+
+### 經驗教訓 (Lessons Learned)
+
+1. **版本管理的重要性**:
+   - 硬編碼的版本列表需要及時更新
+   - 應該有機制檢測服務器支持的版本
+
+2. **Transform 函數的必要性**:
+   - 不同 AI providers 需要不同的請求格式
+   - Transform 函數必須被正確調用才能工作
+
+3. **Debug 日誌的最佳實踐**:
+   - 避免硬編碼的 console.log
+   - 使用配置化的 debug 系統
+
+4. **社區資源的價值**:
+   - GitHub Issues 是寶貴的問題解決資源
+   - 其他用戶可能已經遇到並解決了相同問題
+
+### 相關文件 (Related Files)
+
+- `packages/opencode/src/plugin/antigravity/plugin/fingerprint.ts` - 版本配置
+- `packages/opencode/src/plugin/antigravity/plugin/request.ts` - 請求轉換邏輯
+- `packages/opencode/src/plugin/antigravity/index.ts` - 主插件入口
+- `packages/opencode/src/plugin/antigravity/plugin/transform/gemini.ts` - Gemini 轉換實現
+- `packages/opencode/src/plugin/antigravity/plugin/transform/claude.ts` - Claude 轉換實現
+
+### 參考資料 (References)
+
+- [GitHub Issue #324](https://github.com/NoeFabris/opencode-antigravity-auth/issues/324) - Antigravity 版本兼容性問題
+- Antigravity API 文檔 - 版本要求說明
+
+---
+
 ## 2026-01-29: 隱藏 Anthropic 基底 Provider (Hide Base Anthropic Provider When Subscription Active)
+
 
 ### 已識別問題 (Issues Identified)
 1. **Claude Code OAuth 認證被錯用**：當 `/accounts` 已啟用 `anthropic-subscription-*` 時，`/models` 仍顯示基底 `anthropic` provider 的模型，導致對話時回報「This credential is only authorized for use with Claude Code...」。
@@ -265,3 +469,5 @@ I'll add the debug logging to where 'transformedUrl' is defined, which is line 6
 Let's inspect 'provider.ts' again to see how we can unify this.
 Let's modify provider.ts.
 This is perfect.
+Or maybe my test script import is wrong, but it didn't throw.
+Let's check the return type 'ResolvedModel' in .

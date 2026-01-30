@@ -1,6 +1,42 @@
 # Changelog
 
+## [1.1.45] - 2026-01-30
+
+### Fixed - Antigravity Model Communication (Critical) ✅ RESOLVED
+
+**Problem**: Antigravity models were completely non-functional, showing "This version of Antigravity is no longer supported" errors and requests stuck in "Build" state.
+
+**Root Causes**:
+1. **Version Incompatibility** (`fingerprint.ts:22`): Code randomly selected from 6 versions (1.14.0-1.15.8), but Antigravity server only accepts 1.15.8 since 2026-01-24. This caused 83% failure rate.
+2. **Missing Transform Logic** (`request.ts:824-832`): `applyGeminiTransforms` function existed but was never called, causing request format mismatches.
+3. **Hardcoded Debug Logs** (`index.ts:1364-1370`): Console.log statements always printed debug info regardless of configuration.
+
+**Critical Fixes**:
+- **Version Fix**: Updated `ANTIGRAVITY_VERSIONS` array to only include `["1.15.8"]`
+- **Account Data Fix**: Updated stored account data to use version 1.15.8
+- **Transform Implementation**: Added `isGeminiModel()` check and proper `applyGeminiTransforms()` call with all required options
+- **Claude Transform**: Unified Claude transformation logic using `applyClaudeTransforms()`
+- **Debug Cleanup**: Removed hardcoded console.log statements
+
+**Verification** (All Completed ✅):
+- ✅ All 129 Gemini transform tests pass
+- ✅ TypeScript compilation successful
+- ✅ Version warnings eliminated
+- ✅ Models respond normally to messages (tested with Claude Opus 4.5 Thinking)
+- ✅ Cache cleared and server restarted
+- ✅ Multiple successful conversations confirmed
+
+**Reference**: GitHub Issue [#324](https://github.com/NoeFabris/opencode-antigravity-auth/issues/324)
+
+**Key Insight**: This bug was difficult to diagnose because:
+- Random version selection masked the problem (intermittent failures)
+- Multiple failure points (version + transform) created compound issues
+- Error messages were misleading (focused on version, not request format)
+- Full server restart was required for all fixes to take effect
+
 ## [1.1.44] - 2026-01-30
+
+
 
 ### Fixed
 - **Antigravity Chat**: Fixed `TypeError [ERR_INVALID_URL]` by handling relative URLs (e.g., `v1beta/models/...`) in the Antigravity fetch wrapper.

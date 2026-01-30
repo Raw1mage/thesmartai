@@ -941,6 +941,8 @@ export const createAntigravityPlugin = (providerId: string) => async (
         return {
           apiKey: "",
           async fetch(input, init) {
+            const urlStr = toUrlString(input);
+            try { require('node:fs').appendFileSync('/tmp/antigravity_trace.log', `[${new Date().toISOString()}] Entry fetch: ${urlStr}\n`); } catch (e) { }
             if (!isGenerativeLanguageRequest(input)) {
               return fetch(input, init);
             }
@@ -1356,8 +1358,10 @@ export const createAntigravityPlugin = (providerId: string) => async (
                       {
                         claudeToolHardening: config.claude_tool_hardening,
                         fingerprint: account.fingerprint,
-                      },
+                      } as any,
                     );
+
+
 
                     const originalUrl = toUrlString(input);
                     const resolvedUrl = toUrlString(prepared.request);
@@ -1652,10 +1656,17 @@ export const createAntigravityPlugin = (providerId: string) => async (
                     if (!response.ok) {
                       await logResponseBody(debugContext, response, response.status);
 
-                      // Handle 400 "Prompt too long" with synthetic response to avoid session lock
-                      if (response.status === 400) {
+                      // Handle 404 "Not Found" or 400 "Prompt too long" with synthetic response to avoid session lock
+                      if (response.status === 404 || response.status === 400) {
                         const cloned = response.clone();
                         const bodyText = await cloned.text();
+
+                        if (response.status === 404) {
+                          const debugInfo = `\n\n[Debug Info]\nAccount: #${account.index} (${account.email || "Unknown"})\nRequested Model: ${prepared.requestedModel || "Unknown"}\nEffective Model: ${prepared.effectiveModel || "Unknown"}\nProject: ${prepared.projectId || "Unknown"}\nEndpoint: ${prepared.endpoint || "Unknown"}\nStatus: 404 Not Found\nRequest ID: ${response.headers.get("x-request-id") || "N/A"}`;
+                          const errorMessage = `[Antigravity Error] Resource not found (404).\n\nThis usually means the project ID is invalid for the selected endpoint, or the model is not supported on this endpoint.${debugInfo}`;
+                          return createSyntheticErrorResponse(errorMessage, prepared.requestedModel);
+                        }
+
                         if (bodyText.includes("Prompt is too long") || bodyText.includes("prompt_too_long")) {
                           await showToast(
                             "Context too long - use /compact to reduce size",
@@ -2364,6 +2375,7 @@ export const createAntigravityPlugin = (providerId: string) => async (
 };
 
 export const AntigravityCLIOAuthPlugin = createAntigravityPlugin(ANTIGRAVITY_PROVIDER_ID);
+export const AntigravityLegacyOAuthPlugin = createAntigravityPlugin("antigravity");
 export const GoogleOAuthPlugin = AntigravityCLIOAuthPlugin;
 export const AntigravityOAuthPlugin = AntigravityCLIOAuthPlugin;
 

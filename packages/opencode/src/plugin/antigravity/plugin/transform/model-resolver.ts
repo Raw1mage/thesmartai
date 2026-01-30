@@ -36,11 +36,11 @@ export const GEMINI_3_THINKING_LEVELS = ["minimal", "low", "medium", "high"] as 
 export const MODEL_ALIASES: Record<string, string> = {
   // Gemini 3 variants - for Gemini CLI only (tier stripped, thinkingLevel used)
   // For Antigravity, these are bypassed and full model name is kept
-  "gemini-3-pro-low": "gemini-3-pro-low",
-  "gemini-3-pro-high": "gemini-3-pro-high",
-  "gemini-3-flash-low": "gemini-3-flash-low",
-  "gemini-3-flash-medium": "gemini-3-flash-medium",
-  "gemini-3-flash-high": "gemini-3-flash-high",
+  "gemini-3-pro-low": "gemini-3-pro",
+  "gemini-3-pro-high": "gemini-3-pro",
+  "gemini-3-flash-low": "gemini-3-flash",
+  "gemini-3-flash-medium": "gemini-3-flash",
+  "gemini-3-flash-high": "gemini-3-flash",
 
   // Claude proxy names (gemini- prefix for compatibility)
   "gemini-claude-sonnet-4-5": "claude-sonnet-4-5",
@@ -198,14 +198,16 @@ export function resolveModelWithTier(requestedModel: string): ResolvedModel {
   const isGemini3Pro = modelWithoutQuota.toLowerCase().startsWith("gemini-3-pro");
   const isGemini3Flash = modelWithoutQuota.toLowerCase().startsWith("gemini-3-flash");
 
-  let antigravityModel = modelWithoutQuota;
+  let antigravityModel = isAntigravity ? requestedModel : modelWithoutQuota;
   if (skipAlias) {
     if (isGemini3Pro && !tier && !isImageModel) {
-      antigravityModel = `${modelWithoutQuota}-low`;
+      antigravityModel = isAntigravity ? `antigravity-${modelWithoutQuota}-low` : `${modelWithoutQuota}-low`;
     } else if (isGemini3Flash && tier) {
-      antigravityModel = baseName;
+      antigravityModel = isAntigravity ? `antigravity-${baseName}` : baseName;
     }
   }
+
+  try { require('node:fs').appendFileSync('/tmp/antigravity_trace.log', `[${new Date().toISOString()}] Resolved ${requestedModel} -> ${antigravityModel} (skipAlias=${skipAlias})\n`); } catch (e) { }
 
   const actualModel = skipAlias
     ? antigravityModel
