@@ -57,6 +57,8 @@ const MAX_WARMUP_SESSIONS = 1000;
 const MAX_WARMUP_RETRIES = 2;
 const CAPACITY_BACKOFF_TIERS_MS = [5000, 10000, 20000, 30000, 60000];
 
+export let globalAccountManager: AccountManager | null = null;
+
 function getCapacityBackoffDelay(consecutiveFailures: number): number {
   const index = Math.min(consecutiveFailures, CAPACITY_BACKOFF_TIERS_MS.length - 1);
   return CAPACITY_BACKOFF_TIERS_MS[Math.max(0, index)] ?? 5000;
@@ -901,6 +903,9 @@ export const createAntigravityPlugin = (providerId: string) => async (
         // Note: AccountManager now ensures the current auth is always included in accounts
 
         const accountManager = await AccountManager.loadFromDisk(auth);
+        globalAccountManager = accountManager;
+
+        // Initialize proactive refresh queue (if enabled)
         if (accountManager.getAccountCount() > 0) {
           accountManager.requestSaveToDisk();
         }
@@ -941,8 +946,6 @@ export const createAntigravityPlugin = (providerId: string) => async (
         return {
           apiKey: "",
           async fetch(input, init) {
-            const urlStr = toUrlString(input);
-            try { require('node:fs').appendFileSync('/tmp/antigravity_trace.log', `[${new Date().toISOString()}] Entry fetch: ${urlStr}\n`); } catch (e) { }
             if (!isGenerativeLanguageRequest(input)) {
               return fetch(input, init);
             }

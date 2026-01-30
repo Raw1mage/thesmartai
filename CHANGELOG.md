@@ -34,6 +34,10 @@
 - Error messages were misleading (focused on version, not request format)
 - Full server restart was required for all fixes to take effect
 
+### Added
+- **Rate Limit Dashboard**: Added `/dashboard` command to view real-time rate limit status and cooldown timers for all Antigravity accounts.
+
+
 ## [1.1.44] - 2026-01-30
 
 

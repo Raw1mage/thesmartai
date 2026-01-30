@@ -169,6 +169,26 @@ bun run dev
 **測試模型**: claude-opus-4-5-thinking
 **測試結果**: ✅ 完全正常工作
 
+### Rate Limit Dashboard (Added Feature)
+
+為了解決用戶關於 "不知道後台在做什麼" 的擔憂，我們實作了 `/dashboard` 命令。
+
+- **功能**:
+  - 顯示所有 Antigravity 賬戶列表
+  - 實時顯示各模型的 Rate Limit 冷卻時間 (Claude, Gemini AG, Gemini CLI)
+  - 標識正在冷卻 (cooldown) 的賬戶
+- **技術實現**:
+  - 在 `src/plugin/antigravity/index.ts` 導出 `globalAccountManager`
+  - 在 `src/command/index.ts` 添加 `DASHBOARD` 命令處理器
+  - 移除了舊的 `/model-check` (Perception) 功能，改為被動監控
+- **背景請求調查**:
+  - 添加了調試日誌來追蹤背景請求
+  - 結果證明在沒有用戶操作時，**沒有**多餘的 API 請求在後台運行
+  - 用戶看到的重試提示可能是來自之前的請求隊列，或 VS Code/TUI 的狀態殘留
+  - 現在提供了 Dashboard 讓用戶隨時手動檢查，無需後台自動探測
+
+
+
 
 ### 經驗教訓 (Lessons Learned)
 
