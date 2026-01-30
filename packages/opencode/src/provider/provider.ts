@@ -46,9 +46,22 @@ export namespace Provider {
 
   const IGNORED_MODELS = new Set([
     "google/gemini-1.5-pro",
-    "google/gemini-1.5-flash",
     "google/gemini-1.0-pro",
   ])
+
+  const ANTIGRAVITY_WHITELIST = new Set([
+    "gemini-3-pro-high",
+    "gemini-3-pro-low",
+    "gemini-3-pro",
+    "gemini-3-flash",
+    "claude-3-7-sonnet",
+    "claude-3-7-sonnet-thinking",
+    "claude-4-5-sonnet",
+    "claude-4-5-sonnet-thinking",
+    "claude-4-5-opus",
+    "claude-4-5-opus-thinking",
+    "gpt-oss-120b-medium"
+  ]);
   const IGNORED_DYNAMIC = new Set<string>()
 
   async function loadIgnoredDynamic() {
@@ -1196,6 +1209,21 @@ export namespace Provider {
             ? "Claude Code subscription credentials are blocked for third-party tools. Use an Anthropic API key."
             : undefined
 
+        // Whitelist of truly supported Antigravity models
+        const ANTIGRAVITY_WHITELIST = new Set([
+          "gemini-3-pro-high",
+          "gemini-3-pro-low",
+          "gemini-3-pro",
+          "gemini-3-flash",
+          "claude-3-7-sonnet",
+          "claude-3-7-sonnet-thinking",
+          "claude-4-5-sonnet",
+          "claude-4-5-sonnet-thinking",
+          "claude-4-5-opus",
+          "claude-4-5-opus-thinking",
+          "gpt-oss-120b-medium"
+        ]);
+
         database[effectiveId] = {
           id: effectiveId,
           source: "custom",
@@ -1206,10 +1234,13 @@ export namespace Provider {
           cooldownReason: blocked ?? (accountInfo.type === "subscription" ? accountInfo.cooldownReason : undefined),
           env: family === "antigravity" ? ["ANTIGRAVITY_Enabled"] : [],
           options,
-          models: mapValues(baseProvider.models, (model) => ({
-            ...model,
-            providerID: effectiveId,
-          })),
+          models: pickBy(
+            mapValues(baseProvider.models, (model) => ({
+              ...model,
+              providerID: effectiveId,
+            })),
+            (model, id) => family !== "antigravity" || ANTIGRAVITY_WHITELIST.has(id)
+          ),
         }
 
         mergeProvider(effectiveId, {
@@ -1238,10 +1269,13 @@ export namespace Provider {
             : `Antigravity (${accountID})`,
         env: [],
         options: {},
-        models: mapValues(baseProvider.models, (model) => ({
-          ...model,
-          providerID: accountID,
-        })),
+        models: pickBy(
+          mapValues(baseProvider.models, (model) => ({
+            ...model,
+            providerID: accountID,
+          })),
+          (model, id) => !accountID.includes("antigravity") || ANTIGRAVITY_WHITELIST.has(id)
+        ),
       }
       mergeProvider(accountID, {
         source: "custom",

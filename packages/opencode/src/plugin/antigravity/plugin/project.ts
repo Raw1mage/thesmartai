@@ -261,18 +261,21 @@ export async function ensureProjectContext(auth: OAuthAuthDetails): Promise<Proj
     };
 
     // Try to resolve a managed project from Antigravity if possible.
+    try { require('node:fs').appendFileSync('/tmp/antigravity_trace.log', `[${new Date().toISOString()}] Attempting to load managed project\n`); } catch (e) { }
     const loadPayload = await loadManagedProject(accessToken, parts.projectId ?? fallbackProjectId);
     const resolvedManagedProjectId = extractManagedProjectId(loadPayload);
 
     if (resolvedManagedProjectId) {
+      try { require('node:fs').appendFileSync('/tmp/antigravity_trace.log', `[${new Date().toISOString()}] Found managed project: ${resolvedManagedProjectId}\n`); } catch (e) { }
       return persistManagedProject(resolvedManagedProjectId);
     }
 
+    try { require('node:fs').appendFileSync('/tmp/antigravity_trace.log', `[${new Date().toISOString()}] No managed project found, attempting onboarding...\n`); } catch (e) { }
     // No managed project found - try to auto-provision one via onboarding.
     // This handles accounts that were added before managed project provisioning was required.
     const tierId = getDefaultTierId(loadPayload?.allowedTiers) ?? "FREE";
     log.debug("Auto-provisioning managed project", { tierId, projectId: parts.projectId });
-    
+
     const provisionedProjectId = await onboardManagedProject(
       accessToken,
       tierId,

@@ -75,19 +75,19 @@ function createLogFilePath(customLogDir?: string): string {
  */
 function createLogWriter(filePath?: string): (line: string) => void {
   if (!filePath) {
-    return () => {};
+    return () => { };
   }
 
   try {
     const stream = createWriteStream(filePath, { flags: "a" });
-    stream.on("error", () => {});
+    stream.on("error", () => { });
     return (line: string) => {
       const timestamp = new Date().toISOString();
       const formatted = `[${timestamp}] ${line}`;
       stream.write(`${formatted}\n`);
     };
   } catch {
-    return () => {};
+    return () => { };
   }
 }
 
@@ -310,7 +310,11 @@ function truncateForLog(text: string): string {
  * Writes a single debug line using the configured writer.
  */
 function logDebug(line: string): void {
-  getDebugState().logWriter(line);
+  const state = getDebugState();
+  state.logWriter(line);
+  if (state.debugEnabled) {
+    console.log(`${DEBUG_MESSAGE_PREFIX} ${line}`);
+  }
 }
 
 /**
@@ -415,17 +419,17 @@ export async function logResponseBody(
 ): Promise<string | undefined> {
   const state = getDebugState();
   if (!state.debugEnabled || !context) return undefined;
-  
+
   const isError = status >= 400;
   const shouldLogBody = state.verboseEnabled || isError;
-  
+
   if (!shouldLogBody) return undefined;
-  
+
   try {
     const text = await response.clone().text();
     const maxChars = state.verboseEnabled ? MAX_BODY_VERBOSE_CHARS : MAX_BODY_PREVIEW_CHARS;
-    const preview = text.length <= maxChars 
-      ? text 
+    const preview = text.length <= maxChars
+      ? text
       : `${text.slice(0, maxChars)}... (truncated ${text.length - maxChars} chars)`;
     logDebug(`[Antigravity Debug ${context.id}] Response Body (${status}): ${preview}`);
     return text;
