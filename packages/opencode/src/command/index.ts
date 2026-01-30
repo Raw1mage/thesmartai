@@ -65,6 +65,7 @@ export namespace Command {
     INIT: "init",
     REVIEW: "review",
     MODEL_CHECK: "model-check",
+    DASHBOARD: "dashboard",
     ACCOUNTS: "accounts",
   } as const
 
@@ -89,31 +90,70 @@ export namespace Command {
         subtask: true,
         hints: hints(PROMPT_REVIEW),
       },
-      [Default.MODEL_CHECK]: {
-        name: Default.MODEL_CHECK,
-        description: "perceive available models and account status",
+      [Default.DASHBOARD]: {
+        name: Default.DASHBOARD,
+        description: "Real-time rate limit status dashboard",
         get template() {
-          return `Perceiving available models and account status...`
+          return `Checking rate limits...`
         },
         subtask: false,
         hints: [],
         async handler() {
-          // Direct execution of model-check in perception mode
-          const { ProviderHealth } = await import("../provider/health")
+          const { globalAccountManager } = await import("../plugin/antigravity/index");
 
-          // Suppress console errors during health check
-          const originalConsoleError = console.error
-          let report: any
-          try {
-            console.error = () => { }
-            report = await ProviderHealth.checkAll({ timeout: 10000, parallel: true, mode: "perception" })
-          } finally {
-            console.error = originalConsoleError
+          if (!globalAccountManager) {
+            return { output: "⚠️ Antigravity AccountManager not available. Please ensure the plugin is loaded.", title: "Rate Limit Dashboard" };
           }
 
+          // @ts-ignore
+          const accounts = globalAccountManager.getAccountsSnapshot();
+          const lines = ["# 📊 Rate Limit Dashboard", ""];
+
+          if (accounts.length === 0) {
+            lines.push("No Antigravity accounts found.");
+            return { output: lines.join("\n"), title: "Rate Limit Dashboard" };
+          }
+
+          const now = Date.now();
+          const formatTime = (ts: number | undefined) => {
+            if (!ts || ts <= now) return "✅ Ready";
+            const waitSec = Math.ceil((ts - now) / 1000);
+            if (waitSec > 3600) return `🛑 ${(waitSec / 3600).toFixed(1)}h`;
+            if (waitSec > 60) return `🛑 ${(waitSec / 60).toFixed(1)}m`;
+            return `⏳ ${waitSec}s`;
+          };
+
+          lines.push("| ID | Email | Claude | Gemini (AG) | Gemini (CLI) |");
+          lines.push("|----|-------|--------|-------------|--------------|");
+
+          for (const acc of accounts) {
+            // @ts-ignore
+            const email = acc.email || `Account ${acc.index}`;
+            // @ts-ignore
+            const claude = formatTime(acc.rateLimitResetTimes?.["claude"]);
+            // @ts-ignore
+            const geminiAG = formatTime(acc.rateLimitResetTimes?.["gemini-antigravity"]);
+            // @ts-ignore
+            const geminiCLI = formatTime(acc.rateLimitResetTimes?.["gemini-cli"]);
+
+            // Check if actively cooling down
+            // @ts-ignore
+            const coolingDown = acc.coolingDownUntil && acc.coolingDownUntil > now;
+
+            let statusPrefix = "";
+            if (coolingDown) statusPrefix = "❄️ ";
+
+            // @ts-ignore
+            lines.push(`| ${acc.index} | ${statusPrefix}${email} | ${claude} | ${geminiAG} | ${geminiCLI} |`);
+          }
+
+          lines.push("");
+          lines.push(`*Total Accounts: ${accounts.length}*`);
+          lines.push(`*Time: ${new Date().toLocaleTimeString()}*`);
+
           return {
-            output: renderModelCheckReport(report),
-            title: "Model Health Report",
+            output: lines.join("\n"),
+            title: "Rate Limit Dashboard",
           }
         },
       },
