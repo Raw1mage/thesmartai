@@ -29,20 +29,22 @@ async function startProviderAuth(
   sync: ReturnType<typeof useSync>,
   sdk: ReturnType<typeof useSDK>,
 ) {
-  const methods = sync.data.provider_auth[providerID] ?? [
+  const rawMethods = sync.data.provider_auth[providerID] ?? [
     {
       type: "api",
       label: "API key",
     },
   ]
+  const methods = providerID === "google" ? rawMethods.filter((x) => x.type === "api") : rawMethods
+  const availableMethods = methods.length > 0 ? methods : rawMethods
   let index: number | null = 0
-  if (methods.length > 1) {
+  if (availableMethods.length > 1) {
     index = await new Promise<number | null>((resolve) => {
       dialog.replace(
         () => (
           <DialogSelect
             title="Select auth method"
-            options={methods.map((x, index) => ({
+            options={availableMethods.map((x, index) => ({
               title: x.label,
               value: index,
             }))}
@@ -54,7 +56,7 @@ async function startProviderAuth(
     })
   }
   if (index == null) return
-  const method = methods[index]
+  const method = availableMethods[index]
   if (method.type === "oauth") {
     const result = await sdk.client.provider.oauth.authorize({
       providerID,
@@ -285,6 +287,28 @@ function ApiMethod(props: ApiMethodProps) {
   const sdk = useSDK()
   const sync = useSync()
   const { theme } = useTheme()
+  const [name, setName] = createSignal("")
+  const needsName = () => props.providerID === "google"
+  const providerKey = () => {
+    if (!needsName()) return props.providerID
+    const trimmed = name().trim()
+    if (!trimmed) return ""
+    return `${props.providerID}-${trimmed}`
+  }
+
+  if (needsName() && !name().trim()) {
+    return (
+      <DialogPrompt
+        title="Account name"
+        placeholder="e.g. yeatsluo"
+        onConfirm={(value) => {
+          const trimmed = value.trim()
+          if (!trimmed) return
+          setName(trimmed)
+        }}
+      />
+    )
+  }
 
   return (
     <DialogPrompt
@@ -304,8 +328,10 @@ function ApiMethod(props: ApiMethodProps) {
       }
       onConfirm={async (value) => {
         if (!value) return
+        const pid = providerKey()
+        if (!pid) return
         await sdk.client.auth.set({
-          providerID: props.providerID,
+          providerID: pid,
           auth: {
             type: "api",
             key: value,

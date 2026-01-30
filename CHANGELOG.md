@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.1.56] - 2026-01-31
+
+### Added
+- **Select dialog mouse UX**: Added `hoverSelect` property to control whether mouse hover triggers list item selection, preventing accidental jumps in long menus.
+- **Improved navigation**: Added logic to lock back navigation during critical account selection steps in `/admin` to prevent accidental exits.
+- **TUI select logic**: Selection lists now prioritize the current model or the first available option depending on the selection step.
+
+
+## [1.1.55] - 2026-01-30
+
+### Fixed
+- **Prompt submit fallback**: Treat `linefeed` as submit and add a clickable submit control so single-line prompts (like Google-API account name) can advance even when Enter is mapped to linefeed.
+
+## [1.1.54] - 2026-01-30
+
+### Fixed
+- **Prompt submit keys**: Account name prompts now respect the shared textarea keybindings and accept `enter`/`return`, so Google-API account setup can advance reliably.
+
+## [1.1.53] - 2026-01-30
+
+### Added
+- **Google AI Studio sync**: `/admin` refreshes the Google Generative Language model list (using the active Google API key) when viewing the Google-API model picker so the options mirror the official AI Studio roster.
+
+## [1.1.52] - 2026-01-30
+
+### Fixed
+- **Google API auth**: Skip the Antigravity OAuth method for `google` so the only auth path is the API key flow, preventing the incorrect “OAuth with Google (Antigravity)” option.
+- **DialogPrompt submit**: Treat `enter` in addition to `return` so account-name prompts accept Enter and proceed to the next step.
+
+## [1.1.51] - 2026-01-30
+
+### Fixed
+- **Favorites gutter**: Wrap the `⭐` glyph in `<text>` to prevent orphan text errors when `/admin` or `/model` lists favorite models.
+- **Model cost badges**: Only render the "Free" footer when both the model's input and output costs are zero so subscription models stop showing the wrong "Free" label.
+
 ## [1.1.50] - 2026-01-30
 
 ### Fixed
@@ -7,9 +42,17 @@
 - **Account list clutter**: Removed inline "Add new account" action rows; use `A/a` hotkey instead.
 - **Accidental dialog dismiss**: Clicking outside dialogs no longer closes them; use `esc`.
 - **Account counts**: Show "1 account" for single-account providers.
+- **Account focus**: Default account list selection now highlights the first account entry.
+- **Account deletion UX**: Deleting an account no longer kicks the UI back to the root list.
+- **Google API accounts**: Prompt for account name and ensure each API key creates a distinct account entry.
+- **/admin model selection**: Resolve model lists when account IDs don't match provider IDs (fixes empty OpenCode/Anthropic model lists).
+- **Keybind layout**: Show account/model hotkeys in a single inline row.
 
 ### Changed
 - **Planning docs**: Deprecated root `PLANNING.md` in favor of `packages/opencode/PLANNING.md`.
+- **Rate limit UX**: Auto-open `/admin` model selector when a session hits rate limits.
+- **Provider label**: Rename Google provider label to "Google-API" in admin/model TUI.
+- **Account hotkeys**: Show account management hotkeys in a single inline row.
 
 ## [1.1.49] - 2026-01-30
 
@@ -177,3 +220,14 @@
 - Planning to migrate raw branch customizations into cms (latest dev).
 - Allow antigravity/gemini-cli providers even when enabled_providers is set to google, restoring account model checks.
 - Add CLI model-check command registration and resilient logging to make cms dev mode runnable again.
+# Changelog
+
+## [1.1.51] - 2026-01-30
+
+### Fixed
+- **Favorite indicators**: Wrap the `⭐` glyph in `<text>` so `/admin` and `/model` dialogs no longer emit orphan-text errors when showing favorite models.
+
+## [1.1.50] - 2026-01-30
+
+### Fixed
+*snip existing*

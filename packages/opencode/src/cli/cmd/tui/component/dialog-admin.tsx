@@ -1,8 +1,8 @@
-import { createMemo, createSignal, createResource } from "solid-js"
+import { createEffect, createMemo, createSignal, createResource } from "solid-js"
 import { useLocal } from "@tui/context/local"
 import { useSync } from "@tui/context/sync"
 import { map, pipe, entries, filter, sortBy } from "remeda"
-import { DialogSelect, type DialogSelectRef } from "@tui/ui/dialog-select"
+import { DialogSelect, type DialogSelectOption, type DialogSelectRef } from "@tui/ui/dialog-select"
 import { useDialog } from "@tui/ui/dialog"
 import { DialogProvider } from "./dialog-provider"
 import { DialogAccount } from "./dialog-account"
@@ -34,6 +34,9 @@ export function DialogAdmin() {
     const [ref, setRef] = createSignal<DialogSelectRef<unknown>>()
     const [query, setQuery] = createSignal("")
     const [showHidden, setShowHidden] = createSignal(false)
+    const [googleModels, setGoogleModels] = createSignal<{ id: string; title: string }[]>([])
+    const [googleModelsLoading, setGoogleModelsLoading] = createSignal(false)
+    const [googleModelError, setGoogleModelError] = createSignal<string | null>(null)
 
     // Navigation State
     // steps: root -> account_select -> model_select
@@ -44,6 +47,12 @@ export function DialogAdmin() {
     // This tracks the "provider ID" that models.ts/sync system naturally understands
     // For Antigravity, it's the generic "antigravity". For others, it might be specific IDs.
     const [selectedProviderID, setSelectedProviderID] = createSignal<string | null>(null)
+    const [lockBack, setLockBack] = createSignal(false)
+
+    const lockBackOnce = () => {
+        setLockBack(true)
+        setTimeout(() => setLockBack(false), 200)
+    }
 
     // Load Antigravity Manager for accurate account listing
     // To trigger UI updates when we change active account (since sync might lag)
@@ -88,6 +97,14 @@ export function DialogAdmin() {
     })
 
     const connected = useConnected()
+    createEffect(() => {
+        const currentStep = step()
+        const pid = selectedProviderID()
+        refreshSignal()
+        if (currentStep !== "model_select" || !pid) return
+        if (family(pid) !== "google") return
+        loadGoogleModels()
+    })
 
     const family = (id: string) => {
         const parsed = Account.parseFamily(id)
@@ -96,20 +113,28 @@ export function DialogAdmin() {
         return undefined
     }
 
-    const label = (name: string, id: string) => {
+const label = (name: string, id: string) => {
         const fam = family(id)
         if (!fam) return name
         const map: Record<string, string> = {
             anthropic: "Anthropic",
             openai: "OpenAI",
-            google: "Google",
+            google: "Google-API",
             antigravity: "Antigravity",
             "gemini-cli": "Gemini CLI",
             gitlab: "GitLab",
             opencode: "OpenCode",
         }
         return map[fam as string] ?? name
-    }
+}
+
+function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
+    const cost = info.cost
+    if (!cost) return false
+    const input = cost.input ?? 0
+    const output = cost.output ?? 0
+    return input === 0 && output === 0
+}
 
     const owner = (provider: { id: string; name: string; email?: string }) => {
         const fam = family(provider.id)
@@ -123,6 +148,65 @@ export function DialogAdmin() {
         }
         const display = Account.getDisplayName(provider.id, info as any, fam as string)
         return display || undefined
+    }
+
+    const resolveGoogleApiKey = async () => {
+        try {
+            const accounts = await Account.list("google")
+            const activeId = await Account.getActive("google")
+            const pickKey = (id?: string) => {
+                if (!id) return null
+                const info = accounts[id]
+                if (info?.type === "api") return info.apiKey
+                return null
+            }
+            const activeKey = pickKey(activeId)
+            if (activeKey) return activeKey
+            for (const info of Object.values(accounts)) {
+                if (info.type === "api") return info.apiKey
+            }
+            return null
+        } catch (error) {
+            console.error("Failed to resolve Google API key", error)
+            return null
+        }
+    }
+
+    const loadGoogleModels = async () => {
+        if (googleModelsLoading()) return
+        const key = await resolveGoogleApiKey()
+        if (!key) {
+            setGoogleModels([])
+            setGoogleModelError(null)
+            return
+        }
+        setGoogleModelError(null)
+        setGoogleModelsLoading(true)
+        try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`, {
+                signal: AbortSignal.timeout(15_000),
+            })
+            if (!response.ok) {
+                setGoogleModelError(`HTTP ${response.status}`)
+                return
+            }
+            const data = await response.json()
+            const modelList = Array.isArray(data.models) ? data.models : []
+            const normalized = modelList
+                .map((model: any) => {
+                    const rawName = typeof model.name === "string" ? model.name : ""
+                    const id = rawName.replace(/^models\//, "")
+                    const title = model.displayName || id || rawName
+                    if (!id) return null
+                    return { id, title }
+                })
+                .filter(Boolean) as { id: string; title: string }[]
+            setGoogleModels(normalized)
+        } catch (error) {
+            setGoogleModelError(error instanceof Error ? error.message : String(error))
+        } finally {
+            setGoogleModelsLoading(false)
+        }
     }
 
     // Group providers by family from SYNC data (for Level 1 list)
@@ -162,7 +246,7 @@ export function DialogAdmin() {
                         title: m.name ?? item.modelID,
                         description: label(p.name, p.id),
                         category: item.origin === 'favorite' ? "Favorites" : "Recents",
-                        footer: m.cost?.input === 0 ? "Free" : undefined,
+                            footer: isFreeCost(m) ? "Free" : undefined,
                         disabled: (p.id === "opencode" && m.id.includes("-nano")),
                         onSelect: () => {
                             dialog.clear()
@@ -368,34 +452,50 @@ export function DialogAdmin() {
             const pid = selectedProviderID()
             if (!pid) return []
 
-            // Note: We look up in sync.data.provider. 
-            // Since we just set active, we hope sync reflects this or the provider object is stable (e.g. "antigravity" generic ID).
-            const p = sync.data.provider.find(x => x.id === pid)
-            if (!p) return []
+            const resolved = iife(() => {
+                const direct = sync.data.provider.find(x => x.id === pid)
+                if (direct) return { id: pid, provider: direct }
+
+                const fam = selectedFamily() || family(pid)
+                if (!fam) return undefined
+
+                const byFamily = sync.data.provider.find(x => x.id === fam)
+                if (byFamily) return { id: fam, provider: byFamily }
+
+                const byPrefix = sync.data.provider.find(x => x.id.startsWith(`${fam}-`))
+                if (byPrefix) return { id: byPrefix.id, provider: byPrefix }
+
+                return undefined
+            })
+            if (!resolved) return []
+            const p = resolved.provider
+            const providerID = resolved.id
 
             const showAll = showHidden()
+            const isGoogleProvider = family(providerID) === "google"
+            const hiddenCheck = (mid: string) => {
+                if (showAll) return true
+                return !local.model.hidden().some((h) => h.providerID === providerID && h.modelID === mid)
+            }
 
-            const result = pipe(
+            const baseEntries = pipe(
                 p.models,
                 entries(),
                 filter(([_, info]) => info.status !== "deprecated"),
-                filter(([mid, _]) => {
-                    if (showAll) return true
-                    return !local.model.hidden().some(h => h.providerID === pid && h.modelID === mid)
-                }),
+                filter(([mid]) => hiddenCheck(mid)),
                 map(([mid, info]) => {
-                    const isFav = favorites.some(f => f.providerID === pid && f.modelID === mid)
+                    const isFav = favorites.some((f) => f.providerID === providerID && f.modelID === mid)
                     const pAny = p as any
 
-                    const isRateLimited = (pAny.coolingDownUntil && pAny.coolingDownUntil > Date.now())
+                    const isRateLimited = pAny.coolingDownUntil && pAny.coolingDownUntil > Date.now()
                     const isBlocked = !!pAny.cooldownReason
                     const isActionable = isRateLimited || isBlocked
 
                     return {
-                        value: { providerID: pid, modelID: mid },
+                        value: { providerID: providerID, modelID: mid },
                         title: info.name ?? mid,
                         category: "Models",
-                        gutter: isFav ? "⭐" : undefined,
+                        gutter: isFav ? <text fg={theme.accent}>⭐</text> : undefined,
                         description: iife(() => {
                             if (isRateLimited) {
                                 const remaining = Math.ceil((pAny.coolingDownUntil - Date.now()) / 1000 / 60)
@@ -404,27 +504,76 @@ export function DialogAdmin() {
                             if (isBlocked) return `⛔ ${pAny.cooldownReason}`
                             return undefined
                         }),
-                        disabled: (pid === "opencode" && mid.includes("-nano")) || (isBlocked && !isRateLimited), // Allow selecting rate-limited to see timer? No, standard logic.
-                        // Footer: "X" if limited/blocked, "Free" otherwise
-                        footer: isActionable ? <text fg={theme.error as any}>X</text> : (info.cost?.input === 0 ? "Free" : undefined),
+                        disabled:
+                            (providerID === "opencode" && mid.includes("-nano")) ||
+                            (isBlocked && !isRateLimited),
+                        footer: isActionable
+                            ? <text fg={theme.error as any}>X</text>
+                            : (isFreeCost(info) ? "Free" : undefined),
                         onSelect: () => {
                             dialog.clear()
-                            local.model.set({ providerID: pid, modelID: mid }, { recent: true })
-                        }
+                            local.model.set({ providerID: providerID, modelID: mid }, { recent: true })
+                        },
                     }
                 }),
-                sortBy(x => x.title)
+                sortBy((entry) => entry.title),
             )
 
-            if (result.length === 0) {
-                return [{
+            const existingIds = new Set(baseEntries.map((entry) => entry.value.modelID))
+            const dynamicEntries = isGoogleProvider
+                ? googleModels()
+                    .filter((model) => hiddenCheck(model.id) && !existingIds.has(model.id))
+                    .map((model) => {
+                        const isFav = favorites.some(
+                            (f) => f.providerID === providerID && f.modelID === model.id,
+                        )
+                        return {
+                            value: { providerID: providerID, modelID: model.id },
+                            title: model.title,
+                            category: "Models",
+                            gutter: isFav ? <text fg={theme.accent}>⭐</text> : undefined,
+                            description: "Google AI Studio list",
+                            footer: undefined,
+                            onSelect: () => {
+                                dialog.clear()
+                                local.model.set({ providerID: providerID, modelID: model.id }, { recent: true })
+                            },
+                        }
+                    })
+                : []
+
+            const combined = sortBy([...baseEntries, ...dynamicEntries], (entry) => entry.title)
+
+            const extras: DialogSelectOption<unknown>[] = []
+            if (isGoogleProvider) {
+                if (googleModelsLoading()) {
+                    extras.push({
+                        title: "Refreshing Google AI Studio models…",
+                        value: "__google_loading__",
+                        disabled: true,
+                        category: "Models",
+                    })
+                } else if (googleModelError()) {
+                    extras.push({
+                        title: `Google refresh failed: ${googleModelError()}`,
+                        value: "__google_error__",
+                        disabled: true,
+                        category: "Models",
+                    })
+                }
+            }
+
+            if (combined.length === 0) {
+                extras.push({
                     title: "No models found",
                     value: "__empty__",
                     disabled: true,
-                    category: "Models"
-                }]
+                    category: "Models",
+                })
+                return extras
             }
-            return result
+
+            return extras.concat(combined)
         }
 
         return []
@@ -507,6 +656,7 @@ export function DialogAdmin() {
 
     // ---- BACK NAVIGATION ----
     const goBack = () => {
+        if (lockBack() && step() === "account_select") return
         if (query() !== "") {
             setQuery("")
             return
@@ -528,6 +678,14 @@ export function DialogAdmin() {
             return
         }
     }
+
+    const selectCurrent = createMemo(() => {
+        if (step() === "account_select") {
+            const first = options().find(option => option.disabled !== true)
+            if (first) return first.value
+        }
+        return local.model.current()
+    })
 
     return (
         <DialogSelect
@@ -617,7 +775,9 @@ export function DialogAdmin() {
                                         await refreshAntigravity()
                                         setStep("account_select")
                                         setSelectedFamily(fam)
+                                        setQuery("")
                                         forceRefresh()
+                                        lockBackOnce()
                                     } catch (e: any) {
                                         toast.error(e)
                                     }
@@ -667,9 +827,9 @@ export function DialogAdmin() {
             skipFilter={step() === "account_select"}
             hideInput={step() === "account_select"}
             title={title()}
-            current={local.model.current()}
+            current={selectCurrent()}
             options={options()}
-            keybindLayout={step() === "account_select" || step() === "model_select" ? "columns" : "inline"}
+            keybindLayout="inline"
         />
     )
 }
