@@ -26,6 +26,14 @@ export function useConnected() {
   )
 }
 
+function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
+  const cost = info.cost
+  if (!cost) return false
+  const input = cost.input ?? 0
+  const output = cost.output ?? 0
+  return input === 0 && output === 0
+}
+
 export function DialogModel(props: { providerID?: string }) {
   const local = useLocal()
   const sync = useSync()
@@ -43,6 +51,12 @@ export function DialogModel(props: { providerID?: string }) {
   const [step, setStep] = createSignal<"root" | "account_select" | "model_select" | "favorites" | "recents">("root")
   const [selectedFamily, setSelectedFamily] = createSignal<string | null>(null)
   const [selectedProviderID, setSelectedProviderID] = createSignal<string | null>(props.providerID ?? null)
+  const [lockBack, setLockBack] = createSignal(false)
+
+  const lockBackOnce = () => {
+    setLockBack(true)
+    setTimeout(() => setLockBack(false), 200)
+  }
 
   const [refreshSignal, setRefreshSignal] = createSignal(0)
   const forceRefresh = () => setRefreshSignal((s) => s + 1)
@@ -85,7 +99,7 @@ export function DialogModel(props: { providerID?: string }) {
     const map: Record<string, string> = {
       anthropic: "Anthropic",
       openai: "OpenAI",
-      google: "Google",
+      google: "Google-API",
       antigravity: "Antigravity",
       "gemini-cli": "Gemini CLI",
       gitlab: "GitLab",
@@ -187,7 +201,7 @@ export function DialogModel(props: { providerID?: string }) {
             title: m.name ?? item.modelID,
             description: label(p.name, p.id),
             category: item.origin === 'favorite' ? "Favorites" : "Recents",
-            footer: m.cost?.input === 0 ? "Free" : undefined,
+            footer: isFreeCost(m) ? "Free" : undefined,
             disabled: (p.id === "opencode" && m.id.includes("-nano")),
             onSelect: () => {
               dialog.clear()
@@ -396,7 +410,7 @@ export function DialogModel(props: { providerID?: string }) {
             title: m.name ?? item.modelID,
             description: label(p.name, p.id),
             category: item.origin === 'favorite' ? "Favorites" : "Recents",
-            footer: m.cost?.input === 0 ? "Free" : undefined,
+            footer: isFreeCost(m) ? "Free" : undefined,
             disabled: (p.id === "opencode" && m.id.includes("-nano")),
             onSelect: () => {
               dialog.clear()
@@ -423,7 +437,7 @@ export function DialogModel(props: { providerID?: string }) {
             title: m.name ?? item.modelID,
             description: label(p.name, p.id),
             category: item.origin === 'favorite' ? "Favorites" : "Recents",
-            footer: m.cost?.input === 0 ? "Free" : undefined,
+            footer: isFreeCost(m) ? "Free" : undefined,
             disabled: (p.id === "opencode" && m.id.includes("-nano")),
             onSelect: () => {
               dialog.clear()
@@ -440,8 +454,24 @@ export function DialogModel(props: { providerID?: string }) {
     if (s === "model_select") {
       const pid = selectedProviderID()
       if (!pid) return []
-      const p = sync.data.provider.find(x => x.id === pid)
-      if (!p) return []
+      const resolved = iife(() => {
+        const direct = sync.data.provider.find(x => x.id === pid)
+        if (direct) return { id: pid, provider: direct }
+
+        const fam = selectedFamily() || family(pid)
+        if (!fam) return undefined
+
+        const byFamily = sync.data.provider.find(x => x.id === fam)
+        if (byFamily) return { id: fam, provider: byFamily }
+
+        const byPrefix = sync.data.provider.find(x => x.id.startsWith(`${fam}-`))
+        if (byPrefix) return { id: byPrefix.id, provider: byPrefix }
+
+        return undefined
+      })
+      if (!resolved) return []
+      const p = resolved.provider
+      const providerID = resolved.id
 
       const showAll = showHidden()
 
@@ -452,16 +482,16 @@ export function DialogModel(props: { providerID?: string }) {
         // Filter hidden
         filter(([mid, _]) => {
           if (showAll) return true
-          return !local.model.hidden().some(h => h.providerID === pid && h.modelID === mid)
+          return !local.model.hidden().some(h => h.providerID === providerID && h.modelID === mid)
         }),
         map(([mid, info]) => {
-          const isFav = favorites.some(f => f.providerID === pid && f.modelID === mid)
+          const isFav = favorites.some(f => f.providerID === providerID && f.modelID === mid)
           const pAny = p as any
           return {
-            value: { providerID: pid, modelID: mid },
+            value: { providerID: providerID, modelID: mid },
             title: info.name ?? mid,
             category: "Models",
-            gutter: isFav ? "⭐" : undefined,
+            gutter: isFav ? <text fg={theme.accent}>⭐</text> : undefined,
             description: iife(() => {
               if (pAny.coolingDownUntil && pAny.coolingDownUntil > Date.now()) {
                 const remaining = Math.ceil((pAny.coolingDownUntil - Date.now()) / 1000 / 60)
@@ -470,11 +500,11 @@ export function DialogModel(props: { providerID?: string }) {
               if (pAny.cooldownReason) return `⛔ ${pAny.cooldownReason}`
               return undefined
             }),
-            disabled: (pid === "opencode" && mid.includes("-nano")) || (pAny.cooldownReason?.includes("blocked") ?? false),
-            footer: info.cost?.input === 0 ? "Free" : undefined,
+            disabled: (providerID === "opencode" && mid.includes("-nano")) || (pAny.cooldownReason?.includes("blocked") ?? false),
+            footer: isFreeCost(info) ? "Free" : undefined,
             onSelect: () => {
               dialog.clear()
-              local.model.set({ providerID: pid, modelID: mid }, { recent: true })
+              local.model.set({ providerID: providerID, modelID: mid }, { recent: true })
             }
           }
         }),
@@ -491,12 +521,19 @@ export function DialogModel(props: { providerID?: string }) {
     if (step() === "recents") return "Recent Models"
     if (step() === "account_select") return `Select Account (${label(selectedFamily() || "", selectedFamily() || "")})`
     if (step() === "model_select") {
-      if (selectedProviderID()) {
-        const p = sync.data.provider.find(x => x.id === selectedProviderID())
-        if (p) {
-          const who = owner(p)
+      const pid = selectedProviderID()
+      if (pid) {
+        const resolved = iife(() => {
+          const direct = sync.data.provider.find(x => x.id === pid)
+          if (direct) return direct
+          const fam = selectedFamily() || family(pid)
+          if (!fam) return undefined
+          return sync.data.provider.find(x => x.id === fam) || sync.data.provider.find(x => x.id.startsWith(`${fam}-`))
+        })
+        if (resolved) {
+          const who = owner(resolved)
           if (who) return `Select Model - ${who}`
-          return `Select Model - ${p.name}`
+          return `Select Model - ${resolved.name}`
         }
       }
       return "Select Model"
@@ -506,6 +543,7 @@ export function DialogModel(props: { providerID?: string }) {
 
   // Handle Back
   const goBack = () => {
+    if (lockBack() && step() === "account_select") return
     if (query() !== "") {
       setQuery("")
       return
@@ -591,6 +629,7 @@ export function DialogModel(props: { providerID?: string }) {
                   setSelectedFamily(fam)
                   setQuery("")
                   forceRefresh()
+                  lockBackOnce()
                 } catch (e: any) {
                   toast.error(e)
                 }
@@ -663,7 +702,7 @@ export function DialogModel(props: { providerID?: string }) {
       title={title()}
       current={local.model.current()}
       options={options()}
-      keybindLayout={step() === "account_select" || step() === "model_select" ? "columns" : "inline"}
+      keybindLayout="inline"
     />
   )
 }

@@ -27,6 +27,7 @@ import { formatDuration } from "@/util/format"
 import { createColors, createFrames } from "../../ui/spinner.ts"
 import { useDialog } from "@tui/ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
+import { DialogAdmin } from "../dialog-admin"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
@@ -73,6 +74,12 @@ export function Prompt(props: PromptProps) {
   const renderer = useRenderer()
   const { theme, syntax } = useTheme()
   const kv = useKV()
+  const [rateLimitKey, setRateLimitKey] = createSignal("")
+
+  const isRateLimitMessage = (message: string) => {
+    const text = message.toLowerCase()
+    return text.includes("rate limit") || text.includes("too many requests") || text.includes("429")
+  }
 
   function promptModelWarning() {
     toast.show({
@@ -107,6 +114,21 @@ export function Prompt(props: PromptProps) {
   createEffect(() => {
     if (props.disabled) input.cursorColor = theme.backgroundElement
     if (!props.disabled) input.cursorColor = theme.text
+  })
+
+  createEffect(() => {
+    const s = status()
+    if (s.type !== "retry") {
+      if (rateLimitKey()) setRateLimitKey("")
+      return
+    }
+    if (!isRateLimitMessage(s.message)) return
+
+    const key = `${props.sessionID ?? ""}:${s.message}`
+    if (rateLimitKey() === key) return
+
+    setRateLimitKey(key)
+    dialog.replace(() => <DialogAdmin />)
   })
 
   const lastUserMessage = createMemo(() => {

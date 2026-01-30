@@ -185,10 +185,12 @@ export namespace Auth {
     const family = parseFamily(providerID)
 
     if (info.type === "api") {
-      const accountId = Account.generateId(family, "api", providerID)
+      const raw = providerID.startsWith(`${family}-`) ? providerID.slice(family.length + 1) : providerID
+      const label = raw || providerID
+      const accountId = Account.generateId(family, "api", label)
       await Account.add(family, accountId, {
         type: "api",
-        name: providerID,
+        name: label,
         apiKey: info.key,
         addedAt: Date.now(),
       })

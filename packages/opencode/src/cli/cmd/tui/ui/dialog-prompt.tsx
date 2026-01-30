@@ -2,7 +2,7 @@ import { TextareaRenderable, TextAttributes } from "@opentui/core"
 import { useTheme } from "../context/theme"
 import { useDialog, type DialogContext } from "./dialog"
 import { onMount, type JSX } from "solid-js"
-import { useKeyboard } from "@opentui/solid"
+import { useTextareaKeybindings } from "../component/textarea-keybindings"
 
 export type DialogPromptProps = {
   title: string
@@ -17,12 +17,10 @@ export function DialogPrompt(props: DialogPromptProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
   let textarea: TextareaRenderable
-
-  useKeyboard((evt) => {
-    if (evt.name === "return") {
-      props.onConfirm?.(textarea.plainText)
-    }
-  })
+  const keybindings = useTextareaKeybindings()
+  const submit = () => {
+    props.onConfirm?.(textarea.plainText)
+  }
 
   onMount(() => {
     dialog.setSize("medium")
@@ -45,10 +43,11 @@ export function DialogPrompt(props: DialogPromptProps) {
         {props.description}
         <textarea
           onSubmit={() => {
-            props.onConfirm?.(textarea.plainText)
+            submit()
           }}
+          focused
           height={3}
-          keyBindings={[{ name: "return", action: "submit" }]}
+          keyBindings={keybindings()}
           ref={(val: TextareaRenderable) => (textarea = val)}
           initialValue={props.value}
           placeholder={props.placeholder ?? "Enter text"}
@@ -57,10 +56,20 @@ export function DialogPrompt(props: DialogPromptProps) {
           cursorColor={theme.text}
         />
       </box>
-      <box paddingBottom={1} gap={1} flexDirection="row">
+      <box paddingBottom={1} gap={2} flexDirection="row" justifyContent="space-between">
         <text fg={theme.text}>
           enter <span style={{ fg: theme.textMuted }}>submit</span>
         </text>
+        <box
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={theme.backgroundElement}
+          onMouseUp={() => submit()}
+        >
+          <text fg={theme.text}>
+            submit
+          </text>
+        </box>
       </box>
     </box>
   )
