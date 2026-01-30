@@ -221,3 +221,10 @@
 - **Removed Ghost Account**:  successfully removed.
 - **TUI Update**: 'a' key now correctly routes to .
 - **TUI Improvements**: Added 'left' arrow key support to /models, /accounts, and /connect (DialogProvider) to act as 'Back/Exit' (dialog.clear()).
+
+## Antigravity Chat Fix
+- **URL fix**: Set  to  for manual Antigravity models to prevent invalid URL error.
+
+## Antigravity Chat Fix
+- **URL fix**: Set API URL to  for manual Antigravity models.
+Fixed URL for manual Antigravity models.

@@ -928,7 +928,7 @@ export namespace Provider {
           name: m.name,
           providerID: "gemini-cli",
           family: "gemini",
-          api: { id: m.id, url: "", npm: "@ai-sdk/google" },
+          api: { id: m.id, url: "https://generativelanguage.googleapis.com", npm: "@ai-sdk/google" },
           status: "active",
           capabilities: {
             temperature: true,
@@ -1049,7 +1049,7 @@ export namespace Provider {
           name: m.name,
           providerID: "antigravity",
           family: m.family as any,
-          api: { id: m.id, url: "", npm: "@ai-sdk/google" },
+          api: { id: m.id, url: "https://generativelanguage.googleapis.com", npm: "@ai-sdk/google" },
           status: "active",
           capabilities: {
             temperature: true,
