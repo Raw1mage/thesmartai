@@ -657,12 +657,24 @@ export function prepareAntigravityRequest(
   const urlString = typeof input === "string" ? input : input.url;
 
   if (!isGenerativeLanguageRequest(urlString)) {
-    // If it's a relative URL to Google API, make it absolute so global fetch works
+    // If it's a relative URL to Google API (or empty/malformed from some SDKs), make it absolute
     const isRelativeApi = urlString.startsWith("/v1") || urlString.startsWith("v1") ||
-      urlString.startsWith("/models") || urlString.startsWith("models");
+      urlString.startsWith("/models") || urlString.startsWith("models") ||
+      (!urlString.startsWith("http") && urlString.length > 0);
 
-    if (isRelativeApi) {
-      const pathToken = urlString.startsWith("/") ? urlString : `/${urlString}`;
+    // If it's effectively empty or relative, try to salvage it
+    if (isRelativeApi || !urlString) {
+      let pathToken = urlString;
+      if (!pathToken) {
+        // Fallback for completely empty URL - assume standard generateContent for the model if we can? 
+        // Or just provide a safe base to prevent fetch crash.
+        // However, if we don't know the operation, this might fail downstream 404. 
+        // But failing 404 is better than crashing fetch.
+        // Let's assume v1beta/models if empty (unlikely but safe fallback).
+        pathToken = "/v1beta/models";
+      } else if (!pathToken.startsWith("/")) {
+        pathToken = "/" + pathToken;
+      }
       input = `https://generativelanguage.googleapis.com${pathToken}`;
     } else {
 
