@@ -675,7 +675,9 @@ export function prepareAntigravityRequest(
   const streaming = rawAction === STREAM_ACTION;
   const defaultEndpoint = headerStyle === "gemini-cli" ? GEMINI_CLI_ENDPOINT : ANTIGRAVITY_ENDPOINT;
   const baseEndpoint = endpointOverride ?? defaultEndpoint;
-  const transformedUrl = `${baseEndpoint}/v1internal:${rawAction}${streaming ? "?alt=sse" : ""}`;
+  // Use correct resource path for production endpoint compatibility
+  const formattedProjectId = resolvedProjectId || "rising-fact-p41fc"; // Fallback to known default if empty
+  const transformedUrl = `${baseEndpoint}/v1/projects/${formattedProjectId}/locations/global/publishers/google/models/${effectiveModel}:${rawAction}${streaming ? "?alt=sse" : ""}`;
 
   if (process.env.OPENCODE_DEBUG_ANTIGRAVITY) {
     console.log(`[Antigravity Debug] Request:

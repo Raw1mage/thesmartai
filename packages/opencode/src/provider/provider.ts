@@ -1147,7 +1147,10 @@ export namespace Provider {
         }
 
         // Determine display name
-        const displayName = Account.getDisplayName(accountId, accountInfo, family)
+        let displayName = Account.getDisplayName(accountId, accountInfo, family)
+        if (family === "antigravity" && effectiveId === "antigravity" && accountInfo.type === "subscription" && accountInfo.email) {
+          displayName = `Antigravity (${accountInfo.email})`;
+        }
 
         // Add to database with models inherited from base provider
         const options: Record<string, any> = {}
