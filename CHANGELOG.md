@@ -4,6 +4,7 @@
 
 ### Fixed
 - **Antigravity Fallback**: Ensure Antigravity provider is always registered in the active provider list to prevent incorrect fallback to Codex when account sync is pending or incomplete.
+- **Anthropic Auth Fix**: Replaced the external `opencode-anthropic-auth` plugin with a local implementation to resolve "Token refresh failed: 400" errors caused by the plugin reading outdated `auth.json` credentials instead of the new Account system.
 
 
 ## [1.1.57] - 2026-01-31
