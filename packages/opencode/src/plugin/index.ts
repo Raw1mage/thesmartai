@@ -14,14 +14,15 @@ import { CopilotAuthPlugin } from "./copilot"
 
 import { AntigravityOAuthPlugin, AntigravityLegacyOAuthPlugin } from "./antigravity"
 import { GeminiCLIOAuthPlugin } from "./gemini-cli"
+import { AnthropicAuthPlugin } from "./anthropic"
 
 export namespace Plugin {
   const log = Log.create({ service: "plugin" })
 
-  const BUILTIN = ["opencode-anthropic-auth@latest", "@gitlab/opencode-gitlab-auth@1.3.2"]
+  const BUILTIN = ["@gitlab/opencode-gitlab-auth@1.3.2"]
 
   // Built-in plugins that are directly imported (not installed from npm)
-  const INTERNAL_PLUGINS: PluginInstance[] = [CodexAuthPlugin, CopilotAuthPlugin, AntigravityOAuthPlugin as any, AntigravityLegacyOAuthPlugin as any, GeminiCLIOAuthPlugin as any]
+  const INTERNAL_PLUGINS: PluginInstance[] = [CodexAuthPlugin, CopilotAuthPlugin, AntigravityOAuthPlugin as any, AntigravityLegacyOAuthPlugin as any, GeminiCLIOAuthPlugin as any, AnthropicAuthPlugin as any]
 
   // Cached state
   let _loading: Promise<{ hooks: Hooks[]; input: PluginInput }> | undefined
