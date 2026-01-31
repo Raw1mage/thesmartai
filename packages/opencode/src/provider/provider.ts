@@ -10,6 +10,7 @@ import { ModelsDev } from "./models"
 import { NamedError } from "@opencode-ai/util/error"
 import { Auth } from "../auth"
 import { Account } from "../account"
+import { getModelHealthRegistry } from "../account/rotation"
 import { Env } from "../env"
 import { Instance } from "../project/instance"
 import { Flag } from "../flag/flag"
@@ -26,7 +27,7 @@ import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic"
 import { createOpenAI } from "@ai-sdk/openai"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { createOpenRouter, type LanguageModelV2 } from "@openrouter/ai-sdk-provider"
-import { createOpenaiCompatible as createGitHubCopilotOpenAICompatible } from "./sdk/openai-compatible/src"
+import { createOpenaiCompatible as createGitHubCopilotOpenAICompatible } from "./sdk/copilot"
 import { createXai } from "@ai-sdk/xai"
 import { createMistral } from "@ai-sdk/mistral"
 import { createGroq } from "@ai-sdk/groq"
@@ -63,6 +64,133 @@ export namespace Provider {
     "gpt-oss-120b-medium"
   ]);
   const IGNORED_DYNAMIC = new Set<string>()
+
+  /**
+   * Bundled default models for GitHub Copilot.
+   * Used as fallback when dynamic fetching fails.
+   * NOTE: The actual available models depend on the user's Copilot subscription plan.
+   * Free tier may only have access to limited models like claude-haiku-4.5.
+   * This is a minimal conservative list; dynamic fetch will get the real list.
+   */
+  const GITHUB_COPILOT_DEFAULT_MODELS: Array<{
+    id: string
+    name: string
+    family: string
+    reasoning?: boolean
+  }> = [
+      // Free tier models (most likely available)
+      { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", family: "claude" },
+      { id: "gpt-4o-mini", name: "GPT-4o Mini", family: "openai" },
+      // Pro/Enterprise tier models (may require paid subscription)
+      { id: "claude-sonnet-4", name: "Claude Sonnet 4", family: "claude" },
+      { id: "gpt-4o", name: "GPT-4o", family: "openai" },
+      { id: "o1", name: "OpenAI o1", family: "openai", reasoning: true },
+      { id: "o1-mini", name: "OpenAI o1 Mini", family: "openai", reasoning: true },
+      { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", family: "gemini" },
+    ]
+
+  /**
+   * Fetch models dynamically from a provider's API.
+   * Returns null if fetching fails (fallback to defaults).
+   */
+  async function fetchProviderModels(
+    providerID: string,
+    authToken: string,
+    baseURL?: string,
+  ): Promise<Array<{ id: string; name: string }> | null> {
+    try {
+      // Determine API endpoint based on provider
+      let url: string
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${authToken}`,
+      }
+
+      if (providerID.startsWith("github-copilot")) {
+        // GitHub Copilot uses OpenAI-compatible API
+        url = baseURL
+          ? `${baseURL}/models`
+          : "https://api.githubcopilot.com/models"
+      } else {
+        // Generic OpenAI-compatible endpoint
+        url = baseURL ? `${baseURL}/models` : null as any
+        if (!url) return null
+      }
+
+      log.info("Fetching models from provider", { providerID, url })
+
+      const response = await fetch(url, {
+        headers,
+        signal: AbortSignal.timeout(10_000),
+      })
+
+      if (!response.ok) {
+        log.warn("Failed to fetch models from provider", {
+          providerID,
+          status: response.status,
+        })
+        return null
+      }
+
+      const data = await response.json()
+
+      // Parse OpenAI-style /models response
+      if (data.data && Array.isArray(data.data)) {
+        return data.data.map((m: any) => ({
+          id: m.id,
+          name: m.name || m.id,
+        }))
+      }
+
+      // Parse simple array response
+      if (Array.isArray(data)) {
+        return data.map((m: any) => ({
+          id: typeof m === "string" ? m : m.id,
+          name: typeof m === "string" ? m : m.name || m.id,
+        }))
+      }
+
+      return null
+    } catch (e) {
+      log.warn("Error fetching models from provider", { providerID, error: e })
+      return null
+    }
+  }
+
+  /**
+   * Create a Model object from bundled model definition
+   */
+  function createCopilotModel(
+    providerID: string,
+    model: { id: string; name: string; family?: string; reasoning?: boolean },
+  ): Model {
+    return {
+      id: model.id,
+      name: model.name,
+      providerID,
+      family: (model.family || "openai") as any,
+      api: {
+        id: model.id,
+        url: "https://api.githubcopilot.com",
+        npm: "@ai-sdk/github-copilot",
+      },
+      status: "active",
+      capabilities: {
+        temperature: true,
+        reasoning: model.reasoning || false,
+        attachment: true,
+        toolcall: true,
+        input: { text: true, image: true, audio: false, video: false, pdf: false },
+        output: { text: true, audio: false, image: false, video: false, pdf: false },
+        interleaved: false,
+      },
+      cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+      limit: { context: 128000, output: 16384 },
+      options: {},
+      variants: {},
+      headers: {},
+      release_date: "2025-01-01",
+    }
+  }
 
   async function loadIgnoredDynamic() {
     IGNORED_DYNAMIC.clear()
@@ -142,6 +270,8 @@ export namespace Provider {
   }>
 
   const CUSTOM_LOADERS: Record<string, CustomLoader> = {
+    // NOTE: User-Agent and anthropic-client headers are NOT set here
+    // They are set by the npm package opencode-anthropic-auth through its custom fetch
     async anthropic() {
       return {
         autoload: false,
@@ -257,11 +387,13 @@ export namespace Provider {
 
       const awsAccessKeyId = Env.get("AWS_ACCESS_KEY_ID")
 
+      // TODO: Using process.env directly because Env.set only updates a process.env shallow copy,
+      // until the scope of the Env API is clarified (test only or runtime?)
       const awsBearerToken = iife(() => {
-        const envToken = Env.get("AWS_BEARER_TOKEN_BEDROCK")
+        const envToken = process.env.AWS_BEARER_TOKEN_BEDROCK
         if (envToken) return envToken
         if (auth?.type === "api") {
-          Env.set("AWS_BEARER_TOKEN_BEDROCK", auth.key)
+          process.env.AWS_BEARER_TOKEN_BEDROCK = auth.key
           return auth.key
         }
         return undefined
@@ -438,17 +570,19 @@ export namespace Provider {
     },
     "sap-ai-core": async () => {
       const auth = await Auth.get("sap-ai-core")
+      // TODO: Using process.env directly because Env.set only updates a shallow copy (not process.env),
+      // until the scope of the Env API is clarified (test only or runtime?)
       const envServiceKey = iife(() => {
-        const envAICoreServiceKey = Env.get("AICORE_SERVICE_KEY")
+        const envAICoreServiceKey = process.env.AICORE_SERVICE_KEY
         if (envAICoreServiceKey) return envAICoreServiceKey
         if (auth?.type === "api") {
-          Env.set("AICORE_SERVICE_KEY", auth.key)
+          process.env.AICORE_SERVICE_KEY = auth.key
           return auth.key
         }
         return undefined
       })
-      const deploymentId = Env.get("AICORE_DEPLOYMENT_ID")
-      const resourceGroup = Env.get("AICORE_RESOURCE_GROUP")
+      const deploymentId = process.env.AICORE_DEPLOYMENT_ID
+      const resourceGroup = process.env.AICORE_RESOURCE_GROUP
 
       return {
         autoload: !!envServiceKey,
@@ -747,6 +881,37 @@ export namespace Provider {
     const config = await Config.get()
     const modelsDev = await ModelsDev.get()
     const database = mapValues(modelsDev, fromModelsDevProvider)
+
+    // Inject github-copilot with bundled default models if not in models.dev
+    if (!database["github-copilot"]) {
+      const copilotModels: Record<string, Model> = {}
+      for (const m of GITHUB_COPILOT_DEFAULT_MODELS) {
+        copilotModels[m.id] = createCopilotModel("github-copilot", m)
+      }
+      database["github-copilot"] = {
+        id: "github-copilot",
+        source: "custom",
+        name: "GitHub Copilot",
+        env: [],
+        options: {},
+        models: copilotModels,
+      }
+      log.info("Injected bundled github-copilot models", { count: Object.keys(copilotModels).length })
+    }
+    if (!database["github-copilot-enterprise"]) {
+      const copilotModels: Record<string, Model> = {}
+      for (const m of GITHUB_COPILOT_DEFAULT_MODELS) {
+        copilotModels[m.id] = createCopilotModel("github-copilot-enterprise", m)
+      }
+      database["github-copilot-enterprise"] = {
+        id: "github-copilot-enterprise",
+        source: "custom",
+        name: "GitHub Copilot Enterprise",
+        env: [],
+        options: {},
+        models: copilotModels,
+      }
+    }
 
     const disabled = new Set(config.disabled_providers ?? [])
     const enabled = config.enabled_providers ? new Set(config.enabled_providers) : null
@@ -1089,6 +1254,14 @@ export namespace Provider {
       mergeProvider("antigravity", { source: "custom" })
     }
 
+    // Ensure GitHub Copilot providers are available with bundled models
+    if (database["github-copilot"]) {
+      mergeProvider("github-copilot", { source: "custom" })
+    }
+    if (database["github-copilot-enterprise"]) {
+      mergeProvider("github-copilot-enterprise", { source: "custom" })
+    }
+
     // Inherit models for account-suffixed providers
     for (const [providerID, provider] of Object.entries(database)) {
       // Match pattern: "provider-accountname"
@@ -1210,10 +1383,7 @@ export namespace Provider {
           options.apiKey = accountInfo.apiKey
         }
 
-        const blocked =
-          family === "anthropic" && accountInfo.type === "subscription"
-            ? "Claude Code subscription credentials are blocked for third-party tools. Use an Anthropic API key."
-            : undefined
+        const blocked = undefined
 
         // Whitelist of truly supported Antigravity models
         const ANTIGRAVITY_WHITELIST = new Set([
@@ -1365,6 +1535,45 @@ export namespace Provider {
                 enterpriseOptions,
               ) as any
             }
+          }
+        }
+
+        // Dynamic model fetching for github-copilot
+        // Try to fetch models from the API, fallback to bundled defaults
+        const copilotProviders = [family, enterpriseProviderID].filter(
+          (id) => !disabled.has(id) && providers[id],
+        )
+
+        for (const copilotID of copilotProviders) {
+          const auth = await Auth.get(copilotID)
+          if (!auth || auth.type !== "oauth") continue
+
+          const token = auth.refresh || auth.access
+          if (!token) continue
+
+          const baseURL = auth.enterpriseUrl
+            ? `https://copilot-api.${auth.enterpriseUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}`
+            : undefined
+
+          const fetchedModels = await fetchProviderModels(copilotID, token, baseURL)
+
+          if (fetchedModels && fetchedModels.length > 0) {
+            log.info("Fetched dynamic models from provider", {
+              providerID: copilotID,
+              count: fetchedModels.length,
+            })
+
+            // Merge fetched models into provider
+            for (const fm of fetchedModels) {
+              if (!providers[copilotID].models[fm.id]) {
+                providers[copilotID].models[fm.id] = createCopilotModel(copilotID, fm)
+              }
+            }
+          } else {
+            log.info("Using bundled default models for provider", {
+              providerID: copilotID,
+              count: Object.keys(providers[copilotID]?.models || {}).length,
+            })
           }
         }
       }
@@ -1702,41 +1911,87 @@ export namespace Provider {
 
   export async function getSmallModel(providerID: string) {
     const cfg = await Config.get()
+    const registry = getModelHealthRegistry()
 
+    // User-configured small model takes priority (but check health)
     if (cfg.small_model) {
       const parsed = parseModel(cfg.small_model)
-      return getModel(parsed.providerID, parsed.modelID)
+      if (registry.isAvailable(parsed.providerID, parsed.modelID)) {
+        return getModel(parsed.providerID, parsed.modelID)
+      }
+      // Fall through to find healthy alternative
     }
 
-    const provider = await state().then((state) => state.providers[providerID])
-    if (provider) {
-      let priority = [
-        "claude-haiku-4-5",
-        "claude-haiku-4.5",
-        "3-5-haiku",
-        "3.5-haiku",
-        "gemini-3-flash",
-        "gemini-2.5-flash",
-        "gpt-5-nano",
-      ]
-      if (providerID.startsWith("opencode")) {
-        priority = ["gpt-5-nano"]
+    // Priority list of small models to try
+    const priority = [
+      "claude-haiku-4-5",
+      "claude-haiku-4.5",
+      "3-5-haiku",
+      "3.5-haiku",
+      "gemini-3-flash",
+      "gemini-2.5-flash",
+      "gpt-5-nano",
+      "gpt-5-mini",
+    ]
+
+    // Collect all candidates from ALL available providers
+    const candidates: Array<{ providerID: string; modelID: string; priorityIndex: number }> = []
+    const providers = await state().then((s) => s.providers)
+
+    for (const [pid, provider] of Object.entries(providers)) {
+      if (!provider?.models) continue
+
+      for (const modelID of Object.keys(provider.models)) {
+        // Find priority index for this model
+        const priorityIndex = priority.findIndex((p) => modelID.includes(p))
+        if (priorityIndex === -1) continue
+
+        // Check if model is healthy (not rate limited)
+        if (!registry.isAvailable(pid, modelID)) {
+          continue
+        }
+
+        candidates.push({ providerID: pid, modelID, priorityIndex })
       }
-      if (providerID.startsWith("github-copilot")) {
-        // prioritize free models for github copilot
-        priority = ["gpt-5-mini", "claude-haiku-4.5", ...priority]
+    }
+
+    // Sort by priority (lower index = higher priority)
+    // Prefer the originally requested provider as tiebreaker
+    candidates.sort((a, b) => {
+      if (a.priorityIndex !== b.priorityIndex) {
+        return a.priorityIndex - b.priorityIndex
       }
+      // Prefer original provider
+      if (a.providerID === providerID && b.providerID !== providerID) return -1
+      if (b.providerID === providerID && a.providerID !== providerID) return 1
+      return 0
+    })
+
+    // Return first healthy candidate
+    if (candidates.length > 0) {
+      const best = candidates[0]
+      return getModel(best.providerID, best.modelID)
+    }
+
+    // Fallback: try opencode provider
+    const opencodeProvider = providers["opencode"]
+    if (opencodeProvider?.models?.["gpt-5-nano"]) {
+      if (registry.isAvailable("opencode", "gpt-5-nano")) {
+        return getModel("opencode", "gpt-5-nano")
+      }
+    }
+
+    // Last resort: return any model from the original provider (even if rate limited)
+    // This ensures we at least try something
+    const originalProvider = providers[providerID]
+    if (originalProvider) {
       for (const item of priority) {
-        for (const model of Object.keys(provider.models)) {
-          if (model.includes(item)) return getModel(providerID, model)
+        for (const model of Object.keys(originalProvider.models)) {
+          if (model.includes(item)) {
+            return getModel(providerID, model)
+          }
         }
       }
-    }
-
-    // Check if opencode provider is available before using it
-    const opencodeProvider = await state().then((state) => state.providers["opencode"])
-    if (opencodeProvider && opencodeProvider.models["gpt-5-nano"]) {
-      return getModel("opencode", "gpt-5-nano")
     }
 
     return undefined

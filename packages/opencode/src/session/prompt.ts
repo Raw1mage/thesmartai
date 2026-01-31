@@ -1888,6 +1888,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       ],
     })
     const text = await result.text.catch((err) => log.error("failed to generate title", { error: err }))
+    // Record successful completion in global model health registry
+    if (text) await LLM.recordSuccess(model.providerID, model.id)
     if (text)
       return Session.update(
         input.session.id,

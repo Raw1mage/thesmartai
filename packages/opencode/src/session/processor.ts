@@ -326,6 +326,8 @@ export namespace SessionProcessor {
                   break
 
                 case "finish":
+                  // Record successful completion in global model health registry
+                  await LLM.recordSuccess(input.model.providerID, input.model.id)
                   break
 
                 default:
