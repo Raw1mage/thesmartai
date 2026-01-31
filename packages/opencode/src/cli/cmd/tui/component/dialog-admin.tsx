@@ -12,10 +12,11 @@ import { iife } from "@/util/iife"
 import { Account } from "@/account"
 import { Keybind } from "@/util/keybind"
 import { AccountManager } from "../../../../plugin/antigravity/plugin/accounts"
+import { ModelsDev } from "@/provider/models"
 import { DialogConfirm } from "@tui/ui/dialog-confirm"
 import { DialogProvider as DialogProviderList } from "./dialog-provider"
 import { useToast } from "@tui/ui/toast"
-import { saveAccounts, loadAccounts } from "../../../../plugin/antigravity/plugin/storage"
+// Account management now uses Account module exclusively (accounts.json as single source of truth)
 import { useKeyboard } from "@opentui/solid"
 import { TextAttributes, TextareaRenderable, type KeyEvent } from "@opentui/core"
 import { useTextareaKeybindings } from "../component/textarea-keybindings"
@@ -24,6 +25,7 @@ import { Locale } from "@/util/locale"
 import { debugCheckpoint, debugSpan } from "@/util/debug"
 import { useExit } from "@tui/context/exit"
 import { DialogModelProbe } from "./dialog-model-probe"
+import { DialogModelHealth } from "./dialog-model-health"
 import { probeModelAvailability } from "../util/model-probe"
 
 // Helper to check connectivity
@@ -215,6 +217,8 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     })
     const [coreAll] = createResource(refreshSignal, async () => {
         try {
+            // Refresh from disk to get latest account data
+            await Account.refresh()
             return await Account.listAll()
         } catch (e) {
             return {}
@@ -230,6 +234,8 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     }
     const [coreAg] = createResource(refreshSignal, async () => {
         try {
+            // Refresh from disk to get latest account data
+            await Account.refresh()
             return await Account.list("antigravity")
         } catch (e) {
             return {}
@@ -240,6 +246,15 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
             return await Account.getActive("antigravity")
         } catch (e) {
             return undefined
+        }
+    })
+
+    // Load all providers from models.dev for Show All mode
+    const [modelsDevData] = createResource(async () => {
+        try {
+            return await ModelsDev.get()
+        } catch (e) {
+            return {}
         }
     })
 
@@ -331,30 +346,10 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
     }
 
     const probeAndSelectModel = (providerID: string, modelID: string, origin?: string) => {
-        const state = { cancelled: false }
-        const controller = new AbortController()
-        const onClose = () => {
-            state.cancelled = true
-            controller.abort()
-        }
-
-        debugCheckpoint("admin", "model probe start", { provider: providerID, model: modelID, origin })
-        dialog.push(() => (
-            <DialogModelProbe providerID={providerID} modelID={modelID} prompt={probePrompt} />
-        ), onClose)
-
-        probeModelAvailability(providerID, modelID, probePrompt, probeTimeoutMs, controller.signal).then((result) => {
-            if (state.cancelled) return
-            dialog.pop()
-            if (result.ok) {
-                debugCheckpoint("admin", "model probe success", { provider: providerID, model: modelID, ms: result.responseTime })
-                local.model.set({ providerID: providerID, modelID: modelID }, { recent: true })
-                dialog.clear()
-                return
-            }
-            debugCheckpoint("admin", "model probe failed", { provider: providerID, model: modelID, error: result.error })
-            toast.show({ message: `Model unavailable: ${result.error}`, variant: "error" })
-        })
+        // Skip probe - directly select the model
+        debugCheckpoint("admin", "model selected (probe skipped)", { provider: providerID, model: modelID, origin })
+        local.model.set({ providerID: providerID, modelID: modelID }, { recent: true })
+        dialog.clear()
     }
 
     const loadGoogleModels = async (force = false) => {
@@ -455,12 +450,37 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
                 list.push(...getModelOptions(recents.map(x => ({ ...x, origin: 'recent' }))))
             }
 
-            // 3. Families
+            // 3. Families - WYSIWYG: No hidden whitelists
+            // Configured = has accounts in storage OR has providers from sync
             const coreFamilies = Object.keys(coreAll() ?? {})
-            const families = Array.from(new Set([
-                ...groupedProviders().keys(),
+            const syncFamilies = [...groupedProviders().keys()]
+
+            // Build set of all configured providers (has accounts or sync data)
+            const configuredProviders = new Set([
                 ...coreFamilies,
-                ...Account.FAMILIES,
+                ...syncFamilies,
+            ])
+
+            // Get all models.dev providers that aren't already configured
+            const allModelsDevProviders = Object.keys(modelsDevData() ?? {}).filter(id => {
+                const fam = Account.parseFamily(id)
+                // Only include if not already in configured providers
+                return !configuredProviders.has(id) && (!fam || !configuredProviders.has(fam))
+            })
+
+            // Explicitly access hiddenProviders for reactivity tracking
+            const hiddenProvidersList = local.model.hiddenProviders()
+
+            // In Show All mode, include all models.dev providers
+            // In normal mode, only include models.dev providers that were explicitly unhidden
+            // (For unconfigured providers, being in hiddenProviders means "shown")
+            const modelsDevProviders = showHidden()
+                ? allModelsDevProviders
+                : allModelsDevProviders.filter(id => hiddenProvidersList.includes(id))
+
+            const families = Array.from(new Set([
+                ...configuredProviders,
+                ...modelsDevProviders,
             ])).sort((a, b) => {
                 if (a === 'antigravity') return -1
                 if (b === 'antigravity') return 1
@@ -481,16 +501,36 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
                 const accountTotal = familyData ? filteredIds.length : providers.length
                 const hasAccounts = filteredIds.length > 0
                 const hasProviders = providers.some((p) => Object.keys(p.models).length > 0 || p.active)
-                if (!hasAccounts && !hasProviders && !Account.FAMILIES.includes(fam as any)) continue
+
+                // WYSIWYG Logic:
+                // - Configured provider = has accounts OR has sync data
+                // - Unconfigured provider = models.dev provider without accounts/sync
+                const isConfigured = hasAccounts || hasProviders
+                const isModelsDevProvider = !!(modelsDevData()?.[fam])
+                const isUnconfigured = isModelsDevProvider && !isConfigured
+
+                const isInHiddenList = hiddenProvidersList.includes(fam)
+
+                // For unconfigured providers: default hidden, shown if in hiddenProviders list (inverted)
+                // For configured providers: default shown, hidden if in hiddenProviders list (normal)
+                const effectivelyHidden = isUnconfigured ? !isInHiddenList : isInHiddenList
+
+                // Show All mode: show everything (configured + all models.dev providers)
+                // Normal mode: show configured (non-hidden) + explicitly unhidden unconfigured
+                const shouldShow = showHidden()
+                    ? (isConfigured || isModelsDevProvider)
+                    : (isConfigured && !effectivelyHidden) || (isUnconfigured && !effectivelyHidden)
+                if (!shouldShow) continue
+
                 const activeCount = familyData?.activeAccount ? 1 : providers.filter(p => p.active).length
 
                 list.push({
-                    value: fam,
-                    title: displayName,
+                    value: { family: fam, isUnconfigured },
+                    title: effectivelyHidden ? `${displayName} (hidden)` : displayName,
                     category: "Providers",
                     icon: "📂",
                     description: accountTotal >= 1 ? `${accountTotal} account${accountTotal === 1 ? "" : "s"}` : undefined,
-                    gutter: activeCount > 0 ? <text fg={theme.success as any}>●</text> : undefined,
+                    gutter: activeCount > 0 ? <text fg={theme.success as any}>●</text> : (effectivelyHidden ? <text fg={theme.textMuted as any}>○</text> : undefined),
                     onSelect: () => {
                         debugCheckpoint("admin", "select family", { family: fam })
                         setSelectedFamily(fam)
@@ -500,6 +540,7 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
                     }
                 })
             }
+
             return list
         }
 
@@ -567,8 +608,15 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
                     if (info.email) coreByEmail.set(info.email, id)
                 }
 
+                // Only fallback to syncProviders if they have real account data (email or refreshToken)
+                // This prevents showing phantom "antigravity" entries when no accounts exist
                 if (!manager || agAccounts.length === 0) {
                     for (const p of syncProviders) {
+                        // Skip generic provider entries that don't represent real accounts
+                        const pAny = p as any
+                        if (!pAny.email && !pAny.refreshToken && p.id === "antigravity") {
+                            continue
+                        }
                         accountMap.set(p.id, {
                             id: p.id,
                             coreId: p.id,
@@ -616,7 +664,6 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
                         title: title,
                         category: label(fam, fam),
                         icon: "👤",
-                        description: p.id !== title ? p.id : undefined,
                         onSelect: async () => {
                             debugCheckpoint("admin", "select account", { family: fam, id: p.id, coreId: p.coreId })
                             await handleSetActive(fam, p.coreId || p.id, p.id)
@@ -784,30 +831,15 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
         return debugSpan("admin", "set active", { family: fam, accountId, displayId }, async () => {
             if (fam === 'antigravity') {
                 try {
-                    // Update Core
+                    // Update Core - this is the single source of truth
                     await Account.setActive(fam, accountId)
+                    await Account.refresh()
 
-                    // Update Specialized Manager
+                    // Reload AccountManager from Account module to sync in-memory state
                     const manager = agManager()
                     if (manager) {
-                        const id = displayId || accountId
-                        const match = id.match(/antigravity-subscription-(\d+)/)
-                        if (match) {
-                            const index = parseInt(match[1]) - 1
-                            manager.setActiveIndex(index)
-                            await saveAccounts({
-                                version: 3,
-                                accounts: manager.getAccountsSnapshot() as any,
-                                activeIndex: index,
-                                activeIndexByFamily: {
-                                    claude: index,
-                                    gemini: index
-                                }
-                            }, true) // OVERWRITE to ensure exact sync
-                        }
+                        await manager.reloadFromAccountModule()
                     }
-
-                    await Account.refresh()
                 } catch (e) {
                     debugCheckpoint("admin", "set active error", { family: fam, error: String(e instanceof Error ? e.stack || e.message : e) })
                     console.error(e)
@@ -823,13 +855,20 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
                 }
                 // FORCE generic ID for Anthropic model lookup
                 setSelectedProviderID('anthropic')
+            } else if (fam === 'github-copilot' || fam === 'github-copilot-enterprise') {
+                try {
+                    await Account.setActive(fam, accountId)
+                    await Account.refresh()
+                } catch (e) {
+                    debugCheckpoint("admin", "set active error", { family: fam, error: String(e instanceof Error ? e.stack || e.message : e) })
+                }
+                // FORCE generic ID for GitHub Copilot model lookup
+                setSelectedProviderID(fam)
             } else {
                 try {
-                    // Only call setActive if it's a multi-account family
-                    if (['openai', 'anthropic', 'google'].includes(fam)) {
-                        await Account.setActive(fam, accountId)
-                        await Account.refresh()
-                    }
+                    // Set active account for any provider with multi-account
+                    await Account.setActive(fam, accountId)
+                    await Account.refresh()
                 } catch (e) {
                     debugCheckpoint("admin", "set active error", { family: fam, error: String(e instanceof Error ? e.stack || e.message : e) })
                 }
@@ -842,7 +881,8 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
 
     // ---- TITLES ----
     const title = createMemo(() => {
-        if (step() === "root") return "Admin Control Panel"
+        const showAllIndicator = showHidden() ? " [Show All]" : ""
+        if (step() === "root") return `Admin Control Panel${showAllIndicator}`
         if (step() === "favorites") return "Favorites"
         if (step() === "recents") return "Recent Models"
         if (step() === "account_select") return `Manage Accounts (${label(selectedFamily() || "", selectedFamily() || "")})`
@@ -853,11 +893,11 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
                 const p = sync.data.provider.find(x => x.id === pid)
                 if (p) {
                     const who = owner(p)
-                    if (who) return `Select Model - ${who}`
-                    return `Select Model - ${p.name}`
+                    if (who) return `Select Model - ${who}${showAllIndicator}`
+                    return `Select Model - ${p.name}${showAllIndicator}`
                 }
             }
-            return "Select Model"
+            return `Select Model${showAllIndicator}`
         }
         return "Admin"
     })
@@ -916,7 +956,17 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
         >
             <DialogSelect
                 keybind={[
-
+                // Model Health Dashboard (Tab key)
+                {
+                    keybind: Keybind.parse("tab")[0],
+                    title: "Health",
+                    label: "Tab",
+                    disabled: false,
+                    onTrigger: () => {
+                        debugCheckpoint("admin", "open model health dashboard via tab")
+                        dialog.push(() => <DialogModelHealth />)
+                    },
+                },
                 // MODEL STEP KEYBINDS
                 {
                     keybind: Keybind.parse("f")[0],
@@ -933,12 +983,12 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
                 },
                 {
                     keybind: Keybind.parse("s")[0],
-                    title: "Showall",
+                    title: showHidden() ? "Hide" : "Showall",
                     label: "S",
-                    disabled: !connected() || step() !== "model_select",
+                    disabled: !connected() || (step() !== "model_select" && step() !== "root"),
                     onTrigger: () => {
                         const next = !showHidden()
-                        debugCheckpoint("admin", "toggle show hidden", { enabled: next })
+                        debugCheckpoint("admin", "toggle show hidden", { enabled: next, step: step() })
                         setShowHidden(next)
                     },
                 },
@@ -966,18 +1016,145 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
                             openGoogleAdd()
                             return
                         }
+
+                        // Check if provider has OAuth methods available (e.g., Anthropic Claude Pro/Max)
+                        const authMethods = sync.data.provider_auth[fam]
+                        const hasOAuth = authMethods?.some(m => m.type === "oauth")
+                        if (hasOAuth) {
+                            // Provider has OAuth support - use DialogProviderList which handles OAuth flow
+                            debugCheckpoint("admin", "add keybind provider with oauth", { family: fam, methods: authMethods?.map(m => m.label) })
+                            dialog.push(() => <DialogProviderList providerID={fam} />)
+                            return
+                        }
+
+                        // Check if this is a models.dev provider (needs API key)
+                        const providerData = modelsDevData()?.[fam]
+                        if (providerData && providerData.env && providerData.env.length > 0) {
+                            // models.dev provider with env var requirement
+                            const envVar = providerData.env[0] // Use first env var
+                            const providerName = providerData.name || fam
+                            debugCheckpoint("admin", "add keybind models.dev provider", { family: fam, envVar })
+                            dialog.push(() => (
+                                <DialogApiKeyAdd
+                                    providerID={fam}
+                                    providerName={providerName}
+                                    envVar={envVar}
+                                    onCancel={() => {
+                                        debugCheckpoint("admin", "apikey add cancel")
+                                        dialog.pop()
+                                        forceRefresh()
+                                    }}
+                                    onSaved={() => {
+                                        debugCheckpoint("admin", "apikey add saved")
+                                        dialog.pop()
+                                        forceRefresh()
+                                    }}
+                                />
+                            ))
+                            return
+                        }
+
                         debugCheckpoint("admin", "add keybind provider list", { family: fam })
                         dialog.replace(() => <DialogProviderList providerID={fam} />)
                     }
                 },
-                // SHARED / DELETE
+                // EDIT ACCOUNT NAME
+                {
+                    keybind: Keybind.parse("e")[0],
+                    title: "Edit",
+                    label: "E",
+                    disabled: step() !== "account_select",
+                    onTrigger: async (option: any) => {
+                        const val = option.value
+                        if (typeof val !== "string" || val.startsWith("__")) return
+                        const fam = selectedFamily()
+                        if (!fam) return
+
+                        // Use coreId for account lookup (option.value may not match core account IDs)
+                        const accountId = option.coreId || val
+                        const accountInfo = await Account.get(fam, accountId)
+                        if (!accountInfo) {
+                            toast.show({ message: "Account not found", variant: "error", duration: 2000 })
+                            return
+                        }
+
+                        debugCheckpoint("admin", "edit account", { family: fam, id: accountId })
+                        dialog.push(() => (
+                            <DialogAccountEdit
+                                family={fam}
+                                accountId={accountId}
+                                currentName={accountInfo.name}
+                                onCancel={() => {
+                                    dialog.pop()
+                                }}
+                                onSaved={() => {
+                                    dialog.pop()
+                                    forceRefresh()
+                                }}
+                            />
+                        ))
+                    }
+                },
+                // VIEW ACCOUNT JSON
+                {
+                    keybind: Keybind.parse("v")[0],
+                    title: "View",
+                    label: "V",
+                    disabled: step() !== "account_select",
+                    onTrigger: async (option: any) => {
+                        const val = option.value
+                        if (typeof val !== "string" || val.startsWith("__")) return
+                        const fam = selectedFamily()
+                        if (!fam) return
+
+                        // Use coreId for account lookup (option.value may not match core account IDs)
+                        const accountId = option.coreId || val
+                        const accountInfo = await Account.get(fam, accountId)
+                        if (!accountInfo) {
+                            toast.show({ message: "Account not found", variant: "error", duration: 2000 })
+                            return
+                        }
+
+                        debugCheckpoint("admin", "view account", { family: fam, id: accountId })
+                        dialog.push(() => (
+                            <DialogAccountView
+                                family={fam}
+                                accountId={accountId}
+                                accountInfo={accountInfo}
+                                onClose={() => dialog.pop()}
+                            />
+                        ))
+                    }
+                },
+                // SHARED / DELETE / HIDE
                 {
                     keybind: Keybind.parse("delete")[0],
-                    title: step() === "model_select" ? "Hide" : "Delete",
+                    title: step() === "model_select" ? "Hide" : (step() === "root" ? "Hide" : "Delete"),
                     label: "Del",
                     disabled: !connected(),
                     onTrigger: async (option: any) => {
                         const val = option.value
+
+                        // Hide provider on root step
+                        if (step() === "root" && val && typeof val === "object" && val.family) {
+                            // Provider entry with { family, isUnconfigured }
+                            const optionObj = option as any
+                            if (optionObj.category === "Providers") {
+                                const fam = val.family
+                                const isUnconfigured = val.isUnconfigured
+                                // Check if not already hidden
+                                const isInHiddenList = local.model.isProviderHidden(fam)
+                                const effectivelyHidden = isUnconfigured ? !isInHiddenList : isInHiddenList
+                                if (!effectivelyHidden) {
+                                    debugCheckpoint("admin", "hide provider", { family: fam, isUnconfigured })
+                                    // For unconfigured: toggle removes from list (makes it hidden again)
+                                    // For configured: toggle adds to list (makes it hidden)
+                                    local.model.toggleHiddenProvider(fam)
+                                    toast.show({ message: `Provider "${fam}" hidden`, variant: "info", duration: 2000 })
+                                }
+                                return
+                            }
+                        }
 
                         if (step() === "account_select" && typeof val === "string" && val !== "__add_account__") {
                             const fam = selectedFamily()
@@ -991,34 +1168,19 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
 
                                     if (confirmed) {
                                         try {
-                                        // 1. Specialized Antigravity Cleanup
-                                        if (fam === 'antigravity') {
-                                            const manager = agManager()
-                                            if (manager) {
-                                                const match = val.match(/antigravity-subscription-(\d+)/)
-                                                if (match) {
-                                                    const index = parseInt(match[1]) - 1
-                                                    if (manager.removeAccountByIndex(index)) {
-                                                        const remaining = manager.getAccountsSnapshot()
-                                                        await saveAccounts({
-                                                            version: 3,
-                                                            accounts: remaining as any,
-                                                            activeIndex: Math.max(0, manager.getActiveIndex()),
-                                                            activeIndexByFamily: {
-                                                                claude: Math.max(0, manager.getActiveIndex()),
-                                                                gemini: Math.max(0, manager.getActiveIndex())
-                                                            }
-                                                        }, true) // OVERWRITE is critical for deletion
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // 2. Core Account Removal
+                                        // Remove from core Account module (single source of truth)
                                         // Use the mapped coreId (e.g. antigravity-subscription-ivon0829-gmail-com)
                                         const coreId = option.coreId || val
                                         await Account.remove(fam, coreId)
                                         await Account.refresh()
+
+                                        // Reload AccountManager to sync in-memory state
+                                        if (fam === 'antigravity') {
+                                            const manager = agManager()
+                                            if (manager) {
+                                                await manager.reloadFromAccountModule()
+                                            }
+                                        }
 
                                         debugCheckpoint("admin", "delete account success", { family: fam, id: coreId })
                                         toast.show({ message: "Account deleted successfully", variant: "success" })
@@ -1054,10 +1216,33 @@ function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
                     label: "Ins",
                     disabled: !connected() || !showHidden(),
                     onTrigger: (option: any) => {
-                        // ... existing unhide logic ...
                         const val = option.value as any
-                        debugCheckpoint("admin", "unhide model", { provider: val.providerID, model: val.modelID })
-                        local.model.toggleHidden(val)
+
+                        // Unhide provider on root step
+                        if (step() === "root" && val && typeof val === "object" && val.family) {
+                            const optionObj = option as any
+                            if (optionObj.category === "Providers") {
+                                const fam = val.family
+                                const isUnconfigured = val.isUnconfigured
+                                // Check if effectively hidden
+                                const isInHiddenList = local.model.isProviderHidden(fam)
+                                const effectivelyHidden = isUnconfigured ? !isInHiddenList : isInHiddenList
+                                if (effectivelyHidden) {
+                                    debugCheckpoint("admin", "unhide provider", { family: fam, isUnconfigured })
+                                    // For unconfigured: toggle adds to list (makes it shown)
+                                    // For configured: toggle removes from list (makes it shown)
+                                    local.model.toggleHiddenProvider(fam)
+                                    toast.show({ message: `Provider "${fam}" unhidden`, variant: "info", duration: 2000 })
+                                }
+                                return
+                            }
+                        }
+
+                        // Unhide model
+                        if (val && typeof val === "object" && val.providerID && val.modelID) {
+                            debugCheckpoint("admin", "unhide model", { provider: val.providerID, model: val.modelID })
+                            local.model.toggleHidden(val)
+                        }
                     }
                 },
                 {
@@ -1131,7 +1316,7 @@ function DialogGoogleApiAdd(props: { onCancel: () => void; onSaved: () => void }
     }
 
     const placeholder = (id: string) => {
-        if (id === "name") return "Enter account name"
+        if (id === "name") return "Enter email or account name"
         if (id === "key") return "Enter API key"
         return ""
     }
@@ -1418,6 +1603,700 @@ function DialogGoogleApiAdd(props: { onCancel: () => void; onSaved: () => void }
                         cursorColor={theme.text}
                     />
                     <text fg={theme.textMuted}>enter save · left/esc cancel</text>
+                </box>
+            </Show>
+        </box>
+    )
+}
+
+/**
+ * Generic API Key Add Dialog for models.dev providers
+ */
+function DialogApiKeyAdd(props: {
+    providerID: string
+    providerName: string
+    envVar: string
+    onCancel: () => void
+    onSaved: () => void
+}) {
+    const dialog = useDialog()
+    const toast = useToast()
+    const keybind = useKeybind()
+    const theme = useTheme().theme
+    const [cursor, setCursor] = createSignal(0)
+    const [mode, setMode] = createSignal<"name" | "key" | null>(null)
+    const [draft, setDraft] = createSignal("")
+    const [name, setName] = createSignal("")
+    const [key, setKey] = createSignal("")
+    const [nameErr, setNameErr] = createSignal("")
+    const [keyErr, setKeyErr] = createSignal("")
+    const [saveErr, setSaveErr] = createSignal("")
+    const [tick, setTick] = createSignal(0)
+    const [inputRef, setInputRef] = createSignal<TextareaRenderable | null>(null)
+    const bindings = createMemo(() => {
+        const all = useTextareaKeybindings()()
+        if (!all) return []
+        return all.filter((item) => item.action !== "submit")
+    })
+
+    onMount(() => {
+        debugCheckpoint("admin.apikey_add", "mount", { provider: props.providerID })
+    })
+
+    onCleanup(() => {
+        debugCheckpoint("admin.apikey_add", "cleanup", { provider: props.providerID })
+    })
+
+    const items = createMemo(() => [
+        { id: "name", label: "Account name" },
+        { id: "key", label: props.envVar },
+        { id: "save", label: "Save" },
+        { id: "cancel", label: "Cancel" },
+    ])
+
+    const value = (id: string) => {
+        if (id === "name") return name()
+        if (id === "key") return key()
+        return ""
+    }
+
+    const placeholder = (id: string) => {
+        if (id === "name") return "Enter email or account name"
+        if (id === "key") return `Enter ${props.envVar}`
+        return ""
+    }
+
+    const error = (id: string) => {
+        if (id === "name") return nameErr()
+        if (id === "key") return keyErr()
+        if (id === "save") return saveErr()
+        return ""
+    }
+
+    const resetErrors = () => {
+        setNameErr("")
+        setKeyErr("")
+        setSaveErr("")
+    }
+
+    const startEdit = (target: "name" | "key") => {
+        resetErrors()
+        const next = target === "name" ? name() : key()
+        debugCheckpoint("admin.apikey_add", "start edit", { target, value: next })
+        setDraft(next)
+        setMode(target)
+        setTick((val) => val + 1)
+        setTimeout(() => {
+            const input = inputRef()
+            if (!input) return
+            if (input.isDestroyed) return
+            input.focus()
+            input.gotoLineEnd()
+        }, 10)
+    }
+
+    const commitEdit = () => {
+        const active = mode()
+        if (!active) return
+        const raw = inputRef()?.plainText ?? draft()
+        const next = raw.trim()
+        debugCheckpoint("admin.apikey_add", "commit edit", { target: active, value: next })
+        if (active === "name") setName(next)
+        if (active === "key") setKey(next)
+        setMode(null)
+    }
+
+    const cancelEdit = () => {
+        debugCheckpoint("admin.apikey_add", "cancel edit", { target: mode() })
+        setDraft("")
+        setMode(null)
+    }
+
+    const save = async () => {
+        resetErrors()
+        const nextName = name().trim()
+        const nextKey = key().trim()
+        debugCheckpoint("admin.apikey_add", "save attempt", { name: nextName, provider: props.providerID })
+        if (!nextName) setNameErr("Account name is required")
+        if (!nextKey) setKeyErr(`${props.envVar} is required`)
+        if (!nextName || !nextKey) {
+            debugCheckpoint("admin.apikey_add", "save blocked missing fields", { name: !!nextName, key: !!nextKey })
+            return
+        }
+
+        const id = Account.generateId(props.providerID, "api", nextName)
+        const existing = await Account.list(props.providerID)
+            .then((list) => list[id])
+            .catch((err) => {
+                const msg = String(err instanceof Error ? err.stack || err.message : err)
+                setSaveErr(msg)
+                debugCheckpoint("admin.apikey_add", "list accounts failed", { error: msg })
+                return undefined
+            })
+        if (existing) {
+            const ok = await DialogConfirm.show(dialog, "Overwrite account?", `Account "${nextName}" already exists. Overwrite it?`)
+            debugCheckpoint("admin.apikey_add", "overwrite prompt", { name: nextName, ok })
+            if (!ok) {
+                setNameErr("Account name already exists")
+                return
+            }
+        }
+
+        const info: Account.ApiAccount = {
+            type: "api",
+            name: nextName,
+            apiKey: nextKey,
+            addedAt: Date.now(),
+        }
+        const wrote = await Account.add(props.providerID, id, info)
+            .then(() => true)
+            .catch((err) => {
+                const msg = String(err instanceof Error ? err.stack || err.message : err)
+                setSaveErr(msg)
+                debugCheckpoint("admin.apikey_add", "save failed", { error: msg })
+                return false
+            })
+        if (!wrote) return
+        debugCheckpoint("admin.apikey_add", "save success", { id, provider: props.providerID })
+        toast.show({ message: `${props.providerName} account saved`, variant: "success" })
+        props.onSaved()
+    }
+
+    const logKey = (evt: KeyEvent, action: string, result: string) => {
+        const item = items()[cursor()]
+        debugCheckpoint("admin.keytrace", "key", {
+            tui: "/admin",
+            menu: "apikey_add",
+            option: item?.label ?? "",
+            key: Keybind.toString(keybind.parse(evt)),
+            action,
+            result,
+        })
+    }
+
+    useKeyboard((evt: KeyEvent) => {
+        if (evt.name === "return") {
+            logKey(evt, "select option", "attempted")
+        } else if (evt.name === "left" || evt.name === "escape" || evt.name === "esc") {
+            logKey(evt, "cancel/back", "attempted")
+        } else if (evt.name === "up" || evt.name === "down") {
+            logKey(evt, "move cursor", "attempted")
+        } else {
+            logKey(evt, "none", "ignored")
+        }
+        if (mode()) {
+            if (evt.name === "return" || evt.name === "enter") {
+                evt.preventDefault()
+                evt.stopPropagation()
+                commitEdit()
+                return
+            }
+            if (evt.name === "left" || evt.name === "esc") {
+                evt.preventDefault()
+                evt.stopPropagation()
+                cancelEdit()
+                return
+            }
+            return
+        }
+
+        if (evt.name === "up") {
+            evt.preventDefault()
+            setCursor((idx) => Math.max(0, idx - 1))
+            return
+        }
+        if (evt.name === "down") {
+            evt.preventDefault()
+            setCursor((idx) => Math.min(items().length - 1, idx + 1))
+            return
+        }
+        if (evt.name === "left" || evt.name === "esc") {
+            evt.preventDefault()
+            props.onCancel()
+            return
+        }
+        if (evt.name !== "return" && evt.name !== "enter") return
+        evt.preventDefault()
+        const picked = items()[cursor()]
+        if (!picked) return
+        if (picked.id === "name") {
+            startEdit("name")
+            return
+        }
+        if (picked.id === "key") {
+            startEdit("key")
+            return
+        }
+        if (picked.id === "save") {
+            void save()
+            return
+        }
+        if (picked.id === "cancel") {
+            props.onCancel()
+        }
+    })
+
+    createEffect(() => {
+        dialog.setSize("medium")
+    })
+
+    return (
+        <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
+            <box flexDirection="row" justifyContent="space-between">
+                <text attributes={TextAttributes.BOLD} fg={theme.text}>
+                    Add {props.providerName} Account
+                </text>
+                <text fg={theme.textMuted}>left/esc</text>
+            </box>
+            <box flexDirection="column" paddingLeft={1} paddingRight={1}>
+                <For each={items()}>
+                    {(item, index) => {
+                        const active = createMemo(() => index() === cursor())
+                        const fg = createMemo(() => (active() ? selectedForeground(theme) : theme.text))
+                        const val = createMemo(() => value(item.id))
+                        const placeholderText = createMemo(() => placeholder(item.id))
+                        const err = createMemo(() => error(item.id))
+                        const isSave = createMemo(() => item.id === "save")
+                        const isCancel = createMemo(() => item.id === "cancel")
+                        const cancelIndex = createMemo(() => index() + 1)
+                        const isPair = createMemo(() => isSave() && items()[cancelIndex()]?.id === "cancel")
+                        const saveActive = createMemo(() => cursor() === index())
+                        const cancelActive = createMemo(() => cursor() === cancelIndex())
+                        return (
+                            <Show when={!isCancel()}>
+                                <box flexDirection="column" paddingBottom={1}>
+                                    <Show
+                                        when={isPair()}
+                                        fallback={
+                                            <box
+                                                flexDirection="row"
+                                                paddingLeft={2}
+                                                paddingRight={2}
+                                                backgroundColor={active() ? theme.primary : undefined}
+                                            >
+                                                <text fg={fg()} attributes={active() ? TextAttributes.BOLD : undefined}>
+                                                    {item.label}
+                                                </text>
+                                                <Show when={item.id === "name" || item.id === "key"}>
+                                                    <text fg={val() ? fg() : theme.textMuted}>
+                                                        {" "}
+                                                        {Locale.truncate(val() || placeholderText(), 48)}
+                                                    </text>
+                                                </Show>
+                                            </box>
+                                        }
+                                    >
+                                        <box flexDirection="row" gap={2} paddingLeft={2} paddingRight={2}>
+                                            <box backgroundColor={saveActive() ? theme.primary : undefined} paddingLeft={1} paddingRight={1}>
+                                                <text
+                                                    fg={saveActive() ? selectedForeground(theme) : theme.text}
+                                                    attributes={saveActive() ? TextAttributes.BOLD : undefined}
+                                                >
+                                                    Save
+                                                </text>
+                                            </box>
+                                            <box backgroundColor={cancelActive() ? theme.primary : undefined} paddingLeft={1} paddingRight={1}>
+                                                <text
+                                                    fg={cancelActive() ? selectedForeground(theme) : theme.text}
+                                                    attributes={cancelActive() ? TextAttributes.BOLD : undefined}
+                                                >
+                                                    Cancel
+                                                </text>
+                                            </box>
+                                        </box>
+                                    </Show>
+                                    <Show when={err()}>
+                                        <box paddingLeft={4} paddingTop={0}>
+                                            <text fg={theme.error}>{err()}</text>
+                                        </box>
+                                    </Show>
+                                </box>
+                            </Show>
+                        )
+                    }}
+                </For>
+            </box>
+            <Show when={mode()}>
+                <box paddingLeft={1} paddingRight={1} gap={1}>
+                    <text fg={theme.textMuted}>
+                        {mode() === "name" ? "Account name" : props.envVar}
+                    </text>
+                    <textarea
+                        key={`edit-${mode()}-${tick()}`}
+                        height={3}
+                        keyBindings={bindings()}
+                        placeholder={mode() === "name" ? "Enter account name" : `Enter ${props.envVar}`}
+                        ref={(val: TextareaRenderable) => setInputRef(val)}
+                        initialValue={draft()}
+                        onContentChange={(val) => {
+                            if (typeof val === "string") {
+                                setDraft(val)
+                                return
+                            }
+                            if (val && typeof val === "object" && "text" in val) {
+                                const text = (val as { text?: unknown }).text
+                                setDraft(typeof text === "string" ? text : "")
+                                return
+                            }
+                            setDraft("")
+                        }}
+                        focused
+                        textColor={theme.text}
+                        focusedTextColor={theme.text}
+                        cursorColor={theme.text}
+                    />
+                    <text fg={theme.textMuted}>enter save · left/esc cancel</text>
+                </box>
+            </Show>
+        </box>
+    )
+}
+
+/**
+ * Dialog to edit account name
+ * Uses cursor-based navigation with inline editing (same pattern as DialogGoogleApiAdd)
+ */
+function DialogAccountEdit(props: {
+    family: string
+    accountId: string
+    currentName: string
+    onCancel: () => void
+    onSaved: () => void
+}) {
+    const dialog = useDialog()
+    const toast = useToast()
+    const theme = useTheme().theme
+    const [cursor, setCursor] = createSignal(0) // 0=name, 1=save, 2=cancel
+    const [editing, setEditing] = createSignal(false)
+    const [draft, setDraft] = createSignal("")
+    const [name, setName] = createSignal(props.currentName)
+    const [nameErr, setNameErr] = createSignal("")
+    const [saving, setSaving] = createSignal(false)
+    const [tick, setTick] = createSignal(0)
+    const [inputRef, setInputRef] = createSignal<TextareaRenderable | null>(null)
+    const bindings = createMemo(() => {
+        const all = useTextareaKeybindings()()
+        if (!all) return []
+        return all.filter((item) => item.action !== "submit")
+    })
+
+    onMount(() => {
+        debugCheckpoint("admin.account_edit", "mount", { family: props.family, id: props.accountId })
+    })
+
+    const startEdit = () => {
+        setNameErr("")
+        setDraft(name())
+        setEditing(true)
+        setTick(t => t + 1)
+        setTimeout(() => {
+            const input = inputRef()
+            if (input && !input.isDestroyed) {
+                input.focus()
+                input.gotoLineEnd()
+            }
+        }, 50)
+    }
+
+    const commitEdit = () => {
+        const raw = inputRef()?.plainText ?? draft()
+        const newName = raw.trim()
+        debugCheckpoint("admin.account_edit", "commit edit", { newName })
+        setName(newName)
+        setEditing(false)
+    }
+
+    const cancelEdit = () => {
+        debugCheckpoint("admin.account_edit", "cancel edit")
+        setDraft("")
+        setEditing(false)
+    }
+
+    const save = async () => {
+        setNameErr("")
+        const newName = name().trim()
+        if (!newName) {
+            setNameErr("Name is required")
+            return
+        }
+        if (newName === props.currentName) {
+            props.onCancel()
+            return
+        }
+
+        setSaving(true)
+        try {
+            const info = await Account.get(props.family, props.accountId)
+            if (!info) {
+                setNameErr("Account not found")
+                setSaving(false)
+                return
+            }
+
+            // Update the account with new name
+            await Account.update(props.family, props.accountId, { ...info, name: newName })
+            await Account.refresh()
+
+            debugCheckpoint("admin.account_edit", "save success", { family: props.family, id: props.accountId, newName })
+            toast.show({ message: "Account name updated", variant: "success", duration: 2000 })
+            props.onSaved()
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e)
+            setNameErr(msg)
+            debugCheckpoint("admin.account_edit", "save failed", { error: msg })
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    useKeyboard((evt: KeyEvent) => {
+        // When editing, handle textarea-specific keys
+        if (editing()) {
+            if (evt.name === "return" || evt.name === "enter") {
+                evt.preventDefault()
+                evt.stopPropagation()
+                commitEdit()
+                return
+            }
+            if (evt.name === "esc" || evt.name === "escape") {
+                evt.preventDefault()
+                evt.stopPropagation()
+                cancelEdit()
+                return
+            }
+            // Let other keys pass through to textarea
+            return
+        }
+
+        // Navigation mode
+        if (evt.name === "up") {
+            evt.preventDefault()
+            setCursor(c => Math.max(0, c - 1))
+            return
+        }
+        if (evt.name === "down") {
+            evt.preventDefault()
+            setCursor(c => Math.min(2, c + 1))
+            return
+        }
+        if (evt.name === "left" || evt.name === "esc" || evt.name === "escape") {
+            evt.preventDefault()
+            evt.stopPropagation()
+            props.onCancel()
+            return
+        }
+        if (evt.name === "return" || evt.name === "enter") {
+            evt.preventDefault()
+            evt.stopPropagation()
+            if (cursor() === 0) {
+                startEdit()
+            } else if (cursor() === 1) {
+                void save()
+            } else if (cursor() === 2) {
+                props.onCancel()
+            }
+            return
+        }
+    })
+
+    createEffect(() => {
+        dialog.setSize("medium")
+    })
+
+    const items = [
+        { id: "name", label: "Account name" },
+        { id: "save", label: "Save" },
+        { id: "cancel", label: "Cancel" },
+    ]
+
+    return (
+        <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
+            <box flexDirection="row" justifyContent="space-between">
+                <text attributes={TextAttributes.BOLD} fg={theme.text}>
+                    Edit Account Name
+                </text>
+                <text fg={theme.textMuted}>left/esc</text>
+            </box>
+            <box paddingLeft={1} paddingRight={1}>
+                <text fg={theme.textMuted}>Account ID: {props.accountId}</text>
+            </box>
+            <box flexDirection="column" paddingLeft={1} paddingRight={1}>
+                <For each={items}>
+                    {(item, index) => {
+                        const active = createMemo(() => index() === cursor())
+                        const fg = createMemo(() => active() ? selectedForeground(theme) : theme.text)
+                        const isNameField = item.id === "name"
+                        const isSave = item.id === "save"
+                        const isCancel = item.id === "cancel"
+
+                        return (
+                            <Show when={!isCancel}>
+                                <box flexDirection="column" paddingBottom={1}>
+                                    <Show
+                                        when={isSave}
+                                        fallback={
+                                            <box
+                                                flexDirection="row"
+                                                paddingLeft={2}
+                                                paddingRight={2}
+                                                backgroundColor={active() ? theme.primary : undefined}
+                                            >
+                                                <text fg={fg()} attributes={active() ? TextAttributes.BOLD : undefined}>
+                                                    {item.label}
+                                                </text>
+                                                <Show when={isNameField}>
+                                                    <text fg={name() ? fg() : theme.textMuted}>
+                                                        {" "}{Locale.truncate(name() || "Enter email or account name", 48)}
+                                                    </text>
+                                                </Show>
+                                            </box>
+                                        }
+                                    >
+                                        <box flexDirection="row" gap={2} paddingLeft={2} paddingRight={2}>
+                                            <box backgroundColor={cursor() === 1 ? theme.primary : undefined} paddingLeft={1} paddingRight={1}>
+                                                <text
+                                                    fg={cursor() === 1 ? selectedForeground(theme) : theme.text}
+                                                    attributes={cursor() === 1 ? TextAttributes.BOLD : undefined}
+                                                >
+                                                    Save
+                                                </text>
+                                            </box>
+                                            <box backgroundColor={cursor() === 2 ? theme.primary : undefined} paddingLeft={1} paddingRight={1}>
+                                                <text
+                                                    fg={cursor() === 2 ? selectedForeground(theme) : theme.text}
+                                                    attributes={cursor() === 2 ? TextAttributes.BOLD : undefined}
+                                                >
+                                                    Cancel
+                                                </text>
+                                            </box>
+                                        </box>
+                                    </Show>
+                                    <Show when={isNameField && nameErr()}>
+                                        <box paddingLeft={4}>
+                                            <text fg={theme.error}>{nameErr()}</text>
+                                        </box>
+                                    </Show>
+                                </box>
+                            </Show>
+                        )
+                    }}
+                </For>
+            </box>
+            <Show when={editing()}>
+                <box paddingLeft={1} paddingRight={1} gap={1}>
+                    <text fg={theme.textMuted}>New name (use email for better identification):</text>
+                    <textarea
+                        key={`edit-name-${tick()}`}
+                        height={3}
+                        keyBindings={bindings()}
+                        placeholder="Enter email or account name"
+                        ref={(val: TextareaRenderable) => setInputRef(val)}
+                        initialValue={draft()}
+                        onContentChange={(val) => {
+                            if (typeof val === "string") {
+                                setDraft(val)
+                                return
+                            }
+                            if (val && typeof val === "object" && "text" in val) {
+                                const text = (val as { text?: unknown }).text
+                                setDraft(typeof text === "string" ? text : "")
+                                return
+                            }
+                            setDraft("")
+                        }}
+                        focused
+                        textColor={theme.text}
+                        focusedTextColor={theme.text}
+                        cursorColor={theme.text}
+                    />
+                    <text fg={theme.textMuted}>enter confirm · esc cancel</text>
+                </box>
+            </Show>
+        </box>
+    )
+}
+
+/**
+ * Dialog to view account JSON
+ */
+function DialogAccountView(props: {
+    family: string
+    accountId: string
+    accountInfo: Account.Info
+    onClose: () => void
+}) {
+    const dialog = useDialog()
+    const theme = useTheme().theme
+    const [scrollOffset, setScrollOffset] = createSignal(0)
+
+    // Mask sensitive fields
+    const maskedInfo = createMemo(() => {
+        const info = { ...props.accountInfo } as any
+        // Mask sensitive fields
+        if (info.apiKey) info.apiKey = info.apiKey.slice(0, 8) + "..." + info.apiKey.slice(-4)
+        if (info.refreshToken) info.refreshToken = info.refreshToken.slice(0, 8) + "..." + info.refreshToken.slice(-4)
+        if (info.accessToken) info.accessToken = info.accessToken.slice(0, 8) + "..." + info.accessToken.slice(-4)
+        return info
+    })
+
+    const jsonStr = createMemo(() => JSON.stringify(maskedInfo(), null, 2))
+    const lines = createMemo(() => jsonStr().split('\n'))
+    const visibleLines = 15
+
+    onMount(() => {
+        debugCheckpoint("admin.account_view", "mount", { family: props.family, id: props.accountId })
+    })
+
+    useKeyboard((evt: KeyEvent) => {
+        if (evt.name === "left" || evt.name === "esc" || evt.name === "escape" || evt.name === "return" || evt.name === "enter") {
+            evt.preventDefault()
+            evt.stopPropagation()
+            props.onClose()
+            return
+        }
+        if (evt.name === "up") {
+            evt.preventDefault()
+            setScrollOffset(Math.max(0, scrollOffset() - 1))
+            return
+        }
+        if (evt.name === "down") {
+            evt.preventDefault()
+            setScrollOffset(Math.min(Math.max(0, lines().length - visibleLines), scrollOffset() + 1))
+            return
+        }
+    })
+
+    createEffect(() => {
+        dialog.setSize("large")
+    })
+
+    const displayLines = createMemo(() => {
+        return lines().slice(scrollOffset(), scrollOffset() + visibleLines)
+    })
+
+    return (
+        <box paddingLeft={2} paddingRight={2} gap={1} paddingBottom={1}>
+            <box flexDirection="row" justifyContent="space-between">
+                <text attributes={TextAttributes.BOLD} fg={theme.text}>
+                    View Account: {props.accountId}
+                </text>
+                <text fg={theme.textMuted}>any key to close</text>
+            </box>
+            <box paddingLeft={1} paddingRight={1}>
+                <text fg={theme.textMuted}>Family: {props.family}</text>
+            </box>
+            <box paddingLeft={1} paddingRight={1} flexDirection="column">
+                <For each={displayLines()}>
+                    {(line) => (
+                        <text fg={theme.text}>{line}</text>
+                    )}
+                </For>
+            </box>
+            <Show when={lines().length > visibleLines}>
+                <box paddingLeft={1}>
+                    <text fg={theme.textMuted}>
+                        Lines {scrollOffset() + 1}-{Math.min(scrollOffset() + visibleLines, lines().length)} of {lines().length} (↑↓ to scroll)
+                    </text>
                 </box>
             </Show>
         </box>

@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.1.65] - 2026-02-01
+
+### Added
+- **Model Health Dashboard**: New dashboard accessible via `Tab` key in Admin Panel showing real-time model health status.
+  - Displays rate-limited models with countdown timers
+  - Shows available models marked as "Ready"
+  - Auto-refreshes every second
+  - Keybinds: `←` Back, `R` Refresh, `C` Clear all
+- **ModelHealthRegistry**: Global registry tracking health status of all provider:model combinations, shared across foreground dialog and background tasks.
+- **Cross-provider fallback**: `getSmallModel()` now searches ALL configured providers for healthy small models, not just the current provider.
+
+### Changed
+- **LLM.recordSuccess**: Now updates ModelHealthRegistry on successful stream completion.
+- **Antigravity plugin**: Updates ModelHealthRegistry on request success/failure.
+
+### Known Issues
+- Dashboard may not update after conversations (tracking issue)
+
+## [1.1.64] - 2026-02-01
+
+### Changed
+- **Upstream Merge (origin/dev v1.1.48)**: Merged safe updates from upstream while preserving cms-specific features (Account module, Antigravity, GeminiCLI plugins).
+
+### Merged from upstream
+- **SDK path migration**: Changed Copilot SDK import from `./sdk/openai-compatible/src` to `./sdk/copilot`
+- **process.env fixes**: Direct `process.env` access for `AWS_BEARER_TOKEN_BEDROCK` and `SAP_AI_CORE_TOKEN` to handle runtime env mutations
+- **transform.ts updates**:
+  - Snake_case support for `@ai-sdk/openai-compatible` with Claude models (`budget_tokens`)
+  - Dynamic budget calculation for Anthropic: `Math.min(16_000, Math.floor(model.limit.output / 2 - 1))`
+  - SAP AI Core provider support (`@mymediset/sap-ai-provider`, `@jerome-benoit/sap-ai-provider-v2`)
+  - Fix for gpt-5-chat models (exclude from `textVerbosity: "low"`)
+  - `maxOutputTokens()` supports both camelCase and snake_case for thinking budgets
+- **sdk/copilot directory**: Copied complete Copilot SDK from upstream
+- **ripgrep.ts**: Default `--follow` and `--hidden` flags (already applied)
+
+### Skipped (not merged)
+- **google-vertex-anthropic special case removal**: cms retains the `bundledKey` mapping for `google-vertex-anthropic` → `@ai-sdk/google-vertex/anthropic` as it's required for correct subpath import resolution
+- **anthropic.ts deletion**: cms keeps the local `AnthropicAuthPlugin` for API key support (upstream moved to npm package which has OAuth issues)
+
 ## [1.1.63] - 2026-02-01
 
 ### Fixed

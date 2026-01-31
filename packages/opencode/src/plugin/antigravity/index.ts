@@ -34,6 +34,9 @@ import { AntigravityTokenRefreshError, refreshAccessToken } from "./plugin/token
 import { startOAuthListener, type OAuthListener } from "./plugin/server";
 import { clearAccounts, loadAccounts, saveAccounts } from "./plugin/storage";
 import { AccountManager, type ModelFamily, parseRateLimitReason, calculateBackoffMs } from "./plugin/accounts";
+import { Account } from "../../account";
+import { getModelHealthRegistry } from "../../account/rotation";
+import { debugLog } from "../../util/debug-log";
 import { createAutoUpdateCheckerHook } from "./hooks/auto-update-checker";
 import { loadConfig, initRuntimeConfig, type AntigravityConfig } from "./plugin/config";
 import { createSessionRecoveryHook, getRecoverySuccessToast } from "./plugin/recovery";
@@ -58,6 +61,8 @@ const MAX_WARMUP_RETRIES = 2;
 const CAPACITY_BACKOFF_TIERS_MS = [5000, 10000, 20000, 30000, 60000];
 
 export let globalAccountManager: AccountManager | null = null;
+// Module-level cached getAuth function for tool access and refresh
+let cachedGetAuth: GetAuth | null = null;
 export async function refreshGlobalAccountManager(): Promise<boolean> {
   if (!cachedGetAuth) return false;
   const auth = await cachedGetAuth();
@@ -311,22 +316,25 @@ async function persistAccountPool(
 
   const now = Date.now();
 
-  // If replaceAll is true (fresh login), start with empty accounts
-  // Otherwise, load existing accounts and merge
-  const stored = replaceAll ? null : await loadAccounts();
-  const accounts = stored?.accounts ? [...stored.accounts] : [];
+  // Use Account module as the single source of truth
+  const existingAccounts = replaceAll ? {} : await Account.list("antigravity");
 
-  const indexByRefreshToken = new Map<string, number>();
-  const indexByEmail = new Map<string, number>();
-  for (let i = 0; i < accounts.length; i++) {
-    const acc = accounts[i];
-    if (acc?.refreshToken) {
-      indexByRefreshToken.set(acc.refreshToken, i);
-    }
-    if (acc?.email) {
-      indexByEmail.set(acc.email, i);
+  // Build lookup maps for deduplication
+  // IMPORTANT: Parse refreshToken to get base token for comparison
+  // since stored tokens may be in combined format (token|projectId)
+  const accountByEmail = new Map<string, string>();
+  const accountByToken = new Map<string, string>();
+  for (const [id, info] of Object.entries(existingAccounts)) {
+    if (info.type !== "subscription") continue;
+    if (info.email) accountByEmail.set(info.email, id);
+    if (info.refreshToken) {
+      // Parse to get base token - handles both "token" and "token|projectId" formats
+      const baseToken = parseRefreshParts(info.refreshToken).refreshToken;
+      accountByToken.set(baseToken, id);
     }
   }
+
+  let firstAccountId: string | undefined;
 
   for (const result of results) {
     const parts = parseRefreshParts(result.refresh);
@@ -334,75 +342,60 @@ async function persistAccountPool(
       continue;
     }
 
-    // First, check for existing account by email (prevents duplicates when refresh token changes)
-    // Only use email-based deduplication if the new account has an email
-    const existingByEmail = result.email ? indexByEmail.get(result.email) : undefined;
-    const existingByToken = indexByRefreshToken.get(parts.refreshToken);
+    // Check for existing account by email or token
+    const existingByEmail = result.email ? accountByEmail.get(result.email) : undefined;
+    const existingByToken = accountByToken.get(parts.refreshToken);
+    const existingId = existingByEmail ?? existingByToken;
 
-    // Prefer email-based match to handle refresh token rotation
-    const existingIndex = existingByEmail ?? existingByToken;
+    try {
+      if (existingId) {
+        // Update existing account
+        await Account.update("antigravity", existingId, {
+          email: result.email,
+          refreshToken: parts.refreshToken,
+          projectId: parts.projectId,
+          managedProjectId: parts.managedProjectId,
+        });
+        if (!firstAccountId) firstAccountId = existingId;
+      } else {
+        // Add new account
+        const slug = result.email
+          ? result.email.toLowerCase().replace(/@/g, "-").replace(/\./g, "-")
+          : Date.now().toString(36);
+        const accountId = `antigravity-subscription-${slug}`;
 
-    if (existingIndex === undefined) {
-      // New account - add it
-      const newIndex = accounts.length;
-      indexByRefreshToken.set(parts.refreshToken, newIndex);
-      if (result.email) {
-        indexByEmail.set(result.email, newIndex);
+        await Account.add("antigravity", accountId, {
+          type: "subscription",
+          name: result.email || `Account ${slug}`,
+          email: result.email,
+          refreshToken: parts.refreshToken,
+          projectId: parts.projectId,
+          managedProjectId: parts.managedProjectId,
+          addedAt: now,
+        });
+
+        // Update lookup maps for subsequent iterations
+        if (result.email) accountByEmail.set(result.email, accountId);
+        accountByToken.set(parts.refreshToken, accountId);
+
+        if (!firstAccountId) firstAccountId = accountId;
       }
-      accounts.push({
-        email: result.email,
-        refreshToken: parts.refreshToken,
-        projectId: parts.projectId,
-        managedProjectId: parts.managedProjectId,
-        addedAt: now,
-        lastUsed: now,
-        enabled: true,
-      });
-      continue;
-    }
-
-    const existing = accounts[existingIndex];
-    if (!existing) {
-      continue;
-    }
-
-    // Update existing account (this handles both email match and token match cases)
-    // When email matches but token differs, this effectively replaces the old token
-    const oldToken = existing.refreshToken;
-    accounts[existingIndex] = {
-      ...existing,
-      email: result.email ?? existing.email,
-      refreshToken: parts.refreshToken,
-      projectId: parts.projectId ?? existing.projectId,
-      managedProjectId: parts.managedProjectId ?? existing.managedProjectId,
-      lastUsed: now,
-    };
-
-    // Update the token index if the token changed
-    if (oldToken !== parts.refreshToken) {
-      indexByRefreshToken.delete(oldToken);
-      indexByRefreshToken.set(parts.refreshToken, existingIndex);
+    } catch (e) {
+      console.error("[persistAccountPool] Failed to persist account:", e);
+      // Log the full error stack for debugging
+      if (e instanceof Error) {
+        console.error("[persistAccountPool] Stack:", e.stack);
+      }
     }
   }
 
-  if (accounts.length === 0) {
-    return;
+  // Set the first account as active if this is a fresh login
+  if (replaceAll && firstAccountId) {
+    await Account.setActive("antigravity", firstAccountId);
   }
 
-  // For fresh logins, always start at index 0
-  const activeIndex = replaceAll
-    ? 0
-    : (typeof stored?.activeIndex === "number" && Number.isFinite(stored.activeIndex) ? stored.activeIndex : 0);
-
-  await saveAccounts({
-    version: 3,
-    accounts,
-    activeIndex: clampInt(activeIndex, 0, accounts.length - 1),
-    activeIndexByFamily: {
-      claude: clampInt(activeIndex, 0, accounts.length - 1),
-      gemini: clampInt(activeIndex, 0, accounts.length - 1),
-    },
-  });
+  // Refresh global account manager to pick up changes
+  await refreshGlobalAccountManager();
 }
 
 function retryAfterMsFromResponse(response: Response, defaultRetryMs: number = 60_000): number {
@@ -743,9 +736,6 @@ export const createAntigravityPlugin = (providerId: string) => async (
   const config = loadConfig(directory);
   initRuntimeConfig(config);
 
-  // Cached getAuth function for tool access
-  let cachedGetAuth: GetAuth | null = null;
-
   // Initialize debug with config
   initializeDebug(config);
 
@@ -974,6 +964,15 @@ export const createAntigravityPlugin = (providerId: string) => async (
             const urlString = toUrlString(input);
             const family = getModelFamilyFromUrl(urlString);
             const model = extractModelFromUrl(urlString);
+
+            // Top-level request tracking
+            debugLog("ANTIGRAVITY", "REQUEST_START", {
+              family,
+              model,
+              url: urlString.substring(0, 100), // Truncate for readability
+              accountCount: accountManager.getAccountCount(),
+            });
+
             const debugLines: string[] = [];
             const pushDebug = (line: string) => {
               if (!isDebugEnabled()) return;
@@ -1002,6 +1001,11 @@ export const createAntigravityPlugin = (providerId: string) => async (
             // Helper to check if request was aborted
             const checkAborted = () => {
               if (abortSignal?.aborted) {
+                debugLog("ANTIGRAVITY", "REQUEST_ABORTED", {
+                  family,
+                  model,
+                  reason: abortSignal.reason instanceof Error ? abortSignal.reason.message : String(abortSignal.reason),
+                });
                 throw abortSignal.reason instanceof Error ? abortSignal.reason : new Error("Aborted");
               }
             };
@@ -1129,6 +1133,12 @@ export const createAntigravityPlugin = (providerId: string) => async (
                 if (!allAccountsRateLimitedToastShown) {
                   await showToast(`All ${accountCount} account(s) rate-limited for ${family}. Waiting ${waitSecValue}s...`, "warning");
                   allAccountsRateLimitedToastShown = true;
+                  debugLog("ANTIGRAVITY", "ALL_ACCOUNTS_RATE_LIMITED", {
+                    family,
+                    accountCount,
+                    waitMs,
+                    waitSecValue,
+                  });
                 }
 
                 // Wait for the rate-limit cooldown to expire, then retry
@@ -1312,6 +1322,10 @@ export const createAntigravityPlugin = (providerId: string) => async (
 
                 try {
                   pushDebug("thinking-warmup: start");
+                  debugLog("ANTIGRAVITY", "thinking-warmup: starting", {
+                    sessionId: prepared.sessionId,
+                    url: warmupUrl,
+                  });
                   const warmupResponse = await fetch(warmupUrl, warmupInit);
                   const transformed = await transformAntigravityResponse(
                     warmupResponse,
@@ -1326,11 +1340,18 @@ export const createAntigravityPlugin = (providerId: string) => async (
                   await transformed.text();
                   markWarmupSuccess(prepared.sessionId);
                   pushDebug("thinking-warmup: done");
+                  debugLog("ANTIGRAVITY", "thinking-warmup: completed", {
+                    sessionId: prepared.sessionId,
+                    status: warmupResponse.status,
+                  });
                 } catch (error) {
                   clearWarmupAttempt(prepared.sessionId);
-                  pushDebug(
-                    `thinking-warmup: failed ${error instanceof Error ? error.message : String(error)}`,
-                  );
+                  const errorMsg = error instanceof Error ? error.message : String(error);
+                  pushDebug(`thinking-warmup: failed ${errorMsg}`);
+                  debugLog("ANTIGRAVITY", "thinking-warmup: FAILED", {
+                    sessionId: prepared.sessionId,
+                    error: errorMsg,
+                  });
                 }
               };
 
@@ -1406,7 +1427,13 @@ export const createAntigravityPlugin = (providerId: string) => async (
                       } as any,
                     );
 
-
+                    debugLog("ANTIGRAVITY", "REQUEST_PREPARED", {
+                      family,
+                      model,
+                      effectiveModel: prepared.effectiveModel,
+                      accountIndex: account.index,
+                      endpoint: currentEndpoint,
+                    });
 
                     const originalUrl = toUrlString(input);
                     const resolvedUrl = toUrlString(prepared.request);
@@ -1437,7 +1464,20 @@ export const createAntigravityPlugin = (providerId: string) => async (
                       tokenConsumed = getTokenTracker().consume(account.index);
                     }
 
+                    debugLog("ANTIGRAVITY", "FETCH_START", {
+                      family,
+                      model,
+                      accountIndex: account.index,
+                    });
+
                     const response = await fetch(prepared.request, prepared.init);
+
+                    debugLog("ANTIGRAVITY", "FETCH_COMPLETE", {
+                      family,
+                      model,
+                      accountIndex: account.index,
+                      status: response.status,
+                    });
                     pushDebug(`status=${response.status} ${response.statusText}`);
 
 
@@ -1560,9 +1600,33 @@ export const createAntigravityPlugin = (providerId: string) => async (
                         bodyInfo,
                       );
 
+                      // Centralized debug logging for rate limit analysis
+                      debugLog("ANTIGRAVITY", `RATE_LIMIT status=${response.status}`, {
+                        accountIndex: account.index,
+                        email: account.email,
+                        family,
+                        attempt,
+                        reason: rateLimitReason,
+                        effectiveDelayMs,
+                        message: bodyInfo.message,
+                        quotaResetTime: bodyInfo.quotaResetTime,
+                        endpoint: currentEndpoint,
+                        headerStyle,
+                      });
+
                       await logResponseBody(debugContext, response, 429);
 
                       getHealthTracker().recordRateLimit(account.index);
+
+                      // Update global model health registry (shared across all foreground/background tasks)
+                      if (model) {
+                        getModelHealthRegistry().markRateLimited(
+                          "antigravity",
+                          model,
+                          rateLimitReason,
+                          effectiveDelayMs,
+                        );
+                      }
 
                       const accountLabel = account.email || `Account ${account.index + 1}`;
 
@@ -1720,6 +1784,17 @@ export const createAntigravityPlugin = (providerId: string) => async (
                       account.consecutiveFailures = 0;
                       getHealthTracker().recordSuccess(account.index);
                       accountManager.markAccountUsed(account.index);
+                      // Update global model health registry (shared across all foreground/background tasks)
+                      if (model) {
+                        getModelHealthRegistry().markSuccess("antigravity", model);
+                      }
+                      debugLog("ANTIGRAVITY", "REQUEST_SUCCESS", {
+                        family,
+                        model,
+                        accountIndex: account.index,
+                        email: account.email,
+                        status: response.status,
+                      });
                     }
                     logAntigravityDebugResponse(debugContext, response, {
                       note: response.ok ? "Success" : `Error ${response.status}`,
@@ -1824,6 +1899,14 @@ export const createAntigravityPlugin = (providerId: string) => async (
 
                     return transformedResponse;
                   } catch (error) {
+                    debugLog("ANTIGRAVITY", "REQUEST_ERROR", {
+                      family,
+                      model,
+                      accountIndex: account.index,
+                      error: error instanceof Error ? error.message : String(error),
+                      errorStack: error instanceof Error ? error.stack?.substring(0, 500) : undefined,
+                    });
+
                     // Refund token on network/API error (only if consumed)
                     if (tokenConsumed) {
                       getTokenTracker().refund(account.index);
@@ -2232,7 +2315,8 @@ export const createAntigravityPlugin = (providerId: string) => async (
                     const isFirstAccount = accounts.length === 1;
                     await persistAccountPool([result], isFirstAccount && startFresh);
                   }
-                } catch {
+                } catch (e) {
+                  console.error("[persistAccountPool] Failed to persist account:", e);
                 }
 
                 if (refreshAccountIndex !== undefined) {
@@ -2358,7 +2442,8 @@ export const createAntigravityPlugin = (providerId: string) => async (
                     if (result.type === "success") {
                       try {
                         await persistAccountPool([result], false);
-                      } catch {
+                      } catch (e) {
+                        console.error("[persistAccountPool] Failed to persist account (CLI callback):", e);
                       }
 
                       const newTotal = existingCount + 1;
@@ -2409,8 +2494,8 @@ export const createAntigravityPlugin = (providerId: string) => async (
                   try {
                     // TUI flow adds to existing accounts (non-destructive)
                     await persistAccountPool([result], false);
-                  } catch {
-                    // ignore
+                  } catch (e) {
+                    console.error("[persistAccountPool] Failed to persist account (TUI callback):", e);
                   }
 
                   // Show appropriate toast message

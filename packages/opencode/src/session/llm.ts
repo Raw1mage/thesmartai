@@ -32,6 +32,7 @@ import {
   calculateBackoffMs,
   getHealthTracker,
   getRateLimitTracker,
+  getModelHealthRegistry,
   type RateLimitReason,
 } from "@/account/rotation"
 import {
@@ -81,14 +82,17 @@ export namespace LLM {
       Provider.getProvider(input.model.providerID),
       Auth.get(input.model.providerID),
     ])
-    const isCodex = provider.id === "openai" && auth?.type === "oauth"
+    const isCodex = provider.id.includes("openai") && auth?.type === "oauth"
+    const isAnthropicOAuth = provider.id.includes("anthropic") && auth?.type === "oauth"
+    const isAntigravity = provider.id.includes("antigravity")
+    const isGeminiCli = provider.id.includes("gemini-cli")
 
     const system = []
     system.push(
       [
         // use agent prompt otherwise provider prompt
-        // For Codex sessions, skip SystemPrompt.provider() since it's sent via options.instructions
-        ...(input.agent.prompt ? [input.agent.prompt] : isCodex ? [] : SystemPrompt.provider(input.model)),
+        // For Codex, Anthropic OAuth, Antigravity, and Gemini CLI sessions, skip SystemPrompt.provider() since it's sent via options.instructions
+        ...(input.agent.prompt ? [input.agent.prompt] : (isCodex || isAnthropicOAuth || isAntigravity || isGeminiCli) ? [] : SystemPrompt.provider(input.model)),
         // any custom prompt passed into this call
         ...input.system,
         // any custom prompt from last user message
@@ -130,7 +134,7 @@ export namespace LLM {
       mergeDeep(input.agent.options),
       mergeDeep(variant),
     )
-    if (isCodex) {
+    if (isCodex || isAnthropicOAuth || isAntigravity || isGeminiCli) {
       options.instructions = SystemPrompt.instructions()
     }
 
@@ -199,7 +203,7 @@ export namespace LLM {
     }
 
     const streamMessages = [
-      ...(isCodex
+      ...(isCodex || isAnthropicOAuth || isAntigravity || isGeminiCli
         ? [
           {
             role: "user",
@@ -227,21 +231,29 @@ export namespace LLM {
         })
 
         // Track rate limits in global health system
-        if (isRateLimitError(error) && accountId) {
+        if (isRateLimitError(error)) {
           const { reason, retryAfterMs } = extractRateLimitDetails(error)
-          const healthTracker = getHealthTracker()
-          const rateLimitTracker = getRateLimitTracker()
-          const consecutiveFailures = healthTracker.getConsecutiveFailures(accountId)
+          const consecutiveFailures = accountId ? getHealthTracker().getConsecutiveFailures(accountId) : 0
           const backoffMs = calculateBackoffMs(reason, consecutiveFailures, retryAfterMs)
 
-          healthTracker.recordRateLimit(accountId)
-          rateLimitTracker.markRateLimited(
-            accountId,
-            input.model.providerID,
-            reason,
-            backoffMs,
-            input.model.id,
-          )
+          // Update global model health registry (shared across all tasks)
+          const modelRegistry = getModelHealthRegistry()
+          modelRegistry.markRateLimited(input.model.providerID, input.model.id, reason, backoffMs)
+
+          // Also update account-level tracking if we have an account
+          if (accountId) {
+            const healthTracker = getHealthTracker()
+            const rateLimitTracker = getRateLimitTracker()
+
+            healthTracker.recordRateLimit(accountId)
+            rateLimitTracker.markRateLimited(
+              accountId,
+              input.model.providerID,
+              reason,
+              backoffMs,
+              input.model.id,
+            )
+          }
 
           l.warn("Rate limit detected", {
             accountId,
@@ -400,12 +412,19 @@ export namespace LLM {
    * Record a successful request for the current provider.
    * Call this after a stream completes successfully.
    */
-  export async function recordSuccess(providerID: string): Promise<void> {
+  export async function recordSuccess(providerID: string, modelID?: string): Promise<void> {
+    // Update global model health registry
+    if (modelID) {
+      const modelRegistry = getModelHealthRegistry()
+      modelRegistry.markSuccess(providerID, modelID)
+    }
+
+    // Update account-level tracking
     const accountId = await getAccountIdForProvider(providerID)
     if (accountId) {
       const healthTracker = getHealthTracker()
       healthTracker.recordSuccess(accountId)
-      log.debug("Recorded success", { providerID, accountId })
+      log.debug("Recorded success", { providerID, modelID, accountId })
     }
   }
 
