@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.1.63] - 2026-02-01
+
+### Fixed
+- **AI_InvalidPromptError**: Fixed message format conversion in `message-v2.ts` that caused `AI_InvalidPromptError: The messages must be a ModelMessage[]` with Gemini models via Antigravity.
+  - Root cause: `toModelOutput` was returning bare strings/arrays instead of AI SDK v5's required `{ type: 'text', value: ... }` or `{ type: 'content', value: [...] }` structure.
+  - Fixed `reasoning` parts being incorrectly converted to `text` type, which broke thinking models (Gemini 2.0 Thinking, Claude Thinking).
+  - Added null safety with `?? {}` and `?? ""` for undefined tool inputs/outputs.
+
+## [1.1.62] - 2026-02-01
+
+### Added
+- **/models TUI**: Added `f` key to toggle favorites directly from the list.
+- **/models TUI**: Added `delete` key to hide/unhide models from categories for a cleaner view.
+- **/models TUI**: Added `s` key to toggle visibility of hidden models.
+- **/models TUI**: Added `ins` key to unhide model items when in "show all" mode.
+- **/models TUI**: Added `a` key to switch directly to the `/accounts` TUI.
+- **/models TUI**: Added `delete` key support in Recent and Favorites categories to remove items from the Recent list.
+
+### Changed
+- **/models TUI**: Refined item visibility; items in the "Recent" category are no longer hidden from their original categories.
+- **/models TUI**: Improved cursor navigation stability when duplicate items appear in both "Recent" and original categories.
+- **/models TUI**: Disabled `ctrl+a` and `ctrl+f` shortcuts.
+- **/models TUI**: Disabled list wrapping; navigation now stops at the top and bottom of the list.
+
+### Fixed
+- **OpenAI Provider**: Resolved "Instructions are required" error and improved `max_output_tokens` handling.
+- **Antigravity Account Selection**: Fixed `/admin` account selection not being respected by the Antigravity plugin. The issue was caused by two bugs:
+  1. The account ID parsing regex only handled numeric IDs (e.g., `antigravity-subscription-2`) but not email-based IDs (e.g., `antigravity-subscription-user-gmail-com`)
+  2. The `activeIndexByFamily` was not updated when syncing from core accounts
+
+  Now the plugin correctly uses the account selected in `/admin` instead of ignoring the selection.
+
 ## [1.1.61] - 2026-01-31
 
 ### Changed

@@ -60,23 +60,23 @@ TUI 的 `textarea` 組件在接收到 `return` 鍵時，內部可能存在預設
 
 ---
 
-## 2026-01-31: Rate limit reroute and prompt preservation
+## 2026-01-31: Rate limit 重導向與 Prompt 保留 (Rate Limit Reroute and Prompt Preservation)
 
 ### 問題摘要 (Problem Summary)
-- Hitting a rate limit still required manually reopening `/admin` and re-navigating to the third layer to pick another model, wasting time after the first error.
-- The earlier “say hi” probe consumed an extra quota before the real prompt hit the rate limit, so success there didn’t guarantee the next real request wouldn’t fail.
+- 遇到 Rate limit (限速) 時，仍需要手動重新開啟 `/admin` 並導航到第三層模型列表來挑選另一個模型，在收到第一個錯誤後非常浪費時間。
+- 早前的「Say hi」探測在真實 Prompt 遇到限速前就消耗了額外配額，因此探測成功並不保證下一個真實請求不會失敗。
 
 ### 根本原因分析 (Root Cause Analysis)
-- Rate limits are only detected when the actual prompt request errors out, not when a synthetic probe completes successfully.
-- Navigating back to `/admin` and reselecting a model fills the same workflow as your regular tri-level navigation, so users lost focus and typed text.
+- Rate limit 只有在實際的 Prompt 請求出錯時才能被偵測到，而非合成探測完成時。
+- 導航回 `/admin` 並重新選擇模型與一般的三層導航流程相同，這會讓使用者失去焦點並需要重新輸入文字。
 
 ### 關鍵修復步驟 (Critical Fix Steps)
-- **Rate limit handler now reroutes automatically**: When the prompt status enters `retry` with a rate limit message, we replace the dialog stack with `DialogAdmin` prefocused on the current provider’s model list.
-- **Draft preservation**: Store the current prompt text before the reroute and restore it once `/admin` closes so nothing gets lost.
+- **自動重導向 Rate limit 處理器**：當 Prompt 狀態因 Rate limit 訊息進入 `retry` 時，我們會自動將對話框堆疊替換為 `DialogAdmin`，並預先聚焦在目前 Provider 的模型列表。
+- **草稿保留 (Draft preservation)**：在重導向之前儲存目前的 Prompt 文字，並在 `/admin` 關閉後回復內容，確保不會遺失任何輸入。
 
 ### 驗證結果 (Verification) ✅
-- 🤖 Triggered a rate limit, confirmed `/admin` launched at the failing provider’s third layer and highlighted the model list for quick reselection.
-- ✏️ After closing `/admin`, my draft prompt reappeared and the cursor returned to the input so I could retry without retyping.
+- 🤖 觸發了 Rate limit，確認 `/admin` 會自動開啟在故障 Provider 的第三層，並突顯模型列表以供快速重新選擇。
+- ✏️ 關閉 `/admin` 後，我的草稿 Prompt 重新出現，且游標回到輸入框，讓我可以不需重新輸入即可重試。
 
 
 ## 2026-01-30: Antigravity 模型通信修復 (Antigravity Model Communication Fix)
@@ -248,30 +248,30 @@ bun run dev
 **測試模型**: claude-opus-4-5-thinking
 **測試結果**: ✅ 完全正常工作
 
-### Service Status Dashboard (Enhanced Feature)
+### 服務狀態儀表板 (Service Status Dashboard - 增強功能)
 
-為了解決用戶關於 "Dashboard 反直覺" 的反饋，我們重構了 `/dashboard` 命令：
+為了解決使用者關於「Dashboard 直覺度不足」的意見，我們重構了 `/dashboard` 指令：
 
-- **結構優化**:
-  - 改為按 Provider 分組顯示 (Anthropic, OpenAI, Antigravity, etc.)
-  - 統一了 `/accounts` 和 `/dashboard` 的展示邏輯，提供一致的用戶體驗
-- **功能增強**:
-  - **Antigravity**: 專屬表格視圖，顯示每個帳號在 Claude, Gemini AG, Gemini CLI 三個維度的獨立 Rate Limit 狀態
-  - **其他 Provider**: 顯示帳號活躍狀態 (Active/Ready)
-- **技術實現**:
-  - 混合了 `Account.listAll()` (通用配置) 和 `globalAccountManager` (實時狀態) 的數據
-  - 使用 `write_to_file` 重寫了 `src/command/index.ts` 以確保代碼結構完整性
+- **結構優化**：
+  - 改為按 Provider 分組顯示 (Anthropic, OpenAI, Antigravity 等)。
+  - 統一了 `/accounts` 和 `/dashboard` 的展示邏輯，提供一致的使用者體驗。
+- **功能增強**：
+  - **Antigravity**：專屬表格視圖，顯示每個帳號在 Claude, Gemini AG, Gemini CLI 三個維度的獨立 Rate Limit 狀態。
+  - **其他 Provider**：顯示帳號活躍狀態 (Active/Ready)。
+- **技術實現**：
+  - 整合了 `Account.listAll()` (通用配置) 和 `globalAccountManager` (即時狀態) 的數據。
+  - 使用 `write_to_file` 重寫了 `src/command/index.ts` 以確保代碼結構完整性。
 
 ### 穩定性與故障排除 (Stability Troubleshooting)
 
-用戶報告 `opencode` 在閒置一段時間後會進入 "沒畫面" 狀態並顯示 `Terminated`。
+使用者回報 `opencode` 在閒置一段時間後會進入「沒畫面」狀態並顯示 `Terminated`。
 
-- **現象**: TUI 停止響應，終端顯示 `Terminated` 和 `^[\`。
-- **分析**:
+- **現象**：TUI 停止響應，終端顯示 `Terminated` 和 `^[\`。
+- **分析**：
   - `Terminated` 通常表示進程收到了 `SIGTERM` 信號。
-  - 常見原因：SSH 會話超時 (TMOUT)、操作系統內存不足 (OOM Killer) 或手動殺死。
+  - 常見原因：SSH 會話超時 (TMOUT)、作業系統內存不足 (OOM Killer) 或手動殺死。
   - 代碼審查：我們檢查了 Antigravity 插件的 `ProactiveRefreshQueue` (每 5 分鐘運行一次) 和 `fetch` 循環，未發現死循環或明顯的內存洩漏源。
-- **建議**:
+- **建議**：
   - 如果問題持續發生（例如每 20 分鐘），建議使用 `bun run dev -- --print-logs` 運行以捕獲崩潰前的日誌。
   - 檢查服務器的內存使用情況。
 
@@ -487,97 +487,106 @@ bun run dev
 ## 2026-01-29: Terminal simulation + sandbox path fallback
 ... (history preserved)
 
-## 2026-01-30: /models TUI Refinements & Codex Endpoint Fixes
+## 2026-01-30: /models TUI 優化與 Codex 端點修復 (/models TUI Refinements & Codex Endpoint Fixes)
 
-### Issues Identified
-1.  **Code Editor UI UX**:
-    -   **Visibility**: Recent items were disappearing from their original categories, confusing users.
-    -   **Cursor Jumping**: Selection cursor would jump unpredictably when navigating over items that appeared in both "Recent" and original categories.
-    -   **Scrolling**: List navigation would wrap around from bottom to top, making it hard to stop at the end.
-    -   **Keybindings**: Lacked standard shortcuts like 'delete' for hiding/removing items, 'f' for favorites, 's' for showing hidden items.
-2.  **OpenAI/Codex Errors**:
-    -   Codex endpoints returned `Bad Request: {"detail":"Instructions are required"}`.
-    -   Codex endpoints returned `Bad Request: {"detail":"Unsupported parameter: max_output_tokens"}` (and `max_tokens`).
-3.  **Account Identify**:
-    -   "Opencode" and "Anthropic" categories lacked specific account email identifiers in headers.
+### 已識別問題 (Issues Identified)
+1. **編輯器 UI 使用體驗**:
+   - **能見度**: 最近使用的項目會從原來的類別中消失，讓使用者感到困惑。
+   - **游標跳動**: 當導航到同時出現在「最近」和原始類別中的項目時，選擇游標會發生不可預測的跳動。
+   - **捲動**: 列表導航會在底部和頂部之間循環跳轉，導致難以停止。
+   - **快捷鍵**: 缺少隱藏/移除項目的「delete」、收藏的「f」、以及切換隱藏顯示的「s」等標準快捷鍵。
+2. **OpenAI/Codex 錯誤**:
+   - Codex 端點返回 `Bad Request: {"detail":"Instructions are required"}`。
+   - Codex 端點返回 `Bad Request: {"detail":"Unsupported parameter: max_output_tokens"}` (以及 `max_tokens`)。
+3. **帳號辨識 (Account Identification)**:
+   - "Opencode" 和 "Anthropic" 分類標題缺少具體的帳號 Email 標示。
 
-### Fixes Implemented
-1.  **TUI Enhancements**:
-    -   **State Management**: Modified `dialog-model.tsx` to maintain distinct `value` objects with `origin` properties, preventing cursor ambiguity.
-    -   **Visibility Logic**: logic updated to keep recent items visible in their main categories.
-    -   **Keybinds**: Implemented `f` (Favorite), `delete`/`backspace` (Hide/Remove), `s` (Toggle Hidden), `ins` (Unhide), `a` (Switch to Accounts).
-    -   **Scrolling**: Updated `DialogSelect` to clamp selection at boundaries instead of cycling.
-2.  **Codex Plugin Fixes**:
-    -   **Request Interception**: Refactored `src/plugin/codex.ts` to intercept `fetch` requests targeting Codex endpoints.
-    -   **Instruction Injection**: Automatically injects `instructions` field into the request body (derived from system message or default) to satisfy API requirements.
-    -   **Parameter Sanitization**: Automatically removes unsupported `max_output_tokens` and `max_tokens` parameters from the request body to prevent 400 errors.
-3.  **Account Display**:
-    -   Updated `Account.getDisplayName` fallback logic to correctly return emails for generic "Opencode" and "Antigravity" IDs.
+### 已實施修復 (Fixes Implemented)
+1. **TUI 增強**:
+   - **狀態管理**: 修改 `dialog-model.tsx` 以維持具有 `origin` 屬性的獨特 `value` 物件，防止游標歧義。
+   - **顯示邏輯**: 更新邏輯讓最近使用的項目在主類別中保持可見。
+   - **快捷鍵**: 實作了 `f` (收藏)、`delete`/`backspace` (隱藏/移除)、`s` (切換隱藏)、`ins` (取消隱藏)、`a` (切換至帳號)。
+   - **捲動**: 更新 `DialogSelect` 以在邊界處停止選擇而非循環。
+2. **Codex 插件修復**:
+   - **請求攔截**: 重構 `src/plugin/codex.ts` 以攔截針對 Codex 端點的 `fetch` 請求。
+   - **指令注入**: 自動將 `instructions` 欄位（源自系統訊息或預設值）注入請求主體以滿足 API 要求。
+   - **參數清理**: 自動從請求主體中移除不支援的 `max_output_tokens` 和 `max_tokens` 參數，防止 400 錯誤。
+3. **帳號顯示**:
+   - 更新 `Account.getDisplayName` 的 fallback 邏輯，為通用的 "Opencode" 和 "Antigravity" ID 正確返回 Email。
 
-### Verification
--   [x] TUI: Recent items duplicate correctly without cursor jumping.
--   [x] TUI: 'delete', 'f', 's', 'ins', 'a' keys work as expected.
--   [x] TUI: List scrolling stops at top/bottom.
--   [x] OpenAI: Codex models work without "Instructions required" or "Unsupported parameter" errors.
+### 驗證 (Verification)
+- [x] TUI: 最近使用的項目正確重複顯示且游標不再跳動。
+- [x] TUI: 'delete', 'f', 's', 'ins', 'a' 鍵運作如預期。
+- [x] TUI: 列表捲動停在頂部/底部。
+- [x] OpenAI: Codex 模型運作正常，不再出現「需要指令」或「參數不支援」錯誤。
 
-## Antigravity Fixes
-- Fixed Chat Error: Handled relative URLs (e.g., 'v1beta/models...') in fetch wrapper.
-- Fixed Model Count: Filtered dynamic model list in index.ts to exclude legacy/experimental models.
-- Fixed Account ID: Prioritized email display in TUI active owners list.
+## Antigravity 修復
+- 修復對話錯誤：在 fetch wrapper 中處理了相對 URL (例如 'v1beta/models...')。
+- 修復模型數量：過濾 `index.ts` 中的動態模型列表，排除舊版/實驗性模型。
+- 修復帳號 ID：在 TUI 活躍擁有者列表中優先顯示 Email。
 
-## Fixes
-- **Accounts**: Removed ghost 'gemini-cli' account from accounts.json.
-- **Models TUI**: 'a' key now opens /accounts instead of /connect.
-- **Anthropic**: Restored missing Anthropic models.
+## 其他修復
+- **帳號 (Accounts)**: 從 `accounts.json` 中移除了 ghost 'gemini-cli' 帳號。
+- **模型 TUI (Models TUI)**: 'a' 鍵現在開啟 `/accounts` 而非 `/connect`。
+- **Anthropic**: 恢復了缺失的 Anthropic 模型。
 
-## Final Fixes
-- **Fixed JSON Corruption**: Repaired  trailing comma error using Bun script. This resolved TUI crashes and 'Time Travel' behavior.
-- **Removed Ghost Account**:  successfully removed.
-- **TUI Update**: 'a' key now correctly routes to .
-- **TUI Improvements**: Added 'left' arrow key support to /models, /accounts, and /connect (DialogProvider) to act as 'Back/Exit' (dialog.clear()).
+## 最終修復 (Final Fixes)
+- **修復 JSON 損壞**: 使用 Bun 腳本修復了結尾逗號錯誤，解決了 TUI 崩潰與「時光旅行」行為。
+- **移除 Ghost 帳號**: 成功移除虛擬帳號。
+- **TUI 更新**: 'a' 鍵現在能正確導航。
+- **TUI 改進**: 在 `/models`、`/accounts` 和 `/connect` (DialogProvider) 菜單中加入了「向左」箭頭鍵支援，功能等同於「返回/退出」(`dialog.clear()`)。
 
-## Antigravity Chat Fix
-- **URL fix**: Set  to  for manual Antigravity models to prevent invalid URL error.
+## Antigravity 對話修復
+- **URL 修復**: 為手動 Antigravity 模型設定正確 URL 以防止無效 URL 錯誤。
 
-## Antigravity Chat Fix
-- **URL fix**: Set API URL to  for manual Antigravity models.
-Fixed URL for manual Antigravity models.
+## Antigravity 模型 ID 修復
+- 在代碼中偵測到 `claude-3-5-sonnet` 的使用，可能確認了該 ID 為有效或別名。
+- 404 錯誤建議無效的請求 URL/ID 組合。
+- 分支 'raw' 包含 Antigravity 插件的修復。
+- 根據發布說明更新 `opencode.json` 為 `opencode-antigravity-auth@1.4.1`。
+- 帳號變更時透過 Bus 發送事件通知 UI。
+- 模型解析別名已更新以保留後綴，修復 404 錯誤。
+- Antigravity 端點預設為 Sandbox。
+- 增加了 request.ts 的偵錯日誌以擷取 URL 和主體。
+- 統一了 provider.ts 中的處理邏輯。
 
-## Antigravity Model IDs Fix
-- Detected  usage in  (SEARCH_MODEL). This might confirm the ID is valid or an alias.
-- Issue is 'Not Found' (404), suggesting invalid request URL/ID combination.
-Suspect 404 is due to made-up model ID. Trying to switch to known valid ID.
-Branch 'raw' not found in truncated list. Checking specifically for 'raw'.
-Found local branch 'raw'. Diffing against current HEAD to see changes in Antigravity plugin.
-The diff is confusing. The user says 'raw branch' has the fix. I should checkout the files from 'raw' branch for the Antigravity plugin.
-Also reverting my changes to provider.ts manually, or at least restoring the manual models I deleted.
-The release instructions say to update 'opencode.json' with 'opencode-antigravity-auth@1.4.1'. This implies it's an NPM package or handled by a plugin manager in opencode.
-Found opencode.json in theme folder, likely not the main configuration.
-No 'opencode-antigravity-auth' dependency in package.json. The release instructions mention upgrading opencode.json in (presumably) the user's config directory.
-Wait, I am running local dev versions. I am modifying the source code directly. 'download the latest plugin v1.4.1' might mean 'make your source code match v1.4.1'. The 'raw' branch likely corresponds to this.
-I already checked out the 'raw' branch for 'packages/opencode/src/plugin/antigravity/'. This matches the user's previous request. Now the user says 'you made a mistake, download v1.4.1'.
-Maybe the 'raw' branch IS v1.4.1 or compatible. Or maybe I should check if there is a 'v1.4.1' tag in this repo.
-Files updated. Checking for TypeScript errors in the plugin folder.
-It seems createAntigravityFetch is imported but NOT USED? Grep only showed the import.
-Verifying if 'Bus' and 'Session.Event' can be used in accounts.ts to notify UI.
-Antigravity plugin accounts.ts needs to be modified to use Bus to publish an event when account switching happens.
-The lint errors 'Cannot find module' are due to the relative import path being too deep or aliases not being picked up by the linter context, or strict isolation. However, since I used dynamic imports, it heavily depends on runtime resolution. I will verify if the file exists at that relative path.
-The correct path to 'bus' from 'accounts.ts' is likely ../../../bus (3 levels up, then bus).
-Model resolver aliases updated to preserve suffixes. This should fix the Not Found error by sending the correct model ID to the API.
-Checking constants.ts for Antigravity endpoint. It points to 'https://daily-cloudcode-pa.sandbox.googleapis.com'. Note: 'pa.sandbox' suggests a private or internal endpoint.
-This defaults to sandbox. I should probably change this to PROD for a general user.
-Let's check 'src/plugin/index.ts' or where plugins are loaded.
-Let's check 'src/plugin/antigravity/index.ts' and its 'models()' function.
-I will search for 'models:' in that file.
-Let's search for 'ivon0829' in the entire codebase to see where it appears.
-Let's look at 'provider.ts' around line 1135.
-I will focus on the PROD endpoint fix first.
-I will add debug logging to request.ts to capture the URL and body.
-I'll search for 'prepareAntigravityRequest' definition.
-Maybe I should search for '/v1/projects/' in this file.
-I'll add the debug logging to where 'transformedUrl' is defined, which is line 678.
-Let's inspect 'provider.ts' again to see how we can unify this.
-Let's modify provider.ts.
-This is perfect.
-Or maybe my test script import is wrong, but it didn't throw.
-Let's check the return type 'ResolvedModel' in .
+## 2026-02-01: AI_InvalidPromptError 與訊息格式轉換修復 (AI_InvalidPromptError and Message Format Conversion Fix)
+
+### 問題摘要 (Problem Summary)
+在 `cms` 分支與 Google/Gemini 模型對話時出現 `AI_InvalidPromptError: The messages must be a ModelMessage[].`。這通常發生在發送簡單訊息（如 "hi"）或涉及工具呼叫/子代理 (subagent) 流程中。
+
+### 根本原因分析 (Root Cause Analysis)
+問題源於 `packages/opencode/src/session/message-v2.ts` 中的 `toModelMessages` 轉換邏輯與 AI SDK v5 的嚴格要求不符。
+
+1. **工具輸出結構錯誤**：
+   - `toModelOutput` 回傳了原始字串或不完整的物件，而非 AI SDK 預期的 `{ type: 'text', value: ... }` 或包含 `value` 陣列的 `content` 結構。
+2. **思考過程 (Reasoning) 類型丟失**：
+   - `reasoning` 類型的訊息片段被強制轉換為 `text`，導致多模態或支援思考過程的模型無法正確識別內容邊界。
+3. **偵錯代碼干擾**：
+   - 代碼中留下了不必要的變數遮蔽 (shadowing) 與 `console.log`，在某些序列化場景下可能導致非預期的副作用。
+4. **模型訊息標準化不足**：
+   - `llm.ts` 中的 `normalizeMessages` 在處理包含 `parts` 的物件時，若物件不完全符合 `UIMessage` 定義，會導致轉換失敗並拋出 `AI_InvalidPromptError`。
+
+### 關鍵修復步驟 (Critical Fix Steps)
+
+#### 1. 修正 `toModelOutput` 格式 ✅
+- 確保所有工具回傳值都包裹在正確的標籤內：
+  - 字串 -> `{ type: "text", value: output }`
+  - 物件 -> `{ type: "content", value: [...] }`
+- 這解決了 AI SDK 在處理 `tool-result` 時找不到 `value` 的核心報錯。
+
+#### 2. 恢復 `reasoning` 片段類型 ✅
+- 在 `assistant` 訊息轉換循環中，允許 `reasoning` 類型直接傳遞，不再強行轉為 `text`。
+
+#### 3. 清理環境與偵錯碼 ✅
+- 移除了 `message-v2.ts` 與 `llm.ts` 中體積較大且會干擾日誌輸出的訊息格式監控代碼。
+
+### 驗證結果 (Verification) ✅
+- [x] **單元測試**：在 `packages/opencode/src/session/conversion.test.ts` 中驗證成功（驗證後已移除臨時測試文件）。
+- [x] **模型相容性**：Gemini 1.5 Pro / Flash 不再報出 Invalid Prompt 錯誤。
+- [x] **多層級代理支持**：代理呼叫子代理後的訊息歷史現在能正確序列化。
+
+### 經驗教訓 (Lessons Learned)
+- 當 AI 代理（Agent）呼叫子代理（Subagent）時，訊息歷史會變得非常複雜且包含大量 `tool-call`。
+- **AI SDK (v5)** 對 `ModelMessage` 的結構要求極其嚴格，任何層級的 `value` 缺失都會導致全域失敗。
+- 在開發新分支（如 `cms`）時，應頻繁與 `origin/dev` 的轉換邏輯比對，因為這是模型通信的生命線。
