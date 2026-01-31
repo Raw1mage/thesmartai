@@ -11,6 +11,15 @@ The objective is to consolidate the `/model` and `/accounts` commands into a uni
 - On **rate limit**, fail fast so higher-level logic can **fallback to Favorites** (do not wait).
 - Keep changes **modular and portable** for future `origin/dev` rebases.
 
+## Status Update (2026-01-31)
+- **Debug system**: Added centralized debug logging (`debugCheckpoint`, `debugSpan`) and admin keytrace checkpoints, written to `~/opencode/logs/debug.log` with auto-clear on app start.
+- **Google-API add flow**: Rebuilt as a dialog overlay (`dialog.push`) to avoid admin dialog remounts and accidental step resets.
+- **Input persistence**: Account name/API key values now persist on Enter before saving.
+- **Delete behavior**: Removing accounts no longer forces a return to the root level.
+- **Admin root providers**: Root list now includes core account families even when sync providers are empty.
+- **Prompt focus**: Closing dialogs refocuses the main prompt input for keyboard-only usage.
+- **Dev entry**: `OPENCODE_ADMIN_AUTO=1` auto-opens `/admin` when running `bun run dev`.
+
 ## Command: `/admin`
 New command entry point.
 
