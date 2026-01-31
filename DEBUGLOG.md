@@ -38,6 +38,26 @@ TUI 的 `textarea` 組件在接收到 `return` 鍵時，內部可能存在預設
 
 ---
 
+## 2026-01-31: /admin Google-API 編輯器與調試鏈完善
+
+### 問題摘要 (Problem Summary)
+在 `/admin` 的 Google-API 第二層，按下 `a` 無法穩定進入新增介面，且刪除帳號後會被強制退回上一層；模型選擇後也無法回到輸入框進行鍵盤輸入。
+
+### 根本原因分析 (Root Cause Analysis)
+- **Dialog 重建**：`google_add` 以內部 step 切換時會觸發 DialogAdmin 重新掛載，導致畫面跳回 root。
+- **聚焦遺失**：dialog 關閉後沒有回復到 prompt input，導致鍵盤無法繼續輸入。
+
+### 關鍵修復步驟 (Critical Fix Steps)
+- **改為 Dialog Push**：Google-API 編輯器改成 dialog overlay (`dialog.push`) 以避免主 dialog state 重建。
+- **全域 debug system**：加入 dialog stack tracing、error boundary、admin key trace 等 checkpoint。
+- **聚焦修復**：dialog stack 清空時，自動 `promptRef.current?.focus()`。
+- **刪除行為調整**：刪除帳號後保留在 account list，不再退回 root。
+
+### 驗證結果 (Verification) ✅
+- [x] Google-API 編輯器可穩定進入、輸入與保存。
+- [x] 刪除帳號後仍留在第二層清單。
+- [x] 選完模型後自動回到輸入框，鍵盤可繼續輸入。
+
 
 ## 2026-01-30: Antigravity 模型通信修復 (Antigravity Model Communication Fix)
 

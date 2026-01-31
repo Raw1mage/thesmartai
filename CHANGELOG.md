@@ -12,6 +12,21 @@
 - **TUI Reactivity**: Replaced standard `<Show>` forks with explicit `<Switch>/<Match>` states in authentication flows to ensure clean UI transitions between prompt steps.
 - **Focus Management**: Improved Tab key navigation between textareas and submit buttons in dialog prompts.
 
+## [1.1.58] - 2026-01-31
+
+### Added
+- **Admin Debug Tracing**: Expanded debug logging with dialog stack tracing, error boundary reporting, and admin decision checkpoints stored in `~/opencode/logs/debug.log`.
+- **Auto Admin Entry**: Added `OPENCODE_ADMIN_AUTO=1` to launch `/admin` directly when running `bun run dev`.
+
+### Changed
+- **Google-API Add Flow**: Moved the Google-API account editor to a dialog overlay to avoid admin state resets and ensure stable input/submit behavior.
+- **Admin Root Providers**: Root provider list now includes core account families even when sync providers are empty.
+
+### Fixed
+- **Google-API Input Persistence**: Account name/API key values now persist on Enter before saving.
+- **Admin Delete Behavior**: Deleting an account no longer forces a navigation back to root.
+- **Model Selection Focus**: Closing dialogs now refocuses the main prompt input for keyboard-only usage.
+
 ## [1.1.56] - 2026-01-31
 
 ### Added
