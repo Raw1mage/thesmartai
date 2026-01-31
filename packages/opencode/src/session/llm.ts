@@ -26,6 +26,21 @@ import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
 import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
+import {
+  isRateLimitError,
+  extractRateLimitDetails,
+  calculateBackoffMs,
+  getHealthTracker,
+  getRateLimitTracker,
+  type RateLimitReason,
+} from "@/account/rotation"
+import {
+  findFallback,
+  type ModelVector,
+  type FallbackStrategy,
+} from "@/account/rotation3d"
+import { Bus } from "@/bus"
+import { TuiEvent } from "@/cli/cmd/tui/event"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -202,11 +217,50 @@ export namespace LLM {
 
     const finalMessages = normalizeMessages(streamMessages, tools)
 
+    // Get account ID for rate limit tracking
+    const accountId = await getAccountIdForProvider(input.model.providerID)
+
     return streamText({
       onError(error) {
         l.error("stream error", {
           error,
         })
+
+        // Track rate limits in global health system
+        if (isRateLimitError(error) && accountId) {
+          const { reason, retryAfterMs } = extractRateLimitDetails(error)
+          const healthTracker = getHealthTracker()
+          const rateLimitTracker = getRateLimitTracker()
+          const consecutiveFailures = healthTracker.getConsecutiveFailures(accountId)
+          const backoffMs = calculateBackoffMs(reason, consecutiveFailures, retryAfterMs)
+
+          healthTracker.recordRateLimit(accountId)
+          rateLimitTracker.markRateLimited(
+            accountId,
+            input.model.providerID,
+            reason,
+            backoffMs,
+            input.model.id,
+          )
+
+          l.warn("Rate limit detected", {
+            accountId,
+            providerID: input.model.providerID,
+            modelID: input.model.id,
+            reason,
+            backoffMs,
+          })
+
+          // Publish toast notification for rate limit
+          const waitMinutes = Math.ceil(backoffMs / 60000)
+          const reasonText = formatRateLimitReason(reason)
+          Bus.publish(TuiEvent.ToastShow, {
+            title: "Rate Limit",
+            message: `${input.model.id}: ${reasonText}. Cooling down for ${waitMinutes}m.`,
+            variant: "warning",
+            duration: 8000,
+          }).catch(() => { }) // Ignore publish errors
+        }
       },
       async experimental_repairToolCall(failed) {
         const lower = failed.toolCall.toolName.toLowerCase()
@@ -325,5 +379,159 @@ export namespace LLM {
 
   function isUIMessage(msg: ModelMessage | UIMessage): msg is UIMessage {
     return typeof msg === "object" && msg !== null && "parts" in msg
+  }
+
+  /**
+   * Get the active account ID for a provider.
+   * Used for rate limit tracking.
+   */
+  async function getAccountIdForProvider(providerID: string): Promise<string | undefined> {
+    const { Account } = await import("@/account")
+
+    // Parse family from provider ID
+    const family = Account.parseFamily(providerID)
+    if (!family) return undefined
+
+    // Get active account
+    return Account.getActive(family)
+  }
+
+  /**
+   * Record a successful request for the current provider.
+   * Call this after a stream completes successfully.
+   */
+  export async function recordSuccess(providerID: string): Promise<void> {
+    const accountId = await getAccountIdForProvider(providerID)
+    if (accountId) {
+      const healthTracker = getHealthTracker()
+      healthTracker.recordSuccess(accountId)
+      log.debug("Recorded success", { providerID, accountId })
+    }
+  }
+
+  /**
+   * Check if rate limit handling is needed for a provider.
+   * Returns the next available model if rotation is possible.
+   *
+   * Uses the 3D rotation system to find the best fallback across
+   * (provider, account, model) dimensions.
+   */
+  export async function handleRateLimitFallback(
+    currentModel: Provider.Model,
+    strategy: FallbackStrategy = "account-first",
+  ): Promise<Provider.Model | null> {
+    const { Account } = await import("@/account")
+
+    const family = Account.parseFamily(currentModel.providerID)
+    if (!family) return null
+
+    // Get current account
+    const currentAccountId = await Account.getActive(family)
+    if (!currentAccountId) return null
+
+    // Build current vector
+    const currentVector: ModelVector = {
+      providerID: currentModel.providerID,
+      accountId: currentAccountId,
+      modelID: currentModel.id,
+    }
+
+    // Use 3D rotation to find best fallback
+    const fallback = await findFallback(currentVector, { strategy })
+
+    if (!fallback) {
+      log.warn("No fallback available in any dimension", {
+        current: `${currentVector.providerID}:${currentVector.accountId}:${currentVector.modelID}`,
+      })
+      return null
+    }
+
+    // Log the dimension change
+    const isSameProvider = fallback.providerID === currentModel.providerID
+    const isSameAccount = fallback.accountId === currentAccountId
+    const isSameModel = fallback.modelID === currentModel.id
+
+    log.info("3D fallback selected", {
+      reason: fallback.reason,
+      changes: {
+        provider: !isSameProvider,
+        account: !isSameAccount,
+        model: !isSameModel,
+      },
+      from: {
+        provider: currentModel.providerID,
+        account: currentAccountId,
+        model: currentModel.id,
+      },
+      to: {
+        provider: fallback.providerID,
+        account: fallback.accountId,
+        model: fallback.modelID,
+      },
+    })
+
+    // If same model but different account, set the new account as active
+    if (isSameModel && !isSameAccount && isSameProvider) {
+      await Account.setActive(family, fallback.accountId)
+
+      // Notify user of account rotation
+      Bus.publish(TuiEvent.ToastShow, {
+        title: "Account Rotated",
+        message: `Switched to account: ${fallback.accountId.split("-").pop()}`,
+        variant: "info",
+        duration: 4000,
+      }).catch(() => { })
+
+      return currentModel
+    }
+
+    // If different model or provider, get the full model info
+    const fallbackModel = await Provider.getModel(fallback.providerID, fallback.modelID)
+    if (!fallbackModel) {
+      log.warn("Fallback model not found", {
+        providerID: fallback.providerID,
+        modelID: fallback.modelID,
+      })
+      return null
+    }
+
+    // If different account in a different provider family, set that account active too
+    if (!isSameProvider) {
+      const fallbackFamily = Account.parseFamily(fallback.providerID)
+      if (fallbackFamily) {
+        await Account.setActive(fallbackFamily, fallback.accountId)
+      }
+    }
+
+    // Notify user of model/provider rotation
+    const changeDesc = !isSameProvider
+      ? `${fallback.providerID}/${fallback.modelID}`
+      : fallback.modelID
+    Bus.publish(TuiEvent.ToastShow, {
+      title: "Model Rotated",
+      message: `Fallback to: ${changeDesc}`,
+      variant: "info",
+      duration: 4000,
+    }).catch(() => { })
+
+    return fallbackModel
+  }
+
+  /**
+   * Format rate limit reason for display in toast.
+   */
+  function formatRateLimitReason(reason: RateLimitReason): string {
+    switch (reason) {
+      case "QUOTA_EXHAUSTED":
+        return "Quota exhausted"
+      case "RATE_LIMIT_EXCEEDED":
+        return "Rate limit exceeded"
+      case "MODEL_CAPACITY_EXHAUSTED":
+        return "Model at capacity"
+      case "SERVER_ERROR":
+        return "Server error"
+      default:
+        return "Rate limited"
+    }
   }
 }

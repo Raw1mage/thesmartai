@@ -443,7 +443,7 @@ export namespace MessageV2 {
 
     const toModelOutput = (output: unknown) => {
       if (typeof output === "string") {
-        return output
+        return { type: "text", value: output }
       }
 
       if (typeof output === "object") {
@@ -455,16 +455,19 @@ export namespace MessageV2 {
           return attachment.url.startsWith("data:") && attachment.url.includes(",")
         })
 
-        return [
-          { type: "text", text: outputObject.text },
-          ...attachments.map((attachment) => ({
-            type: "image",
-            image: attachment.url,
-          })),
-        ]
+        return {
+          type: "content",
+          value: [
+            { type: "text", text: outputObject.text },
+            ...attachments.map((attachment) => ({
+              type: "image",
+              image: attachment.url,
+            })),
+          ],
+        }
       }
 
-      return JSON.stringify(output, null, 2)
+      return { type: "text", value: JSON.stringify(output, null, 2) }
     }
 
     for (const msg of input) {
@@ -534,21 +537,23 @@ export namespace MessageV2 {
           if (part.type === "tool") {
             toolNames.add(part.tool)
             if (part.state.status === "completed") {
-              const outputText = part.state.time.compacted ? "[Old tool result content cleared]" : part.state.output
+              // AI SDK v5 requires output to be an object with `text` field, not a bare string
+              // Also must not contain undefined values (GitHub issue vercel/ai#8520)
+              const outputText = part.state.time.compacted
+                ? "[Old tool result content cleared]"
+                : (part.state.output ?? "")
               const attachments = part.state.time.compacted ? [] : (part.state.attachments ?? [])
-              const output =
-                attachments.length > 0
-                  ? {
-                    text: outputText,
-                    attachments,
-                  }
-                  : outputText
+              // Always use object format with `text` key for consistent handling in toModelOutput
+              // Only include attachments field if there are actual attachments (avoid undefined values)
+              const output = attachments.length > 0
+                ? { text: outputText, attachments }
+                : { text: outputText }
 
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-available",
                 toolCallId: part.callID,
-                input: part.state.input,
+                input: part.state.input ?? {},
                 output,
                 ...(differentModel ? {} : { callProviderMetadata: part.metadata }),
               })
@@ -558,8 +563,8 @@ export namespace MessageV2 {
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-error",
                 toolCallId: part.callID,
-                input: part.state.input,
-                errorText: part.state.error,
+                input: part.state.input ?? {},
+                errorText: part.state.error ?? "[Unknown error]",
                 ...(differentModel ? {} : { callProviderMetadata: part.metadata }),
               })
             // Handle pending/running tool calls to prevent dangling tool_use blocks
@@ -569,15 +574,14 @@ export namespace MessageV2 {
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-error",
                 toolCallId: part.callID,
-                input: part.state.input,
+                input: part.state.input ?? {},
                 errorText: "[Tool execution was interrupted]",
                 ...(differentModel ? {} : { callProviderMetadata: part.metadata }),
               })
           }
           if (part.type === "reasoning") {
-            // "reasoning" part type is not yet supported by AI SDK convertToModelMessages
             assistantMessage.parts.push({
-              type: "text",
+              type: "reasoning",
               text: part.text,
               ...(differentModel ? {} : { providerMetadata: part.metadata }),
             })
