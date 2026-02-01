@@ -3,6 +3,20 @@
 import { client } from "./client.gen.js"
 import { buildClientParams, type Client, type Options as Options2, type TDataShape } from "./client/index.js"
 import type {
+  AccountAntigravityToggle2Responses,
+  AccountAntigravityToggleResponses,
+  AccountListAll2Responses,
+  AccountListAllResponses,
+  AccountLogin2Responses,
+  AccountLoginResponses,
+  AccountRemove2Errors,
+  AccountRemove2Responses,
+  AccountRemoveErrors,
+  AccountRemoveResponses,
+  AccountSetActive2Errors,
+  AccountSetActive2Responses,
+  AccountSetActiveErrors,
+  AccountSetActiveResponses,
   AgentPartInput,
   AppAgentsResponses,
   AppLogErrors,
@@ -96,6 +110,11 @@ import type {
   QuestionRejectResponses,
   QuestionReplyErrors,
   QuestionReplyResponses,
+  RotationFallbackErrors,
+  RotationFallbackResponses,
+  RotationRecommendErrors,
+  RotationRecommendResponses,
+  RotationStatusResponses,
   SessionAbortErrors,
   SessionAbortResponses,
   SessionChildrenErrors,
@@ -2161,185 +2180,6 @@ export class Provider extends HeyApiClient {
   }
 }
 
-export class Find extends HeyApiClient {
-  /**
-   * Find text
-   *
-   * Search for text patterns across files in the project using ripgrep.
-   */
-  public text<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      pattern: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "pattern" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<FindTextResponses, unknown, ThrowOnError>({
-      url: "/find",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Find files
-   *
-   * Search for files or directories by name or pattern in the project directory.
-   */
-  public files<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      query: string
-      dirs?: "true" | "false"
-      type?: "file" | "directory"
-      limit?: number
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "query" },
-            { in: "query", key: "dirs" },
-            { in: "query", key: "type" },
-            { in: "query", key: "limit" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<FindFilesResponses, unknown, ThrowOnError>({
-      url: "/find/file",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Find symbols
-   *
-   * Search for workspace symbols like functions, classes, and variables using LSP.
-   */
-  public symbols<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      query: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "query" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<FindSymbolsResponses, unknown, ThrowOnError>({
-      url: "/find/symbol",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class File extends HeyApiClient {
-  /**
-   * List files
-   *
-   * List files and directories in a specified path.
-   */
-  public list<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      path: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "path" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<FileListResponses, unknown, ThrowOnError>({
-      url: "/file",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Read file
-   *
-   * Read the content of a specified file.
-   */
-  public read<ThrowOnError extends boolean = false>(
-    parameters: {
-      directory?: string
-      path: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "path" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<FileReadResponses, unknown, ThrowOnError>({
-      url: "/file/content",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Get file status
-   *
-   * Get the git status of all files in the project.
-   */
-  public status<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
-    return (options?.client ?? this.client).get<FileStatusResponses, unknown, ThrowOnError>({
-      url: "/file/status",
-      ...options,
-      ...params,
-    })
-  }
-}
-
 export class Auth2 extends HeyApiClient {
   /**
    * Remove MCP OAuth
@@ -2948,6 +2788,602 @@ export class Tui extends HeyApiClient {
   }
 }
 
+export class Account extends HeyApiClient {
+  /**
+   * List all accounts
+   *
+   * Get a list of all configured accounts grouped by provider family, with detailed status for Antigravity pool.
+   */
+  public listAll<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AccountListAllResponses, unknown, ThrowOnError>({
+      url: "/account",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set active account
+   *
+   * Set the active account for a specific provider family.
+   */
+  public setActive<ThrowOnError extends boolean = false>(
+    parameters: {
+      family: string
+      directory?: string
+      accountId?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "family" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "accountId" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AccountSetActiveResponses, AccountSetActiveErrors, ThrowOnError>({
+      url: "/account/{family}/active",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Toggle Antigravity account
+   *
+   * Enable or disable a specific account in the Antigravity pool.
+   */
+  public antigravityToggle<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      index?: number
+      enabled?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "index" },
+            { in: "body", key: "enabled" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AccountAntigravityToggleResponses, unknown, ThrowOnError>({
+      url: "/account/antigravity/toggle",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Trigger login
+   *
+   * Get the login URL for a provider family.
+   */
+  public login<ThrowOnError extends boolean = false>(
+    parameters: {
+      family: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "family" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AccountLoginResponses, unknown, ThrowOnError>({
+      url: "/account/auth/{family}/login",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Remove account
+   *
+   * Remove a specific account.
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      family: string
+      accountId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "family" },
+            { in: "path", key: "accountId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<AccountRemoveResponses, AccountRemoveErrors, ThrowOnError>({
+      url: "/account/{family}/{accountId}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List all accounts
+   *
+   * Get a list of all configured accounts grouped by provider family, with detailed status for Antigravity pool.
+   */
+  public listAll2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<AccountListAll2Responses, unknown, ThrowOnError>({
+      url: "/accounts",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Set active account
+   *
+   * Set the active account for a specific provider family.
+   */
+  public setActive2<ThrowOnError extends boolean = false>(
+    parameters: {
+      family: string
+      directory?: string
+      accountId?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "family" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "accountId" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AccountSetActive2Responses, AccountSetActive2Errors, ThrowOnError>({
+      url: "/accounts/{family}/active",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Toggle Antigravity account
+   *
+   * Enable or disable a specific account in the Antigravity pool.
+   */
+  public antigravityToggle2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      index?: number
+      enabled?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "index" },
+            { in: "body", key: "enabled" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<AccountAntigravityToggle2Responses, unknown, ThrowOnError>({
+      url: "/accounts/antigravity/toggle",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Trigger login
+   *
+   * Get the login URL for a provider family.
+   */
+  public login2<ThrowOnError extends boolean = false>(
+    parameters: {
+      family: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "family" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AccountLogin2Responses, unknown, ThrowOnError>({
+      url: "/accounts/auth/{family}/login",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Remove account
+   *
+   * Remove a specific account.
+   */
+  public remove2<ThrowOnError extends boolean = false>(
+    parameters: {
+      family: string
+      accountId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "family" },
+            { in: "path", key: "accountId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<AccountRemove2Responses, AccountRemove2Errors, ThrowOnError>({
+      url: "/accounts/{family}/{accountId}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Rotation extends HeyApiClient {
+  /**
+   * Get rotation status
+   *
+   * Get real-time status of all accounts, rate limits, and model health for the 3D rotation system.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<RotationStatusResponses, unknown, ThrowOnError>({
+      url: "/rotation/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get model recommendation
+   *
+   * Get the best model vector recommendation for a specific task type.
+   */
+  public recommend<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      taskType?: "dialog" | "task" | "background" | "coding" | "review"
+      preferSubscription?: boolean
+      currentVector?: {
+        providerID: string
+        accountId: string
+        modelID: string
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "taskType" },
+            { in: "body", key: "preferSubscription" },
+            { in: "body", key: "currentVector" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RotationRecommendResponses, RotationRecommendErrors, ThrowOnError>({
+      url: "/rotation/recommend",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get fallback for rate-limited model
+   *
+   * When a model is rate-limited, get the best fallback option.
+   */
+  public fallback<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      current?: {
+        providerID: string
+        accountId: string
+        modelID: string
+      }
+      strategy?: "account-first" | "model-first" | "provider-first" | "any-available"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "current" },
+            { in: "body", key: "strategy" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<RotationFallbackResponses, RotationFallbackErrors, ThrowOnError>({
+      url: "/rotation/fallback",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Find extends HeyApiClient {
+  /**
+   * Find text
+   *
+   * Search for text patterns across files in the project using ripgrep.
+   */
+  public text<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      pattern: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "pattern" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<FindTextResponses, unknown, ThrowOnError>({
+      url: "/find",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Find files
+   *
+   * Search for files or directories by name or pattern in the project directory.
+   */
+  public files<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      query: string
+      dirs?: "true" | "false"
+      type?: "file" | "directory"
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "query" },
+            { in: "query", key: "dirs" },
+            { in: "query", key: "type" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<FindFilesResponses, unknown, ThrowOnError>({
+      url: "/find/file",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Find symbols
+   *
+   * Search for workspace symbols like functions, classes, and variables using LSP.
+   */
+  public symbols<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      query: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "query" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<FindSymbolsResponses, unknown, ThrowOnError>({
+      url: "/find/symbol",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class File extends HeyApiClient {
+  /**
+   * List files
+   *
+   * List files and directories in a specified path.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      path: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<FileListResponses, unknown, ThrowOnError>({
+      url: "/file",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read file
+   *
+   * Read the content of a specified file.
+   */
+  public read<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      path: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<FileReadResponses, unknown, ThrowOnError>({
+      url: "/file/content",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get file status
+   *
+   * Get the git status of all files in the project.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<FileStatusResponses, unknown, ThrowOnError>({
+      url: "/file/status",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Instance extends HeyApiClient {
   /**
    * Dispose instance
@@ -3251,16 +3687,6 @@ export class OpencodeClient extends HeyApiClient {
     return (this._provider ??= new Provider({ client: this.client }))
   }
 
-  private _find?: Find
-  get find(): Find {
-    return (this._find ??= new Find({ client: this.client }))
-  }
-
-  private _file?: File
-  get file(): File {
-    return (this._file ??= new File({ client: this.client }))
-  }
-
   private _mcp?: Mcp
   get mcp(): Mcp {
     return (this._mcp ??= new Mcp({ client: this.client }))
@@ -3269,6 +3695,26 @@ export class OpencodeClient extends HeyApiClient {
   private _tui?: Tui
   get tui(): Tui {
     return (this._tui ??= new Tui({ client: this.client }))
+  }
+
+  private _account?: Account
+  get account(): Account {
+    return (this._account ??= new Account({ client: this.client }))
+  }
+
+  private _rotation?: Rotation
+  get rotation(): Rotation {
+    return (this._rotation ??= new Rotation({ client: this.client }))
+  }
+
+  private _find?: Find
+  get find(): Find {
+    return (this._find ??= new Find({ client: this.client }))
+  }
+
+  private _file?: File
+  get file(): File {
+    return (this._file ??= new File({ client: this.client }))
   }
 
   private _instance?: Instance

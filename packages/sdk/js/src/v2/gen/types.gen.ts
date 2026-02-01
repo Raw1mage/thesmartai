@@ -522,6 +522,60 @@ export type EventPermissionReplied = {
   }
 }
 
+export type EventTuiPromptAppend = {
+  type: "tui.prompt.append"
+  properties: {
+    text: string
+  }
+}
+
+export type EventTuiCommandExecute = {
+  type: "tui.command.execute"
+  properties: {
+    command:
+      | "session.list"
+      | "session.new"
+      | "session.share"
+      | "session.interrupt"
+      | "session.compact"
+      | "session.page.up"
+      | "session.page.down"
+      | "session.line.up"
+      | "session.line.down"
+      | "session.half.page.up"
+      | "session.half.page.down"
+      | "session.first"
+      | "session.last"
+      | "prompt.clear"
+      | "prompt.submit"
+      | "agent.cycle"
+      | string
+  }
+}
+
+export type EventTuiToastShow = {
+  type: "tui.toast.show"
+  properties: {
+    title?: string
+    message: string
+    variant: "info" | "success" | "warning" | "error"
+    /**
+     * Duration in milliseconds
+     */
+    duration?: number
+  }
+}
+
+export type EventTuiSessionSelect = {
+  type: "tui.session.select"
+  properties: {
+    /**
+     * Session ID to navigate to
+     */
+    sessionID: string
+  }
+}
+
 export type SessionStatus =
   | {
       type: "idle"
@@ -661,60 +715,6 @@ export type EventTodoUpdated = {
   properties: {
     sessionID: string
     todos: Array<Todo>
-  }
-}
-
-export type EventTuiPromptAppend = {
-  type: "tui.prompt.append"
-  properties: {
-    text: string
-  }
-}
-
-export type EventTuiCommandExecute = {
-  type: "tui.command.execute"
-  properties: {
-    command:
-      | "session.list"
-      | "session.new"
-      | "session.share"
-      | "session.interrupt"
-      | "session.compact"
-      | "session.page.up"
-      | "session.page.down"
-      | "session.line.up"
-      | "session.line.down"
-      | "session.half.page.up"
-      | "session.half.page.down"
-      | "session.first"
-      | "session.last"
-      | "prompt.clear"
-      | "prompt.submit"
-      | "agent.cycle"
-      | string
-  }
-}
-
-export type EventTuiToastShow = {
-  type: "tui.toast.show"
-  properties: {
-    title?: string
-    message: string
-    variant: "info" | "success" | "warning" | "error"
-    /**
-     * Duration in milliseconds
-     */
-    duration?: number
-  }
-}
-
-export type EventTuiSessionSelect = {
-  type: "tui.session.select"
-  properties: {
-    /**
-     * Session ID to navigate to
-     */
-    sessionID: string
   }
 }
 
@@ -899,6 +899,10 @@ export type Event =
   | EventMessagePartRemoved
   | EventPermissionAsked
   | EventPermissionReplied
+  | EventTuiPromptAppend
+  | EventTuiCommandExecute
+  | EventTuiToastShow
+  | EventTuiSessionSelect
   | EventSessionStatus
   | EventSessionIdle
   | EventQuestionAsked
@@ -907,10 +911,6 @@ export type Event =
   | EventSessionCompacted
   | EventFileWatcherUpdated
   | EventTodoUpdated
-  | EventTuiPromptAppend
-  | EventTuiCommandExecute
-  | EventTuiToastShow
-  | EventTuiSessionSelect
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
@@ -1837,6 +1837,7 @@ export type OAuth = {
   access: string
   expires: number
   accountId?: string
+  email?: string
   enterpriseUrl?: string
 }
 
@@ -1940,6 +1941,10 @@ export type Provider = {
   options: {
     [key: string]: unknown
   }
+  active?: boolean
+  email?: string
+  coolingDownUntil?: number
+  cooldownReason?: string
   models: {
     [key: string]: Model
   }
@@ -2044,6 +2049,35 @@ export type ProviderAuthAuthorization = {
   instructions: string
 }
 
+export type McpStatusConnected = {
+  status: "connected"
+}
+
+export type McpStatusDisabled = {
+  status: "disabled"
+}
+
+export type McpStatusFailed = {
+  status: "failed"
+  error: string
+}
+
+export type McpStatusNeedsAuth = {
+  status: "needs_auth"
+}
+
+export type McpStatusNeedsClientRegistration = {
+  status: "needs_client_registration"
+  error: string
+}
+
+export type McpStatus =
+  | McpStatusConnected
+  | McpStatusDisabled
+  | McpStatusFailed
+  | McpStatusNeedsAuth
+  | McpStatusNeedsClientRegistration
+
 export type Symbol = {
   name: string
   kind: number
@@ -2089,35 +2123,6 @@ export type File = {
   removed: number
   status: "added" | "deleted" | "modified"
 }
-
-export type McpStatusConnected = {
-  status: "connected"
-}
-
-export type McpStatusDisabled = {
-  status: "disabled"
-}
-
-export type McpStatusFailed = {
-  status: "failed"
-  error: string
-}
-
-export type McpStatusNeedsAuth = {
-  status: "needs_auth"
-}
-
-export type McpStatusNeedsClientRegistration = {
-  status: "needs_client_registration"
-  error: string
-}
-
-export type McpStatus =
-  | McpStatusConnected
-  | McpStatusDisabled
-  | McpStatusFailed
-  | McpStatusNeedsAuth
-  | McpStatusNeedsClientRegistration
 
 export type Path = {
   home: string
@@ -4122,138 +4127,6 @@ export type ProviderOauthCallbackResponses = {
 
 export type ProviderOauthCallbackResponse = ProviderOauthCallbackResponses[keyof ProviderOauthCallbackResponses]
 
-export type FindTextData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    pattern: string
-  }
-  url: "/find"
-}
-
-export type FindTextResponses = {
-  /**
-   * Matches
-   */
-  200: Array<{
-    path: {
-      text: string
-    }
-    lines: {
-      text: string
-    }
-    line_number: number
-    absolute_offset: number
-    submatches: Array<{
-      match: {
-        text: string
-      }
-      start: number
-      end: number
-    }>
-  }>
-}
-
-export type FindTextResponse = FindTextResponses[keyof FindTextResponses]
-
-export type FindFilesData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    query: string
-    dirs?: "true" | "false"
-    type?: "file" | "directory"
-    limit?: number
-  }
-  url: "/find/file"
-}
-
-export type FindFilesResponses = {
-  /**
-   * File paths
-   */
-  200: Array<string>
-}
-
-export type FindFilesResponse = FindFilesResponses[keyof FindFilesResponses]
-
-export type FindSymbolsData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    query: string
-  }
-  url: "/find/symbol"
-}
-
-export type FindSymbolsResponses = {
-  /**
-   * Symbols
-   */
-  200: Array<Symbol>
-}
-
-export type FindSymbolsResponse = FindSymbolsResponses[keyof FindSymbolsResponses]
-
-export type FileListData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    path: string
-  }
-  url: "/file"
-}
-
-export type FileListResponses = {
-  /**
-   * Files and directories
-   */
-  200: Array<FileNode>
-}
-
-export type FileListResponse = FileListResponses[keyof FileListResponses]
-
-export type FileReadData = {
-  body?: never
-  path?: never
-  query: {
-    directory?: string
-    path: string
-  }
-  url: "/file/content"
-}
-
-export type FileReadResponses = {
-  /**
-   * File content
-   */
-  200: FileContent
-}
-
-export type FileReadResponse = FileReadResponses[keyof FileReadResponses]
-
-export type FileStatusData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-  }
-  url: "/file/status"
-}
-
-export type FileStatusResponses = {
-  /**
-   * File status
-   */
-  200: Array<File>
-}
-
-export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
-
 export type McpStatusData = {
   body?: never
   path?: never
@@ -4779,6 +4652,610 @@ export type TuiControlResponseResponses = {
 }
 
 export type TuiControlResponseResponse = TuiControlResponseResponses[keyof TuiControlResponseResponses]
+
+export type AccountListAllData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/account"
+}
+
+export type AccountListAllResponses = {
+  /**
+   * List of accounts by family
+   */
+  200: {
+    families: {
+      [key: string]: {
+        activeAccount?: string
+        accounts: {
+          [key: string]:
+            | {
+                type: "api"
+                name: string
+                apiKey: string
+                addedAt: number
+              }
+            | {
+                type: "subscription"
+                name: string
+                email?: string
+                refreshToken: string
+                accessToken?: string
+                expiresAt?: number
+                projectId?: string
+                managedProjectId?: string
+                accountId?: string
+                addedAt: number
+                rateLimitResetTimes?: {
+                  [key: string]: number
+                }
+                coolingDownUntil?: number
+                cooldownReason?: string
+                fingerprint?: {
+                  [key: string]: unknown
+                }
+              }
+        }
+      }
+    }
+    antigravity?: unknown
+  }
+}
+
+export type AccountListAllResponse = AccountListAllResponses[keyof AccountListAllResponses]
+
+export type AccountSetActiveData = {
+  body?: {
+    accountId: string
+  }
+  path: {
+    family: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/account/{family}/active"
+}
+
+export type AccountSetActiveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AccountSetActiveError = AccountSetActiveErrors[keyof AccountSetActiveErrors]
+
+export type AccountSetActiveResponses = {
+  /**
+   * Active account set successfully
+   */
+  200: boolean
+}
+
+export type AccountSetActiveResponse = AccountSetActiveResponses[keyof AccountSetActiveResponses]
+
+export type AccountAntigravityToggleData = {
+  body?: {
+    index: number
+    enabled: boolean
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/account/antigravity/toggle"
+}
+
+export type AccountAntigravityToggleResponses = {
+  /**
+   * Success
+   */
+  200: unknown
+}
+
+export type AccountLoginData = {
+  body?: never
+  path: {
+    family: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/account/auth/{family}/login"
+}
+
+export type AccountLoginResponses = {
+  /**
+   * Login URL info
+   */
+  200: unknown
+}
+
+export type AccountRemoveData = {
+  body?: never
+  path: {
+    family: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/account/{family}/{accountId}"
+}
+
+export type AccountRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AccountRemoveError = AccountRemoveErrors[keyof AccountRemoveErrors]
+
+export type AccountRemoveResponses = {
+  /**
+   * Account removed successfully
+   */
+  200: boolean
+}
+
+export type AccountRemoveResponse = AccountRemoveResponses[keyof AccountRemoveResponses]
+
+export type AccountListAll2Data = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/accounts"
+}
+
+export type AccountListAll2Responses = {
+  /**
+   * List of accounts by family
+   */
+  200: {
+    families: {
+      [key: string]: {
+        activeAccount?: string
+        accounts: {
+          [key: string]:
+            | {
+                type: "api"
+                name: string
+                apiKey: string
+                addedAt: number
+              }
+            | {
+                type: "subscription"
+                name: string
+                email?: string
+                refreshToken: string
+                accessToken?: string
+                expiresAt?: number
+                projectId?: string
+                managedProjectId?: string
+                accountId?: string
+                addedAt: number
+                rateLimitResetTimes?: {
+                  [key: string]: number
+                }
+                coolingDownUntil?: number
+                cooldownReason?: string
+                fingerprint?: {
+                  [key: string]: unknown
+                }
+              }
+        }
+      }
+    }
+    antigravity?: unknown
+  }
+}
+
+export type AccountListAll2Response = AccountListAll2Responses[keyof AccountListAll2Responses]
+
+export type AccountSetActive2Data = {
+  body?: {
+    accountId: string
+  }
+  path: {
+    family: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/accounts/{family}/active"
+}
+
+export type AccountSetActive2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AccountSetActive2Error = AccountSetActive2Errors[keyof AccountSetActive2Errors]
+
+export type AccountSetActive2Responses = {
+  /**
+   * Active account set successfully
+   */
+  200: boolean
+}
+
+export type AccountSetActive2Response = AccountSetActive2Responses[keyof AccountSetActive2Responses]
+
+export type AccountAntigravityToggle2Data = {
+  body?: {
+    index: number
+    enabled: boolean
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/accounts/antigravity/toggle"
+}
+
+export type AccountAntigravityToggle2Responses = {
+  /**
+   * Success
+   */
+  200: unknown
+}
+
+export type AccountLogin2Data = {
+  body?: never
+  path: {
+    family: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/accounts/auth/{family}/login"
+}
+
+export type AccountLogin2Responses = {
+  /**
+   * Login URL info
+   */
+  200: unknown
+}
+
+export type AccountRemove2Data = {
+  body?: never
+  path: {
+    family: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/accounts/{family}/{accountId}"
+}
+
+export type AccountRemove2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AccountRemove2Error = AccountRemove2Errors[keyof AccountRemove2Errors]
+
+export type AccountRemove2Responses = {
+  /**
+   * Account removed successfully
+   */
+  200: boolean
+}
+
+export type AccountRemove2Response = AccountRemove2Responses[keyof AccountRemove2Responses]
+
+export type RotationStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/rotation/status"
+}
+
+export type RotationStatusResponses = {
+  /**
+   * Rotation status
+   */
+  200: {
+    accounts: Array<{
+      id: string
+      provider: string
+      family: string
+      type: "subscription" | "api" | "oauth"
+      healthScore: number
+      isRateLimited: boolean
+      rateLimitResetAt?: number
+      consecutiveFailures: number
+      lastSuccess?: number
+    }>
+    modelHealth: {
+      [key: string]: {
+        healthScore: number
+        isAvailable: boolean
+        lastRateLimit?: number
+      }
+    }
+    recommended: {
+      dialog?: {
+        providerID: string
+        accountId: string
+        modelID: string
+      }
+      task?: {
+        providerID: string
+        accountId: string
+        modelID: string
+      }
+      background?: {
+        providerID: string
+        accountId: string
+        modelID: string
+      }
+    }
+    timestamp: number
+  }
+}
+
+export type RotationStatusResponse = RotationStatusResponses[keyof RotationStatusResponses]
+
+export type RotationRecommendData = {
+  body?: {
+    taskType?: "dialog" | "task" | "background" | "coding" | "review"
+    preferSubscription?: boolean
+    currentVector?: {
+      providerID: string
+      accountId: string
+      modelID: string
+    }
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/rotation/recommend"
+}
+
+export type RotationRecommendErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type RotationRecommendError = RotationRecommendErrors[keyof RotationRecommendErrors]
+
+export type RotationRecommendResponses = {
+  /**
+   * Recommended model vector
+   */
+  200: {
+    vector?: {
+      providerID: string
+      accountId: string
+      modelID: string
+    }
+    candidates: Array<{
+      vector: {
+        providerID: string
+        accountId: string
+        modelID: string
+      }
+      score: number
+      reason: string
+    }>
+    fallbackChain: Array<{
+      providerID: string
+      accountId: string
+      modelID: string
+    }>
+  }
+}
+
+export type RotationRecommendResponse = RotationRecommendResponses[keyof RotationRecommendResponses]
+
+export type RotationFallbackData = {
+  body?: {
+    current: {
+      providerID: string
+      accountId: string
+      modelID: string
+    }
+    strategy?: "account-first" | "model-first" | "provider-first" | "any-available"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/rotation/fallback"
+}
+
+export type RotationFallbackErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type RotationFallbackError = RotationFallbackErrors[keyof RotationFallbackErrors]
+
+export type RotationFallbackResponses = {
+  /**
+   * Fallback recommendation
+   */
+  200: {
+    fallback?: {
+      providerID: string
+      accountId: string
+      modelID: string
+    }
+    reason: string
+    waitTimeMs?: number
+  }
+}
+
+export type RotationFallbackResponse = RotationFallbackResponses[keyof RotationFallbackResponses]
+
+export type FindTextData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    pattern: string
+  }
+  url: "/find"
+}
+
+export type FindTextResponses = {
+  /**
+   * Matches
+   */
+  200: Array<{
+    path: {
+      text: string
+    }
+    lines: {
+      text: string
+    }
+    line_number: number
+    absolute_offset: number
+    submatches: Array<{
+      match: {
+        text: string
+      }
+      start: number
+      end: number
+    }>
+  }>
+}
+
+export type FindTextResponse = FindTextResponses[keyof FindTextResponses]
+
+export type FindFilesData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    query: string
+    dirs?: "true" | "false"
+    type?: "file" | "directory"
+    limit?: number
+  }
+  url: "/find/file"
+}
+
+export type FindFilesResponses = {
+  /**
+   * File paths
+   */
+  200: Array<string>
+}
+
+export type FindFilesResponse = FindFilesResponses[keyof FindFilesResponses]
+
+export type FindSymbolsData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    query: string
+  }
+  url: "/find/symbol"
+}
+
+export type FindSymbolsResponses = {
+  /**
+   * Symbols
+   */
+  200: Array<Symbol>
+}
+
+export type FindSymbolsResponse = FindSymbolsResponses[keyof FindSymbolsResponses]
+
+export type FileListData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    path: string
+  }
+  url: "/file"
+}
+
+export type FileListResponses = {
+  /**
+   * Files and directories
+   */
+  200: Array<FileNode>
+}
+
+export type FileListResponse = FileListResponses[keyof FileListResponses]
+
+export type FileReadData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    path: string
+  }
+  url: "/file/content"
+}
+
+export type FileReadResponses = {
+  /**
+   * File content
+   */
+  200: FileContent
+}
+
+export type FileReadResponse = FileReadResponses[keyof FileReadResponses]
+
+export type FileStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/file/status"
+}
+
+export type FileStatusResponses = {
+  /**
+   * File status
+   */
+  200: Array<File>
+}
+
+export type FileStatusResponse = FileStatusResponses[keyof FileStatusResponses]
 
 export type InstanceDisposeData = {
   body?: never
