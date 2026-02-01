@@ -344,14 +344,14 @@ describe("session.message-v2.toModelMessage", () => {
               type: "content",
               value: [
                 { type: "text", text: "ok" },
-                { type: "media", mediaType: "image/png", data: "Zm9v" },
+                { type: "image", image: "data:image/png;base64,Zm9v" },
               ],
             },
             providerOptions: { openai: { tool: "meta" } },
           },
         ],
       },
-    ])
+    ] as any)
   })
 
   test("omits provider metadata when assistant model differs", () => {
@@ -422,7 +422,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "tool-result",
             toolCallId: "call-1",
             toolName: "bash",
-            output: { type: "text", value: "ok" },
+            output: { type: "content", value: [{ type: "text", text: "ok" }] },
           },
         ],
       },
@@ -489,7 +489,7 @@ describe("session.message-v2.toModelMessage", () => {
             type: "tool-result",
             toolCallId: "call-1",
             toolName: "bash",
-            output: { type: "text", value: "[Old tool result content cleared]" },
+            output: { type: "content", value: [{ type: "text", text: "[Old tool result content cleared]" }] },
           },
         ],
       },
@@ -667,11 +667,10 @@ describe("session.message-v2.toModelMessage", () => {
     expect(MessageV2.toModelMessages(input, model)).toStrictEqual([
       {
         role: "assistant",
-        content: [{ type: "text", text: "first" }],
-      },
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "second" }],
+        content: [
+          { type: "text", text: "first" },
+          { type: "text", text: "second" },
+        ],
       },
     ])
   })

@@ -21,6 +21,9 @@ export namespace Command {
     ),
   }
 
+  // Note: `handler` is intentionally excluded from the Zod schema because
+  // z.function() cannot be represented in JSON Schema (used for OpenAPI generation).
+  // The handler field is defined only in the TypeScript type below.
   export const Info = z
     .object({
       name: z.string(),
@@ -33,7 +36,6 @@ export namespace Command {
       template: z.promise(z.string()).or(z.string()),
       subtask: z.boolean().optional(),
       hints: z.array(z.string()),
-      handler: z.function().optional(),
     })
     .meta({
       ref: "Command",
@@ -54,7 +56,6 @@ export namespace Command {
     if (template.includes("$ARGUMENTS")) result.push("$ARGUMENTS")
     return result
   }
-
 
   export const Default = {
     INIT: "init",
@@ -112,7 +113,7 @@ export namespace Command {
               prompt.name,
               prompt.arguments
                 ? // substitute each argument with $1, $2, etc.
-                Object.fromEntries(prompt.arguments?.map((argument, i) => [argument.name, `$${i + 1}`]))
+                  Object.fromEntries(prompt.arguments?.map((argument, i) => [argument.name, `$${i + 1}`]))
                 : {},
             ).catch(reject)
             resolve(

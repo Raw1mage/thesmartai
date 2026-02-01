@@ -30,14 +30,14 @@
 
 ## 設計決策摘要
 
-| 項目 | 決策 |
-|------|------|
-| Provider 設計 | antigravity、gemini-cli 維持獨立 provider |
-| Auth 系統 | Patch origin/dev 採用 cms 的 Account 模組 |
-| 跨模型相容 | 以最大相容 origin/dev 的方式處理 |
-| Rate Limit 處理 | Toast 通知 + 依 Favorites 順序自動切換 |
-| TUI 設計 | `/admin` 完全獨立，origin/dev 導向至 cms 版 |
-| 儲存格式 | 統一使用 `accounts.json` |
+| 項目            | 決策                                        |
+| --------------- | ------------------------------------------- |
+| Provider 設計   | antigravity、gemini-cli 維持獨立 provider   |
+| Auth 系統       | Patch origin/dev 採用 cms 的 Account 模組   |
+| 跨模型相容      | 以最大相容 origin/dev 的方式處理            |
+| Rate Limit 處理 | Toast 通知 + 依 Favorites 順序自動切換      |
+| TUI 設計        | `/admin` 完全獨立，origin/dev 導向至 cms 版 |
+| 儲存格式        | 統一使用 `accounts.json`                    |
 
 ---
 
@@ -56,6 +56,7 @@ src/account/
 ```
 
 **關鍵 API**：
+
 - `Account.list(family)` - 列出該 family 所有帳號
 - `Account.add(family, info)` - 新增帳號
 - `Account.remove(family, accountId)` - 移除帳號
@@ -64,6 +65,7 @@ src/account/
 - `Account.forceFullMigration()` - 強制遷移 auth.json
 
 **輪替 API**（從 antigravity 抽取後的全域版本）：
+
 - `Account.getNextAvailable(family, provider, model)` - 取得下一個可用帳號
 - `Account.recordSuccess(accountId)` - 記錄成功請求，提升健康度
 - `Account.recordRateLimit(accountId, provider, reason, backoffMs)` - 記錄 rate limit
@@ -104,6 +106,7 @@ src/account/
 **設計目的**：每個 client identity 在 Google 端有獨立的 rate limit 配額，分開使用可獲得額外的免費資源。
 
 **檔案結構**：
+
 ```
 src/plugin/
 ├── google-api/           # API Key 認證
@@ -165,6 +168,7 @@ src/plugin/
 ```
 
 **設計原則**：
+
 - `/models` - origin/dev 原生，保持不變
 - `/provider` - origin/dev 原生，保持不變
 - `/admin` - cms 新增，整合所有管理功能
@@ -176,11 +180,13 @@ src/cli/cmd/tui/component/
 ```
 
 **三層架構**：
+
 1. **Root** - Favorites / Recents / Provider Families
 2. **Accounts** - 該 family 的帳號列表與管理
 3. **Models** - 該帳號可用的模型列表
 
 **UI 預覽**：
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Admin Control Panel                          │
@@ -205,17 +211,18 @@ src/cli/cmd/tui/component/
 
 ### 2.0 分支差異對照
 
-| 項目 | origin/dev | cms |
-|------|------------|-----|
-| Auth 儲存 | `auth.json` (扁平) | `accounts.json` (結構化) |
-| 多帳號 | ❌ 單帳號 | ✅ 每 provider 多帳號 |
-| 認證 API | `Auth.get/set/remove` | `Account.*` + Auth wrapper |
-| TUI | `/provider` (新增認證) | `/admin` (完整管理) |
-| 遷移邏輯 | 無 | 自動遷移 auth.json |
+| 項目      | origin/dev             | cms                        |
+| --------- | ---------------------- | -------------------------- |
+| Auth 儲存 | `auth.json` (扁平)     | `accounts.json` (結構化)   |
+| 多帳號    | ❌ 單帳號              | ✅ 每 provider 多帳號      |
+| 認證 API  | `Auth.get/set/remove`  | `Account.*` + Auth wrapper |
+| TUI       | `/provider` (新增認證) | `/admin` (完整管理)        |
+| 遷移邏輯  | 無                     | 自動遷移 auth.json         |
 
 ### 2.1 問題根源
 
 目前存在雙重儲存：
+
 - `auth.json` (舊版) - 扁平格式
 - `accounts.json` (新版) - 結構化多帳號格式
 
@@ -375,7 +382,10 @@ export async function get(providerID: string): Promise<Info | undefined> {
 **檔案**：`src/session/llm.ts`
 
 ```typescript
-import { sanitizeCrossModelPayloadInPlace, getModelFamily } from "../plugin/antigravity/plugin/transform/cross-model-sanitizer"
+import {
+  sanitizeCrossModelPayloadInPlace,
+  getModelFamily,
+} from "../plugin/antigravity/plugin/transform/cross-model-sanitizer"
 
 // 在建構 request payload 後、送出前
 const targetFamily = getModelFamily(input.model.id)
@@ -385,6 +395,7 @@ if (targetFamily !== "unknown") {
 ```
 
 此方案的優點：
+
 - 不修改 origin/dev 的 SDK 核心邏輯
 - 在統一入口點處理，覆蓋所有 subagent 請求
 - cross-model-sanitizer 已存在於 antigravity plugin，只需重用
@@ -396,6 +407,7 @@ if (targetFamily !== "unknown") {
 ### 4.1 行為設計
 
 當偵測到 rate limit 時：
+
 1. **Toast 通知使用者**：顯示目前模型已達上限
 2. **自動切換模型**：依照 Favorites 順序嘗試下一個可用模型
 3. **若所有 Favorites 皆不可用**：提示使用者手動選擇
@@ -412,8 +424,7 @@ async function selectBestGoogleProvider(): Promise<string> {
   // 1. 優先 Antigravity（多帳號、自動輪替）
   const agAccounts = accounts.families["antigravity"]?.accounts || {}
   const agAvailable = Object.values(agAccounts).find(
-    acc => acc.type === "subscription" &&
-           (!acc.coolingDownUntil || acc.coolingDownUntil < Date.now())
+    (acc) => acc.type === "subscription" && (!acc.coolingDownUntil || acc.coolingDownUntil < Date.now()),
   )
   if (agAvailable) return "antigravity"
 
@@ -436,7 +447,7 @@ async function selectBestGoogleProvider(): Promise<string> {
 ```typescript
 async function handleRateLimit(currentModel: string): Promise<string | null> {
   const favorites = await Favorites.list()
-  const currentIndex = favorites.findIndex(f => f.modelId === currentModel)
+  const currentIndex = favorites.findIndex((f) => f.modelId === currentModel)
 
   // 嘗試 Favorites 中的下一個模型
   for (let i = currentIndex + 1; i < favorites.length; i++) {
@@ -471,23 +482,23 @@ async function handleRateLimit(currentModel: string): Promise<string | null> {
 
 ### 5.2 需要 Patch 的 origin/dev 檔案
 
-| 檔案 | 修改內容 |
-|------|----------|
-| `src/auth/index.ts` | 導向至 Account 模組 |
-| `src/project/bootstrap.ts` | 加入遷移呼叫 |
-| `src/session/llm.ts` | 加入 cross-model sanitization |
-| `src/cli/cmd/model.ts` | 導向至 `/admin` |
+| 檔案                       | 修改內容                      |
+| -------------------------- | ----------------------------- |
+| `src/auth/index.ts`        | 導向至 Account 模組           |
+| `src/project/bootstrap.ts` | 加入遷移呼叫                  |
+| `src/session/llm.ts`       | 加入 cross-model sanitization |
+| `src/cli/cmd/model.ts`     | 導向至 `/admin`               |
 
 ### 5.3 新增的 cms 專屬檔案
 
-| 檔案 | 說明 |
-|------|------|
-| `src/account/index.ts` | 多帳號管理核心 |
-| `src/account/types.ts` | 型別定義 |
-| `src/cli/cmd/admin.ts` | /admin 指令註冊 |
-| `src/cli/cmd/tui/component/dialog-admin.tsx` | Admin TUI |
-| `src/plugin/gemini-cli/*` | Gemini CLI OAuth plugin |
-| `src/plugin/antigravity/*` | Antigravity OAuth plugin |
+| 檔案                                         | 說明                     |
+| -------------------------------------------- | ------------------------ |
+| `src/account/index.ts`                       | 多帳號管理核心           |
+| `src/account/types.ts`                       | 型別定義                 |
+| `src/cli/cmd/admin.ts`                       | /admin 指令註冊          |
+| `src/cli/cmd/tui/component/dialog-admin.tsx` | Admin TUI                |
+| `src/plugin/gemini-cli/*`                    | Gemini CLI OAuth plugin  |
+| `src/plugin/antigravity/*`                   | Antigravity OAuth plugin |
 
 ---
 
@@ -528,16 +539,19 @@ ls ~/.local/share/opencode/auth.json           # 應不存在
 ## 七、時程與優先序
 
 ### Phase 1：Auth 統一 (高優先) ✅ 已完成
+
 1. ✅ Account 模組實作
 2. ✅ forceFullMigration() 實作
 3. ✅ Bootstrap 整合
 4. ✅ Auth.get() 簡化 (移除 legacy fallback)
 
 ### Phase 2：跨模型相容 (高優先) ✅ 已完成
+
 1. ✅ cross-model-sanitizer 實作
 2. ✅ LLM.stream() 整合 (在 antigravity request 層)
 
 ### Phase 3：全域帳號輪替機制 (高優先) ✅ 已完成
+
 > 目標：將 Antigravity 的輪替邏輯抽象為全域 Account 層級功能
 
 1. ✅ 從 antigravity/plugin/rotation.ts 抽取核心邏輯
@@ -566,6 +580,7 @@ ls ~/.local/share/opencode/auth.json           # 應不存在
    - 顯示 rate limit 原因與等待時間
 
 ### Phase 4：TUI 完善 (中優先) ✅ 完成
+
 1. ✅ Level 1 (Root) 實作
 2. ✅ Level 2 (Accounts) 實作
 3. ✅ Level 3 (Models) 實作
@@ -576,12 +591,12 @@ ls ~/.local/share/opencode/auth.json           # 應不存在
 
 ## 八、風險與緩解
 
-| 風險 | 緩解措施 |
-|------|----------|
-| 遷移失敗導致無法登入 | 保留 auth.json.migrated 備份 |
-| origin/dev 大幅變動 | 模組盡量獨立，減少耦合 |
-| Cross-model sanitization 不完整 | 增加單元測試覆蓋 |
-| Rate limit 偵測不準確 | 依 HTTP status code 判斷 (429) |
+| 風險                            | 緩解措施                       |
+| ------------------------------- | ------------------------------ |
+| 遷移失敗導致無法登入            | 保留 auth.json.migrated 備份   |
+| origin/dev 大幅變動             | 模組盡量獨立，減少耦合         |
+| Cross-model sanitization 不完整 | 增加單元測試覆蓋               |
+| Rate limit 偵測不準確           | 依 HTTP status code 判斷 (429) |
 
 ---
 
@@ -589,18 +604,19 @@ ls ~/.local/share/opencode/auth.json           # 應不存在
 
 ### 9.1 分支差異總覽
 
-| 區域 | origin/dev | cms | 合併策略 |
-|------|-----------|-----|----------|
-| plugin/index.ts | `Instance.state()` 快取, port 4096 | `_loading` Promise, port 1080, 額外函數 | 採用 origin/dev 結構，保留 cms 內部插件 |
-| plugin/ 目錄 | 只有 codex, copilot | 額外有 antigravity/, gemini-cli/, anthropic.ts | 保留 cms 獨有模組 |
-| auth/index.ts | 簡單 auth.json 讀寫 | 複雜 Account 模組整合 | **保留 cms 版本** |
-| account/index.ts | ❌ 不存在 | ✅ 多帳號管理 | **保留 cms 版本** |
-| provider/provider.ts | 無 ANTIGRAVITY 相關 | ANTIGRAVITY_WHITELIST, IGNORED_MODELS | 合併 origin/dev 更新，保留 cms 獨有邏輯 |
-| TUI 元件 | 標準版 | dialog-admin, dialog-account 等 | **保留 cms 版本** |
+| 區域                 | origin/dev                         | cms                                            | 合併策略                                |
+| -------------------- | ---------------------------------- | ---------------------------------------------- | --------------------------------------- |
+| plugin/index.ts      | `Instance.state()` 快取, port 4096 | `_loading` Promise, port 1080, 額外函數        | 採用 origin/dev 結構，保留 cms 內部插件 |
+| plugin/ 目錄         | 只有 codex, copilot                | 額外有 antigravity/, gemini-cli/, anthropic.ts | 保留 cms 獨有模組                       |
+| auth/index.ts        | 簡單 auth.json 讀寫                | 複雜 Account 模組整合                          | **保留 cms 版本**                       |
+| account/index.ts     | ❌ 不存在                          | ✅ 多帳號管理                                  | **保留 cms 版本**                       |
+| provider/provider.ts | 無 ANTIGRAVITY 相關                | ANTIGRAVITY_WHITELIST, IGNORED_MODELS          | 合併 origin/dev 更新，保留 cms 獨有邏輯 |
+| TUI 元件             | 標準版                             | dialog-admin, dialog-account 等                | **保留 cms 版本**                       |
 
 ### 9.2 關鍵檔案合併計畫
 
 #### A. plugin/index.ts
+
 ```
 origin/dev 變更：
 - Instance.state() 取代手動 Promise 快取
@@ -617,6 +633,7 @@ cms 需保留：
 ```
 
 #### B. provider/provider.ts
+
 ```
 origin/dev 變更：
 - SDK 路徑: "./sdk/copilot" 取代 "./sdk/openai-compatible/src"
@@ -639,6 +656,7 @@ cms 需保留：
 ```
 
 #### C. auth/index.ts
+
 ```
 保留 cms 版本 - 不合併 origin/dev 變更
 原因：cms 的 Account 模組是核心功能，origin/dev 簡化版不適用
@@ -650,6 +668,7 @@ cms 需保留：
 
 **根本原因**：
 npm 套件 `opencode-anthropic-auth@0.0.13` 的 user-agent 設定錯誤：
+
 - 套件設定：`user-agent: claude-cli/2.1.2 (external, cli)`
 - 正確設定：`user-agent: anthropic-claude-code/0.5.1`
 
@@ -657,12 +676,12 @@ npm 套件 `opencode-anthropic-auth@0.0.13` 的 user-agent 設定錯誤：
 
 **解決方案選項**：
 
-| 方案 | 優點 | 缺點 |
-|------|-----|------|
+| 方案               | 優點     | 缺點                         |
+| ------------------ | -------- | ---------------------------- |
 | A. Patch npm cache | 立即生效 | 非持久性，bun install 會覆蓋 |
-| B. Fork npm 套件 | 長期解決 | 需要維護自己的 fork |
-| C. 內部插件覆寫 | cms 可控 | 需確保不與 npm 衝突 |
-| D. 回報上游修復 | 根本解決 | 等待時間不確定 |
+| B. Fork npm 套件   | 長期解決 | 需要維護自己的 fork          |
+| C. 內部插件覆寫    | cms 可控 | 需確保不與 npm 衝突          |
+| D. 回報上游修復    | 根本解決 | 等待時間不確定               |
 
 **建議方案**：C - 建立 cms 內部 anthropic 插件，完全覆寫 npm 套件行為
 
@@ -690,3 +709,39 @@ git merge cms-merge-dev
 1. **高優先**：修復 Anthropic OAuth (方案 C)
 2. **中優先**：合併 provider.ts 的 SDK 路徑修正
 3. **低優先**：合併 plugin/index.ts 結構優化
+
+---
+
+# Feature: Production binary build and Docker deployment
+
+## Requirements
+
+- Build the latest opencode binary artifacts for the linux/amd64 and linux/arm64 musl baselines.
+- Regenerate any dependent SDK outputs so clients stay in sync with the new API surface.
+- Run the required automated tests to validate the release candidate before packaging.
+- Package the binaries into the provided production Docker image(s) and verify the runtime behavior locally.
+
+## Scope
+
+- IN: `bun test`, SDK regeneration via `packages/sdk/js/script/build.ts`, `bun run build`, Docker image builds for amd64 and arm64, and local verification of the resulting images.
+- OUT: pushing images to any external registry, deploying to an orchestrator, or modifying unrelated services.
+
+## Approach
+
+- Regenerate the SDK client artifacts from the current `opencode` OpenAPI spec so they reflect the latest interfaces.
+- Run the existing test suite to ensure no regressions before creating new binaries.
+- Execute `bun run build` to create the linux/x64 and linux/arm64 musl binaries required by the Dockerfile.
+- Build the Docker images twice (one per target arch) using the multi-stage `Dockerfile`, tagging them for local verification.
+- Run the newly built image(s) with `--version` to confirm the bundled binary starts correctly.
+
+## Tasks
+
+1. [ ] Run `bun test` (and any other pre-build validation) to confirm the codebase is stable.
+2. [ ] Execute `packages/sdk/js/script/build.ts` from the sdk package to regenerate the client SDK outputs.
+3. [ ] Run `bun run build` inside `packages/opencode` to compile the linux/amd64 and linux/arm64 binaries, ensuring the `dist/.../bin/opencode` files exist.
+4. [ ] Build the Docker images for `linux/amd64` and `linux/arm64` using `docker build` with the `TARGETARCH` build arg, tagging them (e.g., `opencode:prod-amd64` and `opencode:prod-arm64`).
+5. [ ] Validate the images by running each container with `opencode --version` to ensure the binary launches.
+
+## Open Questions
+
+- None at this time; proceeding with the above steps unless new blockers emerge.
