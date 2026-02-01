@@ -142,6 +142,55 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         )
       }
 
+      // Auto-cleanup: Remove models from favorites/recent that no longer exist in providers
+      function cleanupInvalidModels() {
+        if (!modelStore.ready) return
+        const providerIds = new Set(sync.data.provider.map(p => p.id))
+        if (providerIds.size === 0) return // Don't cleanup if providers not loaded yet
+
+        let changed = false
+
+        // Cleanup favorites
+        const validFavorites = modelStore.favorite.filter(item => {
+          const provider = sync.data.provider.find(p => p.id === item.providerID)
+          const isValid = !!provider?.models[item.modelID]
+          if (!isValid && provider) {
+            // Provider exists but model doesn't - remove it
+            console.log(`[auto-cleanup] Removing invalid favorite: ${item.providerID}/${item.modelID}`)
+            changed = true
+            return false
+          }
+          return true // Keep if provider not loaded or model valid
+        })
+
+        // Cleanup recent
+        const validRecent = modelStore.recent.filter(item => {
+          const provider = sync.data.provider.find(p => p.id === item.providerID)
+          const isValid = !!provider?.models[item.modelID]
+          if (!isValid && provider) {
+            console.log(`[auto-cleanup] Removing invalid recent: ${item.providerID}/${item.modelID}`)
+            changed = true
+            return false
+          }
+          return true
+        })
+
+        if (changed) {
+          setModelStore("favorite", validFavorites)
+          setModelStore("recent", validRecent)
+          save()
+        }
+      }
+
+      // Run cleanup when provider data changes
+      createEffect(() => {
+        // Track provider data changes
+        const _providers = sync.data.provider
+        if (_providers.length > 0 && modelStore.ready) {
+          cleanupInvalidModels()
+        }
+      })
+
       file
         .json()
         .then((x) => {
@@ -155,6 +204,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         .finally(() => {
           setModelStore("ready", true)
           if (state.pending) save()
+          // Run initial cleanup after loading
+          cleanupInvalidModels()
         })
 
       const args = useArgs()
@@ -289,9 +340,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           )
           save()
         },
-        set(model: { providerID: string; modelID: string }, options?: { recent?: boolean }) {
+        set(model: { providerID: string; modelID: string }, options?: { recent?: boolean; skipValidation?: boolean }) {
           batch(() => {
-            if (!isModelValid(model)) {
+            // Skip validation for dynamic models (e.g., Google API models fetched from API)
+            if (!options?.skipValidation && !isModelValid(model)) {
               toast.show({
                 message: `Model ${model.providerID}/${model.modelID} is not valid`,
                 variant: "warning",
@@ -311,9 +363,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             }
           })
         },
-        toggleFavorite(model: { providerID: string; modelID: string }) {
+        toggleFavorite(model: { providerID: string; modelID: string }, options?: { skipValidation?: boolean }) {
           batch(() => {
-            if (!isModelValid(model)) {
+            // Skip validation for dynamic models (e.g., Google API models fetched from API)
+            // These models are already validated at their source and won't be in provider.models
+            if (!options?.skipValidation && !isModelValid(model)) {
               toast.show({
                 message: `Model ${model.providerID}/${model.modelID} is not valid`,
                 variant: "warning",

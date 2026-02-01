@@ -66,7 +66,9 @@ export function DialogModel(props: { providerID?: string }) {
   const probeAndSelectModel = (providerID: string, modelID: string, origin?: string) => {
     // Skip probe - directly select the model
     debugCheckpoint("model", "selected (probe skipped)", { provider: providerID, model: modelID, origin })
-    local.model.set({ providerID: providerID, modelID: modelID }, { recent: true })
+    // Skip validation for Google API dynamic models (not in provider.models registry)
+    const isGoogleDynamic = family(providerID) === "google-api"
+    local.model.set({ providerID: providerID, modelID: modelID }, { recent: true, skipValidation: isGoogleDynamic })
     dialog.clear()
   }
 
@@ -583,7 +585,9 @@ export function DialogModel(props: { providerID?: string }) {
           onTrigger: (option: any) => {
             const val = option.value
             if (val && typeof val === "object" && val.providerID && val.modelID) {
-              local.model.toggleFavorite(val)
+              // Skip validation for Google API dynamic models (not in provider.models registry)
+              const isGoogleDynamic = family(val.providerID) === "google-api"
+              local.model.toggleFavorite(val, { skipValidation: isGoogleDynamic })
             }
           },
         },
@@ -650,7 +654,9 @@ export function DialogModel(props: { providerID?: string }) {
               if (modelVal.origin === "recent") {
                 local.model.removeFromRecent(modelVal)
               } else if (modelVal.origin === "favorite") {
-                local.model.toggleFavorite(modelVal)
+                // Skip validation when removing favorites (model already exists in favorites)
+                const isGoogleDynamic = family(modelVal.providerID) === "google-api"
+                local.model.toggleFavorite(modelVal, { skipValidation: isGoogleDynamic })
               } else {
                 local.model.toggleHidden(modelVal)
               }
