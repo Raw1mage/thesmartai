@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.67] - 2026-02-02
+
+### Fixed
+- **Admin dialog navigation**: Fixed sub-dialogs (View/Edit account) returning to admin homepage instead of staying in account list. Root cause: `dialog.tsx` global escape handler was popping the stack before `markDialogClosed()` was called, causing `goBack()` to execute.
+- **Google API model validation**: Fixed "model is not valid" error when adding Google API dynamic models to Favorites. Added `skipValidation` option to `toggleFavorite()` and `model.set()` for models fetched dynamically from Google AI Studio API.
+- **Google API account operations**: Fixed View/Edit/Delete not working for Google-API accounts stored in legacy "google" family by tracking `coreFamily` for proper account lookup.
+
+### Changed
+- **Model documentation consolidated**: Merged `MODEL_REGISTRY.md` into `AGENTS.md`. All model selection policy, billing types, and provider information now in one file.
+- **Model names updated**: Updated OpenAI model references from `gpt-4o-mini` to `gpt-5.1-codex-mini` to reflect current available models.
+- **Google API policy clarified**: Emphasized that Google API Free Tier is RPD-based (計次型), not token-based. Should NOT be used for trivial tasks like title generation.
+
+### Removed
+- **MODEL_REGISTRY.md**: Content merged into AGENTS.md.
+
 ## [1.1.66] - 2026-02-01
 
 ### Added

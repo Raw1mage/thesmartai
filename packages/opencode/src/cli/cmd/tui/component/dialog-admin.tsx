@@ -69,6 +69,31 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     const [selectedProviderID, setSelectedProviderID] = createSignal<string | null>(null)
     const [lockBack, setLockBack] = createSignal(false)
     const [prevStep, setPrevStep] = createSignal(step())
+
+    // Collapse state for Favorites and Recents sections
+    const [favoritesCollapsed, setFavoritesCollapsed] = createSignal(false)
+    const [recentsCollapsed, setRecentsCollapsed] = createSignal(false)
+
+    // Track when a sub-dialog was recently closed to prevent goBack from triggering
+    // Use both a flag and timestamp for maximum reliability
+    let dialogClosedFlag = false
+    let dialogClosedAt = 0
+    const DIALOG_CLOSE_DEBOUNCE_MS = 200  // Increased from 100ms for reliability
+
+    const markDialogClosed = () => {
+        dialogClosedFlag = true
+        dialogClosedAt = Date.now()
+        // Reset flag after longer delay to handle any edge cases
+        setTimeout(() => {
+            dialogClosedFlag = false
+        }, DIALOG_CLOSE_DEBOUNCE_MS + 50)
+    }
+
+    const wasDialogRecentlyClosed = () => {
+        // Check both the flag and the timestamp for maximum reliability
+        if (dialogClosedFlag) return true
+        return Date.now() - dialogClosedAt < DIALOG_CLOSE_DEBOUNCE_MS
+    }
     const [currentOption, setCurrentOption] = createSignal<DialogSelectOption<unknown> | null>(null)
 
 
@@ -127,20 +152,25 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
     const openGoogleAdd = () => {
         debugCheckpoint("admin", "open google add dialog")
-        dialog.push(() => (
-            <DialogGoogleApiAdd
-                onCancel={() => {
-                    debugCheckpoint("admin", "google add cancel")
-                    dialog.pop()
-                    forceRefresh()
-                }}
-                onSaved={() => {
-                    debugCheckpoint("admin", "google add saved")
-                    dialog.pop()
-                    forceRefresh()
-                }}
-            />
-        ))
+        dialog.push(
+            () => (
+                <DialogGoogleApiAdd
+                    onCancel={() => {
+                        markDialogClosed()
+                        debugCheckpoint("admin", "google add cancel")
+                        dialog.pop()
+                        forceRefresh()
+                    }}
+                    onSaved={() => {
+                        markDialogClosed()
+                        debugCheckpoint("admin", "google add saved")
+                        dialog.pop()
+                        forceRefresh()
+                    }}
+                />
+            ),
+            markDialogClosed
+        )
     }
 
     useKeyboard((evt: KeyEvent) => {
@@ -382,8 +412,26 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     const probeAndSelectModel = (providerID: string, modelID: string, origin?: string) => {
         // Skip probe - directly select the model
         debugCheckpoint("admin", "model selected (probe skipped)", { provider: providerID, model: modelID, origin })
-        local.model.set({ providerID: providerID, modelID: modelID }, { recent: true })
+        // Skip validation for Google API dynamic models (not in provider.models registry)
+        const isGoogleDynamic = family(providerID) === "google-api"
+        local.model.set({ providerID: providerID, modelID: modelID }, { recent: true, skipValidation: isGoogleDynamic })
         dialog.clear()
+    }
+
+    // Whitelist of Google API models to show (by model ID pattern)
+    // User-specified list: Flash variants, Gemma 3, Embedding, Robotics
+    const GOOGLE_MODEL_WHITELIST = [
+        "gemini-2.5-flash",           // Gemini 2.5 Flash (includes TTS, Native Audio Dialog variants)
+        "gemini-2.5-pro",             // Gemini 2.5 Pro (includes TTS variant)
+        "gemini-3-flash",             // Gemini 3 Flash
+        "gemma-3-",                   // Gemma 3 variants (1B, 2B, 4B, 12B, 27B)
+        "gemini-embedding",           // Gemini Embedding
+        "gemini-robotics",            // Gemini Robotics ER
+    ]
+
+    const isGoogleModelWhitelisted = (id: string) => {
+        const lower = id.toLowerCase()
+        return GOOGLE_MODEL_WHITELIST.some(pattern => lower.includes(pattern.toLowerCase()))
     }
 
     const loadGoogleModels = async (force = false) => {
@@ -417,7 +465,8 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                         if (!id) return null
                         return { id, title }
                     })
-                    .filter(Boolean) as { id: string; title: string }[]
+                    .filter(Boolean)
+                    .filter((m: { id: string; title: string }) => isGoogleModelWhitelisted(m.id)) as { id: string; title: string }[]
                 setGoogleModels(normalized)
             } catch (error) {
                 setGoogleModelError(error instanceof Error ? error.message : String(error))
@@ -471,7 +520,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                         value: { providerID: item.providerID, modelID: item.modelID, origin: item.origin },
                         title: cleanName,
                         description: providerLabel,
-                        category: item.origin === 'favorite' ? "Favorites" : "Recents",
+                        // No category - the collapsible header serves as the section title
                         footer: shouldShowFree(item.providerID, m) ? "Free" : undefined,
                         disabled: (p.id === "opencode" && m.id.includes("-nano")),
                         onSelect: () => {
@@ -482,14 +531,38 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                 })
             }
 
-            // 1. Favorites (Directly listed)
+            // 1. Favorites (Collapsible)
             if (favorites.length > 0) {
-                list.push(...getModelOptions(favorites.map(x => ({ ...x, origin: 'favorite' }))))
+                const isCollapsed = favoritesCollapsed()
+                list.push({
+                    value: { type: '__section_header__', section: 'favorites' },
+                    title: `${isCollapsed ? '▸' : '▾'} Favorites (${favorites.length})`,
+                    description: isCollapsed ? "Press Enter to expand" : "Press Enter to collapse",
+                    onSelect: () => {
+                        debugCheckpoint("admin", "toggle favorites collapsed", { collapsed: !isCollapsed })
+                        setFavoritesCollapsed(!isCollapsed)
+                    }
+                })
+                if (!isCollapsed) {
+                    list.push(...getModelOptions(favorites.map(x => ({ ...x, origin: 'favorite' }))))
+                }
             }
 
-            // 2. Recents (Directly listed)
+            // 2. Recents (Collapsible)
             if (recents.length > 0) {
-                list.push(...getModelOptions(recents.map(x => ({ ...x, origin: 'recent' }))))
+                const isCollapsed = recentsCollapsed()
+                list.push({
+                    value: { type: '__section_header__', section: 'recents' },
+                    title: `${isCollapsed ? '▸' : '▾'} Recents (${recents.length})`,
+                    description: isCollapsed ? "Press Enter to expand" : "Press Enter to collapse",
+                    onSelect: () => {
+                        debugCheckpoint("admin", "toggle recents collapsed", { collapsed: !isCollapsed })
+                        setRecentsCollapsed(!isCollapsed)
+                    }
+                })
+                if (!isCollapsed) {
+                    list.push(...getModelOptions(recents.map(x => ({ ...x, origin: 'recent' }))))
+                }
             }
 
             // 3. Families - WYSIWYG: No hidden whitelists
@@ -538,9 +611,18 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                 const providers = groupedProviders().get(fam) || []
 
                 const displayName = label(fam, fam)
-                // Reverse-normalize for accounts.json lookup (google-api -> google)
-                const accountsKey = fam === "google-api" ? "google" : fam
-                const familyData = coreAll()?.[accountsKey]
+                // For google-api, merge accounts from both "google" (legacy) and "google-api" families
+                const familyData = fam === "google-api"
+                    ? (() => {
+                        const legacy = coreAll()?.["google"]
+                        const current = coreAll()?.["google-api"]
+                        if (!legacy && !current) return undefined
+                        return {
+                            activeAccount: current?.activeAccount || legacy?.activeAccount,
+                            accounts: { ...(legacy?.accounts || {}), ...(current?.accounts || {}) }
+                        }
+                    })()
+                    : coreAll()?.[fam]
                 const allIds = familyData ? Object.keys(familyData.accounts || {}) : []
                 const isFamilySuffix = (id: string) => id === `${fam}-subscription-${fam}` || id === `${fam}-api-${fam}`
                 const isGeneric = (id: string) =>
@@ -620,25 +702,49 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
             // - Use agManager for antigravity.
 
             if (fam !== "antigravity") {
-                // Reverse-normalize for accounts.json lookup (google-api -> google)
-                const accountsKey = fam === "google-api" ? "google" : fam
-                const familyData = coreAll()?.[accountsKey]
-                const accounts = familyData?.accounts || {}
-                const activeId = familyData?.activeAccount
+                // For google-api, merge accounts from both "google" (legacy) and "google-api" families
+                // Track which family each account actually belongs to for proper lookup
+                const accountsWithFamily: Array<{ id: string; info: any; coreFamily: string }> = []
+
+                if (fam === "google-api") {
+                    const legacy = coreAll()?.["google"]
+                    const current = coreAll()?.["google-api"]
+                    if (legacy?.accounts) {
+                        for (const [id, info] of Object.entries(legacy.accounts)) {
+                            accountsWithFamily.push({ id, info, coreFamily: "google" })
+                        }
+                    }
+                    if (current?.accounts) {
+                        for (const [id, info] of Object.entries(current.accounts)) {
+                            accountsWithFamily.push({ id, info, coreFamily: "google-api" })
+                        }
+                    }
+                } else {
+                    const familyData = coreAll()?.[fam]
+                    if (familyData?.accounts) {
+                        for (const [id, info] of Object.entries(familyData.accounts)) {
+                            accountsWithFamily.push({ id, info, coreFamily: fam })
+                        }
+                    }
+                }
+
+                const activeId = fam === "google-api"
+                    ? (coreAll()?.["google-api"]?.activeAccount || coreAll()?.["google"]?.activeAccount)
+                    : coreAll()?.[fam]?.activeAccount
+
                 const isFamilySuffix = (id: string) => id === `${fam}-subscription-${fam}` || id === `${fam}-api-${fam}`
                 const isGeneric = (id: string) =>
                     id === fam || id === "google-api" || id === "gemini-cli" || id === "antigravity" || isFamilySuffix(id)
-                const hasSpecific = Object.keys(accounts).some(id => !isGeneric(id))
+                const hasSpecific = accountsWithFamily.some(a => !isGeneric(a.id))
 
-                for (const entry of Object.entries(accounts)) {
-                    const id = entry[0]
-                    const info = entry[1] as any
+                for (const { id, info, coreFamily } of accountsWithFamily) {
                     if (hasSpecific && isGeneric(id)) continue
 
                     const displayName = Account.getDisplayName(id, info, fam) || info?.name || id
                     accountMap.set(id, {
                         id: id,
                         coreId: id,
+                        coreFamily: coreFamily,
                         name: displayName,
                         active: activeId === id,
                         email: info?.email
@@ -712,12 +818,13 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                     return {
                         value: p.id,
                         coreId: p.coreId,
+                        coreFamily: p.coreFamily || fam,
                         title: title,
                         category: label(fam, fam),
                         icon: "👤",
                         onSelect: async () => {
-                            debugCheckpoint("admin", "select account", { family: fam, id: p.id, coreId: p.coreId })
-                            await handleSetActive(fam, p.coreId || p.id, p.id)
+                            debugCheckpoint("admin", "select account", { family: fam, id: p.id, coreId: p.coreId, coreFamily: p.coreFamily })
+                            await handleSetActive(p.coreFamily || fam, p.coreId || p.id, p.id)
                             await refreshAntigravity()
                             setSelectedProviderID(fam)
                             setStepLogged("model_select", "select account")
@@ -769,9 +876,11 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
             const showAll = showHidden()
             const isGoogleProvider = family(providerID) === "google-api"
+            // Use base family ID for model values (favorites, validation expect base provider ID like "google-api", not account-specific "google-api-xxx")
+            const baseProviderID = family(providerID) || providerID
             const hiddenCheck = (mid: string) => {
                 if (showAll) return true
-                return !local.model.hidden().some((h) => h.providerID === providerID && h.modelID === mid)
+                return !local.model.hidden().some((h) => h.providerID === baseProviderID && h.modelID === mid)
             }
 
             const baseEntries = pipe(
@@ -780,7 +889,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                 filter(([_, info]) => info.status !== "deprecated"),
                 filter(([mid]) => hiddenCheck(mid)),
                 map(([mid, info]) => {
-                    const isFav = favorites.some((f) => f.providerID === providerID && f.modelID === mid)
+                    const isFav = favorites.some((f) => f.providerID === baseProviderID && f.modelID === mid)
                     const pAny = p as any
 
                     const isRateLimited = pAny.coolingDownUntil && pAny.coolingDownUntil > Date.now()
@@ -788,7 +897,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                     const isActionable = isRateLimited || isBlocked
 
                     return {
-                        value: { providerID: providerID, modelID: mid },
+                        value: { providerID: baseProviderID, modelID: mid },
                         title: info.name ?? mid,
                         category: "Models",
                         gutter: isFav ? <text fg={theme.accent}>⭐</text> : undefined,
@@ -807,8 +916,8 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                             ? <text fg={theme.error as any}>X</text>
                             : (shouldShowFree(providerID, info) ? "Free" : undefined),
                         onSelect: () => {
-                            debugCheckpoint("admin", "select model", { provider: providerID, model: mid })
-                            probeAndSelectModel(providerID, mid)
+                            debugCheckpoint("admin", "select model", { provider: baseProviderID, model: mid })
+                            probeAndSelectModel(baseProviderID, mid)
                         },
                     }
                 }),
@@ -821,18 +930,18 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                     .filter((model) => hiddenCheck(model.id) && !existingIds.has(model.id))
                     .map((model) => {
                         const isFav = favorites.some(
-                            (f) => f.providerID === providerID && f.modelID === model.id,
+                            (f) => f.providerID === baseProviderID && f.modelID === model.id,
                         )
                         return {
-                            value: { providerID: providerID, modelID: model.id },
+                            value: { providerID: baseProviderID, modelID: model.id },
                             title: model.title,
                             category: "Models",
                             gutter: isFav ? <text fg={theme.accent}>⭐</text> : undefined,
                             description: "Google AI Studio list",
                             footer: undefined,
                             onSelect: () => {
-                                debugCheckpoint("admin", "select dynamic model", { provider: providerID, model: model.id })
-                                probeAndSelectModel(providerID, model.id)
+                                debugCheckpoint("admin", "select dynamic model", { provider: baseProviderID, model: model.id })
+                                probeAndSelectModel(baseProviderID, model.id)
                             },
                         }
                     })
@@ -956,6 +1065,18 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
     // ---- BACK NAVIGATION ----
     const goBack = () => {
+        // Skip if there's a sub-dialog on top (like View/Edit dialogs)
+        // The main dialog (DialogAdmin itself) is NOT counted - only pushed sub-dialogs
+        // When a sub-dialog is open, dialog.stack.length > 1
+        if (dialog.stack.length > 1) {
+            debugCheckpoint("admin", "goBack skipped - sub-dialog open", { stackLength: dialog.stack.length })
+            return
+        }
+        // Skip if a sub-dialog was just closed (the same key event that closed it might trigger goBack)
+        if (wasDialogRecentlyClosed()) {
+            debugCheckpoint("admin", "goBack skipped - dialog recently closed", { flag: dialogClosedFlag, elapsed: Date.now() - dialogClosedAt })
+            return
+        }
         if (lockBack() && step() === "account_select") return
         if (query() !== "") {
             debugCheckpoint("admin", "back cleared filter", { step: step(), query: query() })
@@ -1017,7 +1138,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                         disabled: false,
                         onTrigger: () => {
                             debugCheckpoint("admin", "open model health dashboard via tab")
-                            dialog.push(() => <DialogModelHealth />)
+                            dialog.push(() => <DialogModelHealth />, markDialogClosed)
                         },
                     },
                     // MODEL STEP KEYBINDS
@@ -1030,7 +1151,9 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                             const val = option.value
                             if (val && typeof val === "object" && val.providerID && val.modelID) {
                                 debugCheckpoint("admin", "toggle favorite", { provider: val.providerID, model: val.modelID })
-                                local.model.toggleFavorite(val)
+                                // Skip validation for Google API models (dynamic models not in provider.models registry)
+                                const isGoogleDynamic = family(val.providerID) === "google-api"
+                                local.model.toggleFavorite(val, { skipValidation: isGoogleDynamic })
                             }
                         },
                     },
@@ -1076,7 +1199,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                             if (hasOAuth) {
                                 // Provider has OAuth support - use DialogProviderList which handles OAuth flow
                                 debugCheckpoint("admin", "add keybind provider with oauth", { family: fam, methods: authMethods?.map(m => m.label) })
-                                dialog.push(() => <DialogProviderList providerID={fam} />)
+                                dialog.push(() => <DialogProviderList providerID={fam} />, markDialogClosed)
                                 return
                             }
 
@@ -1087,23 +1210,28 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                                 const envVar = providerData.env[0] // Use first env var
                                 const providerName = providerData.name || fam
                                 debugCheckpoint("admin", "add keybind models.dev provider", { family: fam, envVar })
-                                dialog.push(() => (
-                                    <DialogApiKeyAdd
-                                        providerID={fam}
-                                        providerName={providerName}
-                                        envVar={envVar}
-                                        onCancel={() => {
-                                            debugCheckpoint("admin", "apikey add cancel")
-                                            dialog.pop()
-                                            forceRefresh()
-                                        }}
-                                        onSaved={() => {
-                                            debugCheckpoint("admin", "apikey add saved")
-                                            dialog.pop()
-                                            forceRefresh()
-                                        }}
-                                    />
-                                ))
+                                dialog.push(
+                                    () => (
+                                        <DialogApiKeyAdd
+                                            providerID={fam}
+                                            providerName={providerName}
+                                            envVar={envVar}
+                                            onCancel={() => {
+                                                markDialogClosed()
+                                                debugCheckpoint("admin", "apikey add cancel")
+                                                dialog.pop()
+                                                forceRefresh()
+                                            }}
+                                            onSaved={() => {
+                                                markDialogClosed()
+                                                debugCheckpoint("admin", "apikey add saved")
+                                                dialog.pop()
+                                                forceRefresh()
+                                            }}
+                                        />
+                                    ),
+                                    markDialogClosed
+                                )
                                 return
                             }
 
@@ -1123,29 +1251,37 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                             const fam = selectedFamily()
                             if (!fam) return
 
-                            // Use coreId for account lookup (option.value may not match core account IDs)
+                            // Use coreFamily for account lookup (accounts may be stored in different family than displayed)
                             const accountId = option.coreId || val
-                            const accountInfo = await Account.get(fam, accountId)
+                            const lookupFamily = option.coreFamily || fam
+                            const accountInfo = await Account.get(lookupFamily, accountId)
                             if (!accountInfo) {
                                 toast.show({ message: "Account not found", variant: "error", duration: 2000 })
                                 return
                             }
 
-                            debugCheckpoint("admin", "edit account", { family: fam, id: accountId })
-                            dialog.push(() => (
-                                <DialogAccountEdit
-                                    family={fam}
-                                    accountId={accountId}
-                                    currentName={accountInfo.name}
-                                    onCancel={() => {
-                                        dialog.pop()
-                                    }}
-                                    onSaved={() => {
-                                        dialog.pop()
-                                        forceRefresh()
-                                    }}
-                                />
-                            ))
+                            debugCheckpoint("admin", "edit account", { family: lookupFamily, id: accountId })
+                            // Pass markDialogClosed as onClose to dialog.push so it's called
+                            // when dialog.tsx's escape handler pops the stack (before our keybinds run)
+                            dialog.push(
+                                () => (
+                                    <DialogAccountEdit
+                                        family={lookupFamily}
+                                        accountId={accountId}
+                                        currentName={accountInfo.name}
+                                        onCancel={() => {
+                                            markDialogClosed()
+                                            dialog.pop()
+                                        }}
+                                        onSaved={() => {
+                                            markDialogClosed()
+                                            dialog.pop()
+                                            forceRefresh()
+                                        }}
+                                    />
+                                ),
+                                markDialogClosed  // Called by dialog.tsx on escape BEFORE stack pop
+                            )
                         }
                     },
                     // VIEW ACCOUNT JSON
@@ -1160,23 +1296,32 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                             const fam = selectedFamily()
                             if (!fam) return
 
-                            // Use coreId for account lookup (option.value may not match core account IDs)
+                            // Use coreFamily for account lookup (accounts may be stored in different family than displayed)
                             const accountId = option.coreId || val
-                            const accountInfo = await Account.get(fam, accountId)
+                            const lookupFamily = option.coreFamily || fam
+                            const accountInfo = await Account.get(lookupFamily, accountId)
                             if (!accountInfo) {
                                 toast.show({ message: "Account not found", variant: "error", duration: 2000 })
                                 return
                             }
 
-                            debugCheckpoint("admin", "view account", { family: fam, id: accountId })
-                            dialog.push(() => (
-                                <DialogAccountView
-                                    family={fam}
-                                    accountId={accountId}
-                                    accountInfo={accountInfo}
-                                    onClose={() => dialog.pop()}
-                                />
-                            ))
+                            debugCheckpoint("admin", "view account", { family: lookupFamily, id: accountId })
+                            // Pass markDialogClosed as onClose to dialog.push so it's called
+                            // when dialog.tsx's escape handler pops the stack (before our keybinds run)
+                            dialog.push(
+                                () => (
+                                    <DialogAccountView
+                                        family={lookupFamily}
+                                        accountId={accountId}
+                                        accountInfo={accountInfo}
+                                        onClose={() => {
+                                            markDialogClosed()
+                                            dialog.pop()
+                                        }}
+                                    />
+                                ),
+                                markDialogClosed  // Called by dialog.tsx on escape BEFORE stack pop
+                            )
                         }
                     },
                     // SHARED / DELETE / HIDE
@@ -1212,7 +1357,9 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                             if (step() === "account_select" && typeof val === "string" && val !== "__add_account__") {
                                 const fam = selectedFamily()
                                 if (fam) {
-                                    debugCheckpoint("admin", "delete account prompt", { family: fam, id: val })
+                                    // Use coreFamily for account operations (accounts may be stored in different family than displayed)
+                                    const lookupFamily = option.coreFamily || fam
+                                    debugCheckpoint("admin", "delete account prompt", { family: lookupFamily, id: val })
                                     const confirmed = await DialogConfirm.show(
                                         dialog,
                                         "Delete Account",
@@ -1222,20 +1369,20 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                                     if (confirmed) {
                                         try {
                                             // Remove from core Account module (single source of truth)
-                                            // Use the mapped coreId (e.g. antigravity-subscription-ivon0829-gmail-com)
+                                            // Use the mapped coreId and coreFamily for correct lookup
                                             const coreId = option.coreId || val
-                                            await Account.remove(fam, coreId)
+                                            await Account.remove(lookupFamily, coreId)
                                             await Account.refresh()
 
                                             // Reload AccountManager to sync in-memory state
-                                            if (fam === 'antigravity') {
+                                            if (lookupFamily === 'antigravity') {
                                                 const manager = agManager()
                                                 if (manager) {
                                                     await manager.reloadFromAccountModule()
                                                 }
                                             }
 
-                                            debugCheckpoint("admin", "delete account success", { family: fam, id: coreId })
+                                            debugCheckpoint("admin", "delete account success", { family: lookupFamily, id: coreId })
                                             toast.show({ message: "Account deleted successfully", variant: "success" })
                                             await refreshAntigravity()
                                             setSelectedFamily(fam)
@@ -1257,7 +1404,11 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                                     const modelVal = val as any
                                     debugCheckpoint("admin", "delete model action", { origin: modelVal.origin, provider: modelVal.providerID, model: modelVal.modelID })
                                     if (modelVal.origin === "recent") local.model.removeFromRecent(modelVal)
-                                    else if (modelVal.origin === "favorite") local.model.toggleFavorite(modelVal)
+                                    else if (modelVal.origin === "favorite") {
+                                        // Skip validation when removing favorites (model already exists in favorites list)
+                                        const isGoogleDynamic = family(modelVal.providerID) === "google-api"
+                                        local.model.toggleFavorite(modelVal, { skipValidation: isGoogleDynamic })
+                                    }
                                     else if (step() !== "root") local.model.toggleHidden(modelVal)
                                 }
                             }
@@ -1267,7 +1418,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                         keybind: Keybind.parse("insert")[0],
                         title: "Unhide",
                         label: "Ins",
-                        disabled: !connected() || !showHidden(),
+                        disabled: !showHidden(),
                         onTrigger: (option: any) => {
                             const val = option.value as any
 

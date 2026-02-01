@@ -1,6 +1,13 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import { Log } from "../util/log"
 import { generatePKCE } from "@openauthjs/openauth/pkce"
+import { spawn } from "node:child_process"
+
+// Claude CLI integration removed per user request
+// The CLI requires complex interactive prompts (trust workspace, permissions) that are hard to automate reliably via -p.
+
+
+
 
 const log = Log.create({ service: "plugin.anthropic" })
 
@@ -91,6 +98,11 @@ async function exchange(code: string, verifier: string) {
 export async function AnthropicAuthPlugin(input: PluginInput): Promise<Hooks> {
     const { client } = input
     return {
+        "chat.headers": async (input, output) => {
+            if (input.model.providerID === "anthropic") {
+                output.headers["session_id"] = input.sessionID
+            }
+        },
         "experimental.chat.system.transform": async (input, output) => {
             const prefix =
                 "You are Claude Code, Anthropic's official CLI for Claude."
@@ -112,6 +124,8 @@ export async function AnthropicAuthPlugin(input: PluginInput): Promise<Hooks> {
                 }
 
                 if (auth.type === "oauth") {
+
+
                     // Subscription / "Claude Code" support
 
                     // zero out cost for max plan
@@ -356,6 +370,7 @@ export async function AnthropicAuthPlugin(input: PluginInput): Promise<Hooks> {
                         }
                     }
                 },
+
                 {
                     label: "Create an API Key",
                     type: "oauth",
