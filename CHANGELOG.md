@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.71] - 2026-02-02
+
+### Changed
+
+- **Sidebar Monitor Improvements**:
+  - **Filtering**: Monitor panel now only displays active sessions (busy, working, retry, compacting, pending), hiding stopped/idle ones.
+  - **Compact Layout**: Reduced vertical space by consolidating status, model, and metrics into fewer lines.
+
 ## [1.1.70] - 2026-02-02
 
 ### Changed
