@@ -4,13 +4,25 @@ import { createStore } from "solid-js/store"
 import { useTheme } from "../../context/theme"
 import { Locale } from "@/util/locale"
 import path from "path"
-import type { AssistantMessage } from "@opencode-ai/sdk/v2"
+import type { AssistantMessage, Part as MessagePart } from "@opencode-ai/sdk/v2"
 import { Global } from "@/global"
 import { Installation } from "@/installation"
 import { useKeybind } from "../../context/keybind"
 import { useDirectory } from "../../context/directory"
 import { useKV } from "../../context/kv"
+import { useRoute } from "../../context/route"
 import { TodoItem } from "../../component/todo-item"
+
+const MONITOR_DISPLAY_LIMIT = 6
+const STATUS_LABELS: Record<string, string> = {
+  busy: "Running",
+  working: "Running",
+  idle: "Done",
+  error: "Error",
+  retry: "Retrying",
+  compacting: "Compacting",
+  pending: "Pending",
+}
 
 export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const sync = useSync()
@@ -63,13 +75,27 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
 
   const directory = useDirectory()
   const kv = useKV()
+  const route = useRoute()
+
+  const monitorStatusColors = {
+    busy: theme.success,
+    working: theme.success,
+    idle: theme.textMuted,
+    error: theme.error,
+    retry: theme.warning,
+    compacting: theme.textMuted,
+  }
+
+  const activeStatuses = new Set(["busy", "working", "retry", "compacting", "pending"])
+  const monitorEntries = createMemo(() => (sync.data.monitor ?? []).filter((x) => activeStatuses.has(x.status.type)))
+  const displayedMonitorEntries = createMemo(() => monitorEntries().slice(0, MONITOR_DISPLAY_LIMIT))
+  const extraMonitorCount = createMemo(() => Math.max(monitorEntries().length - displayedMonitorEntries().length, 0))
+  const activeRouteSessionID = createMemo(() => (route.data.type === "session" ? route.data.sessionID : undefined))
 
   const hasProviders = createMemo(() =>
     sync.data.provider.some((x) => x.id !== "opencode" || Object.values(x.models).some((y) => y.cost?.input !== 0)),
   )
-  const subagents = createMemo(() =>
-    sync.data.session.filter((x) => x.parentID === props.sessionID),
-  )
+  const subagents = createMemo(() => sync.data.session.filter((x) => x.parentID === props.sessionID))
   const gettingStartedDismissed = createMemo(() => kv.get("dismissed_getting_started", false))
 
   return (
@@ -102,6 +128,56 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
               <text fg={theme.textMuted}>{context()?.percentage ?? 0}% used</text>
               <text fg={theme.textMuted}>{cost()} spent</text>
             </box>
+            <Show when={displayedMonitorEntries().length > 0}>
+              <box marginTop={1} gap={1}>
+                <text fg={theme.text}>
+                  <b>Monitor</b>
+                </text>
+                <For each={displayedMonitorEntries()}>
+                  {(info) => {
+                    const statusType = info.status.type
+                    const dotColor = monitorStatusColors[statusType] ?? theme.textMuted
+                    const statusLabel = STATUS_LABELS[statusType] ?? statusType
+                    const modelLabel = info.model ? `${info.model.providerID}/${info.model.modelID}` : "No model"
+                    const title = info.title || "Untitled session"
+                    const agentSuffix = info.agent ? <span style={{ fg: theme.textMuted }}> ({info.agent})</span> : null
+                    const isActiveSession = activeRouteSessionID() === info.sessionID
+                    return (
+                      <box
+                        flexDirection="column"
+                        paddingLeft={1}
+                        paddingRight={1}
+                        gap={0}
+                        backgroundColor={isActiveSession ? theme.backgroundElement : undefined}
+                        onMouseDown={() => route.navigate({ type: "session", sessionID: info.sessionID })}
+                      >
+                        <box flexDirection="row" gap={1} alignItems="center">
+                          <text fg={dotColor}>•</text>
+                          <text fg={theme.text} wrapMode="word">
+                            {title}
+                            {agentSuffix}
+                            <span style={{ fg: dotColor }}> {statusLabel}</span>
+                          </text>
+                        </box>
+                        <text fg={theme.textMuted} wrapMode="word">
+                          {modelLabel} • {info.requests} reqs • {info.totalTokens.toLocaleString()} tok
+                        </text>
+                        <Show when={info.activeTool}>
+                          <text fg={theme.textMuted} wrapMode="word">
+                            Tool: {info.activeTool} ({info.activeToolStatus ?? "pending"})
+                          </text>
+                        </Show>
+                      </box>
+                    )
+                  }}
+                </For>
+                <Show when={extraMonitorCount() > 0}>
+                  <text fg={theme.textMuted}>
+                    +{extraMonitorCount()} more session{extraMonitorCount() > 1 ? "s" : ""}
+                  </text>
+                </Show>
+              </box>
+            </Show>
             <Show when={mcpEntries().length > 0}>
               <box>
                 <box
@@ -297,19 +373,16 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                                 compacting: theme.textMuted,
                               }[status() as string] || theme.textMuted
                             }
-
                             flexShrink={0}
                           >
-                            {
-                              {
-                                busy: "Running",
-                                working: "Running",
-                                idle: "Done",
-                                error: "Error",
-                                retry: "Retrying",
-                                compacting: "Compacting",
-                              }[status() as string] || "Done"
-                            }
+                            {{
+                              busy: "Running",
+                              working: "Running",
+                              idle: "Done",
+                              error: "Error",
+                              retry: "Retrying",
+                              compacting: "Compacting",
+                            }[status() as string] || "Done"}
                           </text>
                         </box>
                       )
@@ -367,7 +440,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
             <span>{Installation.VERSION}</span>
           </text>
         </box>
-      </box >
-    </Show >
+      </box>
+    </Show>
   )
 }
