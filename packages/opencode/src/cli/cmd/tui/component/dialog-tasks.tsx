@@ -19,13 +19,9 @@ export function DialogTasks() {
 
   const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
-  // Filter for actively running subagent tasks only
-  const activeTasks = createMemo(() =>
-    sync.data.session.filter((x) => {
-      if (!x.parentID) return false
-      const status = sync.data.session_status?.[x.id]
-      return status?.type === "busy"
-    })
+  // Filter for all subagent tasks
+  const tasks = createMemo(() =>
+    sync.data.session.filter((x) => !!x.parentID)
   )
 
   // Get provider/model info from the last assistant message
@@ -43,11 +39,13 @@ export function DialogTasks() {
   }
 
   const options = createMemo(() => {
-    return activeTasks()
-      .toSorted((a, b) => a.time.created - b.time.created)  // Oldest first (started earlier)
+    return tasks()
+      .toSorted((a, b) => b.time.created - a.time.created) // Newest first
       .map((x) => {
         const modelInfo = getModelInfo(x.id)
         const modelDisplay = modelInfo ? `${modelInfo.modelID}` : "..."
+        const status = sync.data.session_status?.[x.id]
+        const isBusy = status?.type === "busy"
 
         return {
           title: x.title || "Untitled Task",
@@ -55,7 +53,7 @@ export function DialogTasks() {
           category: "",
           footer: Locale.time(x.time.created),
           gutter: (
-            <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>[⋯]</text>}>
+            <Show when={isBusy && kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>{isBusy ? "[⋯]" : "[✓]"}</text>}>
               <spinner frames={spinnerFrames} interval={80} color={theme.success} />
             </Show>
           ),
@@ -69,8 +67,11 @@ export function DialogTasks() {
   })
 
   const title = createMemo(() => {
-    const count = activeTasks().length
-    return count > 0 ? `Running Tasks (${count})` : "Running Tasks"
+    const count = tasks().filter(x => {
+      const status = sync.data.session_status?.[x.id]
+      return status?.type === "busy"
+    }).length
+    return count > 0 ? `Tasks (${count} running)` : "Tasks"
   })
 
   return (

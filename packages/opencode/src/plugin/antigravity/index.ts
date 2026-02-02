@@ -1046,6 +1046,9 @@ export const createAntigravityPlugin = (providerId: string) => async (
               // Check for abort at the start of each iteration
               checkAborted();
 
+              // Sync with Account module to respect /admin changes
+              await accountManager.syncActiveFromAccountModule();
+
               const accountCount = accountManager.getAccountCount();
 
               if (accountCount === 0) {
@@ -1516,14 +1519,23 @@ export const createAntigravityPlugin = (providerId: string) => async (
                           config.failure_ttl_seconds * 1000,
                         );
                         accountManager.requestSaveToDisk();
+
+                        // Report to global rate limit tracker for 3D rotation
+                        const { getRateLimitTracker } = await import("../../account/rotation");
+                        const coreAccountId = (account as any)._coreAccountId || `antigravity-account-${account.index}`;
+                        getRateLimitTracker().markRateLimited(coreAccountId, "antigravity", rateLimitReason, backoffMs, model || undefined);
+
                         const waitTimeFormatted = formatWaitTime(backoffMs);
-                        await showToast(
-                          `Rate limited for selected account. Retry ${waitTimeFormatted} or choose another model.`,
-                          "warning",
-                        );
-                        throw new Error(
-                          `Selected account rate limited for ${family}. Retry ${waitTimeFormatted} or choose another model.`,
-                        );
+
+                        // Throw error with 429 status for processor's 3D rotation to handle
+                        const rateLimitError = new Error(
+                          `Rate limited for ${family}. Reason: ${rateLimitReason}. Cooldown: ${waitTimeFormatted}`
+                        ) as any;
+                        rateLimitError.status = 429;
+                        rateLimitError.statusCode = 429;
+                        rateLimitError.retryAfter = Math.ceil(backoffMs / 1000);
+
+                        throw rateLimitError;
                       }
 
                       // STRATEGY 1: CAPACITY / SERVER ERROR (Transient)

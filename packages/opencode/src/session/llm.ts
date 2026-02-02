@@ -1,6 +1,7 @@
 import os from "os"
 import { Installation } from "@/installation"
 import { Provider } from "@/provider/provider"
+import { getCapabilities, requiresDummyTool } from "@/provider/capabilities"
 import { Log } from "@/util/log"
 import {
   streamText,
@@ -35,11 +36,7 @@ import {
   getModelHealthRegistry,
   type RateLimitReason,
 } from "@/account/rotation"
-import {
-  findFallback,
-  type ModelVector,
-  type FallbackStrategy,
-} from "@/account/rotation3d"
+import { findFallback, type ModelVector, type FallbackStrategy } from "@/account/rotation3d"
 import { Bus } from "@/bus"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import { debugCheckpoint } from "@/util/debug"
@@ -88,12 +85,17 @@ export namespace LLM {
     const isAntigravity = provider.id.includes("antigravity")
     const isGeminiCli = provider.id.includes("gemini-cli")
 
+    // Get provider capabilities (centralizes provider-specific behavior)
+    const capabilities = getCapabilities(provider, auth)
+    // Legacy alias for gradual migration - these will be removed once all usages migrate to capabilities
+    const usesInstructions = capabilities.useInstructionsOption
+
     const system = []
     system.push(
       [
         // use agent prompt otherwise provider prompt
-        // For Codex, Anthropic OAuth, Antigravity, and Gemini CLI sessions, skip SystemPrompt.provider() since it's sent via options.instructions
-        ...(input.agent.prompt ? [input.agent.prompt] : (isCodex || isAnthropicOAuth || isAntigravity || isGeminiCli) ? [] : SystemPrompt.provider(input.model)),
+        // For providers using instructions option, skip SystemPrompt.provider() since it's sent via options.instructions
+        ...(input.agent.prompt ? [input.agent.prompt] : usesInstructions ? [] : SystemPrompt.provider(input.model)),
         // any custom prompt passed into this call
         ...input.system,
         // any custom prompt from last user message
@@ -135,7 +137,7 @@ export namespace LLM {
       mergeDeep(input.agent.options),
       mergeDeep(variant),
     )
-    if (isCodex || isAnthropicOAuth || isAntigravity || isGeminiCli) {
+    if (usesInstructions) {
       options.instructions = SystemPrompt.instructions()
     }
 
@@ -247,13 +249,7 @@ export namespace LLM {
             const rateLimitTracker = getRateLimitTracker()
 
             healthTracker.recordRateLimit(accountId)
-            rateLimitTracker.markRateLimited(
-              accountId,
-              input.model.providerID,
-              reason,
-              backoffMs,
-              input.model.id,
-            )
+            rateLimitTracker.markRateLimited(accountId, input.model.providerID, reason, backoffMs, input.model.id)
           }
 
           l.warn("Rate limit detected", {
@@ -443,12 +439,18 @@ export namespace LLM {
    *
    * Uses the 3D rotation system to find the best fallback across
    * (provider, account, model) dimensions.
+   *
+   * @param currentModel - The model that hit rate limit
+   * @param strategy - Fallback selection strategy
+   * @param triedVectors - Set of already-tried "provider:account:model" keys to avoid infinite loops
    */
   export async function handleRateLimitFallback(
     currentModel: Provider.Model,
     strategy: FallbackStrategy = "account-first",
+    triedVectors: Set<string> = new Set(),
   ): Promise<Provider.Model | null> {
     const { Account } = await import("@/account")
+    const { getRateLimitTracker } = await import("@/account/rotation")
 
     const family = Account.parseFamily(currentModel.providerID)
     if (!family) return null
@@ -456,6 +458,22 @@ export namespace LLM {
     // Get current account
     const currentAccountId = await Account.getActive(family)
     if (!currentAccountId) return null
+
+    // Build current vector key and add to tried set
+    const currentVectorKey = `${currentModel.providerID}:${currentAccountId}:${currentModel.id}`
+    triedVectors.add(currentVectorKey)
+
+    // Mark current vector as rate-limited to prevent bouncing back to it
+    const rateLimitTracker = getRateLimitTracker()
+    if (!rateLimitTracker.isRateLimited(currentAccountId, currentModel.providerID, currentModel.id)) {
+      // Apply a short cooldown (30 seconds) to prevent immediate retry
+      rateLimitTracker.markRateLimited(currentAccountId, currentModel.providerID, "RATE_LIMIT_EXCEEDED", 30_000, currentModel.id)
+      log.info("Marked current vector as rate-limited to prevent bounce-back", {
+        provider: currentModel.providerID,
+        account: currentAccountId,
+        model: currentModel.id,
+      })
+    }
 
     // Build current vector
     const currentVector: ModelVector = {
@@ -469,9 +487,27 @@ export namespace LLM {
 
     if (!fallback) {
       log.warn("No fallback available in any dimension", {
-        current: `${currentVector.providerID}:${currentVector.accountId}:${currentVector.modelID}`,
+        current: currentVectorKey,
+        triedCount: triedVectors.size,
       })
       return null
+    }
+
+    // Check if this fallback has already been tried
+    const fallbackKey = `${fallback.providerID}:${fallback.accountId}:${fallback.modelID}`
+    if (triedVectors.has(fallbackKey)) {
+      log.warn("Fallback already tried, searching for next option", {
+        fallback: fallbackKey,
+        triedCount: triedVectors.size,
+      })
+      // Mark this as tried and recursively find another
+      // But impose a limit to prevent stack overflow
+      if (triedVectors.size >= 10) {
+        log.error("Max fallback attempts reached, giving up", { triedCount: triedVectors.size })
+        return null
+      }
+      // Try again with updated tried set (findFallback will filter)
+      return null // Let processor retry with the updated triedVectors
     }
 
     // Log the dimension change
@@ -502,10 +538,13 @@ export namespace LLM {
     if (isSameModel && !isSameAccount && isSameProvider) {
       await Account.setActive(family, fallback.accountId)
 
+      const accountInfo = await Account.get(family, fallback.accountId)
+      const displayName = accountInfo ? Account.getDisplayName(fallback.accountId, accountInfo, family) : fallback.accountId
+
       // Notify user of account rotation
       Bus.publish(TuiEvent.ToastShow, {
         title: "Account Rotated",
-        message: `Switched to account: ${fallback.accountId.split("-").pop()}`,
+        message: `Switched to account: ${displayName}`,
         variant: "info",
         duration: 4000,
       }).catch(() => { })
@@ -532,9 +571,7 @@ export namespace LLM {
     }
 
     // Notify user of model/provider rotation
-    const changeDesc = !isSameProvider
-      ? `${fallback.providerID}/${fallback.modelID}`
-      : fallback.modelID
+    const changeDesc = !isSameProvider ? `${fallback.providerID}/${fallback.modelID}` : fallback.modelID
     Bus.publish(TuiEvent.ToastShow, {
       title: "Model Rotated",
       message: `Fallback to: ${changeDesc}`,

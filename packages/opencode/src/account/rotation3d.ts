@@ -159,27 +159,42 @@ function scoreCandidateByStrategy(
 
 /**
  * Select the best fallback candidate from a list
+ *
+ * @param candidates - List of fallback candidates
+ * @param current - Current model vector
+ * @param config - Rotation configuration
+ * @param triedKeys - Set of already-tried "provider:account:model" keys to exclude
  */
 export function selectBestFallback(
   candidates: FallbackCandidate[],
   current: ModelVector,
   config: Rotation3DConfig = DEFAULT_ROTATION3D_CONFIG,
+  triedKeys?: Set<string>,
 ): FallbackCandidate | null {
   // Filter to available candidates
   const available = candidates.filter(
-    (c) =>
-      !c.isRateLimited &&
-      c.healthScore >= config.minHealthScore &&
-      // Don't return the exact same vector
-      !(c.providerID === current.providerID &&
-        c.accountId === current.accountId &&
-        c.modelID === current.modelID),
+    (c) => {
+      const key = makeKey(c)
+      // Exclude already-tried vectors
+      if (triedKeys?.has(key)) {
+        return false
+      }
+      return (
+        !c.isRateLimited &&
+        c.healthScore >= config.minHealthScore &&
+        // Don't return the exact same vector
+        !(c.providerID === current.providerID &&
+          c.accountId === current.accountId &&
+          c.modelID === current.modelID)
+      )
+    }
   )
 
   if (available.length === 0) {
     log.warn("No available fallback candidates", {
       current: makeKey(current),
       totalCandidates: candidates.length,
+      triedCount: triedKeys?.size ?? 0,
     })
     return null
   }
@@ -285,8 +300,11 @@ export async function buildFallbackCandidates(
     if (await modelFile.exists()) {
       const modelData = await modelFile.json()
       const favorites: Array<{ providerID: string; modelID: string }> = modelData.favorite ?? []
+      const hiddenProviders: string[] = modelData.hiddenProviders ?? []
 
       for (const fav of favorites) {
+        if (hiddenProviders.includes(fav.providerID)) continue
+
         if (fav.providerID === current.providerID && fav.modelID === current.modelID) continue
 
         const favFamily = Account.parseFamily(fav.providerID)
@@ -315,6 +333,52 @@ export async function buildFallbackCandidates(
     log.warn("Failed to read favorites for fallback", { error: e })
   }
 
+  // 4. Get inherent free opencode zen models as rescue fallback
+  try {
+    const providers = await Provider.list()
+    const opencodeProvider = providers["opencode"]
+    if (opencodeProvider?.models) {
+      for (const [modelId, model] of Object.entries(opencodeProvider.models)) {
+        const m = model as any
+        // Skip if not free
+        if (m.cost.input > 0 || m.cost.output > 0) continue
+
+        // For opencode provider, use "public" or active account if available
+        let accountId = "public"
+        const family = Account.parseFamily("opencode")
+        if (family) {
+          const active = await Account.getActive(family)
+          if (active) accountId = active
+        }
+
+        const vector: ModelVector = {
+          providerID: "opencode",
+          accountId,
+          modelID: modelId,
+        }
+
+        // Skip if this IS the current vector
+        if (
+          vector.providerID === current.providerID &&
+          vector.modelID === current.modelID &&
+          vector.accountId === current.accountId
+        )
+          continue
+
+        candidates.push({
+          ...vector,
+          healthScore: healthTracker.getScore(vector.accountId),
+          isRateLimited: rateLimitTracker.isRateLimited(vector.accountId, vector.providerID, vector.modelID),
+          waitTimeMs: rateLimitTracker.getWaitTime(vector.accountId, vector.providerID, vector.modelID),
+          priority: 0,
+          reason: "fallback",
+        })
+      }
+    }
+  } catch (e) {
+    log.warn("Failed to get zen models for fallback", { error: e })
+  }
+
   // Deduplicate by key
   const seen = new Set<string>()
   const unique = candidates.filter((c) => {
@@ -340,14 +404,19 @@ export async function buildFallbackCandidates(
 /**
  * Find the best fallback for a rate-limited model vector.
  * Returns null if no fallback is available.
+ *
+ * @param current - The current model vector that hit rate limit
+ * @param config - Optional rotation configuration
+ * @param triedKeys - Set of already-tried "provider:account:model" keys to exclude
  */
 export async function findFallback(
   current: ModelVector,
   config?: Partial<Rotation3DConfig>,
+  triedKeys?: Set<string>,
 ): Promise<FallbackCandidate | null> {
   const fullConfig = { ...DEFAULT_ROTATION3D_CONFIG, ...config }
   const candidates = await buildFallbackCandidates(current, fullConfig)
-  return selectBestFallback(candidates, current, fullConfig)
+  return selectBestFallback(candidates, current, fullConfig, triedKeys)
 }
 
 /**

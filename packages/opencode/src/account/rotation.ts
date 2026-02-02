@@ -544,19 +544,45 @@ export function initGlobalTrackers(healthConfig?: Partial<HealthScoreConfig>): v
 
 /**
  * Utility to check if an error is a rate limit error (HTTP 429)
+ * 
+ * This function is intentionally strict to avoid false positives.
+ * It only returns true for:
+ * - Explicit HTTP 429 status code
+ * - Error messages containing explicit rate limit keywords
+ * 
+ * It does NOT return true for:
+ * - Empty error objects
+ * - Generic errors without status codes
+ * - Server-side errors (500, 503) which are handled differently
  */
 export function isRateLimitError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false
 
-  // Check for status code
+  // Check for explicit 429 status code
   const status = (error as any).status ?? (error as any).statusCode ?? (error as any).code
-  if (status === 429) return true
 
-  // Check for error message
+  // Only treat as rate limit if we have an EXPLICIT 429
+  // Do not assume rate limit for errors without a status
+  if (status === 429) {
+    log.debug("isRateLimitError: matched by status code 429")
+    return true
+  }
+
+  // If there's no status code at all, don't classify as rate limit
+  // This prevents empty errors {} or generic errors from triggering rotation
+  if (status === undefined || status === null) {
+    return false
+  }
+
+  // Check for explicit rate limit message patterns (strict matching)
   const message = (error as any).message ?? ""
-  if (typeof message === "string") {
+  if (typeof message === "string" && message.length > 0) {
     const lower = message.toLowerCase()
-    if (lower.includes("rate limit") || lower.includes("too many requests") || lower.includes("429")) {
+    // Only match very specific rate limit patterns, not generic "error" messages
+    if (lower.includes("429") ||
+      lower.includes("rate_limit_exceeded") ||
+      lower.includes("too many requests")) {
+      log.debug("isRateLimitError: matched by message pattern", { message: message.substring(0, 100) })
       return true
     }
   }

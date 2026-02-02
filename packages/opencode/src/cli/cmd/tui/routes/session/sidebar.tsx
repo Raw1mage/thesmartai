@@ -25,6 +25,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
     diff: true,
     todo: true,
     lsp: true,
+    subagents: true,
   })
 
   // Sort MCP servers alphabetically for consistent display order
@@ -65,6 +66,9 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
 
   const hasProviders = createMemo(() =>
     sync.data.provider.some((x) => x.id !== "opencode" || Object.values(x.models).some((y) => y.cost?.input !== 0)),
+  )
+  const subagents = createMemo(() =>
+    sync.data.session.filter((x) => x.parentID === props.sessionID),
   )
   const gettingStartedDismissed = createMemo(() => kv.get("dismissed_getting_started", false))
 
@@ -258,6 +262,62 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                 </Show>
               </box>
             </Show>
+
+            <Show when={subagents().length > 0}>
+              <box>
+                <box
+                  flexDirection="row"
+                  gap={1}
+                  onMouseDown={() => subagents().length > 2 && setExpanded("subagents", !expanded.subagents)}
+                >
+                  <Show when={subagents().length > 2}>
+                    <text fg={theme.text}>{expanded.subagents ? "▼" : "▶"}</text>
+                  </Show>
+                  <text fg={theme.text}>
+                    <b>Subagents</b>
+                  </text>
+                </box>
+                <Show when={subagents().length <= 2 || expanded.subagents}>
+                  <For each={subagents()}>
+                    {(item) => {
+                      const status = createMemo(() => sync.data.session_status?.[item.id]?.type ?? "idle")
+                      return (
+                        <box flexDirection="row" gap={1} justifyContent="space-between">
+                          <text fg={theme.textMuted} wrapMode="none" flexGrow={1} flexShrink={1}>
+                            {item.title || "Untitled Subagent"}
+                          </text>
+                          <text
+                            fg={
+                              {
+                                busy: theme.success,
+                                working: theme.success,
+                                idle: theme.textMuted,
+                                error: theme.error,
+                                retry: theme.warning,
+                                compacting: theme.textMuted,
+                              }[status() as string] || theme.textMuted
+                            }
+
+                            flexShrink={0}
+                          >
+                            {
+                              {
+                                busy: "Running",
+                                working: "Running",
+                                idle: "Done",
+                                error: "Error",
+                                retry: "Retrying",
+                                compacting: "Compacting",
+                              }[status() as string] || "Done"
+                            }
+                          </text>
+                        </box>
+                      )
+                    }}
+                  </For>
+                </Show>
+              </box>
+            </Show>
           </box>
         </scrollbox>
 
@@ -307,7 +367,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
             <span>{Installation.VERSION}</span>
           </text>
         </box>
-      </box>
-    </Show>
+      </box >
+    </Show >
   )
 }
