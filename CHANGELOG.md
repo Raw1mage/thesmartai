@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.70] - 2026-02-02
+
+### Changed
+
+- **Antigravity Account Management Refactoring**: Unified Antigravity's internal account management with the global 3D rotation engine.
+  - Added `syncActiveFromAccountModule()` method to sync Antigravity's internal account indexes with the Account module before each request
+  - Account changes made via `/admin` are now immediately respected by the Antigravity plugin
+  - Rate limits are now reported to the global `RateLimitTracker` when 429 errors occur
+  - Fixed mode now throws errors with `status: 429` so the processor's 3D rotation engine can handle account/model switching
+  - Removed internal account rotation in favor of global 3D rotation decisions
+
+### Fixed
+
+- **Account Selection Ignored**: Fixed issue where Antigravity would ignore the user's selected account from `/admin` and always use a different account. The plugin now syncs with the Account module before each request.
+
 ## [1.1.69] - 2026-02-02
 
 ### Merged from upstream (post-v1.1.48)

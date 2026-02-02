@@ -509,6 +509,27 @@ export class AccountManager {
     return null;
   }
 
+  /**
+   * Synchronize internal family indexes with the Account module's active account.
+   * This ensures changes made via /admin are respected.
+   */
+  async syncActiveFromAccountModule(): Promise<void> {
+    const activeAccountId = await Account.getActive("antigravity");
+    if (!activeAccountId) return;
+
+    // Find the account with matching core ID
+    const matchingAccount = this.accounts.find(
+      acc => (acc as any)._coreAccountId === activeAccountId
+    );
+
+    if (matchingAccount) {
+      // Update both family indexes to match
+      this.currentAccountIndexByFamily.claude = matchingAccount.index;
+      this.currentAccountIndexByFamily.gemini = matchingAccount.index;
+      this.cursor = matchingAccount.index;
+    }
+  }
+
   getPinnedForFamily(family: ModelFamily): ManagedAccount | null {
     const current = this.getCurrentAccountForFamily(family);
     if (current && current.enabled !== false) {

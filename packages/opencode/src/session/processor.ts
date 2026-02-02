@@ -16,6 +16,7 @@ import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
 import { debugCheckpoint } from "@/util/debug"
+import { isRateLimitError } from "@/account/rotation"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -35,6 +36,10 @@ export namespace SessionProcessor {
     let blocked = false
     let attempt = 0
     let needsCompaction = false
+    // Track fallback attempts to prevent infinite loops
+    const triedVectors = new Set<string>()
+    let fallbackAttempts = 0
+    const MAX_FALLBACK_ATTEMPTS = 5
 
     const result = {
       get message() {
@@ -353,6 +358,44 @@ export namespace SessionProcessor {
               if (needsCompaction) break
             }
           } catch (e: any) {
+            // Check for rate limit and attempt fallback
+            if (isRateLimitError(e)) {
+              fallbackAttempts++
+              if (fallbackAttempts > MAX_FALLBACK_ATTEMPTS) {
+                log.error("Max fallback attempts exceeded, stopping rotation", {
+                  attempts: fallbackAttempts,
+                  triedCount: triedVectors.size,
+                  tried: Array.from(triedVectors).join(", "),
+                })
+                // Fall through to normal error handling
+              } else {
+                const fallback = await LLM.handleRateLimitFallback(streamInput.model, "account-first", triedVectors)
+                if (fallback) {
+                  log.info("Switching to fallback model", {
+                    from: streamInput.model.id,
+                    to: fallback.id,
+                    fallbackAttempts,
+                    triedCount: triedVectors.size,
+                  })
+                  streamInput.model = fallback
+                  input.model = fallback
+                  // Update assistant message metadata to reflect the new model
+                  input.assistantMessage.modelID = fallback.id
+                  input.assistantMessage.providerID = fallback.providerID
+
+                  attempt = 0
+                  // Wait a short moment to ensure UI updates
+                  await new Promise((resolve) => setTimeout(resolve, 100))
+                  continue
+                } else {
+                  log.warn("No fallback available after rate limit", {
+                    fallbackAttempts,
+                    triedCount: triedVectors.size,
+                  })
+                }
+              }
+            }
+
             log.error("process", {
               error: e,
               stack: JSON.stringify(e.stack),
@@ -368,7 +411,7 @@ export namespace SessionProcessor {
                 message: retry,
                 next: Date.now() + delay,
               })
-              await SessionRetry.sleep(delay, input.abort).catch(() => {})
+              await SessionRetry.sleep(delay, input.abort).catch(() => { })
               continue
             }
             input.assistantMessage.error = error
