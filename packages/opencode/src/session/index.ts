@@ -26,17 +26,12 @@ import { Global } from "@/global"
 export namespace Session {
   const log = Log.create({ service: "session" })
 
-  const parentTitlePrefix = "New session - "
-  const childTitlePrefix = "Child session - "
-
-  function createDefaultTitle(isChild = false) {
-    return (isChild ? childTitlePrefix : parentTitlePrefix) + new Date().toISOString()
+  function createDefaultTitle() {
+    return new Date().toISOString()
   }
 
   export function isDefaultTitle(title: string) {
-    return new RegExp(
-      `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
-    ).test(title)
+    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(title)
   }
 
   function getForkedTitle(title: string): string {
@@ -217,7 +212,7 @@ export namespace Session {
       projectID: Instance.project.id,
       directory: input.directory,
       parentID: input.parentID,
-      title: input.title ?? createDefaultTitle(!!input.parentID),
+      title: input.title ?? createDefaultTitle(),
       permission: input.permission,
       time: {
         created: Date.now(),

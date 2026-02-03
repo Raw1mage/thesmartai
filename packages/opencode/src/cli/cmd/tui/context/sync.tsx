@@ -18,6 +18,7 @@ import type {
   ProviderAuthMethod,
   VcsInfo,
   AppSkillsResponse,
+  SessionMonitorInfo,
 } from "@opencode-ai/sdk/v2"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useSDK } from "@tui/context/sdk"
@@ -58,6 +59,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       session_diff: {
         [sessionID: string]: Snapshot.FileDiff[]
       }
+      monitor: SessionMonitorInfo[]
       todo: {
         [sessionID: string]: Todo[]
       }
@@ -96,6 +98,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       session: [],
       session_status: {},
       session_diff: {},
+      monitor: [],
       todo: {},
       message: {},
       part: {},
@@ -419,8 +422,26 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         })
     }
 
+    const pollMonitor = () => {
+      sdk.client.session
+        .top()
+        .then((x) => setStore("monitor", reconcile(x.data ?? [])))
+        .catch((e) => {
+          const message = e instanceof Error ? e.message : String(e)
+          Log.Default.error("tui monitor poll failed", {
+            error: message,
+            name: e instanceof Error ? e.name : undefined,
+            stack: e instanceof Error ? e.stack : undefined,
+          })
+        })
+        .finally(() => {
+          setTimeout(pollMonitor, 2000)
+        })
+    }
+
     onMount(() => {
       bootstrap()
+      pollMonitor()
     })
 
     const fullSyncedSessions = new Set<string>()

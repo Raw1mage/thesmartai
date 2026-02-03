@@ -1994,6 +1994,48 @@ export type McpResource = {
   client: string
 }
 
+export type SessionMonitorStatus =
+  | SessionStatus
+  | {
+      type: "working"
+    }
+  | {
+      type: "compacting"
+    }
+  | {
+      type: "pending"
+    }
+  | {
+      type: "error"
+      message?: string
+    }
+
+export type SessionMonitorInfo = {
+  sessionID: string
+  title: string
+  parentID?: string
+  agent?: string
+  status: SessionMonitorStatus
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  requests: number
+  tokens: {
+    input: number
+    output: number
+    reasoning: number
+    cache: {
+      read: number
+      write: number
+    }
+  }
+  totalTokens: number
+  activeTool?: string
+  activeToolStatus?: string
+  updated: number
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -2929,6 +2971,33 @@ export type SessionStatusResponses = {
 }
 
 export type SessionStatusResponse = SessionStatusResponses[keyof SessionStatusResponses]
+
+export type SessionTopData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/session/top"
+}
+
+export type SessionTopErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type SessionTopError = SessionTopErrors[keyof SessionTopErrors]
+
+export type SessionTopResponses = {
+  /**
+   * Session monitor snapshot
+   */
+  200: Array<SessionMonitorInfo>
+}
+
+export type SessionTopResponse = SessionTopResponses[keyof SessionTopResponses]
 
 export type SessionDeleteData = {
   body?: never
