@@ -37,7 +37,6 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
     diff: true,
     todo: true,
     lsp: true,
-    subagents: true,
   })
 
   // Sort MCP servers alphabetically for consistent display order
@@ -87,7 +86,37 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   }
 
   const activeStatuses = new Set(["busy", "working", "retry", "compacting", "pending"])
-  const monitorEntries = createMemo(() => (sync.data.monitor ?? []).filter((x) => activeStatuses.has(x.status.type)))
+  const descendants = createMemo(() => {
+    const sessions = sync.data.session
+    const byParent = new Map<string, string[]>()
+    for (const item of sessions) {
+      if (!item.parentID) continue
+      const list = byParent.get(item.parentID) ?? []
+      list.push(item.id)
+      byParent.set(item.parentID, list)
+    }
+    const result = new Set<string>([props.sessionID])
+    const stack = [props.sessionID]
+    while (stack.length > 0) {
+      const id = stack.pop()
+      if (!id) continue
+      const next = byParent.get(id) ?? []
+      for (const child of next) {
+        if (result.has(child)) continue
+        result.add(child)
+        stack.push(child)
+      }
+    }
+    return result
+  })
+  const monitorEntries = createMemo(() => {
+    const ids = descendants()
+    return (sync.data.monitor ?? [])
+      .filter((x) => ids.has(x.sessionID))
+      .filter((x) => activeStatuses.has(x.status.type))
+      .slice()
+      .sort((a, b) => b.updated - a.updated)
+  })
   const displayedMonitorEntries = createMemo(() => monitorEntries().slice(0, MONITOR_DISPLAY_LIMIT))
   const extraMonitorCount = createMemo(() => Math.max(monitorEntries().length - displayedMonitorEntries().length, 0))
   const activeRouteSessionID = createMemo(() => (route.data.type === "session" ? route.data.sessionID : undefined))
@@ -95,7 +124,6 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const hasProviders = createMemo(() =>
     sync.data.provider.some((x) => x.id !== "opencode" || Object.values(x.models).some((y) => y.cost?.input !== 0)),
   )
-  const subagents = createMemo(() => sync.data.session.filter((x) => x.parentID === props.sessionID))
   const gettingStartedDismissed = createMemo(() => kv.get("dismissed_getting_started", false))
 
   return (
@@ -339,58 +367,6 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
               </box>
             </Show>
 
-            <Show when={subagents().length > 0}>
-              <box>
-                <box
-                  flexDirection="row"
-                  gap={1}
-                  onMouseDown={() => subagents().length > 2 && setExpanded("subagents", !expanded.subagents)}
-                >
-                  <Show when={subagents().length > 2}>
-                    <text fg={theme.text}>{expanded.subagents ? "▼" : "▶"}</text>
-                  </Show>
-                  <text fg={theme.text}>
-                    <b>Subagents</b>
-                  </text>
-                </box>
-                <Show when={subagents().length <= 2 || expanded.subagents}>
-                  <For each={subagents()}>
-                    {(item) => {
-                      const status = createMemo(() => sync.data.session_status?.[item.id]?.type ?? "idle")
-                      return (
-                        <box flexDirection="row" gap={1} justifyContent="space-between">
-                          <text fg={theme.textMuted} wrapMode="none" flexGrow={1} flexShrink={1}>
-                            {item.title || "Untitled Subagent"}
-                          </text>
-                          <text
-                            fg={
-                              {
-                                busy: theme.success,
-                                working: theme.success,
-                                idle: theme.textMuted,
-                                error: theme.error,
-                                retry: theme.warning,
-                                compacting: theme.textMuted,
-                              }[status() as string] || theme.textMuted
-                            }
-                            flexShrink={0}
-                          >
-                            {{
-                              busy: "Running",
-                              working: "Running",
-                              idle: "Done",
-                              error: "Error",
-                              retry: "Retrying",
-                              compacting: "Compacting",
-                            }[status() as string] || "Done"}
-                          </text>
-                        </box>
-                      )
-                    }}
-                  </For>
-                </Show>
-              </box>
-            </Show>
           </box>
         </scrollbox>
 

@@ -42,6 +42,20 @@ export const ReadTool = Tool.define("read", {
     if (!(await file.exists())) {
       const dir = path.dirname(filepath)
       const base = path.basename(filepath)
+      const dirExists = fs.existsSync(dir)
+
+      if (!dirExists) {
+        const matches: string[] = []
+        const glob = new Bun.Glob(`**/${base}`)
+        for await (const item of glob.scan({ cwd: Instance.worktree, onlyFiles: true })) {
+          matches.push(path.join(Instance.worktree, item))
+          if (matches.length >= 3) break
+        }
+        if (matches.length > 0) {
+          throw new Error(`File not found: ${filepath}\n\nDid you mean one of these?\n${matches.join("\n")}`)
+        }
+        throw new Error(`File not found: ${filepath}`)
+      }
 
       const dirEntries = fs.readdirSync(dir)
       const suggestions = dirEntries
