@@ -1281,6 +1281,18 @@ export namespace Provider {
       mergeProvider("github-copilot-enterprise", { source: "custom" })
     }
 
+    // Ensure GitLab provider is available so tests and manual config work
+    if (!database["gitlab"]) {
+      database["gitlab"] = {
+        id: "gitlab",
+        name: "GitLab Duo",
+        source: "custom",
+        env: ["GITLAB_TOKEN"],
+        options: {},
+        models: {},
+      }
+    }
+
     // Inherit models for account-suffixed providers
     for (const [providerID, provider] of Object.entries(database)) {
       // Match pattern: "provider-accountname"
