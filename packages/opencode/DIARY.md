@@ -72,6 +72,7 @@
 - Sidebar 移除 Subagents 區塊。
 - Session 預設標題改為純時間戳。
 - Read 工具在父目錄不存在時改用全域搜尋建議路徑，降低 ENOENT 噪音。
+- google_search 改為一律透過 Antigravity 多帳號管理機制選取帳號並執行搜尋（不再依賴 cached OAuth）。
 
 ### PLANNING
 
