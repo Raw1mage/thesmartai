@@ -83,6 +83,43 @@
 
 ### PLANNING
 
+#### 功能：Admin Panel 分頁化（Model Activities / Favorites / Providers）
+
+**需求**
+
+- Admin Panel 首頁改為 Model Activities（原 Model Health），名稱同步更新。
+- Tab 固定輪切：Model Activities → Favorites → Providers。
+- Favorites 為第 2 頁，平鋪顯示（不折疊）。
+- Providers 為第 3 頁，保留 Show All / hiddenProviders 操作。
+- Admin Panel 一次只顯示一個頁面。
+- 取消所有頁籤的搜尋列。
+- Model Activities 保留 (R)efresh / (C)lear 快捷鍵。
+
+**範圍**
+
+- IN: `src/cli/cmd/tui/component/dialog-admin.tsx`, `src/cli/cmd/tui/component/dialog-model-health.tsx`
+- OUT: 後端 health/rotation 邏輯、Model Store 結構調整
+
+**作法**
+
+1. Admin Panel 改為 page-based 顯示，Tab 觸發輪切頁籤。
+2. 將 Model Health 列表內嵌成 Model Activities 首頁。
+3. Favorites 改為獨立頁面平鋪清單。
+4. Providers 頁面維持原有 Provider/Account/Model 流程。
+5. DialogSelect 全頁隱藏搜尋列。
+
+**任務**
+
+1. [x] 建立頁籤狀態與 Tab 輪切
+2. [x] 內嵌 Model Activities 列表與標題
+3. [x] Favorites 改為獨立平鋪頁面
+4. [x] Providers 頁面保留既有操作
+5. [x] 移除搜尋列
+
+**問題**
+
+- Model Activities 是否需要額外提示選模成功（toast）？
+
 #### 功能：Admin 移除 Recent + Health Check Enter 選模
 
 **需求**
