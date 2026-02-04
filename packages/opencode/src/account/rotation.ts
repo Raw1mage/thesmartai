@@ -680,12 +680,6 @@ export function isRateLimitError(error: unknown): boolean {
     return true
   }
 
-  // If there's no status code at all, don't classify as rate limit
-  // This prevents empty errors {} or generic errors from triggering rotation
-  if (status === undefined || status === null) {
-    return false
-  }
-
   // Check for explicit rate limit message patterns (strict matching)
   const message = (error as any).message ?? ""
   if (typeof message === "string" && message.length > 0) {
@@ -694,6 +688,7 @@ export function isRateLimitError(error: unknown): boolean {
     if (
       lower.includes("429") ||
       lower.includes("rate_limit_exceeded") ||
+      lower.includes("rate limited") ||
       lower.includes("too many requests") ||
       lower.includes("token refresh failed")
     ) {
