@@ -73,11 +73,11 @@ export namespace SessionPrompt {
   const WORKFLOW_MIN_CHARS = 160
   const WORKFLOW_MIN_LINES = 3
   const WORKFLOW_MODEL_FALLBACKS: Record<string, string[]> = {
-    explore: ["gemini-cli/gemini-2.0-flash", "openai/gpt-5.2", "openai/gpt-5.2-codex"],
-    coding: ["openai/gpt-5.2-codex", "openai/gpt-5.2", "gemini-cli/gemini-2.0-pro-exp-02-05"],
-    review: ["gemini-cli/gemini-2.0-pro-exp-02-05", "openai/gpt-5.2", "openai/gpt-5.2-codex"],
-    testing: ["openai/gpt-5.2-codex", "openai/gpt-5.2", "gemini-cli/gemini-2.0-flash"],
-    docs: ["openai/gpt-5.2", "gemini-cli/gemini-2.0-pro-exp-02-05", "openai/gpt-5.2-codex"],
+    explore: ["gemini-cli/gemini-2.5-flash", "openai/gpt-5.2", "openai/gpt-5.2-codex"],
+    coding: ["openai/gpt-5.2-codex", "openai/gpt-5.2", "gemini-cli/gemini-2.5-pro"],
+    review: ["gemini-cli/gemini-2.5-pro", "openai/gpt-5.2", "openai/gpt-5.2-codex"],
+    testing: ["openai/gpt-5.2-codex", "openai/gpt-5.2", "gemini-cli/gemini-2.5-flash"],
+    docs: ["openai/gpt-5.2", "gemini-cli/gemini-2.5-pro", "openai/gpt-5.2-codex"],
   }
 
   function hasImageParts(message?: MessageV2.WithParts): boolean {
