@@ -35,7 +35,8 @@ import { Locale } from "@/util/locale"
 import { debugCheckpoint, debugSpan } from "@/util/debug"
 import { useExit } from "@tui/context/exit"
 import { DialogModelProbe } from "./dialog-model-probe"
-import { DialogModelHealth } from "./dialog-model-health"
+import { getModelHealthRegistry, getRateLimitTracker } from "@/account/rotation"
+import { Provider } from "@/provider/provider"
 import { probeModelAvailability } from "../util/model-probe"
 
 // Helper to check connectivity
@@ -59,7 +60,6 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   const exit = useExit()
   const theme = useTheme().theme
   const [ref, setRef] = createSignal<DialogSelectRef<unknown>>()
-  const [query, setQuery] = createSignal("")
   const [showHidden, setShowHidden] = createSignal(false)
   const [googleModels, setGoogleModels] = createSignal<{ id: string; title: string }[]>([])
   const [googleModelsLoading, setGoogleModelsLoading] = createSignal(false)
@@ -70,8 +70,10 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
   // Navigation State
   // steps: root -> account_select -> model_select
-  // distinct views: favorites
-  const [step, setStep] = createSignal<"root" | "account_select" | "model_select" | "favorites">("root")
+  const [step, setStep] = createSignal<"root" | "account_select" | "model_select">("root")
+  const pages = ["activities", "favorites", "providers"] as const
+  type Page = (typeof pages)[number]
+  const [page, setPage] = createSignal<Page>("activities")
   const [selectedFamily, setSelectedFamily] = createSignal<string | null>(null)
 
   // This tracks the "provider ID" that models.ts/sync system naturally understands
@@ -79,9 +81,6 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   const [selectedProviderID, setSelectedProviderID] = createSignal<string | null>(null)
   const [lockBack, setLockBack] = createSignal(false)
   const [prevStep, setPrevStep] = createSignal(step())
-
-  // Collapse state for Favorites section
-  const [favoritesCollapsed, setFavoritesCollapsed] = createSignal(false)
 
   // Track when a sub-dialog was recently closed to prevent goBack from triggering
   // Use both a flag and timestamp for maximum reliability
@@ -108,7 +107,6 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   const menuLabel = () => {
     const s = step()
     if (s === "root") return "root"
-    if (s === "favorites") return "favorites"
     if (s === "account_select") return "account_select"
     if (s === "model_select") return "model_select"
     return s
@@ -120,6 +118,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     const option = currentOption()
     debugCheckpoint("admin.keytrace", "key", {
       tui: "/admin",
+      page: page(),
       menu: menuLabel(),
       option: option?.title ?? "",
       key: formatKey(evt),
@@ -133,6 +132,23 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     debugCheckpoint("admin", "set step", { from, to: next, reason })
     setStep(next)
     debugCheckpoint("admin", "set step done", { now: step(), reason })
+  }
+
+  const setPageLogged = (next: Page, reason: string) => {
+    const from = page()
+    if (from === next) return
+    debugCheckpoint("admin", "set page", { from, to: next, reason })
+    setPage(next)
+    setStep("root")
+    setSelectedFamily(null)
+    setSelectedProviderID(null)
+  }
+
+  const nextPage = () => {
+    const current = page()
+    const index = pages.indexOf(current)
+    const next = pages[(index + 1) % pages.length]
+    setPageLogged(next, "tab")
   }
 
   onMount(() => {
@@ -296,6 +312,15 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     }
   })
 
+  const [activityTick, setActivityTick] = createSignal(0)
+  const activityInterval = setInterval(() => setActivityTick((t) => t + 1), 1000)
+  onCleanup(() => clearInterval(activityInterval))
+
+  const [activityProviders] = createResource<Record<string, Provider.Info>>(() => Provider.list().catch(() => ({})))
+  const [activityAccounts] = createResource<Record<string, Account.ProviderData>>(() =>
+    Account.listAll().catch(() => ({})),
+  )
+
   const connected = useConnected()
   createEffect(() => {
     const currentStep = step()
@@ -325,6 +350,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     const targetFamily = family(props.targetProviderID)
     if (targetFamily) setSelectedFamily(targetFamily)
     setSelectedProviderID(props.targetProviderID)
+    setPage("providers")
     setStep("model_select")
   })
 
@@ -504,73 +530,223 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     return groups
   })
 
+  const activityData = createMemo(() => {
+    activityTick()
+    debugCheckpoint("admin.activities", "snapshot", { tick: activityTick() })
+
+    const rateLimitTracker = getRateLimitTracker()
+    const rateLimits3D = rateLimitTracker.getSnapshot3D()
+
+    const registry = getModelHealthRegistry()
+    const snapshot2D = registry.getSnapshot()
+
+    const providerMap = activityProviders() ?? {}
+    const accountMap = activityAccounts() ?? {}
+
+    const items: Array<{
+      value: string
+      title: string
+      description: string
+      category: string
+      footer: string
+    }> = []
+
+    const modelLimits = new Map<string, { waitMs: number; reason: string }>()
+    const providerLimits = new Map<string, { waitMs: number; reason: string }>()
+    for (const entry of rateLimits3D) {
+      const hasModel = entry.modelID && entry.modelID.length > 0
+      if (hasModel) {
+        modelLimits.set(`${entry.accountId}:${entry.providerID}:${entry.modelID}`, {
+          waitMs: entry.waitMs,
+          reason: entry.reason,
+        })
+      }
+      if (!hasModel) {
+        providerLimits.set(`${entry.accountId}:${entry.providerID}`, {
+          waitMs: entry.waitMs,
+          reason: entry.reason,
+        })
+      }
+    }
+
+    let ready = 0
+    let limited = 0
+
+    const providerIds = Object.keys(providerMap).sort((a, b) => a.localeCompare(b))
+    for (const providerID of providerIds) {
+      const provider = providerMap[providerID]
+      if (!provider) continue
+
+      const accountData = accountMap[providerID]
+      const accountIds = accountData ? Object.keys(accountData.accounts) : []
+      const list = accountIds.length > 0 ? accountIds : ["-"]
+      const models = Object.values(provider.models).sort((a, b) => a.id.localeCompare(b.id))
+
+      for (const accountId of list) {
+        const info = accountId === "-" ? undefined : accountData?.accounts[accountId]
+        const display = info ? Account.getDisplayName(accountId, info, providerID) : accountId
+        const accountCol = (display || "-").padEnd(18).slice(0, 18)
+        const providerCol = (providerID || "-").padEnd(12).slice(0, 12)
+
+        for (const model of models) {
+          const modelCol = (model.id || "-").padEnd(28).slice(0, 28)
+          const entry = modelLimits.get(`${accountId}:${providerID}:${model.id}`)
+          if (entry && entry.waitMs > 0) {
+            limited += 1
+            items.push({
+              value: `${accountId}:${providerID}:${model.id}`,
+              title: `${providerCol} ${accountCol} ${modelCol}`,
+              description: formatReason(entry.reason),
+              category: "",
+              footer: `⏳ ${formatWait(entry.waitMs)}`,
+            })
+            continue
+          }
+
+          const providerLimit = providerLimits.get(`${accountId}:${providerID}`)
+          if (providerLimit && providerLimit.waitMs > 0) {
+            limited += 1
+            items.push({
+              value: `${accountId}:${providerID}:${model.id}`,
+              title: `${providerCol} ${accountCol} ${modelCol}`,
+              description: formatReason(providerLimit.reason),
+              category: "",
+              footer: `⏳ ${formatWait(providerLimit.waitMs)}`,
+            })
+            continue
+          }
+
+          const state2d = snapshot2D.get(`${providerID}:${model.id}`)
+          if (state2d && state2d.waitMs > 0) {
+            limited += 1
+            items.push({
+              value: `${accountId}:${providerID}:${model.id}`,
+              title: `${providerCol} ${accountCol} ${modelCol}`,
+              description: `${formatReason(state2d.reason)} (model)`,
+              category: "",
+              footer: `⏳ ${formatWait(state2d.waitMs)}`,
+            })
+            continue
+          }
+
+          if (state2d && state2d.available) {
+            ready += 1
+            items.push({
+              value: `${accountId}:${providerID}:${model.id}`,
+              title: `${providerCol} ${accountCol} ${modelCol}`,
+              description: "",
+              category: "",
+              footer: "✓ Ready",
+            })
+          }
+        }
+      }
+    }
+
+    if (items.length === 0) {
+      items.push({
+        value: "empty",
+        title: "No models tracked yet",
+        description: "Rate limits will appear here when encountered",
+        category: "",
+        footer: "",
+      })
+    } else {
+      items.unshift({
+        value: "_header",
+        title: "Provider     Account            Model                       ",
+        description: "",
+        category: "",
+        footer: "Status",
+      })
+    }
+
+    return { items, stats: { ready, limited, total: ready + limited } }
+  })
+
+  const selectActivity = (value: string) => {
+    if (!value || value === "_header" || value === "empty") return
+    const [accountId, providerID, ...rest] = value.split(":")
+    const modelID = rest.join(":")
+    if (!providerID || !modelID) return
+    const resolvedProvider = providerID === "google" ? "google-api" : Account.parseFamily(providerID) || providerID
+    debugCheckpoint("admin.activities", "select model", { accountId, providerID: resolvedProvider, modelID })
+    local.model.set({ providerID: resolvedProvider, modelID }, { recent: true, announce: true })
+    dialog.clear()
+  }
+
   // ---- OPTION GENERATION ----
   const options = createMemo(() => {
     const s = step()
+    const currentPage = page()
     const triggers = refreshSignal() // Dependency to force re-calc
 
     const favorites = connected() ? local.model.favorite() : []
+
+    const getModelOptions = (
+      modelList: { providerID: string; modelID: string }[],
+      origin: "favorite",
+    ): DialogSelectOption<unknown>[] => {
+      return modelList.flatMap((item) => {
+        const p = sync.data.provider.find((x) => x.id === item.providerID)
+        if (!p) return []
+        const m = p.models[item.modelID]
+        if (!m) return []
+
+        const rawName = m.name ?? item.modelID
+        const cleanName = rawName.replace(/\s*\(Plus Subscription\)\s*/gi, "").trim()
+        const providerLabel = label(p.name, p.id)
+
+        return [
+          {
+            value: { providerID: item.providerID, modelID: item.modelID, origin },
+            title: cleanName,
+            description: providerLabel,
+            footer: shouldShowFree(item.providerID, m) ? "Free" : undefined,
+            disabled: p.id === "opencode" && m.id.includes("-nano"),
+            onSelect: () => {
+              debugCheckpoint("admin", "select favorite model", {
+                origin,
+                provider: item.providerID,
+                model: item.modelID,
+              })
+              probeAndSelectModel(item.providerID, item.modelID, origin)
+            },
+          },
+        ]
+      })
+    }
+
+    if (currentPage === "activities") {
+      return activityData().items.map((item) => {
+        const disabled = item.value === "_header" || item.value === "empty"
+        return {
+          ...item,
+          disabled,
+          onSelect: disabled ? undefined : () => selectActivity(item.value),
+        }
+      })
+    }
+
+    if (currentPage === "favorites") {
+      if (favorites.length === 0) {
+        return [
+          {
+            title: "No favorites yet",
+            value: "__favorites_empty__",
+            disabled: true,
+            category: "Favorites",
+          },
+        ]
+      }
+      return getModelOptions(favorites, "favorite")
+    }
 
     // LEVEL 1: ROOT
     if (s === "root") {
       const list = []
 
-      // LIST HELPERS (Favorites)
-      // Display: modelname - provider (account can be dynamically switched)
-      const getModelOptions = (modelList: { providerID: string; modelID: string; origin?: string }[]) => {
-        return modelList.flatMap((item) => {
-          const p = sync.data.provider.find((x) => x.id === item.providerID)
-          if (!p) return []
-          const m = p.models[item.modelID]
-          if (!m) return []
-
-          // Clean model name: remove "(Plus Subscription)" suffix
-          const rawName = m.name ?? item.modelID
-          const cleanName = rawName.replace(/\s*\(Plus Subscription\)\s*/gi, "").trim()
-
-          // Description: just provider name (account is dynamic)
-          const providerLabel = label(p.name, p.id)
-
-          return [
-            {
-              value: { providerID: item.providerID, modelID: item.modelID, origin: item.origin },
-              title: cleanName,
-              description: providerLabel,
-              // No category - the collapsible header serves as the section title
-              footer: shouldShowFree(item.providerID, m) ? "Free" : undefined,
-              disabled: p.id === "opencode" && m.id.includes("-nano"),
-              onSelect: () => {
-                debugCheckpoint("admin", "select favorite model", {
-                  origin: item.origin,
-                  provider: item.providerID,
-                  model: item.modelID,
-                })
-                probeAndSelectModel(item.providerID, item.modelID, item.origin)
-              },
-            },
-          ]
-        })
-      }
-
-      // 1. Favorites (Collapsible)
-      if (favorites.length > 0) {
-        const isCollapsed = favoritesCollapsed()
-        list.push({
-          value: { type: "__section_header__", section: "favorites" },
-          title: `${isCollapsed ? "▸" : "▾"} Favorites (${favorites.length})`,
-          description: isCollapsed ? "Press Enter to expand" : "Press Enter to collapse",
-          disabled: false,
-          onSelect: () => {
-            debugCheckpoint("admin", "toggle favorites collapsed", { collapsed: !isCollapsed })
-            setFavoritesCollapsed(!isCollapsed)
-          },
-        })
-        if (!isCollapsed) {
-          list.push(...getModelOptions(favorites.map((x) => ({ ...x, origin: "favorite" }))))
-        }
-      }
-
-      // 2. Families - WYSIWYG: No hidden whitelists
+      // 1. Families - WYSIWYG: No hidden whitelists
       // Configured = has accounts in storage OR has providers from sync
       // Normalize family names (e.g., "google" -> "google-api")
       const normalizeFamily = (f: string) => {
@@ -671,7 +847,6 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
             debugCheckpoint("admin", "select family", { family: fam })
             setSelectedFamily(fam)
             setStepLogged("account_select", "select family")
-            setQuery("")
             forceRefresh()
           },
         })
@@ -845,7 +1020,6 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
               await refreshAntigravity()
               setSelectedProviderID(fam)
               setStepLogged("model_select", "select account")
-              setQuery("")
             },
           }
         }),
@@ -1072,21 +1246,29 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   // ---- TITLES ----
   const title = createMemo(() => {
     const showAllIndicator = showHidden() ? " [Show All]" : ""
-    if (step() === "root") return `Admin Control Panel${showAllIndicator}`
-    if (step() === "favorites") return "Favorites"
-    if (step() === "account_select") return `Manage Accounts (${label(selectedFamily() || "", selectedFamily() || "")})`
-    if (step() === "model_select") {
-      // Try to show meaningful header
-      const pid = selectedProviderID()
-      if (pid) {
-        const p = sync.data.provider.find((x) => x.id === pid)
-        if (p) {
-          const who = owner(p)
-          if (who) return `Select Model - ${who}${showAllIndicator}`
-          return `Select Model - ${p.name}${showAllIndicator}`
+    const currentPage = page()
+    if (currentPage === "activities") {
+      const stats = activityData().stats
+      if (stats.total === 0) return "Model Activities"
+      return `Model Activities (${stats.ready}✓ ${stats.limited}⏳)`
+    }
+    if (currentPage === "favorites") return "Favorites"
+    if (currentPage === "providers") {
+      if (step() === "root") return `Providers${showAllIndicator}`
+      if (step() === "account_select")
+        return `Manage Accounts (${label(selectedFamily() || "", selectedFamily() || "")})`
+      if (step() === "model_select") {
+        const pid = selectedProviderID()
+        if (pid) {
+          const p = sync.data.provider.find((x) => x.id === pid)
+          if (p) {
+            const who = owner(p)
+            if (who) return `Select Model - ${who}${showAllIndicator}`
+            return `Select Model - ${p.name}${showAllIndicator}`
+          }
         }
+        return `Select Model${showAllIndicator}`
       }
-      return `Select Model${showAllIndicator}`
     }
     return "Admin"
   })
@@ -1109,17 +1291,12 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       return
     }
     if (lockBack() && step() === "account_select") return
-    if (query() !== "") {
-      debugCheckpoint("admin", "back cleared filter", { step: step(), query: query() })
-      setQuery("")
-      return
-    }
     if (step() === "root") {
       debugCheckpoint("admin", "back exit", { step: step() })
       dialog.clear()
       return
     }
-    if (step() === "account_select" || step() === "favorites") {
+    if (step() === "account_select") {
       debugCheckpoint("admin", "back to root", { step: step(), family: selectedFamily() })
       setStepLogged("root", "back to root")
       setSelectedFamily(null)
@@ -1141,7 +1318,10 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
   const selectCurrent = createMemo(() => {
     if (step() === "account_select") {
-      const first = options().find((option) => option.disabled !== true)
+      const first = options().find((option) => {
+        if (!("disabled" in option)) return true
+        return option.disabled !== true
+      })
       if (first) return first.value
     }
     return local.model.current()
@@ -1163,15 +1343,15 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     >
       <DialogSelect
         keybind={[
-          // Model Health Dashboard (Tab key)
+          // Page switcher (Tab key)
           {
             keybind: Keybind.parse("tab")[0],
-            title: "(Tab)board",
+            title: "(Tab)Next",
             label: "",
             disabled: false,
             onTrigger: () => {
-              debugCheckpoint("admin", "open model health dashboard via tab")
-              dialog.push(() => <DialogModelHealth />, markDialogClosed)
+              debugCheckpoint("admin", "next page", { from: page() })
+              nextPage()
             },
           },
           // MODEL STEP KEYBINDS
@@ -1194,7 +1374,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
             keybind: Keybind.parse("s")[0],
             title: showHidden() ? "Hide" : "Showall",
             label: "S",
-            disabled: !connected() || (step() !== "model_select" && step() !== "root"),
+            disabled: !connected() || page() !== "providers" || (step() !== "model_select" && step() !== "root"),
             onTrigger: () => {
               const next = !showHidden()
               debugCheckpoint("admin", "toggle show hidden", { enabled: next, step: step() })
@@ -1203,12 +1383,34 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
           },
           {
             keybind: Keybind.parse("r")[0],
-            title: "Refresh",
+            title: "(R)efresh",
             label: "R",
-            disabled: !connected() || step() !== "model_select" || family(selectedProviderID() ?? "") !== "google-api",
+            disabled:
+              page() === "activities"
+                ? false
+                : !connected() || step() !== "model_select" || family(selectedProviderID() ?? "") !== "google-api",
             onTrigger: () => {
+              if (page() === "activities") {
+                debugCheckpoint("admin.activities", "refresh")
+                setActivityTick((tick) => tick + 1)
+                return
+              }
               debugCheckpoint("admin", "refresh google models", { provider: selectedProviderID() })
               loadGoogleModels(true)
+            },
+          },
+          {
+            keybind: Keybind.parse("c")[0],
+            title: "(C)lear",
+            label: "C",
+            disabled: page() !== "activities",
+            onTrigger: () => {
+              debugCheckpoint("admin.activities", "clear")
+              const registry = getModelHealthRegistry()
+              registry.clearAll()
+              const tracker = getRateLimitTracker()
+              tracker.clearAll()
+              setActivityTick((tick) => tick + 1)
             },
           },
           // ACCOUNT STEP KEYBINDS
@@ -1422,7 +1624,6 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                       toast.show({ message: "Account deleted successfully", variant: "success" })
                       await refreshAntigravity()
                       setSelectedFamily(fam)
-                      setQuery("")
                       forceRefresh()
                       lockBackOnce()
                     } catch (e: any) {
@@ -1513,9 +1714,8 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
         ]}
         ref={setRef}
         onMove={(option) => setCurrentOption(option)}
-        onFilter={setQuery}
-        skipFilter={step() === "account_select"}
-        hideInput={step() === "account_select"}
+        skipFilter={true}
+        hideInput={true}
         title={title()}
         current={selectCurrent()}
         options={options()}
@@ -2220,6 +2420,29 @@ function DialogApiKeyAdd(props: {
       </Show>
     </box>
   )
+}
+
+function formatReason(reason: string): string {
+  switch (reason) {
+    case "QUOTA_EXHAUSTED":
+      return "Quota exhausted"
+    case "RATE_LIMIT_EXCEEDED":
+      return "Rate limit (RPM)"
+    case "MODEL_CAPACITY_EXHAUSTED":
+      return "Model capacity"
+    case "SERVER_ERROR":
+      return "Server error"
+    default:
+      return reason || "Unknown"
+  }
+}
+
+function formatWait(waitMs: number): string {
+  const waitSec = Math.ceil(waitMs / 1000)
+  const waitMin = Math.floor(waitSec / 60)
+  const waitSecRemainder = waitSec % 60
+  if (waitMin > 0) return `${waitMin}m ${waitSecRemainder}s`
+  return `${waitSec}s`
 }
 
 /**

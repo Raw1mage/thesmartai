@@ -4,6 +4,7 @@ import clipboardy from "clipboardy"
 import { lazy } from "../../../../util/lazy.js"
 import { tmpdir } from "os"
 import path from "path"
+import { stat } from "fs/promises"
 
 function normalizeBase64(input: string): string | undefined {
   const cleaned = input.replace(/\s+/g, "").trim()
@@ -24,6 +25,41 @@ function isPng(buffer: Buffer): boolean {
     buffer[6] === 0x1a &&
     buffer[7] === 0x0a
   )
+}
+
+function parseDataUrl(input: string): { data: string; mime: string } | undefined {
+  const match = input.match(/^data:([^;]+);base64,(.*)$/)
+  if (!match) return
+  const mime = match[1]
+  if (!mime?.startsWith("image/")) return
+  const data = normalizeBase64(match[2] ?? "")
+  if (!data) return
+  return { data, mime }
+}
+
+async function readRemoteImage(): Promise<Clipboard.Content | undefined> {
+  const filepath = process.env["OPENCODE_CLIPBOARD_IMAGE_PATH"]
+  if (!filepath) return
+
+  const info = await stat(filepath).catch(() => undefined)
+  if (!info) return
+
+  const ttl = Number(process.env["OPENCODE_CLIPBOARD_IMAGE_TTL_MS"] ?? "30000")
+  if (Number.isFinite(ttl) && ttl > 0 && Date.now() - info.mtimeMs > ttl) return
+
+  const file = Bun.file(filepath)
+  const buffer = Buffer.from(await file.arrayBuffer())
+  if (isPng(buffer)) return { data: buffer.toString("base64"), mime: "image/png" }
+
+  const text = buffer.toString("utf8").trim()
+  const dataUrl = parseDataUrl(text)
+  if (dataUrl) return dataUrl
+
+  const base64 = normalizeBase64(text)
+  if (!base64) return
+  const decoded = Buffer.from(base64, "base64")
+  if (!isPng(decoded)) return
+  return { data: decoded.toString("base64"), mime: "image/png" }
 }
 
 /**
@@ -48,6 +84,9 @@ export namespace Clipboard {
   }
 
   export async function read(): Promise<Content | undefined> {
+    const remote = await readRemoteImage()
+    if (remote) return remote
+
     const os = platform()
 
     if (os === "darwin") {

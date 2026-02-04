@@ -1,5 +1,5 @@
 /**
- * Model Health Dashboard
+ * Model Activities Dashboard
  *
  * Displays real-time status of all tracked models:
  * - Available models (healthy)
@@ -183,8 +183,8 @@ export function DialogModelHealth() {
 
   const title = createMemo(() => {
     const s = stats()
-    if (s.total === 0) return "Model Health"
-    return `Model Health (${s.ready}✓ ${s.limited}⏳)`
+    if (s.total === 0) return "Model Activities"
+    return `Model Activities (${s.ready}✓ ${s.limited}⏳)`
   })
 
   return (
