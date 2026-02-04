@@ -1099,9 +1099,11 @@ export namespace Provider {
     // Populate Gemini CLI models (official gemini-cli supported models)
     // Reference: https://geminicli.com/docs/cli/model/
     const geminiCliModels = [
-      { id: "gemini-2.0-flash-lite-preview-02-05", name: "Gemini 2.0 Flash Lite", reasoning: false, context: 1048576 },
-      { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", reasoning: false, context: 1048576 },
-      { id: "gemini-2.0-pro-exp-02-05", name: "Gemini 2.0 Pro", reasoning: false, context: 2097152 },
+      { id: "gemini-3-pro-preview", name: "Gemini 3 Pro Preview", reasoning: true, context: 2097152 },
+      { id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview", reasoning: false, context: 1048576 },
+      { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", reasoning: true, context: 2097152 },
+      { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", reasoning: false, context: 1048576 },
+      { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite", reasoning: false, context: 1048576 },
     ]
 
     for (const m of geminiCliModels) {
