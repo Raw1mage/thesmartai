@@ -23,7 +23,7 @@ export function Toast() {
           alignItems="flex-start"
           top={2}
           right={2}
-          maxWidth={Math.min(60, dimensions().width - 6)}
+          maxWidth={Math.min(100, dimensions().width - 6)}
           paddingLeft={2}
           paddingRight={2}
           paddingTop={1}

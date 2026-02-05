@@ -1,3 +1,5 @@
+- [2026-02-05] [Model Rotation 統一化與透明化](events/event_20260205_rotation_unify.md)
+- [2026-02-05] [Fix Skill Tool Content TypeError](events/event_20260205.md)
 - [2026-02-05] [修復 TUI Sidebar MCP 狀態同步問題](events/event_2026-02-05_fix-tui-mcp-sync.md)
 - [2026-02-05] [修復 MCP Server 連線與認證系統](events/event_2026-02-05_fix-mcp-auth.md)
 - [2026-02-05] [新增自定義 Provider Wizard](events/event_2026-02-05.md)
@@ -9,3 +11,4 @@
 - [2026-02-05] [右下角新增 Ctrl+J newline 提示](events/event_2026-02-05.md)
 - [2026-02-05] [Admin Panel Providers/Favorites 欄寬對齊](events/event_2026-02-05.md)
 - [2026-02-05] [刪除主 Session 時連帶刪除其所屬 subsessions](events/event_2026-02-05.md)
+- [2026-02-05] [專案 Code Review](events/event_20260205_codereview.md)

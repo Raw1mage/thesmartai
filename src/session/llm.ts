@@ -34,7 +34,13 @@ import {
   getModelHealthRegistry,
   type RateLimitReason,
 } from "@/account/rotation"
-import { findFallback, type ModelVector, type FallbackStrategy, isVectorRateLimited } from "@/account/rotation3d"
+import {
+  findFallback,
+  type ModelVector,
+  type FallbackStrategy,
+  isVectorRateLimited,
+  type RotationPurpose,
+} from "@/account/rotation3d"
 import { Bus } from "@/bus"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import { debugCheckpoint } from "@/util/debug"
@@ -452,6 +458,17 @@ export namespace LLM {
     }
   }
 
+  const PURPOSE_LABELS: Record<string, string> = {
+    coding: "擅長程式開發",
+    reasoning: "擅長邏輯推理",
+    image: "支援圖片處理",
+    docs: "擅長文件分析",
+    "long-context": "支援長文本",
+    audio: "支援音訊處理",
+    video: "支援影片處理",
+    "rate-limit": "頻率限制",
+  }
+
   /**
    * Check if rate limit handling is needed for a provider.
    * Returns the next available model if rotation is possible.
@@ -541,6 +558,11 @@ export namespace LLM {
     const isSameModel = fallback.modelID === currentModel.id
 
     const fallbackReason = isVectorRateLimited(currentVector) ? "rate-limit" : "unknown"
+    const purpose = (fallback as any).purpose || fallbackReason
+    const reasonLabel = PURPOSE_LABELS[purpose] || fallback.reason
+    const fromStr = `${currentAccountId}(${currentModel.id})`
+    const toStr = `${fallback.accountId}(${fallback.modelID})`
+    const toastMsg = `[Rotation: ${reasonLabel}] ${fromStr} → ${toStr}`
 
     log.info("3D fallback selected", {
       reason: fallback.reason,
@@ -550,23 +572,15 @@ export namespace LLM {
         account: !isSameAccount,
         model: !isSameModel,
       },
-      from: {
-        provider: currentModel.providerID,
-        account: currentAccountId,
-        model: currentModel.id,
-      },
-      to: {
-        provider: fallback.providerID,
-        account: fallback.accountId,
-        model: fallback.modelID,
-      },
+      from: fromStr,
+      to: toStr,
     })
 
     debugCheckpoint("rotation3d", "Executing fallback switch", {
       trigger: fallbackReason,
       strategy: fallback.reason,
-      from: `${currentModel.providerID}:${currentAccountId}:${currentModel.id}`,
-      to: `${fallback.providerID}:${fallback.accountId}:${fallback.modelID}`,
+      from: fromStr,
+      to: toStr,
       changes: {
         provider: !isSameProvider,
         account: !isSameAccount,
@@ -586,9 +600,9 @@ export namespace LLM {
       // Notify user of account rotation
       Bus.publish(TuiEvent.ToastShow, {
         title: "Account Rotated",
-        message: `Switched to account: ${displayName}`,
+        message: toastMsg,
         variant: "info",
-        duration: 4000,
+        duration: 8000,
       }).catch(() => {})
 
       return currentModel
@@ -613,12 +627,11 @@ export namespace LLM {
     }
 
     // Notify user of model/provider rotation
-    const changeDesc = !isSameProvider ? `${fallback.providerID}/${fallback.modelID}` : fallback.modelID
     Bus.publish(TuiEvent.ToastShow, {
       title: "Model Rotated",
-      message: `Fallback to: ${changeDesc}`,
+      message: toastMsg,
       variant: "info",
-      duration: 4000,
+      duration: 8000,
     }).catch(() => {})
 
     return fallbackModel

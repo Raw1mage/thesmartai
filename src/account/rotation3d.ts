@@ -46,8 +46,33 @@ export interface FallbackCandidate extends ModelVector {
   /** Priority score (higher = better) */
   priority: number
   /** Reason for this candidate */
-  reason: "same-model-diff-account" | "diff-model-same-account" | "diff-provider" | "fallback"
+  reason: "same-model-diff-account" | "diff-model-same-account" | "diff-provider" | "fallback" | "capability" | "task"
+  /** Original vector this is a fallback for */
+  from?: ModelVector
+  /** Special capabilities of this model from metadata */
+  capabilities?: {
+    image?: boolean
+    audio?: boolean
+    video?: boolean
+    reasoning?: boolean
+    pdf?: boolean
+    coding?: boolean
+    longContext?: boolean
+  }
 }
+
+/**
+ * Purpose of the rotation
+ */
+export type RotationPurpose =
+  | "coding"
+  | "reasoning"
+  | "image"
+  | "docs"
+  | "audio"
+  | "video"
+  | "long-context"
+  | "generic"
 
 /**
  * Strategy for fallback selection
@@ -117,6 +142,7 @@ function scoreCandidateByStrategy(
   candidate: FallbackCandidate,
   current: ModelVector,
   strategy: FallbackStrategy,
+  purpose: RotationPurpose = "generic",
 ): number {
   const isSameProvider = candidate.providerID === current.providerID
   const isSameAccount = candidate.accountId === current.accountId
@@ -125,31 +151,61 @@ function scoreCandidateByStrategy(
   // Base score from health
   let score = candidate.healthScore
 
+  // 1. Dimension Score (Account/Model/Provider)
   switch (strategy) {
     case "account-first":
-      // Prefer: same model, different account > different model > different provider
       if (isSameModel && !isSameAccount && isSameProvider) score += 300
       else if (isSameProvider && !isSameModel) score += 200
       else if (!isSameProvider) score += 100
       break
-
     case "model-first":
-      // Prefer: different model, same account > different account > different provider
       if (!isSameModel && isSameAccount && isSameProvider) score += 300
       else if (isSameProvider && !isSameAccount) score += 200
       else if (!isSameProvider) score += 100
       break
-
     case "provider-first":
-      // Prefer: different provider > different account > different model
       if (!isSameProvider) score += 300
       else if (isSameProvider && !isSameAccount) score += 200
       else if (isSameProvider && !isSameModel) score += 100
       break
-
     case "any-available":
-      // Just use health score - no dimension preference
       break
+  }
+
+  // 2. Purpose Weighting (Phase 2)
+  // If the candidate matches the requested purpose, give it a significant boost
+  if (purpose !== "generic") {
+    let purposeMatch = false
+    const caps = candidate.capabilities
+    if (caps) {
+      switch (purpose) {
+        case "coding":
+          purposeMatch = !!caps.coding
+          break
+        case "reasoning":
+          purposeMatch = !!caps.reasoning
+          break
+        case "image":
+          purposeMatch = !!caps.image
+          break
+        case "docs":
+          purposeMatch = !!caps.longContext || !!caps.pdf
+          break
+        case "long-context":
+          purposeMatch = !!caps.longContext
+          break
+        case "audio":
+          purposeMatch = !!caps.audio
+          break
+        case "video":
+          purposeMatch = !!caps.video
+          break
+      }
+    }
+
+    if (purposeMatch) {
+      score += 500 // Significant boost for matching purpose
+    }
   }
 
   // Penalty for wait time (1 point per second of wait)
@@ -171,6 +227,7 @@ export function selectBestFallback(
   current: ModelVector,
   config: Rotation3DConfig = DEFAULT_ROTATION3D_CONFIG,
   triedKeys?: Set<string>,
+  purpose: RotationPurpose = "generic",
 ): FallbackCandidate | null {
   // Filter to available candidates
   const available = candidates.filter((c) => {
@@ -192,6 +249,7 @@ export function selectBestFallback(
       current: makeKey(current),
       totalCandidates: candidates.length,
       triedCount: triedKeys?.size ?? 0,
+      purpose,
     })
     return null
   }
@@ -200,19 +258,21 @@ export function selectBestFallback(
   const scored = available
     .map((c) => ({
       ...c,
-      priority: scoreCandidateByStrategy(c, current, config.strategy),
+      priority: scoreCandidateByStrategy(c, current, config.strategy, purpose),
     }))
     .sort((a, b) => b.priority - a.priority)
     .slice(0, config.maxCandidates)
 
   const best = scored[0]
   if (best) {
+    best.from = current
     log.info("Selected fallback", {
       from: makeKey(current),
       to: makeKey(best),
       reason: best.reason,
       priority: best.priority,
       healthScore: best.healthScore,
+      purpose,
     })
     debugCheckpoint("rotation3d", "Fallback selected", {
       from: makeKey(current),
@@ -220,6 +280,7 @@ export function selectBestFallback(
       reason: best.reason,
       priority: best.priority,
       healthScore: best.healthScore,
+      purpose,
       candidatesCount: candidates.length,
       availableCount: available.length,
       triedCount: triedKeys?.size ?? 0,
@@ -227,6 +288,7 @@ export function selectBestFallback(
   } else {
     debugCheckpoint("rotation3d", "No fallback available", {
       from: makeKey(current),
+      purpose,
       totalCandidates: candidates.length,
       availableCount: available.length,
       triedCount: triedKeys?.size ?? 0,
@@ -248,6 +310,25 @@ export function selectBestFallback(
 // ============================================================================
 
 /**
+ * Extract capabilities from a provider model info
+ */
+function extractCapabilities(model: any): FallbackCandidate["capabilities"] {
+  if (!model) return {}
+  const modalities = model.modalities || { input: [], output: [] }
+  const id = (model.id || "").toLowerCase()
+
+  return {
+    image: modalities.input.includes("image"),
+    audio: modalities.input.includes("audio"),
+    video: modalities.input.includes("video"),
+    pdf: modalities.input.includes("pdf"),
+    reasoning: !!model.reasoning || id.includes("deepseek-r") || id.includes("o1") || id.includes("o3"),
+    coding: id.includes("codex") || id.includes("coder") || id.includes("coding"),
+    longContext: (model.limit?.context || 0) >= 128000,
+  }
+}
+
+/**
  * Build fallback candidates from available accounts and models
  */
 export async function buildFallbackCandidates(
@@ -263,92 +344,118 @@ export async function buildFallbackCandidates(
   const healthTracker = getHealthTracker()
   const rateLimitTracker = getRateLimitTracker()
 
-  // 1. Get all accounts in the same family (same provider, different accounts)
-  const family = Account.parseFamily(current.providerID)
-  if (family) {
-    const accounts = await Account.list(family)
-    for (const [accountId, info] of Object.entries(accounts)) {
-      if (accountId === current.accountId) continue
-
-      const vector: ModelVector = {
-        providerID: current.providerID,
-        accountId,
-        modelID: current.modelID,
-      }
-
-      candidates.push({
-        ...vector,
-        healthScore: healthTracker.getScore(accountId),
-        isRateLimited: rateLimitTracker.isRateLimited(accountId, current.providerID, current.modelID),
-        waitTimeMs: rateLimitTracker.getWaitTime(accountId, current.providerID, current.modelID),
-        priority: 0,
-        reason: "same-model-diff-account",
-      })
-    }
-  }
-
-  // 2. Get alternative models from same provider (different model, same account)
+  let providers: Record<string, any> = {}
   try {
-    const providers = await Provider.list()
-    const currentProvider = providers[current.providerID]
-    if (currentProvider?.models) {
-      for (const [modelId, model] of Object.entries(currentProvider.models)) {
-        if (modelId === current.modelID) continue
-
-        const vector: ModelVector = {
-          providerID: current.providerID,
-          accountId: current.accountId,
-          modelID: modelId,
-        }
-
-        candidates.push({
-          ...vector,
-          healthScore: healthTracker.getScore(current.accountId),
-          isRateLimited: rateLimitTracker.isRateLimited(current.accountId, current.providerID, modelId),
-          waitTimeMs: rateLimitTracker.getWaitTime(current.accountId, current.providerID, modelId),
-          priority: 0,
-          reason: "diff-model-same-account",
-        })
-      }
-    }
+    providers = await Provider.list()
   } catch (e) {
-    log.warn("Failed to get provider models for fallback", { error: e })
+    log.warn("Failed to list providers", { error: e })
   }
 
-  // 3. Get favorite models from model.json (different providers)
-  // Try ALL accounts for each favorite, not just the active one
+  // Load Favorites set for filtering
+  let allowedModels = new Set<string>()
   try {
     const modelFile = Bun.file(path.join(Global.Path.state, "model.json"))
     if (await modelFile.exists()) {
       const modelData = await modelFile.json()
       const favorites: Array<{ providerID: string; modelID: string }> = modelData.favorite ?? []
+      allowedModels = new Set(favorites.map((f) => `${f.providerID}/${f.modelID}`))
+    }
+  } catch (e) {
+    log.warn("Failed to read favorites for filtering", { error: e })
+  }
+
+  // Helper to enrich candidate with capabilities
+  const enrich = (vector: ModelVector, reason: FallbackCandidate["reason"]): FallbackCandidate => {
+    const model = providers[vector.providerID]?.models?.[vector.modelID]
+    return {
+      ...vector,
+      healthScore: healthTracker.getScore(vector.accountId),
+      isRateLimited: rateLimitTracker.isRateLimited(vector.accountId, vector.providerID, vector.modelID),
+      waitTimeMs: rateLimitTracker.getWaitTime(vector.accountId, vector.providerID, vector.modelID),
+      priority: 0,
+      reason,
+      capabilities: extractCapabilities(model),
+    }
+  }
+
+  // 1. Get all accounts in the same family (same provider, different accounts)
+  // Always allowed as it's the same model the user is already using
+  const family = Account.parseFamily(current.providerID)
+  if (family) {
+    const accounts = await Account.list(family)
+    for (const [accountId, info] of Object.entries(accounts)) {
+      if (accountId === current.accountId) continue
+      candidates.push(
+        enrich(
+          {
+            providerID: current.providerID,
+            accountId,
+            modelID: current.modelID,
+          },
+          "same-model-diff-account",
+        ),
+      )
+    }
+  }
+
+  // 2. Get alternative models from same provider (different model, same account)
+  // STRICT: Only allow if it's a Favorite model
+  const currentProvider = providers[current.providerID]
+  if (currentProvider?.models) {
+    for (const [modelId, model] of Object.entries(currentProvider.models)) {
+      if (modelId === current.modelID) continue
+      
+      // Check if this specific model is in favorites
+      if (!allowedModels.has(`${current.providerID}/${modelId}`)) continue
+
+      candidates.push(
+        enrich(
+          {
+            providerID: current.providerID,
+            accountId: current.accountId,
+            modelID: modelId,
+          },
+          "diff-model-same-account",
+        ),
+      )
+    }
+  }
+
+  // 3. Get favorite models from model.json (different providers)
+  // We already loaded modelData for filtering, let's reuse it if possible or just parse again
+  try {
+    const modelFile = Bun.file(path.join(Global.Path.state, "model.json"))
+    if (await modelFile.exists()) {
+      const modelData = await modelFile.json()
+      const favorites: Array<{ providerID: string; modelID: string; tags?: string[] }> = modelData.favorite ?? []
       const hiddenProviders: string[] = modelData.hiddenProviders ?? []
 
       for (const fav of favorites) {
         if (hiddenProviders.includes(fav.providerID)) continue
-
         if (fav.providerID === current.providerID && fav.modelID === current.modelID) continue
 
         const favFamily = Account.parseFamily(fav.providerID)
         if (!favFamily) continue
 
-        // Get ALL accounts for this provider family, not just the active one
         const accounts = await Account.list(favFamily)
         for (const [accountId, info] of Object.entries(accounts)) {
-          const vector: ModelVector = {
-            providerID: fav.providerID,
-            accountId,
-            modelID: fav.modelID,
-          }
+          const candidate = enrich(
+            {
+              providerID: fav.providerID,
+              accountId,
+              modelID: fav.modelID,
+            },
+            fav.providerID === current.providerID ? "diff-model-same-account" : "diff-provider",
+          )
 
-          candidates.push({
-            ...vector,
-            healthScore: healthTracker.getScore(accountId),
-            isRateLimited: rateLimitTracker.isRateLimited(accountId, fav.providerID, fav.modelID),
-            waitTimeMs: rateLimitTracker.getWaitTime(accountId, fav.providerID, fav.modelID),
-            priority: 0,
-            reason: fav.providerID === current.providerID ? "diff-model-same-account" : "diff-provider",
-          })
+          // Apply manual tags if present
+          if (fav.tags && candidate.capabilities) {
+            for (const tag of fav.tags) {
+              // @ts-ignore
+              candidate.capabilities[tag] = true
+            }
+          }
+          candidates.push(candidate)
         }
       }
     }
@@ -357,49 +464,29 @@ export async function buildFallbackCandidates(
   }
 
   // 4. Get inherent free opencode zen models as rescue fallback
-  try {
-    const providers = await Provider.list()
-    const opencodeProvider = providers["opencode"]
-    if (opencodeProvider?.models) {
-      for (const [modelId, model] of Object.entries(opencodeProvider.models)) {
-        const m = model as any
-        // Skip if not free
-        if (m.cost.input > 0 || m.cost.output > 0) continue
+  const opencodeProvider = providers["opencode"]
+  if (opencodeProvider?.models) {
+    for (const [modelId, model] of Object.entries(opencodeProvider.models)) {
+      const m = model as any
+      if (m.cost.input > 0 || m.cost.output > 0) continue
 
-        // For opencode provider, use "public" or active account if available
-        let accountId = "public"
-        const family = Account.parseFamily("opencode")
-        if (family) {
-          const active = await Account.getActive(family)
-          if (active) accountId = active
-        }
-
-        const vector: ModelVector = {
-          providerID: "opencode",
-          accountId,
-          modelID: modelId,
-        }
-
-        // Skip if this IS the current vector
-        if (
-          vector.providerID === current.providerID &&
-          vector.modelID === current.modelID &&
-          vector.accountId === current.accountId
-        )
-          continue
-
-        candidates.push({
-          ...vector,
-          healthScore: healthTracker.getScore(vector.accountId),
-          isRateLimited: rateLimitTracker.isRateLimited(vector.accountId, vector.providerID, vector.modelID),
-          waitTimeMs: rateLimitTracker.getWaitTime(vector.accountId, vector.providerID, vector.modelID),
-          priority: 0,
-          reason: "fallback",
-        })
+      let accountId = "public"
+      const family = Account.parseFamily("opencode")
+      if (family) {
+        const active = await Account.getActive(family)
+        if (active) accountId = active
       }
+
+      const vector: ModelVector = { providerID: "opencode", accountId, modelID: modelId }
+      if (
+        vector.providerID === current.providerID &&
+        vector.modelID === current.modelID &&
+        vector.accountId === current.accountId
+      )
+        continue
+
+      candidates.push(enrich(vector, "fallback"))
     }
-  } catch (e) {
-    log.warn("Failed to get zen models for fallback", { error: e })
   }
 
   // Deduplicate by key
@@ -427,19 +514,15 @@ export async function buildFallbackCandidates(
 /**
  * Find the best fallback for a rate-limited model vector.
  * Returns null if no fallback is available.
- *
- * @param current - The current model vector that hit rate limit
- * @param config - Optional rotation configuration
- * @param triedKeys - Set of already-tried "provider:account:model" keys to exclude
  */
 export async function findFallback(
   current: ModelVector,
-  config?: Partial<Rotation3DConfig>,
+  config?: Partial<Rotation3DConfig> & { purpose?: RotationPurpose },
   triedKeys?: Set<string>,
 ): Promise<FallbackCandidate | null> {
   const fullConfig = { ...DEFAULT_ROTATION3D_CONFIG, ...config }
   const candidates = await buildFallbackCandidates(current, fullConfig)
-  return selectBestFallback(candidates, current, fullConfig, triedKeys)
+  return selectBestFallback(candidates, current, fullConfig, triedKeys, config?.purpose || "generic")
 }
 
 /**
