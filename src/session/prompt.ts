@@ -109,10 +109,15 @@ export namespace SessionPrompt {
   }
 
   async function selectImageModel(current: Provider.Model): Promise<Provider.Model | undefined> {
+    // Get the actual account ID for the current provider
+    const { Account } = await import("../account/index")
+    const family = Account.parseFamily(current.providerID)
+    const accountId = family ? ((await Account.getActive(family)) ?? current.providerID) : current.providerID
+
     // Use Rotation3D to find robust candidates (checking health, rate limits, favorites)
     const candidates = await buildFallbackCandidates({
       providerID: current.providerID,
-      accountId: current.providerID, // In session context, providerID key acts as account identifier
+      accountId,
       modelID: current.id,
     })
 
@@ -127,6 +132,11 @@ export namespace SessionPrompt {
       if (!model) continue
 
       if (model.capabilities.input.image && !c.isRateLimited) {
+        debugCheckpoint("rotation3d", "Image capability rotation", {
+          from: `${accountId}(${current.id})`,
+          to: `${c.accountId}(${c.modelID})`,
+          reason: "capability",
+        })
         return model
       }
     }

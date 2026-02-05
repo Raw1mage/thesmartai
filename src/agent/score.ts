@@ -1,9 +1,9 @@
-import { type ModelVector } from "../account/rotation3d"
-import { getRateLimitTracker, getHealthTracker } from "../account/rotation"
+import { type ModelVector, isVectorRateLimited, findFallback, type RotationPurpose } from "../account/rotation3d"
 import { InstructionPrompt } from "../session/instruction"
 import { Instance } from "../project/instance"
 import { mergeDeep } from "remeda"
 import z from "zod"
+import { debugCheckpoint } from "@/util/debug"
 
 // Score Interfaces
 export interface ModelScore {
@@ -194,37 +194,57 @@ export namespace ModelScoring {
 
   /**
    * Select the best available model for a task
+   * Uses rotation3d for consistent rotation logic across the system
    */
   export async function select(domain: string): Promise<ModelVector | null> {
     const ranking = await rank(domain)
-    const rateLimitTracker = getRateLimitTracker()
-    const healthTracker = getHealthTracker()
     const { Account } = await import("../account/index")
+    const { Provider } = await import("../provider/provider")
 
+    // Get current model preference if any
+    const activeModel = await Provider.defaultModel()
+    const activeFamily = Account.parseFamily(activeModel.providerID)
+    const activeAccountId = activeFamily ? (await Account.getActive(activeFamily)) ?? "public" : "public"
+
+    const currentVector: ModelVector = {
+      providerID: activeModel.providerID,
+      modelID: activeModel.id,
+      accountId: activeAccountId,
+    }
+
+    // Use 3D rotation to find the best candidate for this domain/purpose
+    const fallback = await findFallback(currentVector, {
+      purpose: domain as RotationPurpose,
+      strategy: "model-first",
+    })
+
+    if (fallback) {
+      debugCheckpoint("rotation3d", "Purpose-based selection", {
+        domain,
+        to: `${fallback.accountId}(${fallback.modelID})`,
+        reason: fallback.reason,
+      })
+      return {
+        providerID: fallback.providerID,
+        modelID: fallback.modelID,
+        accountId: fallback.accountId,
+      }
+    }
+
+    // Fallback to top ranked if rotation3d didn't find a better match
     for (const candidate of ranking) {
-      // Find active account for this provider
       const family = Account.parseFamily(candidate.providerID)
       if (!family) continue
-
-      const accounts = await Account.list(family).catch(() => ({}))
-
-      // Check each account for availability
-      for (const [accountId, _] of Object.entries(accounts)) {
-        // Skip if unhealthy
-        if (healthTracker.getScore(accountId) < 30) continue
-
-        // Skip if rate limited
-        if (rateLimitTracker.isRateLimited(accountId, candidate.providerID, candidate.modelID)) continue
-
+      const active = await Account.getActive(family)
+      if (active) {
         return {
           providerID: candidate.providerID,
           modelID: candidate.modelID,
-          accountId,
+          accountId: active,
         }
       }
     }
 
-    // If no specific ranking match found, fallback to defaults
     return null
   }
 }
