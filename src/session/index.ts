@@ -26,17 +26,16 @@ import { Global } from "@/global"
 export namespace Session {
   const log = Log.create({ service: "session" })
 
-  const parentTitlePrefix = "New session - "
-  const childTitlePrefix = "Child session - "
-
-  function createDefaultTitle(isChild = false) {
-    return (isChild ? childTitlePrefix : parentTitlePrefix) + new Date().toISOString()
+  function createDefaultTitle() {
+    const now = new Date()
+    const pad = (value: number) => value.toString().padStart(2, "0")
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(
+      now.getMinutes(),
+    )}`
   }
 
   export function isDefaultTitle(title: string) {
-    return new RegExp(
-      `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
-    ).test(title)
+    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(title)
   }
 
   function getForkedTitle(title: string): string {
@@ -217,7 +216,7 @@ export namespace Session {
       projectID: Instance.project.id,
       directory: input.directory,
       parentID: input.parentID,
-      title: input.title ?? createDefaultTitle(!!input.parentID),
+      title: input.title ?? createDefaultTitle(),
       permission: input.permission,
       time: {
         created: Date.now(),
@@ -332,9 +331,7 @@ export namespace Session {
   export async function* list() {
     const project = Instance.project
     for (const item of await Storage.list(["session", project.id])) {
-      const session = await Storage.read<Info>(item).catch(() => undefined)
-      if (!session) continue
-      yield session
+      yield Storage.read<Info>(item)
     }
   }
 
@@ -342,8 +339,7 @@ export namespace Session {
     const project = Instance.project
     const result = [] as Session.Info[]
     for (const item of await Storage.list(["session", project.id])) {
-      const session = await Storage.read<Info>(item).catch(() => undefined)
-      if (!session) continue
+      const session = await Storage.read<Info>(item)
       if (session.parentID !== parentID) continue
       result.push(session)
     }
@@ -354,6 +350,7 @@ export namespace Session {
     const project = Instance.project
     try {
       const session = await get(sessionID)
+      // Recursively delete child sessions
       for (const child of await children(sessionID)) {
         await remove(child.id)
       }

@@ -11,6 +11,10 @@ import { ProviderTransform } from "../provider/transform"
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
+import PROMPT_CODING from "./prompt/coding.txt"
+import PROMPT_REVIEW from "./prompt/review.txt"
+import PROMPT_TESTING from "./prompt/testing.txt"
+import PROMPT_DOCS from "./prompt/docs.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import { PermissionNext } from "@/permission/next"
@@ -18,7 +22,6 @@ import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
 import path from "path"
 import { Plugin } from "@/plugin"
-import { Skill } from "../skill"
 
 export namespace Agent {
   export const Info = z
@@ -51,14 +54,13 @@ export namespace Agent {
   const state = Instance.state(async () => {
     const cfg = await Config.get()
 
-    const skillDirs = await Skill.dirs()
     const defaults = PermissionNext.fromConfig({
       "*": "allow",
       doom_loop: "ask",
       external_directory: {
         "*": "ask",
+        [Truncate.DIR]: "allow",
         [Truncate.GLOB]: "allow",
-        ...Object.fromEntries(skillDirs.map((dir) => [path.join(dir, "*"), "allow"])),
       },
       question: "deny",
       plan_enter: "deny",
@@ -72,6 +74,14 @@ export namespace Agent {
       },
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
+    const sub = PermissionNext.merge(
+      defaults,
+      PermissionNext.fromConfig({
+        todoread: "deny",
+        todowrite: "deny",
+      }),
+      user,
+    )
 
     const result: Record<string, Info> = {
       build: {
@@ -115,15 +125,44 @@ export namespace Agent {
       general: {
         name: "general",
         description: `General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.`,
-        permission: PermissionNext.merge(
-          defaults,
-          PermissionNext.fromConfig({
-            todoread: "deny",
-            todowrite: "deny",
-          }),
-          user,
-        ),
+        permission: sub,
         options: {},
+        mode: "subagent",
+        native: true,
+      },
+      coding: {
+        name: "coding",
+        description: "Implements changes and proposes concrete code edits.",
+        permission: sub,
+        options: {},
+        prompt: PROMPT_CODING,
+        mode: "subagent",
+        native: true,
+      },
+      review: {
+        name: "review",
+        description: "Reviews changes for correctness, edge cases, and risks.",
+        permission: sub,
+        options: {},
+        prompt: PROMPT_REVIEW,
+        mode: "subagent",
+        native: true,
+      },
+      testing: {
+        name: "testing",
+        description: "Defines test and verification strategy.",
+        permission: sub,
+        options: {},
+        prompt: PROMPT_TESTING,
+        mode: "subagent",
+        native: true,
+      },
+      docs: {
+        name: "docs",
+        description: "Identifies documentation updates and release notes.",
+        permission: sub,
+        options: {},
+        prompt: PROMPT_DOCS,
         mode: "subagent",
         native: true,
       },
@@ -142,6 +181,7 @@ export namespace Agent {
             codesearch: "allow",
             read: "allow",
             external_directory: {
+              [Truncate.DIR]: "allow",
               [Truncate.GLOB]: "allow",
             },
           }),
@@ -153,6 +193,7 @@ export namespace Agent {
         mode: "subagent",
         native: true,
       },
+
       compaction: {
         name: "compaction",
         mode: "primary",
@@ -230,19 +271,20 @@ export namespace Agent {
       item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
     }
 
-    // Ensure Truncate.GLOB is allowed unless explicitly configured
+    const hasExplicit = (perm?: Config.Permission) => {
+      const rule = perm?.external_directory
+      if (!rule || typeof rule === "string") return false
+      return Truncate.DIR in rule || Truncate.GLOB in rule
+    }
+
+    // Ensure Truncate.DIR is allowed unless explicitly configured
     for (const name in result) {
-      const agent = result[name]
-      const explicit = agent.permission.some((r) => {
-        if (r.permission !== "external_directory") return false
-        if (r.action !== "deny") return false
-        return r.pattern === Truncate.GLOB
-      })
+      const explicit = hasExplicit(cfg.permission) || hasExplicit(cfg.agent?.[name]?.permission)
       if (explicit) continue
 
       result[name].permission = PermissionNext.merge(
         result[name].permission,
-        PermissionNext.fromConfig({ external_directory: { [Truncate.GLOB]: "allow" } }),
+        PermissionNext.fromConfig({ external_directory: { [Truncate.DIR]: "allow", [Truncate.GLOB]: "allow" } }),
       )
     }
 

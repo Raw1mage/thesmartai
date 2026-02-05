@@ -4,6 +4,63 @@ import clipboardy from "clipboardy"
 import { lazy } from "../../../../util/lazy.js"
 import { tmpdir } from "os"
 import path from "path"
+import { stat } from "fs/promises"
+
+function normalizeBase64(input: string): string | undefined {
+  const cleaned = input.replace(/\s+/g, "").trim()
+  if (!cleaned) return
+  if (!/^[A-Za-z0-9+/=]+$/.test(cleaned)) return
+  return cleaned
+}
+
+function isPng(buffer: Buffer): boolean {
+  if (buffer.length < 8) return false
+  return (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  )
+}
+
+function parseDataUrl(input: string): { data: string; mime: string } | undefined {
+  const match = input.match(/^data:([^;]+);base64,(.*)$/)
+  if (!match) return
+  const mime = match[1]
+  if (!mime?.startsWith("image/")) return
+  const data = normalizeBase64(match[2] ?? "")
+  if (!data) return
+  return { data, mime }
+}
+
+async function readRemoteImage(): Promise<Clipboard.Content | undefined> {
+  const filepath = process.env["OPENCODE_CLIPBOARD_IMAGE_PATH"]
+  if (!filepath) return
+
+  const info = await stat(filepath).catch(() => undefined)
+  if (!info) return
+
+  const ttl = Number(process.env["OPENCODE_CLIPBOARD_IMAGE_TTL_MS"] ?? "30000")
+  if (Number.isFinite(ttl) && ttl > 0 && Date.now() - info.mtimeMs > ttl) return
+
+  const file = Bun.file(filepath)
+  const buffer = Buffer.from(await file.arrayBuffer())
+  if (isPng(buffer)) return { data: buffer.toString("base64"), mime: "image/png" }
+
+  const text = buffer.toString("utf8").trim()
+  const dataUrl = parseDataUrl(text)
+  if (dataUrl) return dataUrl
+
+  const base64 = normalizeBase64(text)
+  if (!base64) return
+  const decoded = Buffer.from(base64, "base64")
+  if (!isPng(decoded)) return
+  return { data: decoded.toString("base64"), mime: "image/png" }
+}
 
 /**
  * Writes text to clipboard via OSC 52 escape sequence.
@@ -14,6 +71,7 @@ function writeOsc52(text: string): void {
   if (!process.stdout.isTTY) return
   const base64 = Buffer.from(text).toString("base64")
   const osc52 = `\x1b]52;c;${base64}\x07`
+  // tmux and screen require DCS passthrough wrapping
   const passthrough = process.env["TMUX"] || process.env["STY"]
   const sequence = passthrough ? `\x1bPtmux;\x1b${osc52}\x1b\\` : osc52
   process.stdout.write(sequence)
@@ -26,6 +84,9 @@ export namespace Clipboard {
   }
 
   export async function read(): Promise<Content | undefined> {
+    const remote = await readRemoteImage()
+    if (remote) return remote
+
     const os = platform()
 
     if (os === "darwin") {
@@ -45,11 +106,12 @@ export namespace Clipboard {
 
     if (os === "win32" || release().includes("WSL")) {
       const script =
-        "Add-Type -AssemblyName System.Windows.Forms; $img = [System.Windows.Forms.Clipboard]::GetImage(); if ($img) { $ms = New-Object System.IO.MemoryStream; $img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); [System.Convert]::ToBase64String($ms.ToArray()) }"
-      const base64 = await $`powershell.exe -NonInteractive -NoProfile -command "${script}"`.nothrow().text()
+        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Add-Type -AssemblyName System.Windows.Forms; $img = [System.Windows.Forms.Clipboard]::GetImage(); if ($img) { $ms = New-Object System.IO.MemoryStream; $img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); [System.Convert]::ToBase64String($ms.ToArray()) }"
+      const raw = await $`powershell.exe -NonInteractive -NoProfile -command "${script}"`.nothrow().text()
+      const base64 = raw ? normalizeBase64(raw) : undefined
       if (base64) {
-        const imageBuffer = Buffer.from(base64.trim(), "base64")
-        if (imageBuffer.length > 0) {
+        const imageBuffer = Buffer.from(base64, "base64")
+        if (isPng(imageBuffer)) {
           return { data: imageBuffer.toString("base64"), mime: "image/png" }
         }
       }

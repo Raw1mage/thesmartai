@@ -21,17 +21,21 @@ type PluginAuth = NonNullable<Hooks["auth"]>
 async function handlePluginAuth(plugin: { auth: PluginAuth }, provider: string): Promise<boolean> {
   let index = 0
   if (plugin.auth.methods.length > 1) {
-    const method = await prompts.select({
-      message: "Login method",
-      options: [
-        ...plugin.auth.methods.map((x, index) => ({
-          label: x.label,
-          value: index.toString(),
-        })),
-      ],
-    })
-    if (prompts.isCancel(method)) throw new UI.CancelledError()
-    index = parseInt(method)
+    if (provider === "antigravity" || provider === "gemini-cli") {
+      index = 0
+    } else {
+      const method = await prompts.select({
+        message: "Login method",
+        options: [
+          ...plugin.auth.methods.map((x, index) => ({
+            label: x.label,
+            value: index.toString(),
+          })),
+        ],
+      })
+      if (prompts.isCancel(method)) throw new UI.CancelledError()
+      index = parseInt(method)
+    }
   }
   const method = plugin.auth.methods[index]
 
@@ -168,14 +172,38 @@ export const AuthCommand = cmd({
 })
 
 export const AuthListCommand = cmd({
-  command: "list",
+  command: "list [provider]",
   aliases: ["ls"],
   describe: "list providers",
-  async handler() {
+  builder: (yargs) =>
+    yargs.positional("provider", {
+      type: "string",
+      describe: "filter by provider (e.g., google, anthropic)",
+    }),
+  async handler(args) {
     UI.empty()
     const authPath = path.join(Global.Path.data, "auth.json")
     const homedir = os.homedir()
     const displayPath = authPath.startsWith(homedir) ? authPath.replace(homedir, "~") : authPath
+
+    // If provider filter specified, list accounts for that provider family
+    if (args.provider) {
+      const accounts = await Auth.listAccounts(args.provider)
+      prompts.intro(`${args.provider} accounts`)
+
+      for (const providerID of accounts) {
+        const auth = await Auth.get(providerID)
+        if (!auth) continue
+        const isDefault = providerID === args.provider
+        const marker = isDefault ? " (default)" : ""
+        prompts.log.info(`${providerID}${marker} ${UI.Style.TEXT_DIM}${auth.type}`)
+      }
+
+      prompts.outro(`${accounts.length} account${accounts.length === 1 ? "" : "s"}`)
+      return
+    }
+
+    // Otherwise, list all credentials
     prompts.intro(`Credentials ${UI.Style.TEXT_DIM}${displayPath}`)
     const results = Object.entries(await Auth.all())
     const database = await ModelsDev.get()
@@ -259,12 +287,31 @@ export const AuthLoginCommand = cmd({
         const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
 
         const providers = await ModelsDev.get().then((x) => {
+          const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
+          if (enabled && enabled.has("google-api")) {
+            enabled.add("antigravity")
+            enabled.add("gemini-cli")
+          }
+
           const filtered: Record<string, (typeof x)[string]> = {}
           for (const [key, value] of Object.entries(x)) {
             if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) {
               filtered[key] = value
             }
           }
+
+          // Force-include antigravity and gemini-cli if allowed
+          if (
+            !disabled.has("antigravity") &&
+            (enabled ? enabled.has("antigravity") : true) &&
+            !filtered["antigravity"]
+          ) {
+            filtered["antigravity"] = { id: "antigravity", name: "Antigravity", env: [], models: {} }
+          }
+          if (!disabled.has("gemini-cli") && (enabled ? enabled.has("gemini-cli") : true) && !filtered["gemini-cli"]) {
+            filtered["gemini-cli"] = { id: "gemini-cli", name: "Gemini CLI", env: ["GEMINI_API_KEY"], models: {} }
+          }
+
           return filtered
         })
 
@@ -273,9 +320,11 @@ export const AuthLoginCommand = cmd({
           anthropic: 1,
           "github-copilot": 2,
           openai: 3,
-          google: 4,
-          openrouter: 5,
-          vercel: 6,
+          antigravity: 4,
+          "gemini-cli": 5,
+          "google-api": 6,
+          openrouter: 7,
+          vercel: 8,
         }
         let provider = await prompts.autocomplete({
           message: "Select provider",
@@ -295,6 +344,9 @@ export const AuthLoginCommand = cmd({
                   opencode: "recommended",
                   anthropic: "Claude Max or API key",
                   openai: "ChatGPT Plus/Pro or API key",
+                  antigravity: "Google Subscription (vibe/internal)",
+                  "gemini-cli": "Google Subscription (CLI)",
+                  "google-api": "API Key only",
                 }[x.id],
               })),
             ),
@@ -308,9 +360,27 @@ export const AuthLoginCommand = cmd({
         if (prompts.isCancel(provider)) throw new UI.CancelledError()
 
         const plugin = await Plugin.list().then((x) => x.findLast((x) => x.auth?.provider === provider))
+        let authMethod: "plugin" | "api" = "api"
         if (plugin && plugin.auth) {
-          const handled = await handlePluginAuth({ auth: plugin.auth }, provider)
-          if (handled) return
+          // Offer choice between plugin auth and direct API key
+          authMethod = "plugin"
+          if (provider !== "antigravity" && provider !== "gemini-cli") {
+            const result = await prompts.select({
+              message: "Authentication method",
+              options: [
+                { label: "Subscription (OAuth)", value: "plugin", hint: "via plugin" },
+                { label: "API Key", value: "api", hint: "direct API key" },
+              ],
+            })
+            if (prompts.isCancel(result)) throw new UI.CancelledError()
+            authMethod = result
+          }
+
+          if (authMethod === "plugin") {
+            const handled = await handlePluginAuth({ auth: plugin.auth }, provider)
+            if (handled) return
+          }
+          // If "api" selected, fall through to API key prompt below
         }
 
         if (provider === "other") {
@@ -356,6 +426,44 @@ export const AuthLoginCommand = cmd({
           prompts.log.info(
             "Cloudflare AI Gateway can be configured with CLOUDFLARE_GATEWAY_ID, CLOUDFLARE_ACCOUNT_ID, and CLOUDFLARE_API_TOKEN environment variables. Read more: https://opencode.ai/docs/providers/#cloudflare-ai-gateway",
           )
+        }
+
+        const accountSuffix = await (async () => {
+          if (provider === "google-api" && authMethod === "api") {
+            const suffix = await prompts.text({
+              message: "Account name (lowercase, no spaces)",
+              placeholder: "work, personal, project-x",
+              validate: (x) =>
+                x && /^[a-z0-9-]+$/.test(x) ? undefined : "Required. Use lowercase letters, numbers, and hyphens only",
+            })
+            if (prompts.isCancel(suffix)) throw new UI.CancelledError()
+            return suffix
+          }
+          return undefined
+        })()
+
+        if (accountSuffix) {
+          provider = `${provider}-${accountSuffix}`
+        }
+
+        if (!accountSuffix) {
+          // Multi-account support: ask if user wants to name this account
+          const wantsAccountName = await prompts.confirm({
+            message: "Name this account for multi-account support?",
+            initialValue: false,
+          })
+
+          if (!prompts.isCancel(wantsAccountName) && wantsAccountName) {
+            const suffix = await prompts.text({
+              message: "Account name (lowercase, no spaces)",
+              placeholder: "work, personal, project-x",
+              validate: (x) =>
+                x && /^[a-z0-9-]+$/.test(x) ? undefined : "Use lowercase letters, numbers, and hyphens only",
+            })
+            if (!prompts.isCancel(suffix) && suffix) {
+              provider = `${provider}-${suffix}`
+            }
+          }
         }
 
         const key = await prompts.password({

@@ -16,7 +16,6 @@ import path from "path"
 import { useRoute, useRouteData } from "@tui/context/route"
 import { useSync } from "@tui/context/sync"
 import { SplitBorder } from "@tui/component/border"
-import { Spinner } from "@tui/component/spinner"
 import { useTheme } from "@tui/context/theme"
 import {
   BoxRenderable,
@@ -221,9 +220,8 @@ export function Session() {
   let prompt: PromptRef
   const keybind = useKeybind()
 
-  // Allow exit when in child session (prompt is hidden)
+  // Allow exit and arrow navigation when in child session (prompt is hidden)
   const exit = useExit()
-
   createEffect(() => {
     const title = Locale.truncate(session()?.title ?? "", 50)
     return exit.message.set(
@@ -235,11 +233,20 @@ export function Session() {
       ].join("\n"),
     )
   })
-
   useKeyboard((evt) => {
     if (!session()?.parentID) return
     if (keybind.match("app_exit", evt)) {
       exit()
+    }
+    // Arrow key navigation for subagent sessions
+    if (evt.name === "up") {
+      command.trigger("session.parent")
+    }
+    if (evt.name === "left") {
+      command.trigger("session.child.previous")
+    }
+    if (evt.name === "right") {
+      command.trigger("session.child.next")
     }
   })
 
@@ -546,7 +553,6 @@ export function Session() {
     {
       title: showThinking() ? "Hide thinking" : "Show thinking",
       value: "session.toggle.thinking",
-      keybind: "display_thinking",
       category: "Session",
       slash: {
         name: "thinking",
@@ -1575,13 +1581,7 @@ function InlineTool(props: {
   )
 }
 
-function BlockTool(props: {
-  title: string
-  children: JSX.Element
-  onClick?: () => void
-  part?: ToolPart
-  spinner?: boolean
-}) {
+function BlockTool(props: { title: string; children: JSX.Element; onClick?: () => void; part?: ToolPart }) {
   const { theme } = useTheme()
   const renderer = useRenderer()
   const [hover, setHover] = createSignal(false)
@@ -1604,16 +1604,9 @@ function BlockTool(props: {
         props.onClick?.()
       }}
     >
-      <Show
-        when={props.spinner}
-        fallback={
-          <text paddingLeft={3} fg={theme.textMuted}>
-            {props.title}
-          </text>
-        }
-      >
-        <Spinner color={theme.textMuted}>{props.title.replace(/^# /, "")}</Spinner>
-      </Show>
+      <text paddingLeft={3} fg={theme.textMuted}>
+        {props.title}
+      </text>
       {props.children}
       <Show when={error()}>
         <text fg={theme.error}>{error()}</text>
@@ -1841,8 +1834,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
   })
 
   const current = createMemo(() => tools().findLast((x) => x.state.status !== "pending"))
-
-  const isRunning = createMemo(() => props.part.state.status === "running")
+  const color = createMemo(() => local.agent.color(props.input.subagent_type ?? "unknown"))
 
   return (
     <Switch>
@@ -1855,7 +1847,6 @@ function Task(props: ToolProps<typeof TaskTool>) {
               : undefined
           }
           part={props.part}
-          spinner={isRunning()}
         >
           <box>
             <text style={{ fg: theme.textMuted }}>

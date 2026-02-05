@@ -1,6 +1,7 @@
 import { useRenderer } from "@opentui/solid"
 import { createSimpleContext } from "./helper"
 import { FormatError, FormatUnknownError } from "@/cli/error"
+
 type Exit = ((reason?: unknown) => Promise<void>) & {
   message: {
     set: (value?: string) => () => void

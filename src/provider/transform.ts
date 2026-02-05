@@ -1,6 +1,5 @@
 import type { APICallError, ModelMessage } from "ai"
 import { mergeDeep, unique } from "remeda"
-import type { JSONSchema7 } from "@ai-sdk/provider"
 import type { JSONSchema } from "zod/v4/core"
 import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
@@ -46,9 +45,9 @@ export namespace ProviderTransform {
     model: Provider.Model,
     options: Record<string, unknown>,
   ): ModelMessage[] {
-    // Anthropic rejects messages with empty content - filter out empty string messages
+    // Anthropic and Google reject messages with empty content - filter out empty string messages
     // and remove empty text/reasoning parts from array content
-    if (model.api.npm === "@ai-sdk/anthropic") {
+    if (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/google") {
       msgs = msgs
         .map((msg) => {
           if (typeof msg.content === "string") {
@@ -180,7 +179,7 @@ export namespace ProviderTransform {
         cacheControl: { type: "ephemeral" },
       },
       bedrock: {
-        cachePoint: { type: "default" },
+        cachePoint: { type: "ephemeral" },
       },
       openaiCompatible: {
         cache_control: { type: "ephemeral" },
@@ -191,8 +190,7 @@ export namespace ProviderTransform {
     }
 
     for (const msg of unique([...system, ...final])) {
-      const useMessageLevelOptions = providerID === "anthropic" || providerID.includes("bedrock")
-      const shouldUseContentOptions = !useMessageLevelOptions && Array.isArray(msg.content) && msg.content.length > 0
+      const shouldUseContentOptions = providerID !== "anthropic" && Array.isArray(msg.content) && msg.content.length > 0
 
       if (shouldUseContentOptions) {
         const lastContent = msg.content[msg.content.length - 1]
@@ -334,9 +332,7 @@ export namespace ProviderTransform {
       id.includes("minimax") ||
       id.includes("glm") ||
       id.includes("mistral") ||
-      id.includes("kimi") ||
-      // TODO: Remove this after models.dev data is fixed to use "kimi-k2.5" instead of "k2p5"
-      id.includes("k2p5")
+      id.includes("kimi")
     )
       return {}
 
@@ -582,8 +578,17 @@ export namespace ProviderTransform {
     model: Provider.Model
     sessionID: string
     providerOptions?: Record<string, any>
+    accountId?: string
   }): Record<string, any> {
     const result: Record<string, any> = {}
+
+    // Pass accountId for antigravity protocol selection
+    if (input.model.providerID === "antigravity" && input.accountId) {
+      result["antigravity"] = {
+        ...(input.providerOptions?.antigravity || {}),
+        accountId: input.accountId,
+      }
+    }
 
     // openai and providers using openai package should set store to false by default.
     if (
@@ -630,18 +635,6 @@ export namespace ProviderTransform {
       }
     }
 
-    // Enable thinking by default for kimi-k2.5/k2p5 models using anthropic SDK
-    const modelId = input.model.api.id.toLowerCase()
-    if (
-      (input.model.api.npm === "@ai-sdk/anthropic" || input.model.api.npm === "@ai-sdk/google-vertex/anthropic") &&
-      (modelId.includes("k2p5") || modelId.includes("kimi-k2.5") || modelId.includes("kimi-k2p5"))
-    ) {
-      result["thinking"] = {
-        type: "enabled",
-        budgetTokens: Math.min(16_000, Math.floor(input.model.limit.output / 2 - 1)),
-      }
-    }
-
     if (input.model.api.id.includes("gpt-5") && !input.model.api.id.includes("gpt-5-chat")) {
       if (!input.model.api.id.includes("gpt-5-pro")) {
         result["reasoningEffort"] = "medium"
@@ -673,20 +666,13 @@ export namespace ProviderTransform {
   }
 
   export function smallOptions(model: Provider.Model) {
-    if (
-      model.providerID === "openai" ||
-      model.api.npm === "@ai-sdk/openai" ||
-      model.api.npm === "@ai-sdk/github-copilot"
-    ) {
-      if (model.api.id.includes("gpt-5")) {
-        if (model.api.id.includes("5.")) {
-          return { store: false, reasoningEffort: "low" }
-        }
-        return { store: false, reasoningEffort: "minimal" }
+    if (model.providerID === "openai" || model.api.id.includes("gpt-5")) {
+      if (model.api.id.includes("5.")) {
+        return { reasoningEffort: "low" }
       }
-      return { store: false }
+      return { reasoningEffort: "minimal" }
     }
-    if (model.providerID === "google") {
+    if (model.providerID === "google-api") {
       // gemini-3 uses thinkingLevel, gemini-2.5 uses thinkingBudget
       if (model.api.id.includes("gemini-3")) {
         return { thinkingConfig: { thinkingLevel: "minimal" } }
@@ -716,6 +702,7 @@ export namespace ProviderTransform {
     const modelCap = modelLimit || globalLimit
     const standardLimit = Math.min(modelCap, globalLimit)
 
+    // Handle thinking mode for @ai-sdk/anthropic, @ai-sdk/google-vertex/anthropic (budgetTokens)
     if (npm === "@ai-sdk/anthropic" || npm === "@ai-sdk/google-vertex/anthropic") {
       const thinking = options?.["thinking"]
       const budgetTokens = typeof thinking?.["budgetTokens"] === "number" ? thinking["budgetTokens"] : 0
@@ -732,7 +719,7 @@ export namespace ProviderTransform {
     return standardLimit
   }
 
-  export function schema(model: Provider.Model, schema: JSONSchema.BaseSchema | JSONSchema7): JSONSchema7 {
+  export function schema(model: Provider.Model, schema: JSONSchema.BaseSchema) {
     /*
     if (["openai", "azure"].includes(providerID)) {
       if (schema.type === "object" && schema.properties) {
@@ -752,7 +739,7 @@ export namespace ProviderTransform {
     */
 
     // Convert integer enums to string enums for Google/Gemini
-    if (model.providerID === "google" || model.api.id.includes("gemini")) {
+    if (model.providerID === "google-api" || model.api.id.includes("gemini")) {
       const sanitizeGemini = (obj: any): any => {
         if (obj === null || typeof obj !== "object") {
           return obj
@@ -783,21 +770,8 @@ export namespace ProviderTransform {
           result.required = result.required.filter((field: any) => field in result.properties)
         }
 
-        if (result.type === "array") {
-          if (result.items == null) {
-            result.items = {}
-          }
-          // Ensure items has at least a type if it's an empty object
-          // This handles nested arrays like { type: "array", items: { type: "array", items: {} } }
-          if (typeof result.items === "object" && !Array.isArray(result.items) && !result.items.type) {
-            result.items.type = "string"
-          }
-        }
-
-        // Remove properties/required from non-object types (Gemini rejects these)
-        if (result.type && result.type !== "object") {
-          delete result.properties
-          delete result.required
+        if (result.type === "array" && result.items == null) {
+          result.items = {}
         }
 
         return result
@@ -806,7 +780,7 @@ export namespace ProviderTransform {
       schema = sanitizeGemini(schema)
     }
 
-    return schema as JSONSchema7
+    return schema
   }
 
   export function error(providerID: string, error: APICallError) {

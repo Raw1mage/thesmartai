@@ -15,6 +15,10 @@ import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
+import { debugCheckpoint } from "@/util/debug"
+import { isRateLimitError } from "@/account/rotation"
+import { Global } from "@/global"
+import path from "path"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -22,6 +26,49 @@ export namespace SessionProcessor {
 
   export type Info = Awaited<ReturnType<typeof create>>
   export type Result = Awaited<ReturnType<Info["process"]>>
+
+  function isModelNotSupportedError(error: unknown): boolean {
+    const data = (error as any)?.data
+    const status =
+      typeof (error as any)?.status === "number"
+        ? (error as any).status
+        : typeof (error as any)?.statusCode === "number"
+          ? (error as any).statusCode
+          : typeof data?.status === "number"
+            ? data.status
+            : undefined
+
+    const parts = [
+      (error as any)?.message,
+      data?.message,
+      data?.error?.message,
+      (error as any)?.responseBody,
+      data?.responseBody,
+      (error as any)?.response?.body,
+    ]
+      .filter((item) => typeof item === "string")
+      .join(" ")
+      .toLowerCase()
+
+    if (!parts) return false
+    if (!parts.includes("model") && !parts.includes("models/")) return false
+    if (parts.includes("not found") || parts.includes("not supported")) return true
+    return status === 404
+  }
+
+  async function removeFavorite(providerID: string, modelID: string): Promise<boolean> {
+    const file = Bun.file(path.join(Global.Path.state, "model.json"))
+    if (!(await file.exists())) return false
+    const data = (await file.json().catch(() => null)) as {
+      favorite?: Array<{ providerID: string; modelID: string }>
+    } | null
+    if (!data || !Array.isArray(data.favorite)) return false
+    const next = data.favorite.filter((item) => item.providerID !== providerID || item.modelID !== modelID)
+    if (next.length === data.favorite.length) return false
+    const updated = { ...data, favorite: next }
+    await Bun.write(file, JSON.stringify(updated, null, 2))
+    return true
+  }
 
   export function create(input: {
     assistantMessage: MessageV2.Assistant
@@ -34,6 +81,11 @@ export namespace SessionProcessor {
     let blocked = false
     let attempt = 0
     let needsCompaction = false
+    // Track fallback attempts to prevent infinite loops
+    const triedVectors = new Set<string>()
+    let fallbackAttempts = 0
+    // Allow many attempts to find a working model across all accounts/providers
+    const MAX_FALLBACK_ATTEMPTS = 50
 
     const result = {
       get message() {
@@ -172,6 +224,14 @@ export namespace SessionProcessor {
                 case "tool-result": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
+                    const attachments = value.output.attachments?.map(
+                      (attachment: Omit<MessageV2.FilePart, "id" | "messageID" | "sessionID">) => ({
+                        ...attachment,
+                        id: Identifier.ascending("part"),
+                        messageID: match.messageID,
+                        sessionID: match.sessionID,
+                      }),
+                    )
                     await Session.updatePart({
                       ...match,
                       state: {
@@ -184,7 +244,7 @@ export namespace SessionProcessor {
                           start: match.state.time.start,
                           end: Date.now(),
                         },
-                        attachments: value.output.attachments,
+                        attachments,
                       },
                     })
 
@@ -271,6 +331,13 @@ export namespace SessionProcessor {
                     sessionID: input.sessionID,
                     messageID: input.assistantMessage.parentID,
                   })
+                  // Record success on finish-step since 'finish' event might be skipped if compaction is needed
+                  debugCheckpoint("health", "processor.finish-step", {
+                    providerID: input.model.providerID,
+                    modelID: input.model.id,
+                    sessionID: input.sessionID,
+                  })
+                  await LLM.recordSuccess(input.model.providerID, input.model.id)
                   if (await SessionCompaction.isOverflow({ tokens: usage.tokens, model: input.model })) {
                     needsCompaction = true
                   }
@@ -326,6 +393,17 @@ export namespace SessionProcessor {
                   break
 
                 case "finish":
+                  // Record successful completion in global model health registry
+                  log.info("finish event - recording success", {
+                    providerID: input.model.providerID,
+                    modelID: input.model.id,
+                  })
+                  debugCheckpoint("health", "processor.finish", {
+                    providerID: input.model.providerID,
+                    modelID: input.model.id,
+                    sessionID: input.sessionID,
+                  })
+                  await LLM.recordSuccess(input.model.providerID, input.model.id)
                   break
 
                 default:
@@ -337,6 +415,93 @@ export namespace SessionProcessor {
               if (needsCompaction) break
             }
           } catch (e: any) {
+            // Check for rate limit and attempt fallback
+            if (isRateLimitError(e)) {
+              debugCheckpoint("rotation3d", "Rate limit detected", {
+                error: e.message,
+                model: streamInput.model.id,
+                fallbackAttempts,
+                triedVectors: Array.from(triedVectors),
+              })
+              fallbackAttempts++
+              if (fallbackAttempts > MAX_FALLBACK_ATTEMPTS) {
+                log.error("Max fallback attempts exceeded, stopping rotation", {
+                  attempts: fallbackAttempts,
+                  triedCount: triedVectors.size,
+                  tried: Array.from(triedVectors).join(", "),
+                })
+                // Fall through to normal error handling
+              } else {
+                const fallback = await LLM.handleRateLimitFallback(streamInput.model, "account-first", triedVectors)
+                if (fallback) {
+                  log.info("Switching to fallback model", {
+                    from: streamInput.model.id,
+                    to: fallback.id,
+                    fallbackAttempts,
+                    triedCount: triedVectors.size,
+                  })
+                  streamInput.model = fallback
+                  input.model = fallback
+                  // Update assistant message metadata to reflect the new model
+                  input.assistantMessage.modelID = fallback.id
+                  input.assistantMessage.providerID = fallback.providerID
+
+                  attempt = 0
+                  // Wait a short moment to ensure UI updates
+                  await new Promise((resolve) => setTimeout(resolve, 100))
+                  continue
+                } else {
+                  log.warn("No fallback available after rate limit", {
+                    fallbackAttempts,
+                    triedCount: triedVectors.size,
+                  })
+                }
+              }
+            }
+
+            if (isModelNotSupportedError(e)) {
+              debugCheckpoint("rotation3d", "Model not supported/found", {
+                error: e.message,
+                model: streamInput.model.id,
+                fallbackAttempts,
+                triedVectors: Array.from(triedVectors),
+              })
+              const removed = await removeFavorite(streamInput.model.providerID, streamInput.model.id)
+              if (removed) {
+                log.warn("Removed invalid model from favorites", {
+                  providerID: streamInput.model.providerID,
+                  modelID: streamInput.model.id,
+                })
+              }
+
+              // Also trigger rotation for 404 errors - find an alternative model
+              fallbackAttempts++
+              if (fallbackAttempts <= MAX_FALLBACK_ATTEMPTS) {
+                const fallback = await LLM.handleRateLimitFallback(streamInput.model, "account-first", triedVectors)
+                if (fallback) {
+                  log.info("Switching to fallback model after 404", {
+                    from: streamInput.model.id,
+                    to: fallback.id,
+                    fallbackAttempts,
+                    triedCount: triedVectors.size,
+                  })
+                  streamInput.model = fallback
+                  input.model = fallback
+                  input.assistantMessage.modelID = fallback.id
+                  input.assistantMessage.providerID = fallback.providerID
+
+                  attempt = 0
+                  await new Promise((resolve) => setTimeout(resolve, 100))
+                  continue
+                } else {
+                  log.warn("No fallback available after 404 error", {
+                    fallbackAttempts,
+                    triedCount: triedVectors.size,
+                  })
+                }
+              }
+            }
+
             log.error("process", {
               error: e,
               stack: JSON.stringify(e.stack),

@@ -20,13 +20,18 @@ export interface DialogSelectProps<T> {
   onFilter?: (query: string) => void
   onSelect?: (option: DialogSelectOption<T>) => void
   skipFilter?: boolean
+  hideInput?: boolean
+  hoverSelect?: boolean
   keybind?: {
     keybind?: Keybind.Info
     title: string
     disabled?: boolean
+    label?: string
+    hidden?: boolean
     onTrigger: (option: DialogSelectOption<T>) => void
   }[]
   current?: T
+  keybindLayout?: "inline" | "columns"
 }
 
 export interface DialogSelectOption<T = any> {
@@ -53,6 +58,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     selected: 0,
     filter: "",
     input: "keyboard" as "keyboard" | "mouse",
+    searchMode: false, // Search mode is off by default - press "/" to enter
   })
 
   createEffect(
@@ -142,9 +148,9 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   function move(direction: number) {
     if (flat().length === 0) return
     let next = store.selected + direction
-    if (next < 0) next = flat().length - 1
-    if (next >= flat().length) next = 0
-    moveTo(next, true)
+    if (next < 0) next = 0
+    if (next >= flat().length) next = flat().length - 1
+    moveTo(next)
   }
 
   function moveTo(next: number, center = false) {
@@ -173,10 +179,72 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     }
   }
 
+  // Track stack length at mount time to detect new dialogs pushed on top
+  const initialStackLength = dialog.stack.length
+
   const keybind = useKeybind()
   useKeyboard((evt) => {
+    // Skip if a dialog was pushed on top after this component mounted
+    // This prevents Enter key from triggering the selected option when user is typing in a DialogPrompt
+    if (dialog.stack.length > initialStackLength) return
+
     setStore("input", "keyboard")
 
+    // "/" enters search mode
+    if (!store.searchMode && evt.sequence === "/" && !props.hideInput) {
+      evt.preventDefault()
+      setStore("searchMode", true)
+      setTimeout(() => input?.focus(), 1)
+      return
+    }
+
+    // In search mode, only handle navigation and Esc
+    if (store.searchMode) {
+      // Esc exits search mode (and clears filter if any)
+      if (evt.name === "escape") {
+        evt.preventDefault()
+        if (store.filter) {
+          batch(() => {
+            setStore("filter", "")
+            props.onFilter?.("")
+          })
+        }
+        setStore("searchMode", false)
+        input?.blur()
+        return
+      }
+
+      // Allow navigation in search mode
+      if (evt.name === "up" || (evt.ctrl && evt.name === "p")) {
+        move(-1)
+        return
+      }
+      if (evt.name === "down" || (evt.ctrl && evt.name === "n")) {
+        move(1)
+        return
+      }
+      if (evt.name === "pageup") {
+        move(-10)
+        return
+      }
+      if (evt.name === "pagedown") {
+        move(10)
+        return
+      }
+
+      // Return exits search mode (without selecting)
+      if (evt.name === "return") {
+        evt.preventDefault()
+        setStore("searchMode", false)
+        input?.blur()
+        return
+      }
+
+      // Skip other keybinds when in search mode
+      return
+    }
+
+    // Normal mode: navigation
     if (evt.name === "up" || (evt.ctrl && evt.name === "p")) move(-1)
     if (evt.name === "down" || (evt.ctrl && evt.name === "n")) move(1)
     if (evt.name === "pageup") move(-10)
@@ -194,14 +262,15 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
       }
     }
 
+    // Normal mode: keybinds
     for (const item of props.keybind ?? []) {
       if (item.disabled || !item.keybind) continue
       if (Keybind.match(item.keybind, keybind.parse(evt))) {
         const s = selected()
-        if (s) {
-          evt.preventDefault()
-          item.onTrigger(s)
-        }
+        // Always trigger keybind - let handler deal with null selection
+        // This allows keybinds like "Add" to work even with empty lists
+        evt.preventDefault()
+        item.onTrigger(s as any)
       }
     }
   })
@@ -217,7 +286,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   }
   props.ref?.(ref)
 
-  const keybinds = createMemo(() => props.keybind?.filter((x) => !x.disabled && x.keybind) ?? [])
+  const keybinds = createMemo(() => props.keybind?.filter((x) => !x.disabled && x.keybind && !x.hidden) ?? [])
+  const keybindTitleWidth = createMemo(() => Math.max(0, ...keybinds().map((x) => x.title.length)))
 
   return (
     <box gap={1} paddingBottom={1}>
@@ -228,28 +298,28 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
           </text>
           <text fg={theme.textMuted}>esc</text>
         </box>
-        <box paddingTop={1}>
-          <input
-            onInput={(e) => {
-              batch(() => {
-                setStore("filter", e)
-                props.onFilter?.(e)
-              })
-            }}
-            focusedBackgroundColor={theme.backgroundPanel}
-            cursorColor={theme.primary}
-            focusedTextColor={theme.textMuted}
-            ref={(r) => {
-              input = r
-              setTimeout(() => {
-                if (!input) return
-                if (input.isDestroyed) return
-                input.focus()
-              }, 1)
-            }}
-            placeholder={props.placeholder ?? "Search"}
-          />
-        </box>
+        <Show when={!props.hideInput}>
+          <box paddingTop={1}>
+            <Show when={store.searchMode} fallback={<text fg={theme.textMuted}>Press / to search</text>}>
+              <input
+                onInput={(e) => {
+                  batch(() => {
+                    setStore("filter", e)
+                    props.onFilter?.(e)
+                  })
+                }}
+                focusedBackgroundColor={theme.backgroundPanel}
+                cursorColor={theme.primary}
+                focusedTextColor={theme.textMuted}
+                ref={(r) => {
+                  input = r
+                  // Only focus when entering search mode (handled by keyboard handler)
+                }}
+                placeholder={props.placeholder ?? "Search"}
+              />
+            </Show>
+          </box>
+        </Show>
       </box>
       <Show
         when={grouped().length > 0}
@@ -285,6 +355,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                         id={JSON.stringify(option.value)}
                         flexDirection="row"
                         onMouseMove={() => {
+                          if (props.hoverSelect === false) return
                           setStore("input", "mouse")
                         }}
                         onMouseUp={() => {
@@ -292,6 +363,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                           props.onSelect?.(option)
                         }}
                         onMouseOver={() => {
+                          if (props.hoverSelect === false) return
                           if (store.input !== "mouse") return
                           const index = flat().findIndex((x) => isDeepEqual(x.value, option.value))
                           if (index === -1) return
@@ -325,17 +397,43 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
         </scrollbox>
       </Show>
       <Show when={keybinds().length} fallback={<box flexShrink={0} />}>
-        <box paddingRight={2} paddingLeft={4} flexDirection="row" gap={2} flexShrink={0} paddingTop={1}>
-          <For each={keybinds()}>
-            {(item) => (
-              <text>
-                <span style={{ fg: theme.text }}>
-                  <b>{item.title}</b>{" "}
-                </span>
-                <span style={{ fg: theme.textMuted }}>{Keybind.toString(item.keybind)}</span>
-              </text>
-            )}
-          </For>
+        <box paddingRight={2} paddingLeft={4} flexShrink={0} paddingTop={1}>
+          <Show
+            when={props.keybindLayout === "columns"}
+            fallback={
+              <box flexDirection="row" gap={2}>
+                <For each={keybinds()}>
+                  {(item) => (
+                    <text>
+                      <span style={{ fg: theme.text }}>
+                        <b>{item.title}</b>{" "}
+                      </span>
+                      <span style={{ fg: theme.textMuted }}>{item.label ?? Keybind.toString(item.keybind)}</span>
+                    </text>
+                  )}
+                </For>
+              </box>
+            }
+          >
+            <box flexDirection="column" gap={1}>
+              <For each={keybinds()}>
+                {(item) => {
+                  const label = item.label ?? Keybind.toString(item.keybind)
+                  const pad = Math.max(0, keybindTitleWidth() - item.title.length + 2)
+                  const spacer = " ".repeat(pad)
+                  return (
+                    <text>
+                      <span style={{ fg: theme.text }}>
+                        <b>{item.title}</b>
+                      </span>
+                      <span style={{ fg: theme.text }}>{spacer}</span>
+                      <span style={{ fg: theme.textMuted }}>{label}</span>
+                    </text>
+                  )
+                }}
+              </For>
+            </box>
+          </Show>
         </box>
       </Show>
     </box>

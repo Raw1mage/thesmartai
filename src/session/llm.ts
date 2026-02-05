@@ -1,13 +1,16 @@
 import { Installation } from "@/installation"
 import { Provider } from "@/provider/provider"
+import { getCapabilities, requiresDummyTool } from "@/provider/capabilities"
 import { Log } from "@/util/log"
 import {
   streamText,
   wrapLanguageModel,
+  convertToModelMessages,
   type ModelMessage,
   type StreamTextResult,
   type Tool,
   type ToolSet,
+  type UIMessage,
   tool,
   jsonSchema,
 } from "ai"
@@ -22,6 +25,19 @@ import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
 import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
+import {
+  isRateLimitError,
+  extractRateLimitDetails,
+  calculateBackoffMs,
+  getHealthTracker,
+  getRateLimitTracker,
+  getModelHealthRegistry,
+  type RateLimitReason,
+} from "@/account/rotation"
+import { findFallback, type ModelVector, type FallbackStrategy, isVectorRateLimited } from "@/account/rotation3d"
+import { Bus } from "@/bus"
+import { TuiEvent } from "@/cli/cmd/tui/event"
+import { debugCheckpoint } from "@/util/debug"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -44,6 +60,17 @@ export namespace LLM {
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
 
   export async function stream(input: StreamInput) {
+    debugCheckpoint("llm", "LLM.stream started", {
+      modelID: input.model.id,
+      providerID: input.model.providerID,
+      apiNpm: input.model.api.npm,
+      apiId: input.model.api.id,
+      sessionID: input.sessionID,
+      agent: input.agent.name,
+      small: input.small ?? false,
+      trace: input.sessionID,
+    })
+
     const l = log
       .clone()
       .tag("providerID", input.model.providerID)
@@ -56,20 +83,37 @@ export namespace LLM {
       modelID: input.model.id,
       providerID: input.model.providerID,
     })
+    // Get account ID for rate limit tracking and provider options
+    const currentAccountId = await getAccountIdForProvider(input.model.providerID)
+
     const [language, cfg, provider, auth] = await Promise.all([
       Provider.getLanguage(input.model),
       Config.get(),
       Provider.getProvider(input.model.providerID),
       Auth.get(input.model.providerID),
     ])
-    const isCodex = provider.id === "openai" && auth?.type === "oauth"
+
+    debugCheckpoint("llm", "Provider and auth loaded", {
+      providerID: input.model.providerID,
+      providerSource: provider?.source,
+      hasCustomFetch: typeof provider?.options?.fetch === "function",
+      accountId: currentAccountId,
+      authType: auth?.type,
+      providerOptionsKeys: provider?.options ? Object.keys(provider.options) : [],
+      trace: input.sessionID,
+    })
+
+    // Get provider capabilities (centralizes provider-specific behavior)
+    const capabilities = getCapabilities(provider, auth)
+    // Legacy alias for gradual migration - these will be removed once all usages migrate to capabilities
+    const usesInstructions = capabilities.useInstructionsOption
 
     const system = []
     system.push(
       [
         // use agent prompt otherwise provider prompt
-        // For Codex sessions, skip SystemPrompt.provider() since it's sent via options.instructions
-        ...(input.agent.prompt ? [input.agent.prompt] : isCodex ? [] : SystemPrompt.provider(input.model)),
+        // For providers using instructions option, skip SystemPrompt.provider() since it's sent via options.instructions
+        ...(input.agent.prompt ? [input.agent.prompt] : usesInstructions ? [] : SystemPrompt.provider(input.model)),
         // any custom prompt passed into this call
         ...input.system,
         // any custom prompt from last user message
@@ -104,6 +148,7 @@ export namespace LLM {
           model: input.model,
           sessionID: input.sessionID,
           providerOptions: provider.options,
+          accountId: currentAccountId,
         })
     const options: Record<string, any> = pipe(
       base,
@@ -111,7 +156,7 @@ export namespace LLM {
       mergeDeep(input.agent.options),
       mergeDeep(variant),
     )
-    if (isCodex) {
+    if (usesInstructions) {
       options.instructions = SystemPrompt.instructions()
     }
 
@@ -148,15 +193,14 @@ export namespace LLM {
       },
     )
 
-    const maxOutputTokens =
-      isCodex || provider.id.includes("github-copilot")
-        ? undefined
-        : ProviderTransform.maxOutputTokens(
-            input.model.api.npm,
-            params.options,
-            input.model.limit.output,
-            OUTPUT_TOKEN_MAX,
-          )
+    const maxOutputTokens = capabilities.skipMaxOutputTokens
+      ? undefined
+      : ProviderTransform.maxOutputTokens(
+          input.model.api.npm,
+          params.options,
+          input.model.limit.output,
+          OUTPUT_TOKEN_MAX,
+        )
 
     const tools = await resolveTools(input)
 
@@ -180,11 +224,71 @@ export namespace LLM {
       })
     }
 
+    const systemMessages =
+      capabilities.systemMessageRole === "user"
+        ? ([
+            {
+              role: "user",
+              content: system.join("\n\n"),
+            },
+          ] as ModelMessage[])
+        : system.map(
+            (x): ModelMessage => ({
+              role: capabilities.systemMessageRole as any,
+              content: x,
+            }),
+          )
+
+    const streamMessages = [...systemMessages, ...input.messages]
+
+    const finalMessages = normalizeMessages(streamMessages, tools)
+
+    // Get account ID for rate limit tracking
+    const accountId = currentAccountId
+
     return streamText({
       onError(error) {
         l.error("stream error", {
           error,
         })
+
+        // Track rate limits in global health system
+        if (isRateLimitError(error)) {
+          const { reason, retryAfterMs } = extractRateLimitDetails(error)
+          const consecutiveFailures = accountId ? getHealthTracker().getConsecutiveFailures(accountId) : 0
+          const backoffMs = calculateBackoffMs(reason, consecutiveFailures, retryAfterMs)
+
+          // Update global model health registry (shared across all tasks)
+          const modelRegistry = getModelHealthRegistry()
+          modelRegistry.markRateLimited(input.model.providerID, input.model.id, reason, backoffMs)
+
+          // Also update account-level tracking if we have an account
+          if (accountId) {
+            const healthTracker = getHealthTracker()
+            const rateLimitTracker = getRateLimitTracker()
+
+            healthTracker.recordRateLimit(accountId)
+            rateLimitTracker.markRateLimited(accountId, input.model.providerID, reason, backoffMs, input.model.id)
+          }
+
+          l.warn("Rate limit detected", {
+            accountId,
+            providerID: input.model.providerID,
+            modelID: input.model.id,
+            reason,
+            backoffMs,
+          })
+
+          // Publish toast notification for rate limit
+          const waitMinutes = Math.ceil(backoffMs / 60000)
+          const reasonText = formatRateLimitReason(reason)
+          Bus.publish(TuiEvent.ToastShow, {
+            title: "Rate Limit",
+            message: `${input.model.id}: ${reasonText}. Cooling down for ${waitMinutes}m.`,
+            variant: "warning",
+            duration: 8000,
+          }).catch(() => {}) // Ignore publish errors
+        }
       },
       async experimental_repairToolCall(failed) {
         const lower = failed.toolCall.toolName.toLowerCase()
@@ -216,6 +320,7 @@ export namespace LLM {
       maxOutputTokens,
       abortSignal: input.abort,
       headers: {
+        ...(accountId ? { "x-opencode-account-id": accountId } : {}),
         ...(input.model.providerID.startsWith("opencode")
           ? {
               "x-opencode-project": Instance.project.id,
@@ -232,23 +337,22 @@ export namespace LLM {
         ...headers,
       },
       maxRetries: input.retries ?? 0,
-      messages: [
-        ...system.map(
-          (x): ModelMessage => ({
-            role: "system",
-            content: x,
-          }),
-        ),
-        ...input.messages,
-      ],
+      messages: finalMessages,
       model: wrapLanguageModel({
         model: language,
         middleware: [
           {
             async transformParams(args) {
               if (args.type === "stream") {
-                // @ts-expect-error
-                args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, options)
+                const params = args.params as { messages?: ModelMessage[]; prompt?: ModelMessage[] }
+                const prompt = Array.isArray(params.messages) ? params.messages : params.prompt
+                if (!Array.isArray(prompt)) return args.params
+                const next = ProviderTransform.message(prompt as ModelMessage[], input.model, options)
+                if (Array.isArray(params.messages)) {
+                  params.messages = next
+                  return args.params
+                }
+                params.prompt = next
               }
               return args.params
             },
@@ -285,5 +389,256 @@ export namespace LLM {
       }
     }
     return false
+  }
+
+  function normalizeMessages(messages: Array<ModelMessage | UIMessage>, tools: Record<string, Tool>): ModelMessage[] {
+    if (messages.length === 0) return []
+    const list: ModelMessage[] = []
+    for (const msg of messages) {
+      if (isUIMessage(msg)) {
+        const converted = convertToModelMessages([msg], { tools: tools as ToolSet })
+        list.push(...converted)
+        continue
+      }
+      list.push(msg)
+    }
+    return list
+  }
+
+  function isUIMessage(msg: ModelMessage | UIMessage): msg is UIMessage {
+    return typeof msg === "object" && msg !== null && "parts" in msg
+  }
+
+  /**
+   * Get the active account ID for a provider.
+   * Used for rate limit tracking.
+   */
+  async function getAccountIdForProvider(providerID: string): Promise<string | undefined> {
+    const { Account } = await import("@/account")
+
+    // Parse family from provider ID
+    const family = Account.parseFamily(providerID)
+    if (!family) return undefined
+
+    // Get active account
+    return Account.getActive(family)
+  }
+
+  /**
+   * Record a successful request for the current provider.
+   * Call this after a stream completes successfully.
+   */
+  export async function recordSuccess(providerID: string, modelID?: string): Promise<void> {
+    log.info("recordSuccess called", { providerID, modelID })
+    debugCheckpoint("health", "llm.recordSuccess", { providerID, modelID })
+
+    // Update global model health registry
+    if (modelID) {
+      const modelRegistry = getModelHealthRegistry()
+      log.info("Calling modelRegistry.markSuccess", { providerID, modelID })
+      debugCheckpoint("health", "llm.recordSuccess.markSuccess", { providerID, modelID })
+      modelRegistry.markSuccess(providerID, modelID)
+    } else {
+      log.warn("recordSuccess: modelID is undefined, skipping registry update", { providerID })
+      debugCheckpoint("health", "llm.recordSuccess.noModelID", { providerID })
+    }
+
+    // Update account-level tracking
+    const accountId = await getAccountIdForProvider(providerID)
+    if (accountId) {
+      const healthTracker = getHealthTracker()
+      healthTracker.recordSuccess(accountId)
+      log.info("Recorded success with account", { providerID, modelID, accountId })
+    }
+  }
+
+  /**
+   * Check if rate limit handling is needed for a provider.
+   * Returns the next available model if rotation is possible.
+   *
+   * Uses the 3D rotation system to find the best fallback across
+   * (provider, account, model) dimensions.
+   *
+   * @param currentModel - The model that hit rate limit
+   * @param strategy - Fallback selection strategy
+   * @param triedVectors - Set of already-tried "provider:account:model" keys to avoid infinite loops
+   */
+  export async function handleRateLimitFallback(
+    currentModel: Provider.Model,
+    strategy: FallbackStrategy = "account-first",
+    triedVectors: Set<string> = new Set(),
+  ): Promise<Provider.Model | null> {
+    const { Account } = await import("@/account")
+    const { getRateLimitTracker } = await import("@/account/rotation")
+
+    const family = Account.parseFamily(currentModel.providerID)
+    if (!family) return null
+
+    // Get current account
+    const currentAccountId = await Account.getActive(family)
+    if (!currentAccountId) return null
+
+    // Build current vector key and add to tried set
+    const currentVectorKey = `${currentModel.providerID}:${currentAccountId}:${currentModel.id}`
+    triedVectors.add(currentVectorKey)
+
+    // Mark current vector as rate-limited to prevent bouncing back to it
+    const rateLimitTracker = getRateLimitTracker()
+    if (!rateLimitTracker.isRateLimited(currentAccountId, currentModel.providerID, currentModel.id)) {
+      // Apply a short cooldown (30 seconds) to prevent immediate retry
+      rateLimitTracker.markRateLimited(
+        currentAccountId,
+        currentModel.providerID,
+        "RATE_LIMIT_EXCEEDED",
+        30_000,
+        currentModel.id,
+      )
+      log.info("Marked current vector as rate-limited to prevent bounce-back", {
+        provider: currentModel.providerID,
+        account: currentAccountId,
+        model: currentModel.id,
+      })
+    }
+
+    // Build current vector
+    const currentVector: ModelVector = {
+      providerID: currentModel.providerID,
+      accountId: currentAccountId,
+      modelID: currentModel.id,
+    }
+
+    // Use 3D rotation to find best fallback
+    const fallback = await findFallback(currentVector, { strategy })
+
+    if (!fallback) {
+      log.warn("No fallback available in any dimension", {
+        current: currentVectorKey,
+        triedCount: triedVectors.size,
+      })
+      return null
+    }
+
+    // Check if this fallback has already been tried
+    const fallbackKey = `${fallback.providerID}:${fallback.accountId}:${fallback.modelID}`
+    if (triedVectors.has(fallbackKey)) {
+      log.warn("Fallback already tried, searching for next option", {
+        fallback: fallbackKey,
+        triedCount: triedVectors.size,
+      })
+      // Mark this as tried and recursively find another
+      // But impose a limit to prevent stack overflow
+      if (triedVectors.size >= 10) {
+        log.error("Max fallback attempts reached, giving up", { triedCount: triedVectors.size })
+        return null
+      }
+      // Try again with updated tried set (findFallback will filter)
+      return null // Let processor retry with the updated triedVectors
+    }
+
+    // Log the dimension change
+    const isSameProvider = fallback.providerID === currentModel.providerID
+    const isSameAccount = fallback.accountId === currentAccountId
+    const isSameModel = fallback.modelID === currentModel.id
+
+    const fallbackReason = isVectorRateLimited(currentVector) ? "rate-limit" : "unknown"
+
+    log.info("3D fallback selected", {
+      reason: fallback.reason,
+      trigger: fallbackReason,
+      changes: {
+        provider: !isSameProvider,
+        account: !isSameAccount,
+        model: !isSameModel,
+      },
+      from: {
+        provider: currentModel.providerID,
+        account: currentAccountId,
+        model: currentModel.id,
+      },
+      to: {
+        provider: fallback.providerID,
+        account: fallback.accountId,
+        model: fallback.modelID,
+      },
+    })
+
+    debugCheckpoint("rotation3d", "Executing fallback switch", {
+      trigger: fallbackReason,
+      strategy: fallback.reason,
+      from: `${currentModel.providerID}:${currentAccountId}:${currentModel.id}`,
+      to: `${fallback.providerID}:${fallback.accountId}:${fallback.modelID}`,
+      changes: {
+        provider: !isSameProvider,
+        account: !isSameAccount,
+        model: !isSameModel,
+      },
+    })
+
+    // If same model but different account, set the new account as active
+    if (isSameModel && !isSameAccount && isSameProvider) {
+      await Account.setActive(family, fallback.accountId)
+
+      const accountInfo = await Account.get(family, fallback.accountId)
+      const displayName = accountInfo
+        ? Account.getDisplayName(fallback.accountId, accountInfo, family)
+        : fallback.accountId
+
+      // Notify user of account rotation
+      Bus.publish(TuiEvent.ToastShow, {
+        title: "Account Rotated",
+        message: `Switched to account: ${displayName}`,
+        variant: "info",
+        duration: 4000,
+      }).catch(() => {})
+
+      return currentModel
+    }
+
+    // If different model or provider, get the full model info
+    const fallbackModel = await Provider.getModel(fallback.providerID, fallback.modelID)
+    if (!fallbackModel) {
+      log.warn("Fallback model not found", {
+        providerID: fallback.providerID,
+        modelID: fallback.modelID,
+      })
+      return null
+    }
+
+    // If different account in a different provider family, set that account active too
+    if (!isSameProvider) {
+      const fallbackFamily = Account.parseFamily(fallback.providerID)
+      if (fallbackFamily) {
+        await Account.setActive(fallbackFamily, fallback.accountId)
+      }
+    }
+
+    // Notify user of model/provider rotation
+    const changeDesc = !isSameProvider ? `${fallback.providerID}/${fallback.modelID}` : fallback.modelID
+    Bus.publish(TuiEvent.ToastShow, {
+      title: "Model Rotated",
+      message: `Fallback to: ${changeDesc}`,
+      variant: "info",
+      duration: 4000,
+    }).catch(() => {})
+
+    return fallbackModel
+  }
+
+  /**
+   * Format rate limit reason for display in toast.
+   */
+  function formatRateLimitReason(reason: RateLimitReason): string {
+    switch (reason) {
+      case "QUOTA_EXHAUSTED":
+        return "Quota exhausted"
+      case "RATE_LIMIT_EXCEEDED":
+        return "Rate limit exceeded"
+      case "MODEL_CAPACITY_EXHAUSTED":
+        return "Model at capacity"
+      case "SERVER_ERROR":
+        return "Server error"
+      default:
+        return "Rate limited"
+    }
   }
 }

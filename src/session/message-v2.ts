@@ -12,6 +12,8 @@ import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
 import { type SystemError } from "bun"
 import type { Provider } from "@/provider/provider"
+import { Token } from "../util/token"
+import { Bus } from "@/bus"
 
 export namespace MessageV2 {
   export const OutputLengthError = NamedError.create("MessageOutputLengthError", z.object({}))
@@ -438,26 +440,6 @@ export namespace MessageV2 {
   export function toModelMessages(input: WithParts[], model: Provider.Model): ModelMessage[] {
     const result: UIMessage[] = []
     const toolNames = new Set<string>()
-    // Track media from tool results that need to be injected as user messages
-    // for providers that don't support media in tool results.
-    //
-    // OpenAI-compatible APIs only support string content in tool results, so we need
-    // to extract media and inject as user messages. Other SDKs (anthropic, google,
-    // bedrock) handle type: "content" with media parts natively.
-    //
-    // Only apply this workaround if the model actually supports image input -
-    // otherwise there's no point extracting images.
-    const supportsMediaInToolResults = (() => {
-      if (model.api.npm === "@ai-sdk/anthropic") return true
-      if (model.api.npm === "@ai-sdk/openai") return true
-      if (model.api.npm === "@ai-sdk/amazon-bedrock") return true
-      if (model.api.npm === "@ai-sdk/google-vertex/anthropic") return true
-      if (model.api.npm === "@ai-sdk/google") {
-        const id = model.api.id.toLowerCase()
-        return id.includes("gemini-3") && !id.includes("gemini-2")
-      }
-      return false
-    })()
 
     const toModelOutput = (output: unknown) => {
       if (typeof output === "string") {
@@ -478,18 +460,14 @@ export namespace MessageV2 {
           value: [
             { type: "text", text: outputObject.text },
             ...attachments.map((attachment) => ({
-              type: "media",
-              mediaType: attachment.mime,
-              data: iife(() => {
-                const commaIndex = attachment.url.indexOf(",")
-                return commaIndex === -1 ? attachment.url : attachment.url.slice(commaIndex + 1)
-              }),
+              type: "image",
+              image: attachment.url,
             })),
           ],
         }
       }
 
-      return { type: "json", value: output as never }
+      return { type: "text", value: JSON.stringify(output, null, 2) }
     }
 
     for (const msg of input) {
@@ -523,7 +501,7 @@ export namespace MessageV2 {
               text: "What did we do so far?",
             })
           }
-          if (part.type === "subtask") {
+          if (part.type === "subtask" && part.command) {
             userMessage.parts.push({
               type: "text",
               text: "The following tool was executed by the user",
@@ -534,7 +512,6 @@ export namespace MessageV2 {
 
       if (msg.info.role === "assistant") {
         const differentModel = `${model.providerID}/${model.id}` !== `${msg.info.providerID}/${msg.info.modelID}`
-        const media: Array<{ mime: string; url: string }> = []
 
         if (
           msg.info.error &&
@@ -557,40 +534,24 @@ export namespace MessageV2 {
               text: part.text,
               ...(differentModel ? {} : { providerMetadata: part.metadata }),
             })
-          if (part.type === "step-start")
-            assistantMessage.parts.push({
-              type: "step-start",
-            })
           if (part.type === "tool") {
             toolNames.add(part.tool)
             if (part.state.status === "completed") {
-              const outputText = part.state.time.compacted ? "[Old tool result content cleared]" : part.state.output
+              // AI SDK v5 requires output to be an object with `text` field, not a bare string
+              // Also must not contain undefined values (GitHub issue vercel/ai#8520)
+              const outputText = part.state.time.compacted
+                ? "[Old tool result content cleared]"
+                : (part.state.output ?? "")
               const attachments = part.state.time.compacted ? [] : (part.state.attachments ?? [])
-
-              // For providers that don't support media in tool results, extract media files
-              // (images, PDFs) to be sent as a separate user message
-              const isMediaAttachment = (a: { mime: string }) =>
-                a.mime.startsWith("image/") || a.mime === "application/pdf"
-              const mediaAttachments = attachments.filter(isMediaAttachment)
-              const nonMediaAttachments = attachments.filter((a) => !isMediaAttachment(a))
-              if (!supportsMediaInToolResults && mediaAttachments.length > 0) {
-                media.push(...mediaAttachments)
-              }
-              const finalAttachments = supportsMediaInToolResults ? attachments : nonMediaAttachments
-
-              const output =
-                finalAttachments.length > 0
-                  ? {
-                      text: outputText,
-                      attachments: finalAttachments,
-                    }
-                  : outputText
+              // Always use object format with `text` key for consistent handling in toModelOutput
+              // Only include attachments field if there are actual attachments (avoid undefined values)
+              const output = attachments.length > 0 ? { text: outputText, attachments } : { text: outputText }
 
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-available",
                 toolCallId: part.callID,
-                input: part.state.input,
+                input: part.state.input ?? {},
                 output,
                 ...(differentModel ? {} : { callProviderMetadata: part.metadata }),
               })
@@ -600,8 +561,8 @@ export namespace MessageV2 {
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-error",
                 toolCallId: part.callID,
-                input: part.state.input,
-                errorText: part.state.error,
+                input: part.state.input ?? {},
+                errorText: part.state.error ?? "[Unknown error]",
                 ...(differentModel ? {} : { callProviderMetadata: part.metadata }),
               })
             // Handle pending/running tool calls to prevent dangling tool_use blocks
@@ -611,7 +572,7 @@ export namespace MessageV2 {
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-error",
                 toolCallId: part.callID,
-                input: part.state.input,
+                input: part.state.input ?? {},
                 errorText: "[Tool execution was interrupted]",
                 ...(differentModel ? {} : { callProviderMetadata: part.metadata }),
               })
@@ -626,25 +587,6 @@ export namespace MessageV2 {
         }
         if (assistantMessage.parts.length > 0) {
           result.push(assistantMessage)
-          // Inject pending media as a user message for providers that don't support
-          // media (images, PDFs) in tool results
-          if (media.length > 0) {
-            result.push({
-              id: Identifier.ascending("message"),
-              role: "user",
-              parts: [
-                {
-                  type: "text" as const,
-                  text: "Attached image(s) from tool result:",
-                },
-                ...media.map((attachment) => ({
-                  type: "file" as const,
-                  url: attachment.url,
-                  mediaType: attachment.mime,
-                })),
-              ],
-            })
-          }
         }
       }
     }
@@ -797,5 +739,39 @@ export namespace MessageV2 {
       default:
         return new NamedError.Unknown({ message: JSON.stringify(e) }, { cause: e })
     }
+  }
+
+  export const updateMessage = fn(Info, async (info) => {
+    await Storage.write(["message", info.sessionID, info.id], info)
+    Bus.publish(Event.Updated, { info })
+  })
+
+  export const updatePart = fn(
+    z.union([z.object({ part: Part, delta: z.string().optional() }), Part]),
+    async (input) => {
+      const part = "part" in input ? input.part : input
+      const delta = "delta" in input ? input.delta : undefined
+      await Storage.write(["part", part.messageID, part.id], part)
+      Bus.publish(Event.PartUpdated, { part, delta })
+      return part
+    },
+  )
+
+  export const remove = fn(
+    z.object({ sessionID: z.string(), messageID: z.string() }),
+    async ({ sessionID, messageID }) => {
+      await Storage.remove(["message", sessionID, messageID])
+      const p = await parts(messageID)
+      for (const part of p) {
+        await Storage.remove(["part", messageID, part.id])
+      }
+      Bus.publish(Event.Removed, { sessionID, messageID })
+    },
+  )
+
+  export function toModelMessagesCompact(input: WithParts[], model: Provider.Model): ModelMessage[] {
+    const history = toModelMessages(input, model)
+    // Always keep system prompt and last few turns
+    return history
   }
 }
