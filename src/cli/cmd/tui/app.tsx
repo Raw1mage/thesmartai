@@ -2,7 +2,19 @@ import { render, useKeyboard, useRenderer, useTerminalDimensions } from "@opentu
 import { Clipboard } from "@tui/util/clipboard"
 import { TextAttributes } from "@opentui/core"
 import { RouteProvider, useRoute } from "@tui/context/route"
-import { Switch, Match, createEffect, untrack, ErrorBoundary, createSignal, onMount, batch, Show, on } from "solid-js"
+import {
+  Switch,
+  Match,
+  createEffect,
+  untrack,
+  ErrorBoundary,
+  createSignal,
+  onMount,
+  onCleanup,
+  batch,
+  Show,
+  on,
+} from "solid-js"
 import { Installation } from "@/installation"
 import { Flag } from "@/flag/flag"
 import { DialogProvider, useDialog } from "@tui/ui/dialog"
@@ -18,6 +30,8 @@ import { DialogHelp } from "./ui/dialog-help"
 import { CommandProvider, useCommandDialog } from "@tui/component/dialog-command"
 import { DialogAgent } from "@tui/component/dialog-agent"
 import { DialogSessionList } from "@tui/component/dialog-session-list"
+import { DialogAccount } from "@tui/component/dialog-account"
+import { DialogAdmin } from "@tui/component/dialog-admin"
 import { KeybindProvider } from "@tui/context/keybind"
 import { ThemeProvider, useTheme } from "@tui/context/theme"
 import { Home } from "@tui/routes/home"
@@ -36,6 +50,7 @@ import { ArgsProvider, useArgs, type Args } from "./context/args"
 import open from "open"
 import { writeHeapSnapshot } from "v8"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
+import { debugCheckpoint } from "@/util/debug"
 
 async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
   // can't set raw mode if not a TTY
@@ -104,7 +119,6 @@ export function tui(input: {
   args: Args
   directory?: string
   fetch?: typeof fetch
-  headers?: RequestInit["headers"]
   events?: EventSource
   onExit?: () => Promise<void>
 }) {
@@ -120,7 +134,11 @@ export function tui(input: {
       () => {
         return (
           <ErrorBoundary
-            fallback={(error, reset) => <ErrorComponent error={error} reset={reset} onExit={onExit} mode={mode} />}
+            fallback={(error, reset) => {
+              const msg = error instanceof Error ? error.stack || error.message : String(error)
+              debugCheckpoint("error", "boundary", { error: msg })
+              return <ErrorComponent error={error} reset={reset} onExit={onExit} mode={mode} />
+            }}
           >
             <ArgsProvider {...input.args}>
               <ExitProvider onExit={onExit}>
@@ -131,7 +149,6 @@ export function tui(input: {
                         url={input.url}
                         directory={input.directory}
                         fetch={input.fetch}
-                        headers={input.headers}
                         events={input.events}
                       >
                         <SyncProvider>
@@ -169,7 +186,6 @@ export function tui(input: {
         gatherStats: false,
         exitOnCtrlC: false,
         useKittyKeyboard: {},
-        autoFocus: false,
         consoleOptions: {
           keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
           onCopySelection: (text) => {
@@ -188,6 +204,12 @@ function App() {
   const dimensions = useTerminalDimensions()
   const renderer = useRenderer()
   renderer.disableStdoutInterception()
+  onMount(() => {
+    debugCheckpoint("app", "mount")
+  })
+  onCleanup(() => {
+    debugCheckpoint("app", "cleanup")
+  })
   const dialog = useDialog()
   const local = useLocal()
   const kv = useKV()
@@ -209,6 +231,16 @@ function App() {
     renderer.clearSelection()
   }
   const [terminalTitleEnabled, setTerminalTitleEnabled] = createSignal(kv.get("terminal_title_enabled", true))
+
+  createEffect(
+    on(
+      () => dialog.stack.length,
+      (size) => {
+        if (size !== 0) return
+        promptRef.current?.focus()
+      },
+    ),
+  )
 
   createEffect(() => {
     console.log(JSON.stringify(route.data))
@@ -255,6 +287,11 @@ function App() {
           type: "session",
           sessionID: args.sessionID,
         })
+      }
+      const autoAdmin = process.env.OPENCODE_ADMIN_AUTO === "1"
+      if (args.admin || autoAdmin) {
+        if (autoAdmin) debugCheckpoint("admin", "auto panel")
+        dialog.replace(() => <DialogAdmin />)
       }
     })
   })
@@ -330,7 +367,8 @@ function App() {
         name: "models",
       },
       onSelect: () => {
-        dialog.replace(() => <DialogModel />)
+        // Redirect to Admin panel for unified model/account management
+        dialog.replace(() => <DialogAdmin />)
       },
     },
     {
@@ -407,16 +445,6 @@ function App() {
       },
     },
     {
-      title: "Variant cycle",
-      value: "variant.cycle",
-      keybind: "variant_cycle",
-      category: "Agent",
-      hidden: true,
-      onSelect: () => {
-        local.model.variant.cycle()
-      },
-    },
-    {
       title: "Agent cycle reverse",
       value: "agent.cycle.reverse",
       keybind: "agent_cycle_reverse",
@@ -449,6 +477,27 @@ function App() {
         dialog.replace(() => <DialogStatus />)
       },
       category: "System",
+    },
+    {
+      title: "Manage accounts",
+      value: "account.manage",
+      onSelect: () => {
+        dialog.replace(() => <DialogAccount />)
+      },
+      category: "System",
+    },
+    {
+      title: "Admin Panel",
+      value: "admin.panel",
+      keybind: "admin_panel" as const,
+      category: "System",
+      slash: {
+        name: "admin",
+      },
+      onSelect: () => {
+        debugCheckpoint("admin", "open panel")
+        dialog.replace(() => <DialogAdmin />)
+      },
     },
     {
       title: "Switch theme",
@@ -600,6 +649,10 @@ function App() {
   })
 
   sdk.event.on(TuiEvent.CommandExecute.type, (evt) => {
+    if (evt.properties.command === "account.manage") {
+      dialog.replace(() => <DialogAccount />)
+      return
+    }
     command.trigger(evt.properties.command)
   })
 

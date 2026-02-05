@@ -7,6 +7,8 @@ import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import { proxy } from "hono/proxy"
 import { basicAuth } from "hono/basic-auth"
+import { serveStatic } from "hono/bun"
+import path from "path"
 import z from "zod"
 import { Provider } from "../provider/provider"
 import { NamedError } from "@opencode-ai/util/error"
@@ -39,6 +41,8 @@ import { errors } from "./error"
 import { QuestionRoutes } from "./routes/question"
 import { PermissionRoutes } from "./routes/permission"
 import { GlobalRoutes } from "./routes/global"
+import { AccountRoutes } from "./routes/account"
+import { RotationRoutes } from "./routes/rotation"
 import { MDNS } from "./mdns"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
@@ -77,7 +81,30 @@ export namespace Server {
             status: 500,
           })
         })
+        .use(
+          cors({
+            origin(input) {
+              if (!input) return
+
+              if (input.startsWith("http://localhost:")) return input
+              if (input.startsWith("http://127.0.0.1:")) return input
+              if (input === "tauri://localhost" || input === "http://tauri.localhost") return input
+
+              // *.opencode.ai (https only, adjust if needed)
+              if (/^https:\/\/([a-z0-9-]+\.)*opencode\.ai$/.test(input)) {
+                return input
+              }
+              if (_corsWhitelist.includes(input)) {
+                return input
+              }
+
+              return
+            },
+          }),
+        )
         .use((c, next) => {
+          // Skip auth for health check endpoint (Docker/k8s health probes)
+          if (c.req.path === "/global/health") return next()
           const password = Flag.OPENCODE_SERVER_PASSWORD
           if (!password) return next()
           const username = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
@@ -100,27 +127,6 @@ export namespace Server {
             timer.stop()
           }
         })
-        .use(
-          cors({
-            origin(input) {
-              if (!input) return
-
-              if (input.startsWith("http://localhost:")) return input
-              if (input.startsWith("http://127.0.0.1:")) return input
-              if (input === "tauri://localhost" || input === "http://tauri.localhost") return input
-
-              // *.opencode.ai (https only, adjust if needed)
-              if (/^https:\/\/([a-z0-9-]+\.)*opencode\.ai$/.test(input)) {
-                return input
-              }
-              if (_corsWhitelist.includes(input)) {
-                return input
-              }
-
-              return
-            },
-          }),
-        )
         .route("/global", GlobalRoutes())
         .put(
           "/auth/:providerID",
@@ -224,9 +230,12 @@ export namespace Server {
         .route("/permission", PermissionRoutes())
         .route("/question", QuestionRoutes())
         .route("/provider", ProviderRoutes())
-        .route("/", FileRoutes())
         .route("/mcp", McpRoutes())
         .route("/tui", TuiRoutes())
+        .route("/account", AccountRoutes())
+        .route("/accounts", AccountRoutes())
+        .route("/rotation", RotationRoutes())
+        .route("/", FileRoutes())
         .post(
           "/instance/dispose",
           describeRoute({
@@ -530,10 +539,49 @@ export namespace Server {
             })
           },
         )
-        .all("/*", async (c) => {
-          const path = c.req.path
+        .get("/*", async (c, next) => {
+          // Try to serve local frontend if OPENCODE_FRONTEND_PATH is set
+          const frontendPath = process.env.OPENCODE_FRONTEND_PATH
+          if (frontendPath) {
+            const reqPath = c.req.path === "/" ? "/index.html" : c.req.path
+            const filePath = path.join(frontendPath, reqPath)
+            const ext = path.extname(filePath).toLowerCase()
+            const file = Bun.file(filePath)
+            if (await file.exists()) {
+              const contentTypes: Record<string, string> = {
+                ".html": "text/html",
+                ".js": "application/javascript",
+                ".css": "text/css",
+                ".json": "application/json",
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".svg": "image/svg+xml",
+                ".ico": "image/x-icon",
+                ".woff": "font/woff",
+                ".woff2": "font/woff2",
+                ".wasm": "application/wasm",
+              }
+              return new Response(file, {
+                headers: {
+                  "Content-Type": contentTypes[ext] || "application/octet-stream",
+                  "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000",
+                },
+              })
+            }
+            // For SPA routing, serve index.html for non-file paths
+            if (!ext || ext === "") {
+              const indexPath = path.join(frontendPath, "index.html")
+              const indexFile = Bun.file(indexPath)
+              if (await indexFile.exists()) {
+                return new Response(indexFile, {
+                  headers: { "Content-Type": "text/html", "Cache-Control": "no-cache" },
+                })
+              }
+            }
+          }
 
-          const response = await proxy(`https://app.opencode.ai${path}`, {
+          // Fallback to proxy
+          const response = await proxy(`https://app.opencode.ai${c.req.path}`, {
             ...c.req,
             headers: {
               ...c.req.raw.headers,
@@ -563,13 +611,7 @@ export namespace Server {
     return result
   }
 
-  export function listen(opts: {
-    port: number
-    hostname: string
-    mdns?: boolean
-    mdnsDomain?: string
-    cors?: string[]
-  }) {
+  export function listen(opts: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
     _corsWhitelist = opts.cors ?? []
 
     const args = {
@@ -597,7 +639,7 @@ export namespace Server {
       opts.hostname !== "localhost" &&
       opts.hostname !== "::1"
     if (shouldPublishMDNS) {
-      MDNS.publish(server.port!, opts.mdnsDomain)
+      MDNS.publish(server.port!)
     } else if (opts.mdns) {
       log.warn("mDNS enabled but hostname is loopback; skipping mDNS publish")
     }

@@ -24,13 +24,10 @@ import { LSPServer } from "../lsp/server"
 import { BunProc } from "@/bun"
 import { Installation } from "@/installation"
 import { ConfigMarkdown } from "./markdown"
-import { constants, existsSync } from "fs"
+import { existsSync } from "fs"
 import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
 import { Event } from "../server/event"
-import { PackageRegistry } from "@/bun/registry"
-import { proxied } from "@/util/proxied"
-import { iife } from "@/util/iife"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
@@ -65,14 +62,8 @@ export namespace Config {
   export const state = Instance.state(async () => {
     const auth = await Auth.all()
 
-    // Config loading order (low -> high precedence): https://opencode.ai/docs/config#precedence-order
-    // 1) Remote .well-known/opencode (org defaults)
-    // 2) Global config (~/.config/opencode/opencode.json{,c})
-    // 3) Custom config (OPENCODE_CONFIG)
-    // 4) Project config (opencode.json{,c})
-    // 5) .opencode directories (.opencode/agents/, .opencode/commands/, .opencode/plugins/, .opencode/opencode.json{,c})
-    // 6) Inline config (OPENCODE_CONFIG_CONTENT)
-    // Managed config directory is enterprise-only and always overrides everything above.
+    // Load remote/well-known config first as the base layer (lowest precedence)
+    // This allows organizations to provide default configs that users can override
     let result: Info = {}
     for (const [key, value] of Object.entries(auth)) {
       if (value.type === "wellknown") {
@@ -94,16 +85,16 @@ export namespace Config {
       }
     }
 
-    // Global user config overrides remote config.
+    // Global user config overrides remote config
     result = mergeConfigConcatArrays(result, await global())
 
-    // Custom config path overrides global config.
+    // Custom config path overrides global
     if (Flag.OPENCODE_CONFIG) {
       result = mergeConfigConcatArrays(result, await loadFile(Flag.OPENCODE_CONFIG))
       log.debug("loaded custom config", { path: Flag.OPENCODE_CONFIG })
     }
 
-    // Project config overrides global and remote config.
+    // Project config has highest precedence (overrides global and remote)
     if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
       for (const file of ["opencode.jsonc", "opencode.json"]) {
         const found = await Filesystem.findUp(file, Instance.directory, Instance.worktree)
@@ -111,6 +102,12 @@ export namespace Config {
           result = mergeConfigConcatArrays(result, await loadFile(resolved))
         }
       }
+    }
+
+    // Inline config content has highest precedence
+    if (Flag.OPENCODE_CONFIG_CONTENT) {
+      result = mergeConfigConcatArrays(result, JSON.parse(Flag.OPENCODE_CONFIG_CONTENT))
+      log.debug("loaded custom config from OPENCODE_CONFIG_CONTENT")
     }
 
     result.agent = result.agent || {}
@@ -139,13 +136,10 @@ export namespace Config {
       )),
     ]
 
-    // .opencode directory config overrides (project and global) config sources.
     if (Flag.OPENCODE_CONFIG_DIR) {
       directories.push(Flag.OPENCODE_CONFIG_DIR)
       log.debug("loading config from OPENCODE_CONFIG_DIR", { path: Flag.OPENCODE_CONFIG_DIR })
     }
-
-    const deps = []
 
     for (const dir of unique(directories)) {
       if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
@@ -159,23 +153,14 @@ export namespace Config {
         }
       }
 
-      deps.push(
-        iife(async () => {
-          const shouldInstall = await needsInstall(dir)
-          if (shouldInstall) await installDependencies(dir)
-        }),
-      )
+      const exists = existsSync(path.join(dir, "node_modules"))
+      const installing = installDependencies(dir)
+      if (!exists) await installing
 
       result.command = mergeDeep(result.command ?? {}, await loadCommand(dir))
       result.agent = mergeDeep(result.agent, await loadAgent(dir))
       result.agent = mergeDeep(result.agent, await loadMode(dir))
       result.plugin.push(...(await loadPlugin(dir)))
-    }
-
-    // Inline config content overrides all non-managed config sources.
-    if (Flag.OPENCODE_CONFIG_CONTENT) {
-      result = mergeConfigConcatArrays(result, JSON.parse(Flag.OPENCODE_CONFIG_CONTENT))
-      log.debug("loaded custom config from OPENCODE_CONFIG_CONTENT")
     }
 
     // Load managed config files last (highest priority) - enterprise admin-controlled
@@ -238,18 +223,11 @@ export namespace Config {
     return {
       config: result,
       directories,
-      deps,
     }
   })
 
-  export async function waitForDependencies() {
-    const deps = await state().then((x) => x.deps)
-    await Promise.all(deps)
-  }
-
   export async function installDependencies(dir: string) {
     const pkg = path.join(dir, "package.json")
-    const targetVersion = Installation.isLocal() ? "latest" : Installation.VERSION
 
     if (!(await Bun.file(pkg).exists())) {
       await Bun.write(pkg, "{}")
@@ -260,13 +238,7 @@ export namespace Config {
     if (!hasGitIgnore) await Bun.write(gitignore, ["node_modules", "package.json", "bun.lock", ".gitignore"].join("\n"))
 
     await BunProc.run(
-      [
-        "add",
-        `@opencode-ai/plugin@${targetVersion}`,
-        "--exact",
-        // TODO: get rid of this case (see: https://github.com/oven-sh/bun/issues/19936)
-        ...(proxied() ? ["--no-cache"] : []),
-      ],
+      ["add", "@opencode-ai/plugin@" + (Installation.isLocal() ? "latest" : Installation.VERSION), "--exact"],
       {
         cwd: dir,
       },
@@ -274,59 +246,7 @@ export namespace Config {
 
     // Install any additional dependencies defined in the package.json
     // This allows local plugins and custom tools to use external packages
-    await BunProc.run(
-      [
-        "install",
-        // TODO: get rid of this case (see: https://github.com/oven-sh/bun/issues/19936)
-        ...(proxied() ? ["--no-cache"] : []),
-      ],
-      { cwd: dir },
-    ).catch(() => {})
-  }
-
-  async function isWritable(dir: string) {
-    try {
-      await fs.access(dir, constants.W_OK)
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  async function needsInstall(dir: string) {
-    // Some config dirs may be read-only.
-    // Installing deps there will fail; skip installation in that case.
-    const writable = await isWritable(dir)
-    if (!writable) {
-      log.debug("config dir is not writable, skipping dependency install", { dir })
-      return false
-    }
-
-    const nodeModules = path.join(dir, "node_modules")
-    if (!existsSync(nodeModules)) return true
-
-    const pkg = path.join(dir, "package.json")
-    const pkgFile = Bun.file(pkg)
-    const pkgExists = await pkgFile.exists()
-    if (!pkgExists) return true
-
-    const parsed = await pkgFile.json().catch(() => null)
-    const dependencies = parsed?.dependencies ?? {}
-    const depVersion = dependencies["@opencode-ai/plugin"]
-    if (!depVersion) return true
-
-    const targetVersion = Installation.isLocal() ? "latest" : Installation.VERSION
-    if (targetVersion === "latest") {
-      const isOutdated = await PackageRegistry.isOutdated("@opencode-ai/plugin", depVersion, dir)
-      if (!isOutdated) return false
-      log.info("Cached version is outdated, proceeding with install", {
-        pkg: "@opencode-ai/plugin",
-        cachedVersion: depVersion,
-      })
-      return true
-    }
-    if (depVersion === targetVersion) return false
-    return true
+    await BunProc.run(["install"], { cwd: dir }).catch(() => {})
   }
 
   function rel(item: string, patterns: string[]) {
@@ -690,12 +610,10 @@ export namespace Config {
         .describe("Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)"),
       options: z.record(z.string(), z.any()).optional(),
       color: z
-        .union([
-          z.string().regex(/^#[0-9a-fA-F]{6}$/, "Invalid hex color format"),
-          z.enum(["primary", "secondary", "accent", "success", "warning", "error", "info"]),
-        ])
+        .string()
+        .regex(/^#[0-9a-fA-F]{6}$/, "Invalid hex color format")
         .optional()
-        .describe("Hex color code (e.g., #FF5733) or theme color (e.g., primary)"),
+        .describe("Hex color code for the agent (e.g., #FF5733)"),
       steps: z
         .number()
         .int()
@@ -816,6 +734,7 @@ export namespace Config {
       model_cycle_recent_reverse: z.string().optional().default("shift+f2").describe("Previous recently used model"),
       model_cycle_favorite: z.string().optional().default("none").describe("Next favorite model"),
       model_cycle_favorite_reverse: z.string().optional().default("none").describe("Previous favorite model"),
+      admin_panel: z.string().optional().default("none").describe("Open admin panel"),
       command_list: z.string().optional().default("ctrl+p").describe("List available commands"),
       agent_list: z.string().optional().default("<leader>a").describe("List agents"),
       agent_cycle: z.string().optional().default("tab").describe("Next agent"),
@@ -827,7 +746,7 @@ export namespace Config {
       input_newline: z
         .string()
         .optional()
-        .default("shift+return,ctrl+return,alt+return,ctrl+j")
+        .default("shift+return,shift+enter,ctrl+return,ctrl+enter,alt+return,alt+enter,ctrl+j")
         .describe("Insert newline in input"),
       input_move_left: z.string().optional().default("left,ctrl+b").describe("Move cursor left in input"),
       input_move_right: z.string().optional().default("right,ctrl+f").describe("Move cursor right in input"),
@@ -837,14 +756,18 @@ export namespace Config {
       input_select_right: z.string().optional().default("shift+right").describe("Select right in input"),
       input_select_up: z.string().optional().default("shift+up").describe("Select up in input"),
       input_select_down: z.string().optional().default("shift+down").describe("Select down in input"),
-      input_line_home: z.string().optional().default("ctrl+a").describe("Move to start of line in input"),
-      input_line_end: z.string().optional().default("ctrl+e").describe("Move to end of line in input"),
+      input_line_home: z.string().optional().default("ctrl+a,home").describe("Move to start of line in input"),
+      input_line_end: z.string().optional().default("ctrl+e,end").describe("Move to end of line in input"),
       input_select_line_home: z
         .string()
         .optional()
-        .default("ctrl+shift+a")
+        .default("ctrl+shift+a,shift+home")
         .describe("Select to start of line in input"),
-      input_select_line_end: z.string().optional().default("ctrl+shift+e").describe("Select to end of line in input"),
+      input_select_line_end: z
+        .string()
+        .optional()
+        .default("ctrl+shift+e,shift+end")
+        .describe("Select to end of line in input"),
       input_visual_line_home: z.string().optional().default("alt+a").describe("Move to start of visual line in input"),
       input_visual_line_end: z.string().optional().default("alt+e").describe("Move to end of visual line in input"),
       input_select_visual_line_home: z
@@ -857,14 +780,18 @@ export namespace Config {
         .optional()
         .default("alt+shift+e")
         .describe("Select to end of visual line in input"),
-      input_buffer_home: z.string().optional().default("home").describe("Move to start of buffer in input"),
-      input_buffer_end: z.string().optional().default("end").describe("Move to end of buffer in input"),
+      input_buffer_home: z.string().optional().default("ctrl+home").describe("Move to start of buffer in input"),
+      input_buffer_end: z.string().optional().default("ctrl+end").describe("Move to end of buffer in input"),
       input_select_buffer_home: z
         .string()
         .optional()
-        .default("shift+home")
+        .default("ctrl+shift+home")
         .describe("Select to start of buffer in input"),
-      input_select_buffer_end: z.string().optional().default("shift+end").describe("Select to end of buffer in input"),
+      input_select_buffer_end: z
+        .string()
+        .optional()
+        .default("ctrl+shift+end")
+        .describe("Select to end of buffer in input"),
       input_delete_line: z.string().optional().default("ctrl+shift+d").describe("Delete line in input"),
       input_delete_to_line_end: z.string().optional().default("ctrl+k").describe("Delete to end of line in input"),
       input_delete_to_line_start: z.string().optional().default("ctrl+u").describe("Delete to start of line in input"),
@@ -910,7 +837,6 @@ export namespace Config {
       terminal_suspend: z.string().optional().default("ctrl+z").describe("Suspend terminal"),
       terminal_title_toggle: z.string().optional().default("none").describe("Toggle terminal title"),
       tips_toggle: z.string().optional().default("<leader>h").describe("Toggle tips on home screen"),
-      display_thinking: z.string().optional().default("none").describe("Toggle thinking blocks visibility"),
     })
     .strict()
     .meta({
@@ -936,7 +862,6 @@ export namespace Config {
       port: z.number().int().positive().optional().describe("Port to listen on"),
       hostname: z.string().optional().describe("Hostname to listen on"),
       mdns: z.boolean().optional().describe("Enable mDNS service discovery"),
-      mdnsDomain: z.string().optional().describe("Custom domain name for mDNS service (default: opencode.local)"),
       cors: z.array(z.string()).optional().describe("Additional domains to allow for CORS"),
     })
     .strict()
@@ -1167,6 +1092,29 @@ export namespace Config {
         .optional(),
       experimental: z
         .object({
+          hook: z
+            .object({
+              file_edited: z
+                .record(
+                  z.string(),
+                  z
+                    .object({
+                      command: z.string().array(),
+                      environment: z.record(z.string(), z.string()).optional(),
+                    })
+                    .array(),
+                )
+                .optional(),
+              session_completed: z
+                .object({
+                  command: z.string().array(),
+                  environment: z.record(z.string(), z.string()).optional(),
+                })
+                .array()
+                .optional(),
+            })
+            .optional(),
+          chatMaxRetries: z.number().optional().describe("Number of retries for chat completions on failure"),
           disable_paste_summary: z.boolean().optional(),
           batch_tool: z.boolean().optional().describe("Enable the batch tool"),
           openTelemetry: z
@@ -1178,6 +1126,19 @@ export namespace Config {
             .optional()
             .describe("Tools that should only be available to primary agents."),
           continue_loop_on_deny: z.boolean().optional().describe("Continue the agent loop when a tool call is denied"),
+          subagent_workflow: z
+            .object({
+              enabled: z.boolean().optional().describe("Enable automatic subagent workflow"),
+              keywords: z.array(z.string()).optional().describe("Keywords that trigger subagent delegation"),
+              roles: z.array(z.string()).optional().describe("Ordered subagent roles to execute"),
+              min_chars: z.number().int().positive().optional().describe("Minimum characters to treat as non-trivial"),
+              min_lines: z.number().int().positive().optional().describe("Minimum lines to treat as non-trivial"),
+              models: z
+                .record(z.string(), z.string())
+                .optional()
+                .describe("Per-role model overrides in provider/model format"),
+            })
+            .optional(),
           mcp_timeout: z
             .number()
             .int()

@@ -1,5 +1,16 @@
 import { BoxRenderable, TextareaRenderable, MouseEvent, PasteEvent, t, dim, fg } from "@opentui/core"
-import { createEffect, createMemo, type JSX, onMount, createSignal, onCleanup, Show, Switch, Match } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  type JSX,
+  onMount,
+  createSignal,
+  onCleanup,
+  Show,
+  Switch,
+  Match,
+  createResource,
+} from "solid-js"
 import "opentui-spinner/solid"
 import { useLocal } from "@tui/context/local"
 import { useTheme } from "@tui/context/theme"
@@ -27,11 +38,16 @@ import { formatDuration } from "@/util/format"
 import { createColors, createFrames } from "../../ui/spinner.ts"
 import { useDialog } from "@tui/ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
+import { DialogAdmin } from "../dialog-admin"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
-import { DialogSkill } from "../dialog-skill"
+import { Auth } from "@/auth"
+import { Account } from "@/account"
+import { checkAccountsQuota, type QuotaGroup } from "@/plugin/antigravity/plugin/quota"
+import { loadAccounts, saveAccounts } from "@/plugin/antigravity/plugin/storage"
+import { getModelFamily } from "@/plugin/antigravity/plugin/transform/model-resolver"
 
 export type PromptProps = {
   sessionID?: string
@@ -74,6 +90,173 @@ export function Prompt(props: PromptProps) {
   const renderer = useRenderer()
   const { theme, syntax } = useTheme()
   const kv = useKV()
+  const [rateLimitKey, setRateLimitKey] = createSignal("")
+  const [quotaRefresh, setQuotaRefresh] = createSignal(0)
+  const CODEX_ISSUER = "https://auth.openai.com"
+  const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
+  const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+
+  const isRateLimitMessage = (message: string) => {
+    const text = message.toLowerCase()
+    return text.includes("rate limit") || text.includes("too many requests") || text.includes("429")
+  }
+
+  const lastCompletedAssistant = createMemo(() => {
+    if (!props.sessionID) return undefined
+    const messages = sync.data.message[props.sessionID] ?? []
+    return messages.findLast((m) => m.role === "assistant" && m.time?.completed)
+  })
+
+  createEffect(() => {
+    if (!lastCompletedAssistant()) return
+    setQuotaRefresh((v) => v + 1)
+  })
+
+  function clampPercentage(value: number): number {
+    if (!Number.isFinite(value)) return 0
+    if (value < 0) return 0
+    if (value > 100) return 100
+    return Math.round(value)
+  }
+
+  type CodexTokenResponse = {
+    id_token?: string
+    access_token: string
+    refresh_token?: string
+    expires_in?: number
+  }
+
+  type CodexIdTokenClaims = {
+    chatgpt_account_id?: string
+    organizations?: Array<{ id: string }>
+    "https://api.openai.com/auth"?: {
+      chatgpt_account_id?: string
+    }
+  }
+
+  function parseCodexJwtClaims(token: string): CodexIdTokenClaims | undefined {
+    const parts = token.split(".")
+    if (parts.length !== 3) return undefined
+    try {
+      return JSON.parse(Buffer.from(parts[1], "base64url").toString())
+    } catch {
+      return undefined
+    }
+  }
+
+  function extractAccountIdFromClaims(claims: CodexIdTokenClaims): string | undefined {
+    return (
+      claims.chatgpt_account_id ||
+      claims["https://api.openai.com/auth"]?.chatgpt_account_id ||
+      claims.organizations?.[0]?.id
+    )
+  }
+
+  function extractAccountIdFromTokens(tokens: CodexTokenResponse): string | undefined {
+    if (tokens.id_token) {
+      const claims = parseCodexJwtClaims(tokens.id_token)
+      if (claims) {
+        const accountId = extractAccountIdFromClaims(claims)
+        if (accountId) return accountId
+      }
+    }
+    const claims = parseCodexJwtClaims(tokens.access_token)
+    return claims ? extractAccountIdFromClaims(claims) : undefined
+  }
+
+  async function refreshCodexAccessToken(refreshToken: string): Promise<CodexTokenResponse> {
+    const response = await fetch(`${CODEX_ISSUER}/oauth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        client_id: CODEX_CLIENT_ID,
+      }).toString(),
+    })
+    if (!response.ok) {
+      throw new Error(`Codex token refresh failed: ${response.status}`)
+    }
+    return response.json()
+  }
+
+  function resolveQuotaGroup(modelID: string): QuotaGroup | null {
+    const combined = modelID.toLowerCase()
+    if (combined.includes("claude")) return "claude"
+    const isGemini3 = combined.includes("gemini-3") || combined.includes("gemini 3")
+    if (!isGemini3) return null
+    const family = getModelFamily(modelID)
+    return family === "gemini-flash" ? "gemini-flash" : "gemini-pro"
+  }
+
+  const [quotaGroups] = createResource(quotaRefresh, async () => {
+    try {
+      const storage = await loadAccounts()
+      if (!storage || storage.accounts.length === 0) return null
+      const results = await checkAccountsQuota(storage.accounts, {} as any)
+
+      let shouldSave = false
+      for (const res of results) {
+        if (res.updatedAccount) {
+          storage.accounts[res.index] = res.updatedAccount
+          shouldSave = true
+        }
+      }
+      if (shouldSave) {
+        await saveAccounts(storage)
+      }
+
+      const activeIndex = Math.max(0, Math.min(storage.activeIndex ?? 0, results.length - 1))
+      const active = results.find((res) => res.index === activeIndex)
+      return active?.quota?.groups ?? null
+    } catch {
+      return null
+    }
+  })
+
+  const [codexQuota] = createResource(quotaRefresh, async () => {
+    try {
+      const auth = await Auth.get("openai")
+      if (!auth || auth.type !== "oauth") return null
+
+      let access = auth.access
+      let expires = auth.expires
+      let refresh = auth.refresh
+      let accountId = auth.accountId
+
+      if (!access || !expires || expires < Date.now()) {
+        const tokens = await refreshCodexAccessToken(refresh)
+        access = tokens.access_token
+        refresh = tokens.refresh_token ?? refresh
+        expires = Date.now() + (tokens.expires_in ?? 3600) * 1000
+        accountId = accountId ?? extractAccountIdFromTokens(tokens)
+
+        const activeId = await Account.getActive("openai")
+        if (activeId) {
+          await Account.update("openai", activeId, {
+            refreshToken: refresh,
+            accessToken: access,
+            expiresAt: expires,
+            accountId,
+          })
+        }
+      }
+
+      const headers = new Headers({ Authorization: `Bearer ${access}`, Accept: "application/json" })
+      if (accountId) headers.set("ChatGPT-Account-Id", accountId)
+
+      const response = await fetch(CODEX_USAGE_URL, { headers })
+      if (!response.ok) return null
+      const usage = (await response.json()) as any
+      const hourlyUsed = usage?.rate_limit?.primary_window?.used_percent ?? 0
+      const weeklyUsed = usage?.rate_limit?.secondary_window?.used_percent ?? 0
+      const hourlyRemaining = clampPercentage(100 - hourlyUsed)
+      const weeklyRemaining = clampPercentage(100 - weeklyUsed)
+      return { hourlyRemaining, weeklyRemaining }
+    } catch {
+      return null
+    }
+  })
 
   function promptModelWarning() {
     toast.show({
@@ -108,6 +291,36 @@ export function Prompt(props: PromptProps) {
   createEffect(() => {
     if (props.disabled) input.cursorColor = theme.backgroundElement
     if (!props.disabled) input.cursorColor = theme.text
+  })
+
+  createEffect(() => {
+    const s = status()
+    if (s.type !== "retry") {
+      if (rateLimitKey()) setRateLimitKey("")
+      return
+    }
+    if (!isRateLimitMessage(s.message)) return
+
+    const key = `${props.sessionID ?? ""}:${s.message}`
+    if (rateLimitKey() === key) return
+
+    setRateLimitKey(key)
+    const savedPrompt = store.prompt.input
+    const targetProvider = local.model.current()?.providerID
+    dialog.replace(
+      () => <DialogAdmin targetProviderID={targetProvider ?? undefined} />,
+      () => {
+        setStore("prompt", (prev) => ({
+          ...prev,
+          input: savedPrompt,
+        }))
+        if (input && !input.isDestroyed) {
+          input.setText(savedPrompt)
+          input.gotoBufferEnd()
+          input.focus()
+        }
+      },
+    )
   })
 
   const lastUserMessage = createMemo(() => {
@@ -314,28 +527,6 @@ export function Prompt(props: PromptProps) {
           })
           restoreExtmarksFromParts(updatedNonTextParts)
           input.cursorOffset = Bun.stringWidth(content)
-        },
-      },
-      {
-        title: "Skills",
-        value: "prompt.skills",
-        category: "Prompt",
-        slash: {
-          name: "skills",
-        },
-        onSelect: () => {
-          dialog.replace(() => (
-            <DialogSkill
-              onSelect={(skill) => {
-                input.setText(`/${skill} `)
-                setStore("prompt", {
-                  input: `/${skill} `,
-                  parts: [],
-                })
-                input.gotoBufferEnd()
-              }}
-            />
-          ))
         },
       },
     ]
@@ -561,7 +752,7 @@ export function Prompt(props: PromptProps) {
     if (store.mode === "shell") {
       sdk.client.session.shell({
         sessionID,
-        agent: local.agent.current().name,
+        agent: local.agent.current()?.name || "agent",
         model: {
           providerID: selectedModel.providerID,
           modelID: selectedModel.modelID,
@@ -588,7 +779,7 @@ export function Prompt(props: PromptProps) {
         sessionID,
         command: command.slice(1),
         arguments: args,
-        agent: local.agent.current().name,
+        agent: local.agent.current()?.name || "agent",
         model: `${selectedModel.providerID}/${selectedModel.modelID}`,
         messageID,
         variant,
@@ -605,7 +796,7 @@ export function Prompt(props: PromptProps) {
           sessionID,
           ...selectedModel,
           messageID,
-          agent: local.agent.current().name,
+          agent: local.agent.current()?.name || "agent",
           model: selectedModel,
           variant,
           parts: [
@@ -726,7 +917,7 @@ export function Prompt(props: PromptProps) {
   const highlight = createMemo(() => {
     if (keybind.leader) return theme.border
     if (store.mode === "shell") return theme.primary
-    return local.agent.color(local.agent.current().name)
+    return local.agent.color(local.agent.current()?.name || "agent")
   })
 
   const showVariant = createMemo(() => {
@@ -737,7 +928,7 @@ export function Prompt(props: PromptProps) {
   })
 
   const spinnerDef = createMemo(() => {
-    const color = local.agent.color(local.agent.current().name)
+    const color = local.agent.color(local.agent.current()?.name || "agent")
     return {
       frames: createFrames({
         color,
@@ -754,6 +945,33 @@ export function Prompt(props: PromptProps) {
         minAlpha: 0.3,
       }),
     }
+  })
+
+  const isRateLimited = createMemo(() => {
+    const s = status()
+    return s.type === "retry" && isRateLimitMessage(s.message)
+  })
+
+  const quotaHint = createMemo(() => {
+    const current = local.model.current()
+    if (!current) return undefined
+    if (current.providerID === "openai" || Account.parseFamily(current.providerID) === "openai") {
+      if (isRateLimited()) return "(5hrs:0% | week:0%)"
+      const quota = codexQuota()
+      if (!quota) return "(5hrs:-- | week:--)"
+      return `(5hrs:${quota.hourlyRemaining}% | week:${quota.weeklyRemaining}%)`
+    }
+    if (current.providerID === "antigravity" || Account.parseFamily(current.providerID) === "antigravity") {
+      if (isRateLimited()) return "0%"
+      const groups = quotaGroups()
+      if (!groups) return undefined
+      const group = resolveQuotaGroup(current.modelID)
+      if (!group) return undefined
+      const remaining = groups[group]?.remainingFraction
+      if (typeof remaining !== "number") return undefined
+      return `${Math.round(remaining * 100)}%`
+    }
+    return undefined
   })
 
   return (
@@ -975,7 +1193,7 @@ export function Prompt(props: PromptProps) {
             />
             <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1}>
               <text fg={highlight()}>
-                {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}{" "}
+                {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current()?.name || "Agent")}{" "}
               </text>
               <Show when={store.mode === "normal"}>
                 <box flexDirection="row" gap={1}>
@@ -983,6 +1201,9 @@ export function Prompt(props: PromptProps) {
                     {local.model.parsed().model}
                   </text>
                   <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
+                  <Show when={quotaHint()}>
+                    <text fg={theme.textMuted}>· {quotaHint()}</text>
+                  </Show>
                   <Show when={showVariant()}>
                     <text fg={theme.textMuted}>·</text>
                     <text>
@@ -1105,14 +1326,6 @@ export function Prompt(props: PromptProps) {
             <box gap={2} flexDirection="row">
               <Switch>
                 <Match when={store.mode === "normal"}>
-                  <Show when={local.model.variant.list().length > 0}>
-                    <text fg={theme.text}>
-                      {keybind.print("variant_cycle")} <span style={{ fg: theme.textMuted }}>variants</span>
-                    </text>
-                  </Show>
-                  <text fg={theme.text}>
-                    {keybind.print("agent_cycle")} <span style={{ fg: theme.textMuted }}>agents</span>
-                  </text>
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
                   </text>
@@ -1123,6 +1336,9 @@ export function Prompt(props: PromptProps) {
                   </text>
                 </Match>
               </Switch>
+              <text fg={theme.text}>
+                ctrl+j <span style={{ fg: theme.textMuted }}>newline</span>
+              </text>
             </box>
           </Show>
         </box>

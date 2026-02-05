@@ -12,17 +12,31 @@ import { Session } from "../session"
 import { NamedError } from "@opencode-ai/util/error"
 import { CopilotAuthPlugin } from "./copilot"
 
+import { AntigravityOAuthPlugin, AntigravityLegacyOAuthPlugin } from "./antigravity"
+import { GeminiCLIOAuthPlugin } from "./gemini-cli"
+import { AnthropicAuthPlugin } from "./anthropic"
+
 export namespace Plugin {
   const log = Log.create({ service: "plugin" })
 
-  const BUILTIN = ["opencode-anthropic-auth@0.0.13", "@gitlab/opencode-gitlab-auth@1.3.2"]
+  // GitLab auth still uses npm package
+  const BUILTIN = ["@gitlab/opencode-gitlab-auth@1.3.2"]
 
   // Built-in plugins that are directly imported (not installed from npm)
-  const INTERNAL_PLUGINS: PluginInstance[] = [CodexAuthPlugin, CopilotAuthPlugin]
+  // AnthropicAuthPlugin is internal to use correct Claude Code headers for OAuth
+  const INTERNAL_PLUGINS: { name: string; plugin: PluginInstance }[] = [
+    { name: "codex", plugin: CodexAuthPlugin },
+    { name: "copilot", plugin: CopilotAuthPlugin },
+    { name: "antigravity", plugin: AntigravityOAuthPlugin as any },
+    { name: "antigravity-legacy", plugin: AntigravityLegacyOAuthPlugin as any },
+    { name: "gemini-cli", plugin: GeminiCLIOAuthPlugin as any },
+    { name: "anthropic", plugin: AnthropicAuthPlugin as any },
+  ]
 
-  const state = Instance.state(async () => {
+  // Cached state
+  const state = Instance.state(async (): Promise<{ hooks: Hooks[]; input: PluginInput }> => {
     const client = createOpencodeClient({
-      baseUrl: "http://localhost:4096",
+      baseUrl: "http://localhost:1080",
       // @ts-ignore - fetch type incompatibility
       fetch: async (...args) => Server.App().fetch(...args),
     })
@@ -37,21 +51,26 @@ export namespace Plugin {
       $: Bun.$,
     }
 
-    for (const plugin of INTERNAL_PLUGINS) {
-      log.info("loading internal plugin", { name: plugin.name })
-      const init = await plugin(input)
+    for (const entry of INTERNAL_PLUGINS) {
+      log.info("loading internal plugin", { name: entry.name })
+      const init = await entry.plugin(input)
+      ;(init as { __source?: string }).__source = `internal:${entry.name}`
       hooks.push(init)
     }
 
     const plugins = [...(config.plugin ?? [])]
-    if (plugins.length) await Config.waitForDependencies()
     if (!Flag.OPENCODE_DISABLE_DEFAULT_PLUGINS) {
       plugins.push(...BUILTIN)
     }
 
     for (let plugin of plugins) {
-      // ignore old codex plugin since it is supported first party now
-      if (plugin.includes("opencode-openai-codex-auth") || plugin.includes("opencode-copilot-auth")) continue
+      // Skip plugins that are now handled internally
+      if (
+        plugin.includes("opencode-openai-codex-auth") ||
+        plugin.includes("opencode-copilot-auth") ||
+        plugin.includes("opencode-anthropic-auth")
+      )
+        continue
       log.info("loading plugin", { path: plugin })
       if (!plugin.startsWith("file://")) {
         const lastAtIndex = plugin.lastIndexOf("@")
@@ -86,6 +105,7 @@ export namespace Plugin {
         if (seen.has(fn)) continue
         seen.add(fn)
         const init = await fn(input)
+        ;(init as { __source?: string }).__source = plugin
         hooks.push(init)
       }
     }
@@ -115,6 +135,33 @@ export namespace Plugin {
 
   export async function list() {
     return state().then((x) => x.hooks)
+  }
+
+  export async function discoverModels() {
+    const hooks = await state().then((x) => x.hooks)
+    const results: any[] = []
+    for (const hook of hooks) {
+      if ((hook as any).models) {
+        try {
+          const models = await (hook as any).models()
+          if (Array.isArray(models)) {
+            results.push(...models)
+          }
+        } catch (err) {
+          log.error("failed to discover models from plugin", { error: err })
+        }
+      }
+    }
+    if (results.length > 0) {
+      const { Provider } = await import("../provider/provider")
+      await Provider.addDynamicModels(results)
+    }
+    return results
+  }
+
+  export async function getAuth(provider: string) {
+    const hooks = await list()
+    return hooks.find((h) => h.auth?.provider === provider)?.auth
   }
 
   export async function init() {

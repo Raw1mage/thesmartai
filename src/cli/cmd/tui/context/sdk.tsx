@@ -9,20 +9,13 @@ export type EventSource = {
 
 export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
   name: "SDK",
-  init: (props: {
-    url: string
-    directory?: string
-    fetch?: typeof fetch
-    headers?: RequestInit["headers"]
-    events?: EventSource
-  }) => {
+  init: (props: { url: string; directory?: string; fetch?: typeof fetch; events?: EventSource }) => {
     const abort = new AbortController()
     const sdk = createOpencodeClient({
       baseUrl: props.url,
       signal: abort.signal,
       directory: props.directory,
       fetch: props.fetch,
-      headers: props.headers,
     })
 
     const emitter = createGlobalEmitter<{
@@ -72,21 +65,30 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       // Fall back to SSE
       while (true) {
         if (abort.signal.aborted) break
-        const events = await sdk.event.subscribe(
-          {},
-          {
-            signal: abort.signal,
-          },
-        )
+        try {
+          const events = await sdk.event.subscribe(
+            {},
+            {
+              signal: abort.signal,
+            },
+          )
 
-        for await (const event of events.stream) {
-          handleEvent(event)
-        }
+          for await (const event of events.stream) {
+            handleEvent(event)
+          }
 
-        // Flush any remaining events
-        if (timer) clearTimeout(timer)
-        if (queue.length > 0) {
-          flush()
+          // Flush any remaining events
+          if (timer) clearTimeout(timer)
+          if (queue.length > 0) {
+            flush()
+          }
+        } catch (e) {
+          // If aborted, just break
+          if (abort.signal.aborted) break
+
+          // Log specific error but don't crash
+          // console.warn("SDK connection error, retrying...", e)
+          await new Promise((r) => setTimeout(r, 2000))
         }
       }
     })
@@ -96,6 +98,6 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       if (timer) clearTimeout(timer)
     })
 
-    return { client: sdk, event: emitter, url: props.url }
+    return { client: sdk, event: emitter, url: props.url, ready: true }
   },
 })

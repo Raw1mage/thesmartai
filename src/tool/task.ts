@@ -11,18 +11,16 @@ import { iife } from "@/util/iife"
 import { defer } from "@/util/defer"
 import { Config } from "../config/config"
 import { PermissionNext } from "@/permission/next"
+import { Provider } from "../provider/provider"
+import { debugCheckpoint } from "@/util/debug"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
   prompt: z.string().describe("The task for the agent to perform"),
   subagent_type: z.string().describe("The type of specialized agent to use for this task"),
-  task_id: z
-    .string()
-    .describe(
-      "This should only be set if you mean to resume a previous task (you can pass a prior task_id and the task will continue the same subagent session as before instead of creating a fresh one)",
-    )
-    .optional(),
+  session_id: z.string().describe("Existing Task session to continue").optional(),
   command: z.string().describe("The command that triggered this task").optional(),
+  model: z.string().describe("Optional model ID to use for this task (e.g. 'openai/gpt-5.1-codex-mini')").optional(),
 })
 
 export const TaskTool = Tool.define("task", async (ctx) => {
@@ -44,6 +42,13 @@ export const TaskTool = Tool.define("task", async (ctx) => {
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, ctx) {
+      debugCheckpoint("task", "Task tool execute started", {
+        description: params.description,
+        subagent_type: params.subagent_type,
+        model_param: params.model,
+        session_id: params.session_id,
+      })
+
       const config = await Config.get()
 
       // Skip permission check when user explicitly invoked via @ or command subtask
@@ -61,12 +66,13 @@ export const TaskTool = Tool.define("task", async (ctx) => {
 
       const agent = await Agent.get(params.subagent_type)
       if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
+      debugCheckpoint("task", "Agent loaded", { agentName: agent.name, agentModel: agent.model })
 
       const hasTaskPermission = agent.permission.some((rule) => rule.permission === "task")
 
       const session = await iife(async () => {
-        if (params.task_id) {
-          const found = await Session.get(params.task_id).catch(() => {})
+        if (params.session_id) {
+          const found = await Session.get(params.session_id).catch(() => {})
           if (found) return found
         }
 
@@ -104,10 +110,19 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
       if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
 
-      const model = agent.model ?? {
-        modelID: msg.info.modelID,
-        providerID: msg.info.providerID,
-      }
+      const modelArg = params.model ? Provider.parseModel(params.model) : undefined
+      const model = modelArg ??
+        agent.model ?? {
+          modelID: msg.info.modelID,
+          providerID: msg.info.providerID,
+        }
+
+      debugCheckpoint("task", "Model resolved for subagent", {
+        modelArg,
+        agentModel: agent.model,
+        parentModel: { modelID: msg.info.modelID, providerID: msg.info.providerID },
+        finalModel: model,
+      })
 
       ctx.metadata({
         title: params.description,
@@ -148,6 +163,51 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
       const promptParts = await SessionPrompt.resolvePromptParts(params.prompt)
 
+      // const modelInfo = await Provider.getModel(model.providerID, model.modelID).catch(() => undefined)
+      // const auto = params.description.toLowerCase().startsWith("auto ")
+      // const allowImages = !auto && (modelInfo?.capabilities?.input?.image ?? false)
+
+      // Extract image attachments from parent session's messages and pass to subagent
+      // This allows images pasted by the user (displayed as [Image N]) to be visible to subagents
+      /*
+      const parentUserMessage = ctx.messages.findLast((m) => m.info.role === "user")
+      if (parentUserMessage) {
+        const imageAttachments = parentUserMessage.parts.filter(
+          (part): part is MessageV2.FilePart => part.type === "file" && part.mime?.startsWith("image/"),
+        )
+        for (const img of imageAttachments) {
+          if (!allowImages) {
+            debugCheckpoint("task", "Skipping image for subagent", {
+              filename: img.filename,
+              mime: img.mime,
+              reason: auto ? "auto_task" : "model_no_image_support",
+            })
+            continue
+          }
+          if (img.url.startsWith("data:")) {
+            const match = img.url.match(/^data:([^;]+);base64,(.*)$/)
+            if (!match || !match[2]) {
+              debugCheckpoint("task", "Skipping invalid image data URL", {
+                filename: img.filename,
+                mime: img.mime,
+              })
+              continue
+            }
+          }
+          debugCheckpoint("task", "Passing image to subagent", {
+            filename: img.filename,
+            mime: img.mime,
+          })
+          promptParts.push({
+            type: "file",
+            url: img.url,
+            mime: img.mime,
+            filename: img.filename,
+          })
+        }
+      }
+      */
+
       const result = await SessionPrompt.prompt({
         messageID,
         sessionID: session.id,
@@ -180,14 +240,13 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           },
         }))
       const text = result.parts.findLast((x) => x.type === "text")?.text ?? ""
+      const info = result.info as any
 
-      const output = [
-        `task_id: ${session.id} (for resuming to continue this task if needed)`,
-        "",
-        "<task_result>",
-        text,
-        "</task_result>",
-      ].join("\n")
+      if (info.error) {
+        throw new Error(`Subagent task failed: ${info.error.message || JSON.stringify(info.error)}`)
+      }
+
+      const output = text + "\n\n" + ["<task_metadata>", `session_id: ${session.id}`, "</task_metadata>"].join("\n")
 
       return {
         title: params.description,

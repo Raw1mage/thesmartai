@@ -2,11 +2,11 @@ import { BusEvent } from "@/bus/bus-event"
 import z from "zod"
 import { Config } from "../config/config"
 import { Instance } from "../project/instance"
+import { Installation } from "../installation"
 import { Identifier } from "../id/id"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
 import { MCP } from "../mcp"
-import { Skill } from "../skill"
 
 export namespace Command {
   export const Event = {
@@ -21,25 +21,32 @@ export namespace Command {
     ),
   }
 
+  // Note: `handler` is intentionally excluded from the Zod schema because
+  // z.function() cannot be represented in JSON Schema (used for OpenAPI generation).
+  // The handler field is defined only in the TypeScript type below.
   export const Info = z
     .object({
       name: z.string(),
       description: z.string().optional(),
       agent: z.string().optional(),
       model: z.string().optional(),
-      source: z.enum(["command", "mcp", "skill"]).optional(),
+      mcp: z.boolean().optional(),
       // workaround for zod not supporting async functions natively so we use getters
       // https://zod.dev/v4/changelog?id=zfunction
       template: z.promise(z.string()).or(z.string()),
       subtask: z.boolean().optional(),
       hints: z.array(z.string()),
+      source: z.string().optional(),
     })
     .meta({
       ref: "Command",
     })
 
   // for some reason zod is inferring `string` for z.promise(z.string()).or(z.string()) so we have to manually override it
-  export type Info = Omit<z.infer<typeof Info>, "template"> & { template: Promise<string> | string }
+  export type Info = Omit<z.infer<typeof Info>, "template" | "handler"> & {
+    template: Promise<string> | string
+    handler?: () => Promise<{ output: string; title?: string }>
+  }
 
   export function hints(template: string): string[] {
     const result: string[] = []
@@ -82,6 +89,7 @@ export namespace Command {
     }
 
     for (const [name, command] of Object.entries(cfg.command ?? {})) {
+      if (result[name] && result[name].handler) continue
       result[name] = {
         name,
         agent: command.agent,
@@ -96,9 +104,10 @@ export namespace Command {
       }
     }
     for (const [name, prompt] of Object.entries(await MCP.prompts())) {
+      if (result[name] && result[name].handler) continue
       result[name] = {
         name,
-        source: "mcp",
+        mcp: true,
         description: prompt.description,
         get template() {
           // since a getter can't be async we need to manually return a promise here
@@ -119,21 +128,6 @@ export namespace Command {
           })
         },
         hints: prompt.arguments?.map((_, i) => `$${i + 1}`) ?? [],
-      }
-    }
-
-    // Add skills as invokable commands
-    for (const skill of await Skill.all()) {
-      // Skip if a command with this name already exists
-      if (result[skill.name]) continue
-      result[skill.name] = {
-        name: skill.name,
-        description: skill.description,
-        source: "skill",
-        get template() {
-          return skill.content
-        },
-        hints: [],
       }
     }
 
