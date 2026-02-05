@@ -1,3 +1,4 @@
+- [2026-02-06] [安全修補（realpath）+ Typecheck 暫避註解](events/event_20260206_typecheck_codereview.md)（list/search 警告模式 + typecheck 通過）
 - [2026-02-06] [Typecheck + 全專案人工 Code Review（廢棄程式 / memory leak / security exploits）](events/event_20260206_typecheck_codereview.md)
 - [2026-02-06] [Rotation3D V2: 精確區分永久失效與 5 分鐘禁閉機制](events/event_20260206_rotation_v2.md)
 - [2026-02-06] [Rotation3D fallback 篩選隱藏模型 + TUI 模型同步](events/event_2026-02-06.md)
