@@ -71,7 +71,7 @@
   },
   "devDependencies": {
     "@actions/artifact": "5.0.1",
-    "@babel/core": "7.28.4",
+    "@babel/core": "7.28.5",
     "@octokit/webhooks-types": "7.6.1",
     "@opencode-ai/script": "workspace:*",
     "@parcel/watcher-darwin-arm64": "2.5.1",
@@ -190,8 +190,8 @@
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "babel-preset-solid": "1.9.9",
-    "@babel/core": "7.28.0",
-    "@babel/generator": "7.28.0"
+    "@babel/core": "7.28.5",
+    "@babel/generator": "7.28.5"
   },
   "patchedDependencies": {
     "ghostty-web@0.3.0": "patches/ghostty-web@0.3.0.patch"
