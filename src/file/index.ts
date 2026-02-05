@@ -241,6 +241,97 @@ export namespace File {
     return mimeType.startsWith("image/")
   }
 
+  let projectRootReal: string | undefined
+  async function getProjectRootReal(): Promise<string> {
+    if (projectRootReal) return projectRootReal
+    try {
+      projectRootReal = await fs.promises.realpath(Instance.directory)
+    } catch {
+      projectRootReal = Instance.directory
+    }
+    return projectRootReal
+  }
+
+  function isWithinRoot(candidate: string, root: string): boolean {
+    return candidate === root || candidate.startsWith(root + path.sep)
+  }
+
+  async function isWithinProject(targetPath: string): Promise<boolean> {
+    const root = await getProjectRootReal()
+    const resolved = path.resolve(targetPath)
+    if (!isWithinRoot(resolved, root)) {
+      return false
+    }
+    const real = await fs.promises.realpath(targetPath).catch(() => undefined)
+    if (real && !isWithinRoot(real, root)) {
+      return false
+    }
+    if (!real) {
+      const parentReal = await fs.promises.realpath(path.dirname(targetPath)).catch(() => undefined)
+      if (parentReal && !isWithinRoot(parentReal, root)) {
+        return false
+      }
+    }
+    return true
+  }
+
+  async function assertWithinProject(targetPath: string): Promise<string> {
+    const root = await getProjectRootReal()
+    const resolved = path.resolve(targetPath)
+    if (!isWithinRoot(resolved, root)) {
+      throw new Error(`Access denied: path escapes project directory`)
+    }
+    const real = await fs.promises.realpath(targetPath).catch(() => undefined)
+    if (real && !isWithinRoot(real, root)) {
+      throw new Error(`Access denied: path escapes project directory`)
+    }
+    if (!real) {
+      const parentReal = await fs.promises.realpath(path.dirname(targetPath)).catch(() => undefined)
+      if (parentReal && !isWithinRoot(parentReal, root)) {
+        throw new Error(`Access denied: path escapes project directory`)
+      }
+    }
+    return real ?? resolved
+  }
+
+  async function warnIfOutsideProject(paths: string[], context: string): Promise<void> {
+    if (paths.length === 0) return
+    const root = await getProjectRootReal()
+    let outsideCount = 0
+    const samples: string[] = []
+    for (const rel of paths) {
+      const full = path.join(Instance.directory, rel)
+      const real = await fs.promises.realpath(full).catch(() => undefined)
+      const candidate = real ?? path.resolve(full)
+      if (!isWithinRoot(candidate, root)) {
+        outsideCount += 1
+        if (samples.length < 5) samples.push(rel)
+      }
+    }
+    if (outsideCount > 0) {
+      log.warn("path escapes project directory", {
+        context,
+        outsideCount,
+        samples,
+      })
+    }
+  }
+
+  async function filterWithinProject(paths: string[]): Promise<string[]> {
+    if (paths.length === 0) return paths
+    const root = await getProjectRootReal()
+    const safe: string[] = []
+    for (const rel of paths) {
+      const full = path.join(Instance.directory, rel)
+      const real = await fs.promises.realpath(full).catch(() => undefined)
+      const candidate = real ?? path.resolve(full)
+      if (isWithinRoot(candidate, root)) {
+        safe.push(rel)
+      }
+    }
+    return safe
+  }
+
   async function shouldEncode(file: BunFile): Promise<boolean> {
     const type = file.type?.toLowerCase()
     log.info("shouldEncode", { type })
@@ -428,12 +519,7 @@ export namespace File {
     using _ = log.time("read", { file })
     const project = Instance.project
     const full = path.join(Instance.directory, file)
-
-    // TODO: Filesystem.contains is lexical only - symlinks inside the project can escape.
-    // TODO: On Windows, cross-drive paths bypass this check. Consider realpath canonicalization.
-    if (!Instance.containsPath(full)) {
-      throw new Error(`Access denied: path escapes project directory`)
-    }
+    const validated = await assertWithinProject(full)
 
     // Fast path: check extension before any filesystem operations
     if (isImageByExtension(file)) {
@@ -509,10 +595,12 @@ export namespace File {
     }
     const resolved = dir ? path.join(Instance.directory, dir) : Instance.directory
 
-    // TODO: Filesystem.contains is lexical only - symlinks inside the project can escape.
-    // TODO: On Windows, cross-drive paths bypass this check. Consider realpath canonicalization.
-    if (!Instance.containsPath(resolved)) {
-      throw new Error(`Access denied: path escapes project directory`)
+    const withinProject = await isWithinProject(resolved)
+    if (!withinProject) {
+      log.warn("path escapes project directory", {
+        context: "list",
+        path: resolved,
+      })
     }
 
     const nodes: Node[] = []
@@ -566,8 +654,25 @@ export namespace File {
       return [...visible, ...hiddenItems]
     }
     if (!query) {
+      if (kind === "file") {
+        await warnIfOutsideProject(result.files, "search:files")
+      } else if (kind === "directory") {
+        await warnIfOutsideProject(result.dirs, "search:dirs")
+      } else {
+        await warnIfOutsideProject(result.files, "search:files")
+        await warnIfOutsideProject(result.dirs, "search:dirs")
+      }
       if (kind === "file") return result.files.slice(0, limit)
       return sortHiddenLast(result.dirs.toSorted()).slice(0, limit)
+    }
+
+    if (kind === "file") {
+      await warnIfOutsideProject(result.files, "search:files")
+    } else if (kind === "directory") {
+      await warnIfOutsideProject(result.dirs, "search:dirs")
+    } else {
+      await warnIfOutsideProject(result.files, "search:files")
+      await warnIfOutsideProject(result.dirs, "search:dirs")
     }
 
     const items =
