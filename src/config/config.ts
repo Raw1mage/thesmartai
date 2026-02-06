@@ -114,8 +114,10 @@ export namespace Config {
     result.mode = result.mode || {}
     result.plugin = result.plugin || []
 
+    // @event_2026-02-07_install: prefer XDG config/data, keep project .opencode
     const directories = [
       Global.Path.config,
+      Global.Path.data,
       // Only scan project .opencode/ directories when project discovery is enabled
       ...(!Flag.OPENCODE_DISABLE_PROJECT_CONFIG
         ? await Array.fromAsync(
@@ -126,14 +128,6 @@ export namespace Config {
             }),
           )
         : []),
-      // Always scan ~/.opencode/ (user home directory)
-      ...(await Array.fromAsync(
-        Filesystem.up({
-          targets: [".opencode"],
-          start: Global.Path.home,
-          stop: Global.Path.home,
-        }),
-      )),
     ]
 
     if (Flag.OPENCODE_CONFIG_DIR) {
@@ -142,7 +136,7 @@ export namespace Config {
     }
 
     for (const dir of unique(directories)) {
-      if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
+      if (dir === Global.Path.config || dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
         for (const file of ["opencode.jsonc", "opencode.json"]) {
           log.debug(`loading config from ${path.join(dir, file)}`)
           result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
@@ -1185,13 +1179,14 @@ export namespace Config {
   })
 
   async function loadFile(filepath: string): Promise<Info> {
+    // @event_2026-02-07_install: guard missing config files on startup
     log.info("loading", { path: filepath })
-    let text = await Bun.file(filepath)
-      .text()
-      .catch((err) => {
-        if (err.code === "ENOENT") return
-        throw new JsonError({ path: filepath }, { cause: err })
-      })
+    const file = Bun.file(filepath)
+    if (!(await file.exists())) return {}
+    const text = await file.text().catch((err) => {
+      if (err.code === "ENOENT") return
+      throw new JsonError({ path: filepath }, { cause: err })
+    })
     if (!text) return {}
     return load(text, filepath)
   }

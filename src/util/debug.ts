@@ -1,9 +1,10 @@
 import crypto from "crypto"
 import fs from "fs"
 import path from "path"
-import os from "os"
+// @event_2026-02-07_install
+import { Global } from "../global"
 
-const root = path.join(os.homedir(), ".opencode", "logs")
+const root = Global.Path.log
 const file = path.join(root, "debug.log")
 export const DEBUG_LOG_PATH = file
 let initialized = false

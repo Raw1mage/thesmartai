@@ -63,9 +63,9 @@ export namespace Global {
     get home() {
       return process.env.OPENCODE_TEST_HOME || os.homedir()
     },
-    /** ~/.opencode/ — user-specific data (accounts, logs, ignored-models, etc.) */
+    /** ~/.config/opencode/ — primary configuration (XDG standard) */
     get user() {
-      return path.join(this.home, ".opencode")
+      return this.config
     },
     data: resolvedPaths.data,
     bin: path.join(resolvedPaths.data, "bin"),
@@ -85,33 +85,86 @@ await Promise.all([
   fs.mkdir(Global.Path.bin, { recursive: true }),
 ])
 
-// Install template user-data files to ~/.opencode/ if they don't exist yet
-const SENSITIVE_FILES = new Set(["accounts.json", "openai-codex-accounts.json", "mcp-auth.json"])
-const templateFiles = [
-  "accounts.json",
-  "ignored-models.json",
-  "mcp-auth.json",
-  "model-status.json",
-  "openai-codex-accounts.json",
-  "openai-codex-auth-config.json",
-  "package.json",
-  ".gitignore",
-  "AGENTS.md",
-  "local-config/opencode.json",
-  "local-config/README.md",
-]
+// @event_2026-02-07_install: install template files by XDG target
+type TemplateTarget = "config" | "state" | "data"
+type TemplateManifestEntry = {
+  path: string
+  sensitive?: boolean
+  target?: TemplateTarget
+}
+
+const SENSITIVE_FILES = new Set(["accounts.json", "mcp-auth.json"])
 const templatesDir = path.join(import.meta.dir, "../../templates")
+const manifestPath = path.join(templatesDir, "manifest.json")
+
+const resolveTargetDir = (target?: TemplateTarget) => {
+  switch (target) {
+    case "state":
+      return Global.Path.state
+    case "data":
+      return Global.Path.data
+    case "config":
+    default:
+      return Global.Path.config
+  }
+}
+
+const loadManifestEntries = async (): Promise<TemplateManifestEntry[]> => {
+  const manifestExists = await Bun.file(manifestPath).exists()
+  if (!manifestExists) return []
+  try {
+    const manifest = JSON.parse(await Bun.file(manifestPath).text())
+    if (Array.isArray(manifest.entries)) return manifest.entries
+    if (Array.isArray(manifest)) return manifest
+  } catch (error) {
+    console.warn("無法解析 templates/manifest.json", error)
+  }
+  return []
+}
+
+const fallbackEntries: TemplateManifestEntry[] = [
+  { path: "accounts.json", sensitive: true, target: "config" },
+  { path: "ignored-models.json", target: "state" },
+  { path: "mcp-auth.json", sensitive: true, target: "config" },
+  { path: "package.json", target: "data" },
+  { path: ".gitignore", target: "data" },
+  { path: "AGENTS.md", target: "config" },
+  { path: "opencode.json", target: "config" },
+  { path: "CONFIG-README.md", target: "config" },
+]
+
+const manifestEntries = await loadManifestEntries()
+const templateEntries = manifestEntries.length > 0 ? manifestEntries : fallbackEntries
+
 await Promise.all(
-  templateFiles.map(async (name) => {
-    const target = path.join(Global.Path.user, name)
-    const exists = await Bun.file(target).exists()
-    if (exists) return
-    const src = path.join(templatesDir, name)
+  templateEntries.map(async (entry) => {
+    const targetRoot = resolveTargetDir(entry.target ?? "config")
+    const target = path.join(targetRoot, entry.path)
+    const file = Bun.file(target)
+    const exists = await file.exists()
+
+    // @event_2026-02-07_install: only install template if target missing or trivial/empty
+    // This prevents templates from blocking migration of larger legacy files.
+    if (exists && (await file.size) > 100) return
+
+    const src = path.join(templatesDir, entry.path)
     const srcExists = await Bun.file(src).exists()
     if (!srcExists) return
+
+    // If legacy file exists and is significantly larger than template, skip template
+    // and let specific modules or install script handle the migration.
+    const legacyPath = path.join(os.homedir(), ".opencode", entry.path)
+    if (await Bun.file(legacyPath).exists()) {
+      const legacySize = await Bun.file(legacyPath).size
+      const templateSize = await Bun.file(src).size
+      if (legacySize > templateSize + 100) {
+        return
+      }
+    }
+
     await fs.mkdir(path.dirname(target), { recursive: true }).catch(() => {})
     await Bun.write(target, Bun.file(src))
-    if (SENSITIVE_FILES.has(name)) await fs.chmod(target, 0o600)
+    if (entry.sensitive || SENSITIVE_FILES.has(entry.path)) await fs.chmod(target, 0o600)
   }),
 )
 

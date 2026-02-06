@@ -12,6 +12,7 @@
     "typecheck": "bun turbo typecheck",
     "test": "bun test",
     "build": "bun run script/build.ts",
+    "install": "bun run script/install.ts",
     "prepare": "husky"
   },
   "bin": {

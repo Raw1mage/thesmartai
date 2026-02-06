@@ -91,6 +91,7 @@ export namespace Account {
   const CURRENT_VERSION = 2
   const filepath = path.join(Global.Path.user, "accounts.json")
   const legacyFilepath = path.join(Global.Path.data, "accounts.json")
+  const legacyOpencodeFilepath = path.join(Global.Path.home, ".opencode", "accounts.json")
 
   // Cached state
   let _storage: Storage | undefined
@@ -125,6 +126,34 @@ export namespace Account {
   async function load(): Promise<Storage> {
     const file = Bun.file(filepath)
     let exists = await file.exists()
+
+    // @event_2026-02-07_install: one-time migration from ~/.opencode/accounts.json
+    // Robust check: migrate if target missing OR effectively empty (< 50 bytes)
+    const isTargetMissingOrEmpty = !exists || (await file.size) < 50
+    if (isTargetMissingOrEmpty) {
+      const legacyOpencodeFile = Bun.file(legacyOpencodeFilepath)
+      if (await legacyOpencodeFile.exists()) {
+        const legacySize = await legacyOpencodeFile.size
+        if (legacySize > 50) {
+          log.info("Migrating accounts.json from legacy ~/.opencode", {
+            from: legacyOpencodeFilepath,
+            to: filepath,
+            size: legacySize,
+          })
+          await fs.mkdir(path.dirname(filepath), { recursive: true }).catch(() => {})
+          try {
+            await fs.rename(legacyOpencodeFilepath, filepath)
+          } catch (error) {
+            const code = (error as NodeJS.ErrnoException).code
+            if (code !== "EXDEV") throw error
+            await fs.copyFile(legacyOpencodeFilepath, filepath)
+            await fs.rm(legacyOpencodeFilepath, { force: true })
+          }
+          await fs.chmod(filepath, 0o600).catch(() => {})
+          exists = true
+        }
+      }
+    }
 
     // Auto-migrate from old XDG location (~/.local/share/opencode/accounts.json)
     if (!exists) {
@@ -763,8 +792,8 @@ export namespace Account {
     }
 
     // 3. Migrate from openai-codex-accounts.json (if exists)
-    // Note: The external codex plugin stores in ~/.opencode/, not ~/.config/opencode/
-    const codexPath = path.join(Global.Path.home, ".opencode", "openai-codex-accounts.json")
+    // @event_2026-02-07_install: align legacy codex storage to XDG config
+    const codexPath = path.join(Global.Path.config, "openai-codex-accounts.json")
     const codexFile = Bun.file(codexPath)
     if (await codexFile.exists()) {
       try {
