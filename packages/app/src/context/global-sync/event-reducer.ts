@@ -29,7 +29,11 @@ export function applyGlobalEvent(input: {
   const properties = input.event.properties as Project
   const result = Binary.search(input.project, properties.id, (s) => s.id)
   if (result.found) {
-    input.setGlobalProject(reconcile(properties))
+    input.setGlobalProject(
+      produce((draft: Project[]) => {
+        draft[result.index] = properties
+      }),
+    )
     return
   }
   input.setGlobalProject(

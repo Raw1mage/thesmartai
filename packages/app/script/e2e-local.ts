@@ -73,6 +73,7 @@ const serverEnv = {
   OPENCODE_E2E_MESSAGE: "Seeded for UI e2e",
   OPENCODE_E2E_MODEL: "opencode/gpt-5-nano",
   OPENCODE_CLIENT: "app",
+  OPENCODE_SERVER_PASSWORD: "",
 } satisfies Record<string, string>
 
 const runnerEnv = {

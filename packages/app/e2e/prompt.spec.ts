@@ -46,7 +46,6 @@ test("can send a prompt and receive a reply", async ({ page, sdk, gotoSession })
         },
         { timeout: 90_000 },
       )
-
       .toContain(token)
 
     const reply = page.locator('[data-slot="session-turn-summary-section"]').filter({ hasText: token }).first()

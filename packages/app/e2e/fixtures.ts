@@ -29,9 +29,22 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     await use(createSdk(directory))
   },
   gotoSession: async ({ page, directory }, use) => {
+    page.on("console", (msg) => {
+      if (msg.type() === "log") console.log(`[BROWSER LOG] ${msg.text()}`)
+      if (msg.type() === "error") console.error(`[BROWSER ERROR] ${msg.text()}`)
+    })
     await page.addInitScript(
       (input: { directory: string; serverUrl: string }) => {
+        localStorage.setItem(
+          "opencode.global.dat:model",
+          JSON.stringify({
+            user: [{ providerId: "opencode", modelID: "gpt-5-nano", visibility: "show" }],
+            recent: [{ providerId: "opencode", modelID: "gpt-5-nano" }],
+            variant: {},
+          }),
+        )
         const key = "opencode.global.dat:server"
+
         const raw = localStorage.getItem(key)
         const parsed = (() => {
           if (!raw) return undefined
