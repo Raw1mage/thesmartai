@@ -4,3 +4,6 @@
 [submodule "refs/opencode-gemini-auth"]
 	path = refs/opencode-gemini-auth
 	url = https://github.com/jenslys/opencode-gemini-auth
+[submodule "refs/vscode-antigravity-cockpit"]
+	path = refs/vscode-antigravity-cockpit
+	url = https://github.com/jlcodes99/vscode-antigravity-cockpit
