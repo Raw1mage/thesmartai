@@ -43,6 +43,11 @@ import { MessageTimeline } from "./message-timeline"
 import { FileTabContent } from "./file-tabs"
 import { TerminalPanel } from "./terminal-panel"
 import { SessionPromptDock } from "./session-prompt-dock"
+import { closestMessage, scheduleScrollSpy, cancelScrollSpy } from "./scroll-spy"
+import { markScrollGesture, isScrollGestureActive } from "./message-gesture"
+import { useSessionHashScroll, anchor, scrollToElement } from "./use-session-hash-scroll"
+import { SessionMobileTabs } from "./session-mobile-tabs"
+import { SessionSidePanel } from "./session-side-panel"
 
 export default function Page() {
   const layout = useLayout()
@@ -351,18 +356,13 @@ export default function Page() {
 
   const scrollGestureWindowMs = 250
 
-  const markScrollGesture = (target?: EventTarget | null) => {
-    const root = scroller
-    if (!root) return
-
-    const el = target instanceof Element ? target : undefined
-    const nested = el?.closest("[data-scrollable]")
-    if (nested && nested !== root) return
-
-    setUi("scrollGesture", Date.now())
+  const markScrollGestureHandler = (target?: EventTarget | null) => {
+    if (markScrollGesture(scroller, target)) {
+      setUi("scrollGesture", Date.now())
+    }
   }
 
-  const hasScrollGesture = () => Date.now() - ui.scrollGesture < scrollGestureWindowMs
+  const hasScrollGesture = () => isScrollGestureActive(ui.scrollGesture, scrollGestureWindowMs)
 
   createEffect(() => {
     if (!params.id) return
@@ -512,7 +512,7 @@ export default function Page() {
 
     // Only treat explicit scroll keys as potential "user scroll" gestures.
     if (event.key === "PageUp" || event.key === "PageDown" || event.key === "Home" || event.key === "End") {
-      markScrollGesture()
+      markScrollGestureHandler()
       return
     }
 
@@ -804,10 +804,20 @@ export default function Page() {
     overflowAnchor: "dynamic",
   })
 
-  const clearMessageHash = () => {
-    if (!window.location.hash) return
-    window.history.replaceState(null, "", window.location.href.replace(/#.*$/, ""))
-  }
+  const { scrollToMessage, applyHash, clearMessageHash } = useSessionHashScroll({
+    scroller: () => scroller,
+    messages: visibleUserMessages,
+    messagesReady,
+    activeMessageId: () => store.messageId,
+    onActiveChange: (id) => setStore("messageId", id),
+    onPauseAutoScroll: () => autoScroll.pause(),
+    onForceScrollToBottom: () => autoScroll.forceScrollToBottom(),
+    turnStart: () => store.turnStart,
+    onBackfill: (index) => {
+      setStore("turnStart", index)
+      scheduleTurnBackfill()
+    },
+  })
 
   const resumeScroll = () => {
     setStore("messageId", undefined)
@@ -827,11 +837,6 @@ export default function Page() {
       { defer: true },
     ),
   )
-
-  let scrollSpyFrame: number | undefined
-  let scrollSpyTarget: HTMLDivElement | undefined
-
-  const anchor = (id: string) => `message-${id}`
 
   const setScrollRef = (el: HTMLDivElement | undefined) => {
     scroller = el
@@ -960,163 +965,6 @@ export default function Page() {
     setUi("pendingMessage", messageID)
   })
 
-  const scrollToElement = (el: HTMLElement, behavior: ScrollBehavior) => {
-    const root = scroller
-    if (!root) return false
-
-    const a = el.getBoundingClientRect()
-    const b = root.getBoundingClientRect()
-    const top = a.top - b.top + root.scrollTop
-    root.scrollTo({ top, behavior })
-    return true
-  }
-
-  const scrollToMessage = (message: UserMessage, behavior: ScrollBehavior = "smooth") => {
-    setActiveMessage(message)
-
-    const msgs = visibleUserMessages()
-    const index = msgs.findIndex((m) => m.id === message.id)
-    if (index !== -1 && index < store.turnStart) {
-      setStore("turnStart", index)
-      scheduleTurnBackfill()
-
-      requestAnimationFrame(() => {
-        const el = document.getElementById(anchor(message.id))
-        if (!el) {
-          requestAnimationFrame(() => {
-            const next = document.getElementById(anchor(message.id))
-            if (!next) return
-            scrollToElement(next, behavior)
-          })
-          return
-        }
-        scrollToElement(el, behavior)
-      })
-
-      updateHash(message.id)
-      return
-    }
-
-    const el = document.getElementById(anchor(message.id))
-    if (!el) {
-      updateHash(message.id)
-      requestAnimationFrame(() => {
-        const next = document.getElementById(anchor(message.id))
-        if (!next) return
-        if (!scrollToElement(next, behavior)) return
-      })
-      return
-    }
-    if (scrollToElement(el, behavior)) {
-      updateHash(message.id)
-      return
-    }
-
-    requestAnimationFrame(() => {
-      const next = document.getElementById(anchor(message.id))
-      if (!next) return
-      if (!scrollToElement(next, behavior)) return
-    })
-    updateHash(message.id)
-  }
-
-  const applyHash = (behavior: ScrollBehavior) => {
-    const hash = window.location.hash.slice(1)
-    if (!hash) {
-      autoScroll.forceScrollToBottom()
-      return
-    }
-
-    const match = hash.match(/^message-(.+)$/)
-    if (match) {
-      autoScroll.pause()
-      const msg = visibleUserMessages().find((m) => m.id === match[1])
-      if (msg) {
-        scrollToMessage(msg, behavior)
-        return
-      }
-
-      // If we have a message hash but the message isn't loaded/rendered yet,
-      // don't fall back to "bottom". We'll retry once messages arrive.
-      return
-    }
-
-    const target = document.getElementById(hash)
-    if (target) {
-      autoScroll.pause()
-      scrollToElement(target, behavior)
-      return
-    }
-
-    autoScroll.forceScrollToBottom()
-  }
-
-  const closestMessage = (node: Element | null): HTMLElement | null => {
-    if (!node) return null
-    const match = node.closest?.("[data-message-id]") as HTMLElement | null
-    if (match) return match
-    const root = node.getRootNode?.()
-    if (root instanceof ShadowRoot) return closestMessage(root.host)
-    return null
-  }
-
-  const getActiveMessageId = (container: HTMLDivElement) => {
-    const rect = container.getBoundingClientRect()
-    if (!rect.width || !rect.height) return
-
-    const x = Math.min(window.innerWidth - 1, Math.max(0, rect.left + rect.width / 2))
-    const y = Math.min(window.innerHeight - 1, Math.max(0, rect.top + 100))
-
-    const hit = document.elementFromPoint(x, y)
-    const host = closestMessage(hit)
-    const id = host?.dataset.messageId
-    if (id) return id
-
-    // Fallback: DOM query (handles edge hit-testing cases)
-    const cutoff = container.scrollTop + 100
-    const nodes = container.querySelectorAll<HTMLElement>("[data-message-id]")
-    let last: string | undefined
-
-    for (const node of nodes) {
-      const next = node.dataset.messageId
-      if (!next) continue
-      if (node.offsetTop > cutoff) break
-      last = next
-    }
-
-    return last
-  }
-
-  const scheduleScrollSpy = (container: HTMLDivElement) => {
-    scrollSpyTarget = container
-    if (scrollSpyFrame !== undefined) return
-
-    scrollSpyFrame = requestAnimationFrame(() => {
-      scrollSpyFrame = undefined
-
-      const target = scrollSpyTarget
-      scrollSpyTarget = undefined
-      if (!target) return
-
-      const id = getActiveMessageId(target)
-      if (!id) return
-      if (id === store.messageId) return
-
-      setStore("messageId", id)
-    })
-  }
-
-  createEffect(() => {
-    const sessionID = params.id
-    const ready = messagesReady()
-    if (!sessionID || !ready) return
-
-    requestAnimationFrame(() => {
-      applyHash("auto")
-    })
-  })
-
-  // Retry message navigation once the target message is actually loaded.
   createEffect(() => {
     const sessionID = params.id
     const ready = messagesReady()
@@ -1126,32 +974,18 @@ export default function Page() {
     visibleUserMessages().length
     store.turnStart
 
-    const targetId =
-      ui.pendingMessage ??
-      (() => {
-        const hash = window.location.hash.slice(1)
-        const match = hash.match(/^message-(.+)$/)
-        if (!match) return undefined
-        return match[1]
-      })()
-    if (!targetId) return
+    const hash = window.location.hash.slice(1)
+    const match = hash.match(/^message-(.+)$/)
+    if (!match) return
+    const targetId = match[1]
+
     if (store.messageId === targetId) return
 
     const msg = visibleUserMessages().find((m) => m.id === targetId)
     if (!msg) return
-    if (ui.pendingMessage === targetId) setUi("pendingMessage", undefined)
+
     autoScroll.pause()
     requestAnimationFrame(() => scrollToMessage(msg, "auto"))
-  })
-
-  createEffect(() => {
-    const sessionID = params.id
-    const ready = messagesReady()
-    if (!sessionID || !ready) return
-
-    const handler = () => requestAnimationFrame(() => applyHash("auto"))
-    window.addEventListener("hashchange", handler)
-    onCleanup(() => window.removeEventListener("hashchange", handler))
   })
 
   createEffect(() => {
@@ -1211,41 +1045,21 @@ export default function Page() {
   onCleanup(() => {
     cancelTurnBackfill()
     document.removeEventListener("keydown", handleKeyDown)
-    if (scrollSpyFrame !== undefined) cancelAnimationFrame(scrollSpyFrame)
+    cancelScrollSpy()
   })
 
   return (
     <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
       <SessionHeader />
       <div class="flex-1 min-h-0 flex flex-col md:flex-row">
-        {/* Mobile tab bar */}
-        <Show when={!isDesktop() && params.id}>
-          <Tabs class="h-auto">
-            <Tabs.List>
-              <Tabs.Trigger
-                value="session"
-                class="w-1/2"
-                classes={{ button: "w-full" }}
-                onClick={() => setStore("mobileTab", "session")}
-              >
-                {language.t("session.tab.session")}
-              </Tabs.Trigger>
-              <Tabs.Trigger
-                value="changes"
-                class="w-1/2 !border-r-0"
-                classes={{ button: "w-full" }}
-                onClick={() => setStore("mobileTab", "changes")}
-              >
-                <Switch>
-                  <Match when={hasReview()}>
-                    {language.t("session.review.filesChanged", { count: reviewCount() })}
-                  </Match>
-                  <Match when={true}>{language.t("session.review.change.other")}</Match>
-                </Switch>
-              </Tabs.Trigger>
-            </Tabs.List>
-          </Tabs>
-        </Show>
+        <SessionMobileTabs
+          id={params.id}
+          isDesktop={isDesktop()}
+          hasReview={hasReview()}
+          reviewCount={reviewCount()}
+          language={language}
+          setMobileTab={(tab) => setStore("mobileTab", tab)}
+        />
 
         {/* Session panel */}
         <div
@@ -1326,9 +1140,9 @@ export default function Page() {
                       lastUserMessage={lastUserMessage}
                       autoScroll={autoScroll}
                       resumeScroll={resumeScroll}
-                      markScrollGesture={markScrollGesture}
+                      markScrollGesture={markScrollGestureHandler}
                       hasScrollGesture={hasScrollGesture}
-                      scheduleScrollSpy={scheduleScrollSpy}
+                      scheduleScrollSpy={(container) => scheduleScrollSpy(container, (id) => setStore("messageId", id))}
                       anchor={anchor}
                       setScrollRef={setScrollRef}
                       touchGesture={touchGesture()}
@@ -1389,270 +1203,40 @@ export default function Page() {
           </Show>
         </div>
 
-        {/* Desktop side panel - hidden on mobile */}
-        <Show when={isDesktop() && layout.fileTree.opened()}>
-          <aside
-            id="review-panel"
-            aria-label={language.t("session.panel.reviewAndFiles")}
-            class="relative flex-1 min-w-0 h-full border-l border-border-weak-base flex"
-          >
-            <div class="flex-1 min-w-0 h-full">
-              <Show
-                when={fileTreeTab() === "changes"}
-                fallback={
-                  <DragDropProvider
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                    onDragOver={handleDragOver}
-                    collisionDetector={closestCenter}
-                  >
-                    <DragDropSensors />
-                    <ConstrainDragYAxis />
-                    <Tabs value={activeTab()} onChange={openTab}>
-                      <div class="sticky top-0 shrink-0 flex">
-                        <Tabs.List
-                          ref={(el: HTMLDivElement) => {
-                            let scrollTimeout: number | undefined
-                            let prevScrollWidth = el.scrollWidth
-                            let prevContextOpen = contextOpen()
-
-                            const handler = () => {
-                              if (scrollTimeout !== undefined) clearTimeout(scrollTimeout)
-                              scrollTimeout = window.setTimeout(() => {
-                                const scrollWidth = el.scrollWidth
-                                const clientWidth = el.clientWidth
-                                const currentContextOpen = contextOpen()
-
-                                // Only scroll when a tab is added (width increased), not on removal
-                                if (scrollWidth > prevScrollWidth) {
-                                  if (!prevContextOpen && currentContextOpen) {
-                                    // Context tab was opened, scroll to first
-                                    el.scrollTo({
-                                      left: 0,
-                                      behavior: "smooth",
-                                    })
-                                  } else if (scrollWidth > clientWidth) {
-                                    // File tab was added, scroll to rightmost
-                                    el.scrollTo({
-                                      left: scrollWidth - clientWidth,
-                                      behavior: "smooth",
-                                    })
-                                  }
-                                }
-                                // When width decreases (tab removed), don't scroll - let browser handle it naturally
-
-                                prevScrollWidth = scrollWidth
-                                prevContextOpen = currentContextOpen
-                              }, 0)
-                            }
-
-                            const wheelHandler = (e: WheelEvent) => {
-                              // Enable horizontal scrolling with mouse wheel
-                              if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-                                el.scrollLeft += e.deltaY > 0 ? 50 : -50
-                                e.preventDefault()
-                              }
-                            }
-
-                            el.addEventListener("wheel", wheelHandler, { passive: false })
-
-                            const observer = new MutationObserver(handler)
-                            observer.observe(el, { childList: true })
-
-                            onCleanup(() => {
-                              el.removeEventListener("wheel", wheelHandler)
-                              observer.disconnect()
-                              if (scrollTimeout !== undefined) clearTimeout(scrollTimeout)
-                            })
-                          }}
-                        >
-                          <Show when={contextOpen()}>
-                            <Tabs.Trigger
-                              value="context"
-                              closeButton={
-                                <Tooltip value={language.t("common.closeTab")} placement="bottom">
-                                  <IconButton
-                                    icon="close-small"
-                                    variant="ghost"
-                                    class="h-5 w-5"
-                                    onClick={() => tabs().close("context")}
-                                    aria-label={language.t("common.closeTab")}
-                                  />
-                                </Tooltip>
-                              }
-                              hideCloseButton
-                              onMiddleClick={() => tabs().close("context")}
-                            >
-                              <div class="flex items-center gap-2">
-                                <SessionContextUsage variant="indicator" />
-                                <div>{language.t("session.tab.context")}</div>
-                              </div>
-                            </Tabs.Trigger>
-                          </Show>
-                          <SortableProvider ids={openedTabs()}>
-                            <For each={openedTabs()}>
-                              {(tab) => <SortableTab tab={tab} onTabClose={tabs().close} />}
-                            </For>
-                          </SortableProvider>
-                          <StickyAddButton>
-                            <TooltipKeybind
-                              title={language.t("command.file.open")}
-                              keybind={command.keybind("file.open")}
-                              class="flex items-center"
-                            >
-                              <IconButton
-                                icon="plus-small"
-                                variant="ghost"
-                                iconSize="large"
-                                onClick={() =>
-                                  dialog.show(() => <DialogSelectFile mode="files" onOpenFile={() => showAllFiles()} />)
-                                }
-                                aria-label={language.t("command.file.open")}
-                              />
-                            </TooltipKeybind>
-                          </StickyAddButton>
-                        </Tabs.List>
-                      </div>
-
-                      <Tabs.Content value="empty" class="flex flex-col h-full overflow-hidden contain-strict">
-                        <Show when={activeTab() === "empty"}>
-                          <div class="relative pt-2 flex-1 min-h-0 overflow-hidden">
-                            <div class="h-full px-6 pb-42 flex flex-col items-center justify-center text-center gap-6">
-                              <Mark class="w-14 opacity-10" />
-                              <div class="text-14-regular text-text-weak max-w-56">
-                                {language.t("session.files.selectToOpen")}
-                              </div>
-                            </div>
-                          </div>
-                        </Show>
-                      </Tabs.Content>
-
-                      <Show when={contextOpen()}>
-                        <Tabs.Content value="context" class="flex flex-col h-full overflow-hidden contain-strict">
-                          <Show when={activeTab() === "context"}>
-                            <div class="relative pt-2 flex-1 min-h-0 overflow-hidden">
-                              <SessionContextTab
-                                messages={messages}
-                                visibleUserMessages={visibleUserMessages}
-                                view={view}
-                                info={info}
-                              />
-                            </div>
-                          </Show>
-                        </Tabs.Content>
-                      </Show>
-
-                      <For each={openedTabs()}>
-                        {(tab) => (
-                          <FileTabContent
-                            tab={tab}
-                            file={file}
-                            tabs={tabs}
-                            view={view}
-                            codeComponent={codeComponent}
-                            comments={comments}
-                            language={language}
-                            activeTab={activeTab}
-                            addCommentToContext={addCommentToContext}
-                          />
-                        )}
-                      </For>
-                    </Tabs>
-                    <DragOverlay>
-                      <Show when={store.activeDraggable}>
-                        {(tab) => {
-                          const path = createMemo(() => file.pathFromTab(tab()))
-                          return (
-                            <div class="relative px-6 h-12 flex items-center bg-background-stronger border-x border-border-weak-base border-b border-b-transparent">
-                              <Show when={path()}>{(p) => <FileVisual active path={p()} />}</Show>
-                            </div>
-                          )
-                        }}
-                      </Show>
-                    </DragOverlay>
-                  </DragDropProvider>
-                }
-              >
-                {reviewPanel()}
-              </Show>
-            </div>
-
-            <Show when={layout.fileTree.opened()}>
-              <div
-                id="file-tree-panel"
-                class="relative shrink-0 h-full"
-                style={{ width: `${layout.fileTree.width()}px` }}
-              >
-                <div class="h-full border-l border-border-weak-base flex flex-col overflow-hidden group/filetree">
-                  <Tabs
-                    variant="pill"
-                    value={fileTreeTab()}
-                    onChange={setFileTreeTabValue}
-                    class="h-full"
-                    data-scope="filetree"
-                  >
-                    <Tabs.List>
-                      <Tabs.Trigger value="changes" class="flex-1" classes={{ button: "w-full" }}>
-                        {reviewCount()}{" "}
-                        {language.t(reviewCount() === 1 ? "session.review.change.one" : "session.review.change.other")}
-                      </Tabs.Trigger>
-                      <Tabs.Trigger value="all" class="flex-1" classes={{ button: "w-full" }}>
-                        {language.t("session.files.all")}
-                      </Tabs.Trigger>
-                    </Tabs.List>
-                    <Tabs.Content value="changes" class="bg-background-base px-3 py-0">
-                      <Switch>
-                        <Match when={hasReview()}>
-                          <Show
-                            when={diffsReady()}
-                            fallback={
-                              <div class="px-2 py-2 text-12-regular text-text-weak">
-                                {language.t("common.loading")}
-                                {language.t("common.loading.ellipsis")}
-                              </div>
-                            }
-                          >
-                            <FileTree
-                              path=""
-                              allowed={diffFiles()}
-                              kinds={kinds()}
-                              draggable={false}
-                              active={activeDiff()}
-                              onFileClick={(node) => focusReviewDiff(node.path)}
-                            />
-                          </Show>
-                        </Match>
-                        <Match when={true}>
-                          <div class="mt-8 text-center text-12-regular text-text-weak">
-                            {language.t("session.review.noChanges")}
-                          </div>
-                        </Match>
-                      </Switch>
-                    </Tabs.Content>
-                    <Tabs.Content value="all" class="bg-background-base px-3 py-0">
-                      <FileTree
-                        path=""
-                        modified={diffFiles()}
-                        kinds={kinds()}
-                        onFileClick={(node) => openTab(file.tab(node.path))}
-                      />
-                    </Tabs.Content>
-                  </Tabs>
-                </div>
-                <ResizeHandle
-                  direction="horizontal"
-                  edge="start"
-                  size={layout.fileTree.width()}
-                  min={200}
-                  max={480}
-                  collapseThreshold={160}
-                  onResize={layout.fileTree.resize}
-                  onCollapse={layout.fileTree.close}
-                />
-              </div>
-            </Show>
-          </aside>
-        </Show>
+        <SessionSidePanel
+          isDesktop={isDesktop()}
+          language={language}
+          fileTreeTab={fileTreeTab}
+          setFileTreeTab={setFileTreeTabValue}
+          handleDragStart={handleDragStart}
+          handleDragEnd={handleDragEnd}
+          handleDragOver={handleDragOver}
+          activeTab={activeTab}
+          openTab={openTab}
+          contextOpen={contextOpen}
+          tabs={tabs}
+          openedTabs={openedTabs}
+          command={command}
+          dialog={dialog}
+          showAllFiles={showAllFiles}
+          messages={messages}
+          visibleUserMessages={visibleUserMessages}
+          view={view}
+          info={info}
+          file={file}
+          codeComponent={codeComponent}
+          comments={comments}
+          addCommentToContext={addCommentToContext}
+          activeDraggable={store.activeDraggable}
+          layout={layout}
+          activeDiff={activeDiff}
+          focusReviewDiff={focusReviewDiff}
+          reviewCount={reviewCount}
+          diffFiles={diffFiles}
+          kinds={kinds}
+          reviewPanel={reviewPanel}
+          onCleanup={onCleanup}
+        />
       </div>
 
       <TerminalPanel
