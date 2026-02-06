@@ -1201,16 +1201,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     variant="ghost"
                   />
                 </TooltipKeybind>
-                {/* Model is auto-selected by backend based on subscription priority */}
-                <Tooltip
+                <TooltipKeybind
                   placement="top"
-                  value="Model is automatically selected based on account health and availability"
+                  title={language.t("command.model.choose")}
+                  keybind={command.keybind("model.choose")}
                 >
-                  <Button as="div" variant="ghost" class="cursor-default opacity-70">
+                  <Button variant="ghost" onClick={() => command.trigger("model.choose")}>
                     <Icon name="models" size="small" class="text-accent-primary" />
-                    <span class="text-text-secondary">Auto</span>
+                    <span class="text-text-secondary">{local.model.current()?.name ?? "Auto"}</span>
                   </Button>
-                </Tooltip>
+                </TooltipKeybind>
                 <Show when={permission.permissionsEnabled() && params.id}>
                   <TooltipKeybind
                     placement="top"

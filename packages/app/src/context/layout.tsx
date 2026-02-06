@@ -246,8 +246,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const [childStore] = globalSync.child(project.worktree, { bootstrap: false })
       const projectID = childStore.project
       const metadata = projectID
-        ? globalSync.data.project.find((x) => x.id === projectID)
-        : globalSync.data.project.find((x) => x.worktree === project.worktree)
+        ? globalSync.data.project.find((x) => x?.id === projectID)
+        : globalSync.data.project.find((x) => x?.worktree === project.worktree)
 
       const local = childStore.projectMeta
       const localOverride =
@@ -285,6 +285,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const roots = createMemo(() => {
       const map = new Map<string, string>()
       for (const project of globalSync.data.project) {
+        if (!project) continue
         const sandboxes = project.sandboxes ?? []
         for (const sandbox of sandboxes) {
           map.set(sandbox, project.worktree)

@@ -259,7 +259,7 @@ export namespace LLM {
     return streamText({
       onError(error) {
         l.error("stream error", {
-          error,
+          error: error instanceof Error ? { message: error.message, stack: error.stack, name: error.name } : error,
         })
 
         // @event_2026-02-06:rotation_unify
