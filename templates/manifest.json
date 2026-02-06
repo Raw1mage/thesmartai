@@ -1,0 +1,47 @@
+{
+  "event": "event_2026-02-07_install",
+  "entries": [
+    {
+      "path": "accounts.json",
+      "description": "主要帳號與權杖儲存（必須覆寫）：accounts.json",
+      "sensitive": true,
+      "target": "config"
+    },
+    {
+      "path": "mcp-auth.json",
+      "description": "MCP 連線憑證與 token",
+      "sensitive": true,
+      "target": "config"
+    },
+    {
+      "path": "ignored-models.json",
+      "description": "模型過濾/忽略設定",
+      "target": "state"
+    },
+    {
+      "path": "AGENTS.md",
+      "description": "自訂 agent 指令 + 約定",
+      "target": "config"
+    },
+    {
+      "path": "package.json",
+      "description": "讓 XDG data 目錄可安裝 plugin/agent 的 package.json",
+      "target": "data"
+    },
+    {
+      "path": ".gitignore",
+      "description": "避免 XDG data 目錄亂入 git",
+      "target": "data"
+    },
+    {
+      "path": "opencode.json",
+      "description": "全域或使用者自訂設定檔",
+      "target": "config"
+    },
+    {
+      "path": "CONFIG-README.md",
+      "description": "內含設定檔範例與說明",
+      "target": "config"
+    }
+  ]
+}

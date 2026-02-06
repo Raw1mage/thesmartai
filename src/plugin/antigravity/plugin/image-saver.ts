@@ -6,15 +6,14 @@
 
 import * as fs from "fs"
 import * as path from "path"
-import * as os from "os"
+import { Global } from "../../../global"
 
 /**
  * Default directory for saving generated images.
- * Uses ~/.opencode/generated-images/
+ * Uses XDG Data directory.
  */
 function getImageOutputDir(): string {
-  const homeDir = os.homedir()
-  const outputDir = path.join(homeDir, ".opencode", "generated-images")
+  const outputDir = path.join(Global.Path.data, "generated-images")
 
   // Create directory if it doesn't exist
   if (!fs.existsSync(outputDir)) {

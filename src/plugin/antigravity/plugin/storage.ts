@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
-import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import fs from "node:fs/promises"
 import { randomBytes } from "node:crypto"
 import { createLogger } from "./logger" // Fixed path and function
+import { Global } from "../../../global"
 
 const log = createLogger("storage")
 
@@ -54,7 +54,8 @@ export interface AccountStorageV3 {
 export type AnyAccountStorage = { version: 1 | 2 | 3; accounts: any[] } & any
 
 function getStoragePath(): string {
-  return join(homedir(), ".config", "opencode", "antigravity-accounts.json")
+  // @event_2026-02-07_install: store antigravity accounts in XDG config
+  return join(Global.Path.config, "antigravity-accounts.json")
 }
 
 export async function ensureGitignore(dir: string): Promise<void> {
@@ -177,7 +178,8 @@ export async function loadAccounts(): Promise<AccountStorageV3 | null> {
     // However, resyncing every load causes "deleted accounts coming back" if not careful.
     // Fixed: We will TRUST accounts.json as the source of TRUTH for which accounts exist.
     try {
-      const mainAccountsPath = join(homedir(), ".opencode", "accounts.json")
+      // @event_2026-02-07_install: align antigravity storage to XDG config
+      const mainAccountsPath = join(Global.Path.config, "accounts.json")
       if (existsSync(mainAccountsPath)) {
         const mainContent = readFileSync(mainAccountsPath, "utf-8")
         const mainData = JSON.parse(mainContent)

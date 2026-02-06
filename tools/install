@@ -65,7 +65,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-INSTALL_DIR=$HOME/.opencode/bin
+XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
+INSTALL_DIR=$XDG_DATA_HOME/opencode/bin
 mkdir -p "$INSTALL_DIR"
 
 # If --binary is provided, skip all download/detection logic

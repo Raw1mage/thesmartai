@@ -17,7 +17,8 @@ const FILES = [
 ]
 
 function globalFiles() {
-  const files = [path.join(Global.Path.config, "AGENTS.md"), path.join(os.homedir(), ".opencode", "AGENTS.md")]
+  // @event_2026-02-07_install: XDG-only global instruction lookup
+  const files = [path.join(Global.Path.config, "AGENTS.md")]
   if (!Flag.OPENCODE_DISABLE_CLAUDE_CODE_PROMPT) {
     files.push(path.join(os.homedir(), ".claude", "CLAUDE.md"))
   }
