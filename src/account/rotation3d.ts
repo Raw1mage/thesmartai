@@ -17,6 +17,9 @@
 import { Log } from "../util/log"
 import { getRateLimitTracker, getHealthTracker } from "./rotation"
 import { debugCheckpoint } from "../util/debug"
+import { checkAccountsQuota, type QuotaGroup, type QuotaGroupSummary } from "../plugin/antigravity/plugin/quota"
+import { loadAccounts } from "../plugin/antigravity/plugin/storage"
+import { getModelFamily as getAntigravityModelFamily } from "../plugin/antigravity/plugin/transform/model-resolver"
 
 const log = Log.create({ service: "rotation3d" })
 
@@ -351,6 +354,58 @@ export async function buildFallbackCandidates(
     log.warn("Failed to get OpenAI quotas for fallback", { error: e })
   }
 
+  // Load antigravity quotas from cockpit (reusing admin panel logic)
+  // Map: coreAccountId -> { group -> QuotaGroupSummary }
+  let antigravityQuotas: Record<string, Partial<Record<QuotaGroup, QuotaGroupSummary>>> = {}
+  try {
+    const storage = await loadAccounts()
+    if (storage && storage.accounts.length > 0) {
+      debugCheckpoint("rotation3d", "antigravity_quota:start", { accountCount: storage.accounts.length })
+      const results = await checkAccountsQuota(storage.accounts, {} as any)
+
+      // Build coreAccountId mapping (same logic as admin panel)
+      const coreByToken = new Map<string, string>()
+      const coreByEmail = new Map<string, string>()
+      const coreAll = await Account.listAll().catch(() => ({}))
+      for (const [family, data] of Object.entries(coreAll)) {
+        if (family !== "antigravity") continue
+        for (const [coreId, info] of Object.entries(data.accounts || {})) {
+          if ((info as any).refreshToken) coreByToken.set((info as any).refreshToken, coreId)
+          if ((info as any).email) coreByEmail.set((info as any).email, coreId)
+        }
+      }
+
+      for (const res of results) {
+        const account = storage.accounts[res.index]
+        if (!account) continue
+        const token = account.refreshToken
+        const email = account.email
+        const coreId = (token && coreByToken.get(token)) ?? (email && coreByEmail.get(email))
+        if (!coreId) continue
+        antigravityQuotas[coreId] = res.quota?.groups ?? {}
+
+        // Log detailed quota info for each account
+        debugCheckpoint("rotation3d", "antigravity_quota:account", {
+          coreId,
+          email: account.email,
+          groups: res.quota?.groups,
+          claudeRemaining: res.quota?.groups?.claude?.remainingFraction,
+          claudeResetTime: res.quota?.groups?.claude?.resetTime,
+          geminiProRemaining: res.quota?.groups?.["gemini-pro"]?.remainingFraction,
+          geminiFlashRemaining: res.quota?.groups?.["gemini-flash"]?.remainingFraction,
+        })
+      }
+
+      debugCheckpoint("rotation3d", "antigravity_quota:done", {
+        quotaCount: Object.keys(antigravityQuotas).length,
+        accountIds: Object.keys(antigravityQuotas),
+      })
+    }
+  } catch (e) {
+    log.warn("Failed to get antigravity quotas for fallback", { error: e })
+    debugCheckpoint("rotation3d", "antigravity_quota:error", { error: String(e) })
+  }
+
   // Load favorites/hidden sets for filtering
   let allowedModels = new Set<string>()
   let hiddenModels = new Set<string>()
@@ -373,11 +428,23 @@ export async function buildFallbackCandidates(
   const isHidden = (vector: ModelVector) =>
     hiddenProviders.has(vector.providerId) || hiddenModels.has(`${vector.providerId}/${vector.modelID}`)
 
+  // Helper to determine quota group for antigravity models
+  const resolveQuotaGroup = (modelId: string): QuotaGroup | null => {
+    const lower = modelId.toLowerCase()
+    if (lower.includes("claude")) return "claude"
+    const family = getAntigravityModelFamily(modelId)
+    if (family === "gemini-flash") return "gemini-flash"
+    if (family === "gemini-pro") return "gemini-pro"
+    return null
+  }
+
   // Helper to enrich candidate with capabilities
   const enrich = (vector: ModelVector, reason: FallbackCandidate["reason"]): FallbackCandidate => {
     const model = providers[vector.providerId]?.models?.[vector.modelID]
 
     let isQuotaLimited = false
+    let quotaWaitTimeMs: number | undefined
+
     if (vector.providerId === "openai") {
       const quota = openaiQuotas[vector.accountId]
       if (quota) {
@@ -385,13 +452,44 @@ export async function buildFallbackCandidates(
           isQuotaLimited = true
         }
       }
+    } else if (vector.providerId === "antigravity") {
+      // Check antigravity quota from cockpit
+      const groups = antigravityQuotas[vector.accountId]
+      if (groups) {
+        const group = resolveQuotaGroup(vector.modelID)
+        if (group) {
+          const groupData = groups[group]
+          if (groupData) {
+            const remaining = groupData.remainingFraction
+            const resetTime = groupData.resetTime
+            const resetMs = resetTime ? Date.parse(resetTime) : null
+            const now = Date.now()
+
+            // Quota is limited if:
+            // 1. remainingFraction <= 0, OR
+            // 2. resetTime exists and is in the future (cockpit doesn't always return remainingFraction for Claude)
+            if (
+              (typeof remaining === "number" && remaining <= 0) ||
+              (resetMs !== null && Number.isFinite(resetMs) && resetMs > now)
+            ) {
+              isQuotaLimited = true
+              if (resetMs !== null && Number.isFinite(resetMs)) {
+                quotaWaitTimeMs = Math.max(0, resetMs - now)
+              }
+            }
+          }
+        }
+      }
     }
+
+    const baseWaitTime = rateLimitTracker.getWaitTime(vector.accountId, vector.providerId, vector.modelID)
+    const effectiveWaitTime = quotaWaitTimeMs !== undefined ? Math.max(baseWaitTime, quotaWaitTimeMs) : baseWaitTime
 
     return {
       ...vector,
       healthScore: healthTracker.getScore(vector.accountId),
       isRateLimited: rateLimitTracker.isRateLimited(vector.accountId, vector.providerId, vector.modelID) || isQuotaLimited,
-      waitTimeMs: rateLimitTracker.getWaitTime(vector.accountId, vector.providerId, vector.modelID),
+      waitTimeMs: effectiveWaitTime,
       priority: 0,
       reason,
       capabilities: extractCapabilities(model),

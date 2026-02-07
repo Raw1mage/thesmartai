@@ -5,6 +5,7 @@ import { refreshAccessToken } from "./token"
 import { getModelFamily } from "./transform/model-resolver"
 import type { PluginClient, OAuthAuthDetails } from "./types"
 import type { AccountMetadataV3 } from "./storage"
+import { debugCheckpoint } from "../../../util/debug"
 
 const FETCH_TIMEOUT_MS = 10000
 
@@ -97,6 +98,7 @@ function aggregateQuota(models?: Record<string, FetchAvailableModelEntry>): Quot
     return { groups, modelCount: 0 }
   }
 
+  const now = Date.now()
   let totalCount = 0
   for (const [modelName, entry] of Object.entries(models)) {
     const group = classifyQuotaGroup(modelName, entry.displayName ?? entry.modelName)
@@ -104,9 +106,15 @@ function aggregateQuota(models?: Record<string, FetchAvailableModelEntry>): Quot
       continue
     }
     const quotaInfo = entry.quotaInfo
-    const remainingFraction = quotaInfo ? normalizeRemainingFraction(quotaInfo.remainingFraction) : undefined
+    let remainingFraction = quotaInfo ? normalizeRemainingFraction(quotaInfo.remainingFraction) : undefined
     const resetTime = quotaInfo?.resetTime
     const resetTimestamp = parseResetTime(resetTime)
+
+    // IMPORTANT: For Claude models, cockpit often returns resetTime without remainingFraction.
+    // If resetTime is in the future and remainingFraction is undefined, treat as exhausted (0).
+    if (remainingFraction === undefined && resetTimestamp !== null && resetTimestamp > now) {
+      remainingFraction = 0
+    }
 
     totalCount += 1
 
@@ -199,6 +207,137 @@ function applyAccountUpdates(account: AccountMetadataV3, auth: OAuthAuthDetails)
   return changed ? updated : undefined
 }
 
+/**
+ * Result of fetching model-specific quota reset time from cockpit.
+ */
+export interface ModelQuotaResetResult {
+  /** Reset time as milliseconds since epoch, or null if not available */
+  resetTimeMs: number | null
+  /** Remaining fraction (0-1), or null if not available */
+  remainingFraction: number | null
+  /** Whether the quota is exhausted (remainingFraction <= 0) */
+  isExhausted: boolean
+  /** Error message if the fetch failed */
+  error?: string
+}
+
+/**
+ * Fetch the quota reset time for a specific model from cockpit.
+ * This provides the REAL reset time instead of hardcoded backoff values.
+ *
+ * @param accessToken - Valid access token for the account
+ * @param projectId - Project ID for the account
+ * @param modelName - Model name to query (e.g., "claude-sonnet-4-5", "gemini-3-pro-high")
+ * @returns ModelQuotaResetResult with real reset time from cockpit
+ */
+export async function fetchModelQuotaResetTime(
+  accessToken: string,
+  projectId: string,
+  modelName: string,
+): Promise<ModelQuotaResetResult> {
+  try {
+    debugCheckpoint("quota", "fetchModelQuotaResetTime:start", { modelName, projectId: projectId.slice(0, 10) })
+    const response = await fetchAvailableModels(accessToken, projectId)
+    if (!response.models) {
+      debugCheckpoint("quota", "fetchModelQuotaResetTime:no_models", { modelName })
+      return { resetTimeMs: null, remainingFraction: null, isExhausted: false }
+    }
+
+    const modelKeys = Object.keys(response.models)
+    debugCheckpoint("quota", "fetchModelQuotaResetTime:models_received", {
+      modelName,
+      availableModels: modelKeys.slice(0, 20), // Log first 20 models
+      totalCount: modelKeys.length,
+    })
+
+    // Try exact match first
+    let entry = response.models[modelName]
+    let matchedKey = modelName
+
+    // If not found, try partial match (model name might have different format)
+    if (!entry) {
+      const modelLower = modelName.toLowerCase()
+      for (const [key, value] of Object.entries(response.models)) {
+        if (key.toLowerCase().includes(modelLower) || modelLower.includes(key.toLowerCase())) {
+          entry = value
+          matchedKey = key
+          break
+        }
+      }
+    }
+
+    if (!entry) {
+      debugCheckpoint("quota", "fetchModelQuotaResetTime:model_not_found", {
+        modelName,
+        availableModels: modelKeys.filter((k) => k.toLowerCase().includes("claude")).slice(0, 10),
+      })
+      return { resetTimeMs: null, remainingFraction: null, isExhausted: false }
+    }
+
+    if (!entry.quotaInfo) {
+      debugCheckpoint("quota", "fetchModelQuotaResetTime:no_quota_info", { modelName, matchedKey })
+      return { resetTimeMs: null, remainingFraction: null, isExhausted: false }
+    }
+
+    const remainingFraction = normalizeRemainingFraction(entry.quotaInfo.remainingFraction) ?? null
+    const resetTimeMs = parseResetTime(entry.quotaInfo.resetTime)
+    const isExhausted = remainingFraction !== null && remainingFraction <= 0
+
+    debugCheckpoint("quota", "fetchModelQuotaResetTime:success", {
+      modelName,
+      matchedKey,
+      remainingFraction,
+      resetTimeMs,
+      resetTimeStr: entry.quotaInfo.resetTime,
+      isExhausted,
+    })
+
+    return {
+      resetTimeMs,
+      remainingFraction,
+      isExhausted,
+    }
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error)
+    debugCheckpoint("quota", "fetchModelQuotaResetTime:error", { modelName, error: errMsg })
+    return {
+      resetTimeMs: null,
+      remainingFraction: null,
+      isExhausted: false,
+      error: errMsg,
+    }
+  }
+}
+
+/**
+ * Calculate the real backoff time using cockpit's reset time.
+ * Falls back to provided fallbackMs if cockpit query fails.
+ *
+ * @param accessToken - Valid access token for the account
+ * @param projectId - Project ID for the account
+ * @param modelName - Model name to query
+ * @param fallbackMs - Fallback backoff time if cockpit query fails
+ * @param minBackoffMs - Minimum backoff time (default 5000ms)
+ * @returns Backoff time in milliseconds
+ */
+export async function getCockpitBackoffMs(
+  accessToken: string,
+  projectId: string,
+  modelName: string,
+  fallbackMs: number,
+  minBackoffMs: number = 5000,
+): Promise<{ backoffMs: number; fromCockpit: boolean; resetTimeMs?: number }> {
+  const result = await fetchModelQuotaResetTime(accessToken, projectId, modelName)
+
+  if (result.resetTimeMs !== null) {
+    const now = Date.now()
+    const backoffMs = Math.max(minBackoffMs, result.resetTimeMs - now)
+    return { backoffMs, fromCockpit: true, resetTimeMs: result.resetTimeMs }
+  }
+
+  return { backoffMs: fallbackMs, fromCockpit: false }
+}
+
 export async function checkAccountsQuota(
   accounts: AccountMetadataV3[],
   client: PluginClient,
@@ -227,6 +366,22 @@ export async function checkAccountsQuota(
       let quotaResult: QuotaSummary
       try {
         const response = await fetchAvailableModels(auth.access ?? "", projectContext.effectiveProjectId)
+
+        // Debug: Log raw model data from cockpit
+        const modelKeys = response.models ? Object.keys(response.models) : []
+        const claudeModels = modelKeys.filter((k) => k.toLowerCase().includes("claude"))
+        debugCheckpoint("quota", "checkAccountsQuota:raw_models", {
+          email: account.email,
+          totalModels: modelKeys.length,
+          claudeModels,
+          sampleModels: modelKeys.slice(0, 10),
+          claudeQuotaInfo: claudeModels.map((k) => ({
+            model: k,
+            remainingFraction: response.models?.[k]?.quotaInfo?.remainingFraction,
+            resetTime: response.models?.[k]?.quotaInfo?.resetTime,
+          })),
+        })
+
         quotaResult = aggregateQuota(response.models)
       } catch (error) {
         quotaResult = {

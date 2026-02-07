@@ -51,7 +51,7 @@ import { debugCheckpoint } from "../../util/debug"
 import { createAutoUpdateCheckerHook } from "./hooks/auto-update-checker"
 import { loadConfig, initRuntimeConfig, type AntigravityConfig } from "./plugin/config"
 import { createSessionRecoveryHook, getRecoverySuccessToast } from "./plugin/recovery"
-import { checkAccountsQuota } from "./plugin/quota"
+import { checkAccountsQuota, getCockpitBackoffMs } from "./plugin/quota"
 import { initDiskSignatureCache } from "./plugin/cache"
 import { createProactiveRefreshQueue, type ProactiveRefreshQueue } from "./plugin/refresh-queue"
 import { initLogger, createLogger } from "./plugin/logger"
@@ -2070,11 +2070,58 @@ export const createAntigravityPlugin =
                         const rateLimitReason = parseRateLimitReason(bodyInfo.reason, bodyInfo.message, response.status)
 
                         if (config.account_rotation === "fixed") {
-                          const backoffMs = calculateBackoffMs(
+                          // Calculate fallback backoff, then try cockpit for real reset time
+                          let backoffMs = calculateBackoffMs(
                             rateLimitReason,
                             account.consecutiveFailures ?? 0,
                             serverRetryMs,
                           )
+
+                          // Query cockpit for real reset time (non-blocking, fallback to calculated value)
+                          debugCheckpoint("ANTIGRAVITY", "cockpit_query_check_fixed", {
+                            hasAccess: !!account.access,
+                            hasProjectId: !!account.parts.projectId,
+                            hasModel: !!model,
+                            model,
+                            accountIndex: account.index,
+                            family,
+                          })
+                          if (account.access && account.parts.projectId && model) {
+                            try {
+                              const cockpitResult = await getCockpitBackoffMs(
+                                account.access,
+                                account.parts.projectId,
+                                model,
+                                backoffMs,
+                              )
+                              debugCheckpoint("ANTIGRAVITY", "cockpit_query_result_fixed", {
+                                fromCockpit: cockpitResult.fromCockpit,
+                                backoffMs: cockpitResult.backoffMs,
+                                resetTimeMs: cockpitResult.resetTimeMs,
+                                model,
+                                accountIndex: account.index,
+                              })
+                              if (cockpitResult.fromCockpit) {
+                                backoffMs = cockpitResult.backoffMs
+                                pushDebug(
+                                  `429 fixed: cockpit reset ${new Date(cockpitResult.resetTimeMs!).toISOString()}, backoff=${backoffMs}ms`,
+                                )
+                              } else {
+                                pushDebug(`429 fixed: no cockpit reset time for model=${model}, using fallback=${backoffMs}ms`)
+                              }
+                            } catch (e) {
+                              const errMsg = e instanceof Error ? e.message : String(e)
+                              debugCheckpoint("ANTIGRAVITY", "cockpit_query_error_fixed", {
+                                error: errMsg,
+                                model,
+                                accountIndex: account.index,
+                              })
+                              pushDebug(`429 fixed: cockpit query failed: ${errMsg}`)
+                            }
+                          } else {
+                            pushDebug(`429 fixed: cockpit skip: access=${!!account.access} projectId=${!!account.parts.projectId} model=${model}`)
+                          }
+
                           accountManager.markRateLimitedWithReason(
                             account,
                             family,
@@ -2164,16 +2211,64 @@ export const createAntigravityPlugin =
                           serverRetryMs,
                         )
 
-                        // Calculate potential backoffs
+                        // Calculate potential backoffs - prefer cockpit's real reset time over hardcoded values
                         const smartBackoffMs = calculateBackoffMs(
                           rateLimitReason,
                           account.consecutiveFailures ?? 0,
                           serverRetryMs,
                         )
-                        const effectiveDelayMs = Math.max(delayMs, smartBackoffMs)
+                        let effectiveDelayMs = Math.max(delayMs, smartBackoffMs)
+                        let cockpitResetTimeMs: number | undefined
+
+                        // Query cockpit for real reset time (non-blocking, fallback to calculated value)
+                        debugCheckpoint("ANTIGRAVITY", "cockpit_query_check", {
+                          hasAccess: !!account.access,
+                          hasProjectId: !!account.parts.projectId,
+                          hasModel: !!model,
+                          model,
+                          accountIndex: account.index,
+                          family,
+                        })
+                        if (account.access && account.parts.projectId && model) {
+                          try {
+                            const cockpitResult = await getCockpitBackoffMs(
+                              account.access,
+                              account.parts.projectId,
+                              model,
+                              effectiveDelayMs,
+                            )
+                            debugCheckpoint("ANTIGRAVITY", "cockpit_query_result", {
+                              fromCockpit: cockpitResult.fromCockpit,
+                              backoffMs: cockpitResult.backoffMs,
+                              resetTimeMs: cockpitResult.resetTimeMs,
+                              model,
+                              accountIndex: account.index,
+                            })
+                            if (cockpitResult.fromCockpit) {
+                              effectiveDelayMs = cockpitResult.backoffMs
+                              cockpitResetTimeMs = cockpitResult.resetTimeMs
+                              pushDebug(
+                                `429 cockpit reset: ${new Date(cockpitResetTimeMs!).toISOString()}, backoff=${effectiveDelayMs}ms`,
+                              )
+                            } else {
+                              pushDebug(`429 cockpit: no reset time available for model=${model}, using fallback=${effectiveDelayMs}ms`)
+                            }
+                          } catch (e) {
+                            // Cockpit query failed, use calculated backoff
+                            const errMsg = e instanceof Error ? e.message : String(e)
+                            debugCheckpoint("ANTIGRAVITY", "cockpit_query_error", {
+                              error: errMsg,
+                              model,
+                              accountIndex: account.index,
+                            })
+                            pushDebug(`429 cockpit query failed: ${errMsg}`)
+                          }
+                        } else {
+                          pushDebug(`429 cockpit skip: access=${!!account.access} projectId=${!!account.parts.projectId} model=${model}`)
+                        }
 
                         pushDebug(
-                          `429 idx=${account.index} email=${account.email ?? ""} family=${family} delayMs=${effectiveDelayMs} attempt=${attempt} reason=${rateLimitReason}`,
+                          `429 idx=${account.index} email=${account.email ?? ""} family=${family} delayMs=${effectiveDelayMs} attempt=${attempt} reason=${rateLimitReason}${cockpitResetTimeMs ? " (from cockpit)" : ""}`,
                         )
                         if (bodyInfo.message) {
                           pushDebug(`429 message=${bodyInfo.message}`)
@@ -2247,6 +2342,14 @@ export const createAntigravityPlugin =
                                 rateLimitReason,
                                 serverRetryMs,
                               )
+                              // Sync to global rate limit tracker for 3D rotation
+                              getRateLimitTracker().markRateLimited(
+                                (account as any)._coreAccountId || `antigravity-account-${account.index}`,
+                                "antigravity",
+                                rateLimitReason,
+                                effectiveDelayMs,
+                                model || undefined,
+                              )
                               await sleep(effectiveDelayMs, abortSignal)
                               // Retry same endpoint after wait
                               i -= 1
@@ -2259,6 +2362,11 @@ export const createAntigravityPlugin =
                           }
 
                           if (config.switch_on_first_rate_limit && accountCount > 1) {
+                            const switchBackoffMs = calculateBackoffMs(
+                              rateLimitReason,
+                              account.consecutiveFailures ?? 0,
+                              serverRetryMs,
+                            )
                             accountManager.markRateLimitedWithReason(
                               account,
                               family,
@@ -2267,6 +2375,14 @@ export const createAntigravityPlugin =
                               rateLimitReason,
                               serverRetryMs,
                               config.failure_ttl_seconds * 1000,
+                            )
+                            // Sync to global rate limit tracker for 3D rotation
+                            getRateLimitTracker().markRateLimited(
+                              (account as any)._coreAccountId || `antigravity-account-${account.index}`,
+                              "antigravity",
+                              rateLimitReason,
+                              switchBackoffMs,
+                              model || undefined,
                             )
                             shouldSwitchAccount = true
                             break
@@ -2285,6 +2401,14 @@ export const createAntigravityPlugin =
                           rateLimitReason,
                           serverRetryMs,
                           config.failure_ttl_seconds * 1000,
+                        )
+                        // Sync to global rate limit tracker for 3D rotation
+                        getRateLimitTracker().markRateLimited(
+                          (account as any)._coreAccountId || `antigravity-account-${account.index}`,
+                          "antigravity",
+                          rateLimitReason,
+                          effectiveDelayMs,
+                          model || undefined,
                         )
 
                         accountManager.requestSaveToDisk()
