@@ -97,6 +97,13 @@ export interface PluginResult {
   }
   event?: (payload: PluginEventPayload) => void
   tool?: Record<string, unknown>
+  /**
+   * Modify system prompt before sending to LLM
+   */
+  "experimental.chat.system.transform"?: (
+    input: { sessionID?: string; model: { id: string; [key: string]: unknown } },
+    output: { system: string[] },
+  ) => Promise<void>
 }
 
 export interface RefreshParts {

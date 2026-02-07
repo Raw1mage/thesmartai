@@ -1380,6 +1380,50 @@ export const createAntigravityPlugin =
 
     return {
       event: eventHandler,
+      "experimental.chat.system.transform": async (input, output) => {
+        try {
+          const modelId = input.model?.id?.toLowerCase() || ""
+          if (!modelId.includes("gemini")) return
+
+          const system = output.system
+          if (!system || system.length === 0) return
+
+          const mainPrompt = system[0]
+          if (!mainPrompt) return
+
+          // 1. Identify AGENTS.md content
+          const agentsBlockRegex =
+            /Instructions from: .*?(?:AGENTS|CLAUDE)\.md[\s\S]*?(?=\nInstructions from:|<env>|$)/g
+          const matches = mainPrompt.match(agentsBlockRegex)
+
+          if (matches && matches.length > 0) {
+            const agentsContent = matches.join("\n\n").trim()
+            let strippedPrompt = mainPrompt.replace(agentsBlockRegex, "").trim()
+
+            // 2. Identify Identity/Start and any immediate IMPORTANT/CRITICAL mandates
+            // Since identity is now removed, we look for the IMPORTANT block at the start
+            const headerRegex = /^(IMPORTANT:[\s\S]*?)(?=\n# |$)/
+            const headerMatch = strippedPrompt.match(headerRegex)
+
+            let header = ""
+            if (headerMatch) {
+              header = headerMatch[1].trim()
+              strippedPrompt = strippedPrompt.replace(headerMatch[0], "").trim()
+            }
+
+            const optimizedAgents = [
+              "<behavioral_guidelines>",
+              agentsContent,
+              "</behavioral_guidelines>",
+            ].join("\n")
+
+            // Reconstruct: Header -> Optimized Guidelines -> Rest
+            output.system[0] = [header, optimizedAgents, strippedPrompt].filter(Boolean).join("\n\n")
+          }
+        } catch (error) {
+          console.error("[Antigravity] Failed to transform system prompt:", error)
+        }
+      },
       tool: {
         google_search: googleSearchTool,
       },
@@ -2107,7 +2151,9 @@ export const createAntigravityPlugin =
                                   `429 fixed: cockpit reset ${new Date(cockpitResult.resetTimeMs!).toISOString()}, backoff=${backoffMs}ms`,
                                 )
                               } else {
-                                pushDebug(`429 fixed: no cockpit reset time for model=${model}, using fallback=${backoffMs}ms`)
+                                pushDebug(
+                                  `429 fixed: no cockpit reset time for model=${model}, using fallback=${backoffMs}ms`,
+                                )
                               }
                             } catch (e) {
                               const errMsg = e instanceof Error ? e.message : String(e)
@@ -2119,7 +2165,9 @@ export const createAntigravityPlugin =
                               pushDebug(`429 fixed: cockpit query failed: ${errMsg}`)
                             }
                           } else {
-                            pushDebug(`429 fixed: cockpit skip: access=${!!account.access} projectId=${!!account.parts.projectId} model=${model}`)
+                            pushDebug(
+                              `429 fixed: cockpit skip: access=${!!account.access} projectId=${!!account.parts.projectId} model=${model}`,
+                            )
                           }
 
                           accountManager.markRateLimitedWithReason(
@@ -2251,7 +2299,9 @@ export const createAntigravityPlugin =
                                 `429 cockpit reset: ${new Date(cockpitResetTimeMs!).toISOString()}, backoff=${effectiveDelayMs}ms`,
                               )
                             } else {
-                              pushDebug(`429 cockpit: no reset time available for model=${model}, using fallback=${effectiveDelayMs}ms`)
+                              pushDebug(
+                                `429 cockpit: no reset time available for model=${model}, using fallback=${effectiveDelayMs}ms`,
+                              )
                             }
                           } catch (e) {
                             // Cockpit query failed, use calculated backoff
@@ -2264,7 +2314,9 @@ export const createAntigravityPlugin =
                             pushDebug(`429 cockpit query failed: ${errMsg}`)
                           }
                         } else {
-                          pushDebug(`429 cockpit skip: access=${!!account.access} projectId=${!!account.parts.projectId} model=${model}`)
+                          pushDebug(
+                            `429 cockpit skip: access=${!!account.access} projectId=${!!account.parts.projectId} model=${model}`,
+                          )
                         }
 
                         pushDebug(
