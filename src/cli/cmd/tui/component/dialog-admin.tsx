@@ -590,6 +590,30 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     return Math.round(remaining * 100)
   }
 
+  // Get wait time from quota resetTime for antigravity models
+  function getQuotaWaitMs(
+    accountId: string | undefined,
+    providerId: string,
+    modelID: string,
+    displayName?: string,
+  ): number | undefined {
+    if (family(providerId) !== "antigravity") return undefined
+    if (!accountId) return undefined
+    const groups = quotaGroups()?.[accountId]
+    if (!groups) return undefined
+    const group = resolveQuotaGroup(modelID, displayName)
+    if (!group) return undefined
+    const groupData = groups[group]
+    if (!groupData) return undefined
+    // Only show wait time if quota is exhausted (remainingFraction === 0)
+    if (typeof groupData.remainingFraction !== "number" || groupData.remainingFraction > 0) return undefined
+    if (!groupData.resetTime) return undefined
+    const resetMs = Date.parse(groupData.resetTime)
+    if (!Number.isFinite(resetMs)) return undefined
+    const waitMs = resetMs - Date.now()
+    return waitMs > 0 ? waitMs : undefined
+  }
+
   function formatQuotaFooter(
     accountId: string,
     providerId: string,
@@ -609,6 +633,13 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     }
     if (isRateLimited && waitMs && waitMs > 0) return `0% ⏳ ${formatWait(waitMs)}`
     if (isRateLimited) return "0%"
+
+    // Check quota-based wait time from cockpit resetTime
+    const quotaWaitMs = getQuotaWaitMs(accountId, providerId, modelID, displayName)
+    if (quotaWaitMs && quotaWaitMs > 0) {
+      return `⏳ ${formatWait(quotaWaitMs)}`
+    }
+
     const percent = getQuotaPercent(accountId, providerId, modelID, displayName)
     if (typeof percent === "number") return `${percent}%`
     if (fallbackFree) return "100%"
