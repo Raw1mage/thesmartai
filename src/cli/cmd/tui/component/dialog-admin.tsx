@@ -1024,9 +1024,33 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     const modelID = rest.join(":")
     if (!providerId || !modelID) return
     const resolvedProvider = Account.parseProvider(providerId) || providerId
-    debugCheckpoint("admin.activities", "select model", { accountId, providerId: resolvedProvider, modelID })
+
+    // Check if selecting an already-selected model (triggers auto-exit)
+    // @event_20260208_double_enter_model_exit
+    const current = local.model.current()
+    const isAlreadySelected = current?.providerId === resolvedProvider && current?.modelID === modelID
+
+    debugCheckpoint("admin.activities", "select model", {
+      accountId,
+      providerId: resolvedProvider,
+      modelID,
+      isAlreadySelected,
+    })
+
     local.model.set({ providerId: resolvedProvider, modelID }, { recent: true, announce: true })
     setActivityTick((tick) => tick + 1)
+
+    // If selecting an already-selected model, auto-exit the admin panel
+    // This creates a "double-enter" effect: first Enter selects, second Enter on same model exits
+    if (isAlreadySelected) {
+      debugCheckpoint("admin.activities", "double-enter auto-exit", {
+        providerId: resolvedProvider,
+        modelID,
+      })
+      setTimeout(() => {
+        dialog.clear()
+      }, 100)
+    }
   }
 
   const activityValue = createMemo(() => {
