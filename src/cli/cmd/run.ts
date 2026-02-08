@@ -52,11 +52,81 @@ function inline(info: Inline) {
   UI.println(UI.Style.TEXT_NORMAL + info.icon, UI.Style.TEXT_NORMAL + info.title + suffix)
 }
 
+/**
+ * 智能判斷內容是否適合在對話中顯示
+ * 過濾大量非人類可讀的內容，保持對話清潔
+ */
+function isHumanReadable(content: string): { readable: boolean; reason?: string } {
+  if (!content || content.trim().length === 0) {
+    return { readable: false }
+  }
+
+  const lines = content.split("\n")
+  const totalChars = content.length
+
+  // 規則 1: 過長內容（可能是大量數據輸出）
+  if (lines.length > 50 || totalChars > 2000) {
+    return { readable: false, reason: `${lines.length} lines, ${totalChars} chars` }
+  }
+
+  // 規則 2: 檢測 JSON/XML 結構化數據
+  const jsonLikePatterns = [
+    /^\s*[\{\[]/, // 開頭是 { 或 [
+    /"[^"]+"\s*:\s*/, // JSON key-value
+    /<[^>]+>.*<\/[^>]+>/, // XML tags
+  ]
+  const jsonLikeLines = lines.filter((line) => jsonLikePatterns.some((pattern) => pattern.test(line)))
+  if (jsonLikeLines.length > lines.length * 0.5) {
+    return { readable: false, reason: "structured data (JSON/XML)" }
+  }
+
+  // 規則 3: 檢測大量相似的重複模式（如列表輸出）
+  const uniqueLines = new Set(lines.map((l) => l.trim())).size
+  if (lines.length > 10 && uniqueLines / lines.length < 0.3) {
+    return { readable: false, reason: "repetitive output" }
+  }
+
+  // 規則 4: 檢測 Base64 或二進制數據
+  const binaryPatterns = [/^[A-Za-z0-9+/=]{50,}$/, /\\x[0-9a-fA-F]{2}/]
+  const binaryLines = lines.filter((line) => binaryPatterns.some((pattern) => pattern.test(line)))
+  if (binaryLines.length > 5) {
+    return { readable: false, reason: "binary/base64 data" }
+  }
+
+  return { readable: true }
+}
+
 function block(info: Inline, output?: string) {
   UI.empty()
   inline(info)
   if (!output?.trim()) return
-  UI.println(output)
+
+  // 智能判斷是否應該顯示
+  const check = isHumanReadable(output)
+  if (!check.readable) {
+    const reason = check.reason ? ` (${check.reason})` : ""
+    UI.println(UI.Style.TEXT_DIM + `[Output hidden${reason}]` + UI.Style.TEXT_NORMAL)
+    UI.empty()
+    return
+  }
+
+  // 對於可讀內容，仍然限制長度
+  const MAX_OUTPUT_LINES = 20
+  const MAX_OUTPUT_CHARS = 1000
+  const lines = output.split("\n")
+
+  let displayOutput = output
+  if (lines.length > MAX_OUTPUT_LINES || output.length > MAX_OUTPUT_CHARS) {
+    const truncatedLines = lines.slice(0, MAX_OUTPUT_LINES)
+    const preview = truncatedLines.join("\n").substring(0, MAX_OUTPUT_CHARS)
+    const totalLines = lines.length
+    const omittedLines = totalLines - MAX_OUTPUT_LINES
+    displayOutput =
+      preview +
+      (omittedLines > 0 ? `\n${UI.Style.TEXT_DIM}... (${omittedLines} more lines)${UI.Style.TEXT_NORMAL}` : "")
+  }
+
+  UI.println(displayOutput)
   UI.empty()
 }
 
@@ -186,10 +256,13 @@ function skill(info: ToolProps<typeof SkillTool>) {
 
 function bash(info: ToolProps<typeof BashTool>) {
   const output = info.part.state.status === "completed" ? info.part.state.output?.trim() : undefined
+
+  // 使用智能過濾器決定是否顯示輸出
   block(
     {
       icon: "$",
       title: `${info.input.command}`,
+      description: info.input.description,
     },
     output,
   )
