@@ -255,9 +255,10 @@ export namespace ProviderTransform {
       model.id.includes("claude") ||
       model.api.npm === "@ai-sdk/anthropic"
     ) {
-      // DISABLED: Caching might be a fingerprint signature.
-      // Only apply caching if NOT in subscription mode (detected via lack of providerId suffix or explicit flag)
-      if (!options?.subscription) {
+      // CRITICAL: Disable all caching headers for Claude Code subscription sessions.
+      // Caching is NOT supported in the Sessions API protocol and acts as a fingerprint.
+      const isSubscription = options?.subscription || model.providerId.includes("subscription")
+      if (!isSubscription && !options?.isClaudeCode) {
         msgs = applyCaching(msgs, model.providerId)
       }
     }
@@ -667,30 +668,46 @@ export namespace ProviderTransform {
       result["promptCacheKey"] = input.sessionID
     }
 
+    // CRITICAL: Pass isClaudeCode flag to disable caching for Claude Code subscription sessions
+    // This flag comes from the plugin loader (anthropic.ts) and must be propagated to message()
+    // @event_20260209_claude_code_protocol
+    if (input.providerOptions?.isClaudeCode) {
+      result["isClaudeCode"] = true
+    }
+
     return result
   }
 
-  export function smallOptions(model: Provider.Model) {
+  export function smallOptions(model: Provider.Model, providerOptions?: Record<string, any>) {
+    const result: Record<string, any> = {}
+
+    // CRITICAL: Pass isClaudeCode flag for Claude Code subscription sessions
+    // This is needed even for small/title requests to pass Anthropic's verification
+    // @event_20260209_claude_code_protocol
+    if (providerOptions?.isClaudeCode) {
+      result["isClaudeCode"] = true
+    }
+
     if (model.providerId === "openai" || model.api.id.includes("gpt-5")) {
       if (model.api.id.includes("5.")) {
-        return { reasoningEffort: "low" }
+        return { ...result, reasoningEffort: "low" }
       }
-      return { reasoningEffort: "minimal" }
+      return { ...result, reasoningEffort: "minimal" }
     }
     if (model.providerId === "google-api") {
       // gemini-3 uses thinkingLevel, gemini-2.5 uses thinkingBudget
       if (model.api.id.includes("gemini-3")) {
-        return { thinkingConfig: { thinkingLevel: "minimal" } }
+        return { ...result, thinkingConfig: { thinkingLevel: "minimal" } }
       }
-      return { thinkingConfig: { thinkingBudget: 0 } }
+      return { ...result, thinkingConfig: { thinkingBudget: 0 } }
     }
     if (model.providerId === "openrouter") {
       if (model.api.id.includes("google")) {
-        return { reasoning: { enabled: false } }
+        return { ...result, reasoning: { enabled: false } }
       }
-      return { reasoningEffort: "minimal" }
+      return { ...result, reasoningEffort: "minimal" }
     }
-    return {}
+    return result
   }
 
   export function providerOptions(model: Provider.Model, options: { [x: string]: any }) {
