@@ -366,8 +366,18 @@ export const RunCommand = cmd({
         describe: "show thinking blocks",
         default: false,
       })
+      .option("permission-mode", {
+        type: "string",
+        choices: ["ask", "auto"],
+        describe: "permission mode: 'ask' to prompt (default), 'auto' to allow all",
+      })
   },
   handler: async (args) => {
+    // Apply permission mode flag if provided
+    if (args["permission-mode"]) {
+      process.env.OPENCODE_PERMISSION_MODE = args["permission-mode"]
+    }
+
     let message = [...args.message, ...(args["--"] || [])]
       .map((arg) => (arg.includes(" ") ? `"${arg.replace(/"/g, '\\"')}"` : arg))
       .join(" ")

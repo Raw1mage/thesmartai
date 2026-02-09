@@ -129,6 +129,17 @@ export namespace PermissionNext {
       ruleset: Ruleset,
     }),
     async (input) => {
+      const cfg = await Config.get()
+
+      // Auto-allow all permissions if mode is set to "auto"
+      if (cfg.permissionMode === "auto") {
+        log.info("auto-allowing permission", {
+          permission: input.permission,
+          patterns: input.patterns,
+        })
+        return
+      }
+
       const s = await state()
       const { ruleset, ...request } = input
       for (const pattern of request.patterns ?? []) {
