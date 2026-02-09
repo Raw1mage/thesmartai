@@ -212,7 +212,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
 
     const model = {
       modelID: currentModel.id,
-      providerID: currentModel.provider.id,
+      providerId: currentModel.provider.id,
     }
     const agent = currentAgent.name
     const variant = local.model.variant.current()
@@ -267,7 +267,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
             command: commandName,
             arguments: args.join(" "),
             agent,
-            model: `${model.providerID}/${model.modelID}`,
+            model: `${model.providerId}/${model.modelID}`,
             variant,
             parts: images.map((attachment) => ({
               id: Identifier.ascending("part"),

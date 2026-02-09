@@ -19,3 +19,26 @@ export const shouldMarkBoundaryGesture = (input: {
   const remaining = max - input.scrollTop
   return input.delta > remaining
 }
+
+export const markScrollGesture = (root: HTMLDivElement | undefined, target?: EventTarget | null) => {
+  if (!root || !(target instanceof Node)) return false
+  if (!root.contains(target)) return false
+
+  let node: HTMLElement | null = target instanceof HTMLElement ? target : target.parentElement
+  while (node && node !== root) {
+    const style = window.getComputedStyle(node)
+    const overflowY = style.overflowY
+    const scrollable =
+      (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") &&
+      node.scrollHeight > node.clientHeight
+    if (scrollable) return false
+    node = node.parentElement
+  }
+
+  return true
+}
+
+export const isScrollGestureActive = (at: number, windowMs: number) => {
+  if (!at) return false
+  return Date.now() - at < windowMs
+}

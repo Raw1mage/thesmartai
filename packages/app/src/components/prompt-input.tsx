@@ -367,14 +367,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         type: "builtin" as const,
       }))
 
-    const custom = sync.data.command.map((cmd) => ({
-      id: `custom.${cmd.name}`,
-      trigger: cmd.name,
-      title: cmd.name,
-      description: cmd.description,
-      type: "custom" as const,
-      source: cmd.source,
-    }))
+    const custom: SlashCommand[] = sync.data.command.map((cmd): SlashCommand => {
+      const source: SlashCommand["source"] =
+        cmd.source === "command" || cmd.source === "mcp" || cmd.source === "skill" ? cmd.source : undefined
+      return {
+        id: `custom.${cmd.name}`,
+        trigger: cmd.name,
+        title: cmd.name,
+        description: cmd.description,
+        type: "custom",
+        source,
+      }
+    })
 
     return [...custom, ...builtin]
   })

@@ -22,52 +22,7 @@ import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
 
-export function SessionSidePanel(props: {
-  open: boolean
-  reviewOpen: boolean
-  language: ReturnType<typeof useLanguage>
-  layout: ReturnType<typeof useLayout>
-  command: ReturnType<typeof useCommand>
-  dialog: ReturnType<typeof useDialog>
-  file: ReturnType<typeof useFile>
-  comments: ReturnType<typeof useComments>
-  sync: ReturnType<typeof useSync>
-  hasReview: boolean
-  reviewCount: number
-  reviewTab: boolean
-  contextOpen: () => boolean
-  openedTabs: () => string[]
-  activeTab: () => string
-  activeFileTab: () => string | undefined
-  tabs: () => ReturnType<ReturnType<typeof useLayout>["tabs"]>
-  openTab: (value: string) => void
-  showAllFiles: () => void
-  reviewPanel: () => JSX.Element
-  messages: () => unknown[]
-  visibleUserMessages: () => unknown[]
-  view: () => ReturnType<ReturnType<typeof useLayout>["view"]>
-  info: () => unknown
-  handoffFiles: () => Record<string, SelectedLineRange | null> | undefined
-  codeComponent: NonNullable<ValidComponent>
-  addCommentToContext: (input: {
-    file: string
-    selection: SelectedLineRange
-    comment: string
-    preview?: string
-    origin?: "review" | "file"
-  }) => void
-  activeDraggable: () => string | undefined
-  onDragStart: (event: unknown) => void
-  onDragEnd: () => void
-  onDragOver: (event: DragEvent) => void
-  fileTreeTab: () => "changes" | "all"
-  setFileTreeTabValue: (value: string) => void
-  diffsReady: boolean
-  diffFiles: string[]
-  kinds: Map<string, "add" | "del" | "mix">
-  activeDiff?: string
-  focusReviewDiff: (path: string) => void
-}) {
+export function SessionSidePanel(props: any) {
   return (
     <Show when={props.open}>
       <aside

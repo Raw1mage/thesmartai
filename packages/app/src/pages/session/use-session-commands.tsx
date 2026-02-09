@@ -345,7 +345,7 @@ export const useSessionCommands = (input: {
         await input.sdk.client.session.summarize({
           sessionID,
           modelID: model.id,
-          providerID: model.provider.id,
+          providerId: model.provider.id,
         })
       },
     },

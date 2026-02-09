@@ -75,7 +75,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           setStore("current", value.name)
           if (value.model)
             model.set({
-              providerID: value.model.providerID,
+              providerID: value.model.providerId,
               modelID: value.model.modelID,
             })
         },
@@ -130,7 +130,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         if (!a) return undefined
         const key = getFirstValidModel(
           () => ephemeral.model[a.name],
-          () => a.model,
+          () => (a.model ? { providerID: a.model.providerId, modelID: a.model.modelID } : undefined),
           fallbackModel,
         )
         if (!key) return undefined

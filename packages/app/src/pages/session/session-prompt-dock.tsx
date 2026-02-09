@@ -7,22 +7,7 @@ import { questionSubtitle } from "@/pages/session/session-prompt-helpers"
 
 const questionDockRequest = (value: unknown) => value as ComponentProps<typeof QuestionDock>["request"]
 
-export function SessionPromptDock(props: {
-  centered: boolean
-  questionRequest: () => { questions: unknown[] } | undefined
-  permissionRequest: () => { patterns: string[]; permission: string } | undefined
-  blocked: boolean
-  promptReady: boolean
-  handoffPrompt?: string
-  t: (key: string, vars?: Record<string, string | number | boolean>) => string
-  responding: boolean
-  onDecide: (response: "once" | "always" | "reject") => void
-  inputRef: (el: HTMLDivElement) => void
-  newSessionWorktree: string
-  onNewSessionWorktreeReset: () => void
-  onSubmit: () => void
-  setPromptDockRef: (el: HTMLDivElement) => void
-}) {
+export function SessionPromptDock(props: any) {
   return (
     <div
       ref={props.setPromptDockRef}

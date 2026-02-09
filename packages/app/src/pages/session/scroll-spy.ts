@@ -272,3 +272,24 @@ export const createScrollSpy = (input: Input) => {
     getActiveId: () => active,
   }
 }
+
+let singleton: ReturnType<typeof createScrollSpy> | undefined
+
+export const scheduleScrollSpy = (container: HTMLDivElement, onActive: (id: string) => void) => {
+  if (!singleton) singleton = createScrollSpy({ onActive })
+  singleton.setContainer(container)
+}
+
+export const cancelScrollSpy = () => {
+  singleton?.destroy()
+  singleton = undefined
+}
+
+export const closestMessage = (container: HTMLDivElement) => {
+  const nodes = Array.from(container.querySelectorAll<HTMLElement>("[id^='message-']"))
+  if (nodes.length === 0) return undefined
+  const top = container.getBoundingClientRect().top
+  return nodes
+    .map((el) => ({ id: el.id.replace(/^message-/, ""), dist: Math.abs(el.getBoundingClientRect().top - top) }))
+    .sort((a, b) => a.dist - b.dist)[0]?.id
+}
