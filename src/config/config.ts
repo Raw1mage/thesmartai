@@ -214,6 +214,11 @@ export namespace Config {
       result.compaction = { ...result.compaction, prune: false }
     }
 
+    // Apply permission mode override from environment variable
+    if (Flag.OPENCODE_PERMISSION_MODE) {
+      result.permissionMode = Flag.OPENCODE_PERMISSION_MODE as Config.PermissionMode
+    }
+
     result.plugin = deduplicatePlugins(result.plugin ?? [])
 
     return {
@@ -571,6 +576,11 @@ export namespace Config {
       ref: "PermissionConfig",
     })
   export type Permission = z.infer<typeof Permission>
+
+  export const PermissionMode = z.enum(["ask", "auto"]).meta({
+    ref: "PermissionMode",
+  })
+  export type PermissionMode = z.infer<typeof PermissionMode>
 
   export const Command = z.object({
     template: z.string(),
@@ -1074,6 +1084,9 @@ export namespace Config {
       instructions: z.array(z.string()).optional().describe("Additional instruction files or patterns to include"),
       layout: Layout.optional().describe("@deprecated Always uses stretch layout."),
       permission: Permission.optional(),
+      permissionMode: PermissionMode.optional().describe(
+        "Permission mode: 'ask' to prompt for permissions (default), 'auto' to allow all",
+      ),
       tools: z.record(z.string(), z.boolean()).optional(),
       enterprise: z
         .object({
