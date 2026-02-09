@@ -32,6 +32,7 @@
 | `683d234d8`     | ported     | `350b3a02a`  | dialog esc hover highlight                   |
 | `449c5b44b`     | ported     | `350b3a02a`  | restore footer in session view               |
 | `40ebc3490`     | ported     | `350b3a02a`  | running spinner for bash tool                |
+| `56b340b5d`     | ported     | `a0f4faf89`  | ACP file write creates file when missing     |
 
 ## 已確認跳過
 
