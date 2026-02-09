@@ -154,7 +154,7 @@ export namespace LLM {
     const variant =
       !input.small && input.model.variants && input.user.variant ? input.model.variants[input.user.variant] : {}
     const base = input.small
-      ? ProviderTransform.smallOptions(input.model)
+      ? ProviderTransform.smallOptions(input.model, provider.options)
       : ProviderTransform.options({
           model: input.model,
           sessionID: input.sessionID,
@@ -235,15 +235,19 @@ export namespace LLM {
       })
     }
 
+    // FIX: Filter out empty system messages to prevent Anthropic API rejection
+    // Anthropic API returns 400 error: "system: text content blocks must be non-empty"
+    // @event_20260209_empty_system_blocks
+    const filteredSystem = system.filter((x) => x && x.trim() !== "")
     const systemMessages =
       capabilities.systemMessageRole === "user"
         ? ([
             {
               role: "user",
-              content: system.join("\n\n"),
+              content: filteredSystem.join("\n\n"),
             },
           ] as ModelMessage[])
-        : system.map(
+        : filteredSystem.map(
             (x): ModelMessage => ({
               role: capabilities.systemMessageRole as any,
               content: x,
