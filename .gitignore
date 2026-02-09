@@ -30,5 +30,7 @@ opencode-dev
 logs/
 *.bun-build
 
-# Docker config (contains sensitive credentials)
-# Note: /config/opencode/ is ignored separately above
+# config/opencode/ contains both shared config and sensitive credentials
+# Ignore only the auth/account files
+/config/opencode/*-accounts.json
+/config/opencode/mcp-auth.json
