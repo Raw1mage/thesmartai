@@ -160,7 +160,8 @@ export namespace ACP {
                 const filepath = typeof metadata["filepath"] === "string" ? metadata["filepath"] : ""
                 const diff = typeof metadata["diff"] === "string" ? metadata["diff"] : ""
 
-                const content = await Bun.file(filepath).text()
+                const file = Bun.file(filepath)
+                const content = (await file.exists()) ? await file.text() : ""
                 const newContent = getNewContent(content, diff)
 
                 if (newContent) {
