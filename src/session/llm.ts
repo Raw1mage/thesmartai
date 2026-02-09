@@ -27,6 +27,7 @@ import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
 import {
   isRateLimitError,
+  isAuthError,
   extractRateLimitDetails,
   calculateBackoffMs,
   getHealthTracker,
@@ -266,6 +267,42 @@ export namespace LLM {
         l.error("stream error", {
           error: error instanceof Error ? { message: error.message, stack: error.stack, name: error.name } : error,
         })
+
+        // Handle Authentication Errors (Hard Stop)
+        if (isAuthError(error)) {
+          l.error("Authentication error detected", {
+            accountId,
+            providerId: input.model.providerId,
+            modelID: input.model.id,
+          })
+
+          if (accountId) {
+            const healthTracker = getHealthTracker()
+            const rateLimitTracker = getRateLimitTracker()
+
+            // 1. Heavy penalty on health score
+            healthTracker.recordFailure(accountId)
+
+            // 2. Hard block for 1 hour to prevent retries
+            rateLimitTracker.markRateLimited(
+              accountId,
+              input.model.providerId,
+              "AUTH_FAILED",
+              3_600_000, // 1 hour
+              input.model.id,
+            )
+          }
+
+          // Show persistent error toast
+          Bus.publish(TuiEvent.ToastShow, {
+            title: "Authentication Failed",
+            message: `Auth failed for ${accountId}. Please re-authenticate.`,
+            variant: "error",
+            duration: 15000,
+          }).catch(() => {})
+
+          return // Stop processing
+        }
 
         // @event_2026-02-06:rotation_unify
         // Track rate limits with account dimension for proper cross-process sharing
@@ -667,6 +704,8 @@ export namespace LLM {
         return "Model at capacity"
       case "SERVER_ERROR":
         return "Server error"
+      case "AUTH_FAILED":
+        return "Authentication failed"
       default:
         return "Rate limited"
     }

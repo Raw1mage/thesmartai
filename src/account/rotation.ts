@@ -344,14 +344,16 @@ export type RateLimitReason =
   | "RATE_LIMIT_EXCEEDED"
   | "MODEL_CAPACITY_EXHAUSTED"
   | "SERVER_ERROR"
+  | "AUTH_FAILED"
   | "UNKNOWN"
 
-const QUOTA_EXHAUSTED_BACKOFFS = [60_000, 300_000, 1_800_000, 7_200_000] as const
-const RATE_LIMIT_EXCEEDED_BACKOFF = 60_000
+const QUOTA_EXHAUSTED_BACKOFFS = [600_000, 3_600_000, 14_400_000, 86_400_000] as const
+const RATE_LIMIT_EXCEEDED_BACKOFF = 3_600_000 // 1 hour (was 60s)
 const MODEL_CAPACITY_EXHAUSTED_BASE_BACKOFF = 45_000
 const MODEL_CAPACITY_EXHAUSTED_JITTER_MAX = 30_000
 const SERVER_ERROR_BACKOFF = 20_000
-const UNKNOWN_BACKOFF = 60_000
+const AUTH_FAILED_BACKOFF = 3_600_000 // 1 hour
+const UNKNOWN_BACKOFF = 3_600_000 // 1 hour (was 60s)
 const MIN_BACKOFF_MS = 2_000
 
 function generateJitter(maxJitterMs: number): number {
@@ -431,6 +433,8 @@ export function calculateBackoffMs(
       return MODEL_CAPACITY_EXHAUSTED_BASE_BACKOFF + generateJitter(MODEL_CAPACITY_EXHAUSTED_JITTER_MAX)
     case "SERVER_ERROR":
       return SERVER_ERROR_BACKOFF
+    case "AUTH_FAILED":
+      return AUTH_FAILED_BACKOFF
     case "UNKNOWN":
     default:
       return UNKNOWN_BACKOFF
@@ -844,14 +848,36 @@ export function isRateLimitError(error: unknown): boolean {
       lower.includes("429") ||
       lower.includes("rate_limit_exceeded") ||
       lower.includes("rate limited") ||
-      lower.includes("too many requests") ||
-      lower.includes("token refresh failed")
+      lower.includes("too many requests")
+      // lower.includes("token refresh failed") // Removed: this is an AUTH error
     ) {
       log.debug("isRateLimitError: matched by message pattern", { message: message.substring(0, 100) })
       return true
     }
   }
 
+  return false
+}
+
+/**
+ * Utility to check if an error is an authentication error
+ */
+export function isAuthError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false
+
+  const status = (error as any).status ?? (error as any).statusCode ?? (error as any).code
+  if (status === 401 || status === 403) return true
+
+  const message = (error as any).message ?? ""
+  if (typeof message === "string" && message.length > 0) {
+    const lower = message.toLowerCase()
+    return (
+      lower.includes("token refresh failed") ||
+      lower.includes("authentication failed") ||
+      lower.includes("invalid token") ||
+      lower.includes("unauthorized")
+    )
+  }
   return false
 }
 
