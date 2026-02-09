@@ -93,7 +93,11 @@ export namespace BunProc {
       "add",
       "--force",
       "--exact",
-      // TODO: get rid of this case (see: https://github.com/oven-sh/bun/issues/19936)
+      // FIX: Workaround for Bun issue #19936
+      // (@event_20260209_bun_workaround_monitor)
+      // When using corporate proxy, Bun package installation fails without --no-cache
+      // Status: Monitor for fix in future Bun releases
+      // Can be removed when: Bun issue #19936 is fixed and released
       ...(proxied() ? ["--no-cache"] : []),
       "--cwd",
       Global.Path.cache,
