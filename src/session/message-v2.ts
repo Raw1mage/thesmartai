@@ -380,6 +380,7 @@ export namespace MessageV2 {
      */
     mode: z.string(),
     agent: z.string(),
+    variant: z.string().optional(),
     path: z.object({
       cwd: z.string(),
       root: z.string(),
@@ -750,7 +751,7 @@ export namespace MessageV2 {
             ).toObject()
           }
         } catch {}
-        return new NamedError.Unknown({ message: JSON.stringify(e) }, { cause: e })
+        return new NamedError.Unknown({ message: String(e) }, { cause: e }).toObject()
     }
   }
 
