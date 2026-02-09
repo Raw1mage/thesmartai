@@ -620,7 +620,12 @@ export function Prompt(props: PromptProps) {
   }
 
   createEffect(() => {
-    if (props.visible !== false) input?.focus()
+    if (props.visible !== false) {
+      setTimeout(() => {
+        if (!input || input.isDestroyed) return
+        if (props.visible !== false) input.focus()
+      }, 0)
+    }
     if (props.visible === false) input?.blur()
   })
 
