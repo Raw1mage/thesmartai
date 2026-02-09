@@ -450,6 +450,7 @@ export namespace SessionPrompt {
           sessionID,
           mode: task.agent,
           agent: task.agent,
+          variant: lastUser.variant,
           path: {
             cwd: Instance.directory,
             root: Instance.worktree,
@@ -599,6 +600,7 @@ export namespace SessionPrompt {
             },
             agent: lastUser.agent,
             model: lastUser.model,
+            variant: lastUser.variant,
           }
           await Session.updateMessage(summaryUserMsg)
           await Session.updatePart({
@@ -682,6 +684,7 @@ export namespace SessionPrompt {
           role: "assistant",
           mode: agent.name,
           agent: agent.name,
+          variant: lastUser.variant,
           path: {
             cwd: Instance.directory,
             root: Instance.worktree,
@@ -1712,6 +1715,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         modelID: z.string(),
       })
       .optional(),
+    variant: z.string().optional(),
     command: z.string(),
   })
   export type ShellInput = z.infer<typeof ShellInput>
@@ -1736,6 +1740,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       },
       role: "user",
       agent: input.agent,
+      variant: input.variant,
       model: {
         providerId: model.providerId,
         modelID: model.modelID,
@@ -1758,6 +1763,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       parentID: userMsg.id,
       mode: input.agent,
       agent: input.agent,
+      variant: userMsg.variant,
       cost: 0,
       path: {
         cwd: Instance.directory,
@@ -1984,6 +1990,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
       const model = input.model ? Provider.parseModel(input.model) : (agent.model ?? (await lastModel(input.sessionID)))
 
+      const variant =
+        input.variant ??
+        (agent.variant &&
+        agent.model &&
+        model.providerId === agent.model.providerId &&
+        model.modelID === agent.model.modelID
+          ? agent.variant
+          : undefined)
+
       const userMsg: MessageV2.User = {
         id: input.messageID ?? Identifier.ascending("message"),
         role: "user",
@@ -1991,6 +2006,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         time: { created: Date.now() },
         agent: agent.name,
         model,
+        variant,
       }
       await Session.updateMessage(userMsg)
       await Session.updatePart({
@@ -2007,6 +2023,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         parentID: userMsg.id,
         mode: agent.name,
         agent: agent.name,
+        variant: userMsg.variant,
         cost: 0,
         path: {
           cwd: Instance.directory,

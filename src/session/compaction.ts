@@ -108,6 +108,7 @@ export namespace SessionCompaction {
       sessionID: input.sessionID,
       mode: "compaction",
       agent: "compaction",
+      variant: userMessage.variant,
       summary: true,
       path: {
         cwd: Instance.directory,
@@ -173,6 +174,7 @@ export namespace SessionCompaction {
         },
         agent: userMessage.agent,
         model: userMessage.model,
+        variant: userMessage.variant,
       })
       await Session.updatePart({
         id: Identifier.ascending("part"),
@@ -209,6 +211,7 @@ export namespace SessionCompaction {
         model: input.model,
         sessionID: input.sessionID,
         agent: input.agent,
+        variant: undefined,
         time: {
           created: Date.now(),
         },

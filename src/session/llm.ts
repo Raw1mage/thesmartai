@@ -263,7 +263,7 @@ export namespace LLM {
     const accountId = currentAccountId
 
     return streamText({
-      onError(error) {
+      async onError(error) {
         l.error("stream error", {
           error: error instanceof Error ? { message: error.message, stack: error.stack, name: error.name } : error,
         })
@@ -310,7 +310,78 @@ export namespace LLM {
         if (isRateLimitError(error)) {
           const { reason, retryAfterMs } = extractRateLimitDetails(error)
           const consecutiveFailures = accountId ? getHealthTracker().getConsecutiveFailures(accountId) : 0
-          const backoffMs = calculateBackoffMs(reason, consecutiveFailures, retryAfterMs)
+          let backoffMs = calculateBackoffMs(reason, consecutiveFailures, retryAfterMs)
+
+          // @event_user_request: antigravity rate limit check
+          // For Antigravity, fetch real reset time from cockpit instead of guessing.
+          // This prevents unnecessary hopping when the cooldown is actually short, or ensures we wait long enough.
+          if (
+            input.model.providerId === "antigravity" &&
+            accountId &&
+            reason !== "TOKEN_REFRESH_FAILED" // Trust the 5h backoff for token errors
+          ) {
+            try {
+              const { Account } = await import("@/account")
+              const { getCockpitBackoffMs } = await import("@/plugin/antigravity/plugin/quota")
+              const { refreshAccessToken } = await import("@/plugin/antigravity/plugin/token")
+              const { formatRefreshParts } = await import("@/plugin/antigravity/plugin/auth")
+
+              // Get account info to build auth details
+              const info = await Account.get("antigravity", accountId)
+              if (info && info.type === "subscription") {
+                let auth: any = {
+                  type: "oauth",
+                  refresh: formatRefreshParts({
+                    refreshToken: info.refreshToken,
+                    projectId: info.projectId,
+                    managedProjectId: info.managedProjectId,
+                  }),
+                  access: info.accessToken,
+                  expires: info.expiresAt,
+                }
+
+                // Refresh token if needed
+                if (!auth.access || !auth.expires || Date.now() >= auth.expires - 300000) {
+                  const refreshed = await refreshAccessToken(auth, {} as any, "antigravity")
+                  if (refreshed) {
+                    auth = refreshed
+                    // Determine project ID from refreshed token or existing info
+                    // We need a project ID for the cockpit call
+                    const pId = info.projectId || info.managedProjectId
+                    if (pId && auth.access) {
+                      const result = await getCockpitBackoffMs(auth.access, pId, input.model.id, backoffMs)
+                      if (result.fromCockpit) {
+                        backoffMs = result.backoffMs
+                        l.info("Updated rate limit backoff from cockpit", {
+                          model: input.model.id,
+                          originalBackoff: calculateBackoffMs(reason, consecutiveFailures, retryAfterMs),
+                          newBackoff: backoffMs,
+                          resetTimeMs: result.resetTimeMs,
+                        })
+                      }
+                    }
+                  }
+                } else {
+                  // Token is valid, use it directly
+                  const pId = info.projectId || info.managedProjectId
+                  if (pId && auth.access) {
+                    const result = await getCockpitBackoffMs(auth.access, pId, input.model.id, backoffMs)
+                    if (result.fromCockpit) {
+                      backoffMs = result.backoffMs
+                      l.info("Updated rate limit backoff from cockpit", {
+                        model: input.model.id,
+                        originalBackoff: calculateBackoffMs(reason, consecutiveFailures, retryAfterMs),
+                        newBackoff: backoffMs,
+                        resetTimeMs: result.resetTimeMs,
+                      })
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              l.warn("Failed to fetch cockpit backoff", { error: e })
+            }
+          }
 
           // Update account-level tracking (with account dimension)
           if (accountId) {
