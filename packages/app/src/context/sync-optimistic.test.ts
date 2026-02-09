@@ -8,7 +8,7 @@ const userMessage = (id: string, sessionID: string): Message => ({
   role: "user",
   time: { created: 1 },
   agent: "assistant",
-  model: { providerID: "openai", modelID: "gpt" },
+  model: { providerId: "openai", modelID: "gpt" },
 })
 
 const textPart = (id: string, sessionID: string, messageID: string): Part => ({

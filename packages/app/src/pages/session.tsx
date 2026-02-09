@@ -554,7 +554,7 @@ export default function Page() {
         const msg = lastUserMessage()
         if (!msg) return
         if (msg.agent) local.agent.set(msg.agent)
-        if (msg.model) local.model.set(msg.model)
+        if (msg.model) local.model.set({ providerID: msg.model.providerId, modelID: msg.model.modelID })
       },
     ),
   )
@@ -634,7 +634,9 @@ export default function Page() {
     const out = new Map<string, "add" | "del" | "mix">()
     for (const diff of diffs()) {
       const file = normalize(diff.file)
-      const kind = diff.status === "added" ? "add" : diff.status === "deleted" ? "del" : "mix"
+      const beforeText = typeof diff.before === "string" ? diff.before : ""
+      const afterText = typeof diff.after === "string" ? diff.after : ""
+      const kind = beforeText.length === 0 && afterText.length > 0 ? "add" : afterText.length === 0 ? "del" : "mix"
 
       out.set(file, kind)
 
@@ -1588,21 +1590,23 @@ export default function Page() {
                     openTitleEditor={openTitleEditor}
                     closeTitleEditor={closeTitleEditor}
                     saveTitleEditor={saveTitleEditor}
-                    titleRef={(el) => {
+                    titleRef={(el: HTMLInputElement) => {
                       titleRef = el
                     }}
                     titleState={title}
-                    onTitleDraft={(value) => setTitle("draft", value)}
-                    onTitleMenuOpen={(open) => setTitle("menuOpen", open)}
-                    onTitlePendingRename={(value) => setTitle("pendingRename", value)}
+                    onTitleDraft={(value: string) => setTitle("draft", value)}
+                    onTitleMenuOpen={(open: boolean) => setTitle("menuOpen", open)}
+                    onTitlePendingRename={(value: boolean) => setTitle("pendingRename", value)}
                     onNavigateParent={() => {
                       navigate(`/${params.dir}/session/${info()?.parentID}`)
                     }}
                     sessionID={params.id!}
-                    onArchiveSession={(sessionID) => void archiveSession(sessionID)}
-                    onDeleteSession={(sessionID) => dialog.show(() => <DialogDeleteSession sessionID={sessionID} />)}
+                    onArchiveSession={(sessionID: string) => void archiveSession(sessionID)}
+                    onDeleteSession={(sessionID: string) =>
+                      dialog.show(() => <DialogDeleteSession sessionID={sessionID} />)
+                    }
                     t={language.t as (key: string, vars?: Record<string, string | number | boolean>) => string}
-                    setContentRef={(el) => {
+                    setContentRef={(el: HTMLDivElement) => {
                       content = el
                       autoScroll.contentRef(el)
 
@@ -1630,7 +1634,7 @@ export default function Page() {
                     }}
                     lastUserMessageID={lastUserMessage()?.id}
                     expanded={store.expanded}
-                    onToggleExpanded={(id) => setStore("expanded", id, (open: boolean | undefined) => !open)}
+                    onToggleExpanded={(id: string) => setStore("expanded", id, (open: boolean | undefined) => !open)}
                   />
                 </Show>
               </Match>
@@ -1666,7 +1670,7 @@ export default function Page() {
             t={language.t as (key: string, vars?: Record<string, string | number | boolean>) => string}
             responding={ui.responding}
             onDecide={decide}
-            inputRef={(el) => {
+            inputRef={(el: HTMLDivElement) => {
               inputRef = el
             }}
             newSessionWorktree={newSessionWorktree()}
@@ -1675,7 +1679,7 @@ export default function Page() {
               comments.clear()
               resumeScroll()
             }}
-            setPromptDockRef={(el) => (promptDock = el)}
+            setPromptDockRef={(el: HTMLDivElement) => (promptDock = el)}
           />
 
           <Show when={desktopReviewOpen()}>

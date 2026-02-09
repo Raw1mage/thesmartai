@@ -251,7 +251,7 @@ export default function Page() {
         const msg = lastUserMessage()
         if (!msg) return
         if (msg.agent) local.agent.set(msg.agent)
-        if (msg.model) local.model.set(msg.model)
+        if (msg.model) local.model.set({ providerID: msg.model.providerId, modelID: msg.model.modelID })
       },
     ),
   )
@@ -605,6 +605,19 @@ export default function Page() {
   const [touchGesture, setTouchGesture] = createSignal<number | undefined>()
 
   useSessionCommands({
+    command,
+    dialog,
+    file,
+    language,
+    local,
+    permission,
+    prompt,
+    sdk,
+    sync,
+    terminal,
+    layout,
+    params,
+    navigate,
     tabs,
     view,
     activeMessage,
@@ -612,11 +625,12 @@ export default function Page() {
     userMessages,
     info,
     status,
-    setStore,
+    setExpanded: (id, fn) => setStore("expanded", id, fn),
     setActiveMessage,
     showAllFiles,
     addSelectionToContext,
     navigateMessageByOffset,
+    focusInput: () => inputRef?.focus(),
   })
 
   const { scheduleTurnBackfill, cancelTurnBackfill } = useSessionBackfill({
@@ -937,7 +951,7 @@ export default function Page() {
           hasReview={hasReview()}
           reviewCount={reviewCount()}
           language={language}
-          setMobileTab={(tab) => setStore("mobileTab", tab)}
+          setMobileTab={(tab: "session" | "changes") => setStore("mobileTab", tab)}
         />
 
         {/* Session panel */}
@@ -1021,7 +1035,9 @@ export default function Page() {
                       resumeScroll={resumeScroll}
                       markScrollGesture={markScrollGestureHandler}
                       hasScrollGesture={hasScrollGesture}
-                      scheduleScrollSpy={(container) => scheduleScrollSpy(container, (id) => setStore("messageId", id))}
+                      scheduleScrollSpy={(container: HTMLDivElement) =>
+                        scheduleScrollSpy(container, (id) => setStore("messageId", id))
+                      }
                       anchor={anchor}
                       setScrollRef={setScrollRef}
                       touchGesture={touchGesture()}
@@ -1064,11 +1080,11 @@ export default function Page() {
             language={language}
             responding={ui.responding}
             onDecide={decide}
-            setInputRef={(el) => (inputRef = el)}
+            setInputRef={(el: HTMLDivElement) => (inputRef = el)}
             newSessionWorktree={newSessionWorktree()}
             onNewSessionWorktreeReset={() => setStore("newSessionWorktree", "main")}
             onSubmit={resumeScroll}
-            setPromptDockRef={(el) => (promptDock = el)}
+            setPromptDockRef={(el: HTMLDivElement) => (promptDock = el)}
           />
 
           <Show when={isDesktop() && layout.fileTree.opened()}>
@@ -1119,12 +1135,14 @@ export default function Page() {
       </div>
 
       <TerminalPanel
-        view={view()}
-        layout={layout}
+        open={view().terminal.opened()}
+        height={layout.terminal.height()}
+        resize={layout.terminal.resize}
+        close={view().terminal.close}
         terminal={terminal}
         language={language}
         command={command}
-        handoff={handoff.terminals}
+        handoff={() => handoff.terminals}
         handleTerminalDragStart={handleTerminalDragStart}
         handleTerminalDragOver={handleTerminalDragOver}
         handleTerminalDragEnd={handleTerminalDragEnd}
@@ -1132,7 +1150,7 @@ export default function Page() {
           view().terminal.close()
           setUi("autoCreated", false)
         }}
-        activeTerminalDraggable={store.activeTerminalDraggable}
+        activeTerminalDraggable={() => store.activeTerminalDraggable}
       />
     </div>
   )

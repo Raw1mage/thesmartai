@@ -9,57 +9,7 @@ import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
 import { shouldMarkBoundaryGesture, normalizeWheelDelta } from "@/pages/session/message-gesture"
 
-export function MessageTimeline(props: {
-  mobileChanges: boolean
-  mobileFallback: JSX.Element
-  scroll: { overflow: boolean; bottom: boolean }
-  onResumeScroll: () => void
-  setScrollRef: (el: HTMLDivElement | undefined) => void
-  onScheduleScrollState: (el: HTMLDivElement) => void
-  onAutoScrollHandleScroll: () => void
-  onMarkScrollGesture: (target?: EventTarget | null) => void
-  hasScrollGesture: () => boolean
-  isDesktop: boolean
-  onScrollSpyScroll: () => void
-  onAutoScrollInteraction: (event: MouseEvent) => void
-  showHeader: boolean
-  centered: boolean
-  title?: string
-  parentID?: string
-  openTitleEditor: () => void
-  closeTitleEditor: () => void
-  saveTitleEditor: () => void | Promise<void>
-  titleRef: (el: HTMLInputElement) => void
-  titleState: {
-    draft: string
-    editing: boolean
-    saving: boolean
-    menuOpen: boolean
-    pendingRename: boolean
-  }
-  onTitleDraft: (value: string) => void
-  onTitleMenuOpen: (open: boolean) => void
-  onTitlePendingRename: (value: boolean) => void
-  onNavigateParent: () => void
-  sessionID: string
-  onArchiveSession: (sessionID: string) => void
-  onDeleteSession: (sessionID: string) => void
-  t: (key: string, vars?: Record<string, string | number | boolean>) => string
-  setContentRef: (el: HTMLDivElement) => void
-  turnStart: number
-  onRenderEarlier: () => void
-  historyMore: boolean
-  historyLoading: boolean
-  onLoadEarlier: () => void
-  renderedUserMessages: UserMessage[]
-  anchor: (id: string) => string
-  onRegisterMessage: (el: HTMLDivElement, id: string) => void
-  onUnregisterMessage: (id: string) => void
-  onFirstTurnMount?: () => void
-  lastUserMessageID?: string
-  expanded: Record<string, boolean>
-  onToggleExpanded: (id: string) => void
-}) {
+export function MessageTimeline(props: any) {
   let touchGesture: number | undefined
 
   return (

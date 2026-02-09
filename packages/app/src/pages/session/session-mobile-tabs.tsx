@@ -1,14 +1,7 @@
 import { Match, Show, Switch } from "solid-js"
 import { Tabs } from "@opencode-ai/ui/tabs"
 
-export function SessionMobileTabs(props: {
-  open: boolean
-  hasReview: boolean
-  reviewCount: number
-  onSession: () => void
-  onChanges: () => void
-  t: (key: string, vars?: Record<string, string | number | boolean>) => string
-}) {
+export function SessionMobileTabs(props: any) {
   return (
     <Show when={props.open}>
       <Tabs class="h-auto">
