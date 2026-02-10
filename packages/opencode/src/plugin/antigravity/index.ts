@@ -1514,7 +1514,7 @@ export const createAntigravityPlugin =
           return {
             apiKey: "",
             async fetch(input, init) {
-              const inputUrl = typeof input === "string" ? input : (input as any)?.url || String(input)
+              const inputUrl = toUrlString(input)
               debugCheckpoint("antigravity-plugin", "Custom fetch called", { url: inputUrl.substring(0, 100) })
 
               if (!isGenerativeLanguageRequest(input)) {
