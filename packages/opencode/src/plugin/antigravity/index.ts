@@ -2058,7 +2058,7 @@ export const createAntigravityPlugin =
                           claudeToolHardening: config.claude_tool_hardening,
                           fingerprint: account.fingerprint,
                           forceDisableThinking,
-                        } as any,
+                        },
                       )
 
                       debugCheckpoint("ANTIGRAVITY", "REQUEST_PREPARED", {
@@ -2201,8 +2201,7 @@ export const createAntigravityPlugin =
 
                           // Report to global rate limit tracker for 3D rotation
                           const { getRateLimitTracker } = await import("../../account/rotation")
-                          const coreAccountId =
-                            (account as any)._coreAccountId || `antigravity-account-${account.index}`
+                          const coreAccountId = account._coreAccountId || `antigravity-account-${account.index}`
                           getRateLimitTracker().markRateLimited(
                             coreAccountId,
                             "antigravity",
@@ -2380,7 +2379,7 @@ export const createAntigravityPlugin =
                         const { getRateLimitTracker } = await import("../../account/rotation")
                         // @event_2026-02-06:rotation_unify - Use RateLimitTracker only (with account dimension)
                         getRateLimitTracker().markRateLimited(
-                          (account as any)._coreAccountId || `antigravity-account-${account.index}`,
+                          account._coreAccountId || `antigravity-account-${account.index}`,
                           "antigravity",
                           rateLimitReason,
                           effectiveDelayMs,
@@ -2414,7 +2413,7 @@ export const createAntigravityPlugin =
                               )
                               // Sync to global rate limit tracker for 3D rotation
                               getRateLimitTracker().markRateLimited(
-                                (account as any)._coreAccountId || `antigravity-account-${account.index}`,
+                                account._coreAccountId || `antigravity-account-${account.index}`,
                                 "antigravity",
                                 rateLimitReason,
                                 effectiveDelayMs,
@@ -2448,7 +2447,7 @@ export const createAntigravityPlugin =
                             )
                             // Sync to global rate limit tracker for 3D rotation
                             getRateLimitTracker().markRateLimited(
-                              (account as any)._coreAccountId || `antigravity-account-${account.index}`,
+                              account._coreAccountId || `antigravity-account-${account.index}`,
                               "antigravity",
                               rateLimitReason,
                               switchBackoffMs,
@@ -2474,7 +2473,7 @@ export const createAntigravityPlugin =
                         )
                         // Sync to global rate limit tracker for 3D rotation
                         getRateLimitTracker().markRateLimited(
-                          (account as any)._coreAccountId || `antigravity-account-${account.index}`,
+                          account._coreAccountId || `antigravity-account-${account.index}`,
                           "antigravity",
                           rateLimitReason,
                           effectiveDelayMs,
@@ -2780,10 +2779,14 @@ export const createAntigravityPlugin =
                         }
 
                         // Already tried with forced recovery, give up and return error
-                        const recoveryError = error as any
-                        const originalError = recoveryError.originalError || {
-                          error: { message: "Thinking recovery triggered" },
-                        }
+                        const recoveryError =
+                          error && typeof error === "object" ? (error as { originalError?: unknown }) : undefined
+                        const originalError =
+                          recoveryError?.originalError && typeof recoveryError.originalError === "object"
+                            ? (recoveryError.originalError as { error?: { message?: string } })
+                            : {
+                                error: { message: "Thinking recovery triggered" },
+                              }
 
                         const recoveryMessage = `${originalError.error?.message || "Session recovery failed"}\n\n[RECOVERY] Thinking block corruption could not be resolved. Try starting a new session.`
 
