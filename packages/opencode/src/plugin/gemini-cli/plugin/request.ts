@@ -142,7 +142,11 @@ function addThoughtSignaturesToFunctionCalls(requestPayload: Record<string, unkn
               const partObj = part as Record<string, unknown>
               if (partObj.functionCall) {
                 functionCallsFound++
-                const funcName = (partObj.functionCall as any)?.name || "unknown"
+                const functionCall = partObj.functionCall
+                const funcName =
+                  functionCall && typeof functionCall === "object" && "name" in functionCall
+                    ? ((functionCall as { name?: unknown }).name ?? "unknown")
+                    : "unknown"
                 if (!partObj.thoughtSignature) {
                   partObj.thoughtSignature = "skip_thought_signature_validator"
                   signaturesAdded++

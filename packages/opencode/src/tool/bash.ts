@@ -173,7 +173,6 @@ export const BashTool = Tool.define("bash", async () => {
         })
       }
 
-      // @ts-ignore
       const shellEnv = await Plugin.trigger("shell.env", { cwd }, { env: {} })
       const proc = spawn(params.command, {
         shell,

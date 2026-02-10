@@ -223,4 +223,5 @@ export interface Hooks {
     input: { sessionID: string; messageID: string; partID: string },
     output: { text: string },
   ) => Promise<void>
+  "shell.env"?: (input: { cwd: string }, output: { env: Record<string, string> }) => Promise<void>
 }
