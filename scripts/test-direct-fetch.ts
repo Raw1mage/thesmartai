@@ -7,7 +7,7 @@
 import { readFileSync } from "fs"
 import { homedir } from "os"
 import { join } from "path"
-import { AnthropicAuthPlugin } from "../src/plugin/anthropic"
+import { AnthropicAuthPlugin } from "../packages/opencode/src/plugin/anthropic"
 
 async function main() {
   console.log("=== Direct Fetch Test (No AI SDK) ===\n")
@@ -79,7 +79,7 @@ async function main() {
     if (test.tools) {
       body.tools = [
         {
-          name: "read_file",  // Plugin should add mcp_ prefix
+          name: "read_file", // Plugin should add mcp_ prefix
           description: "Read a file",
           input_schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
         },

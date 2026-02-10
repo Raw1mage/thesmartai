@@ -4,8 +4,8 @@
  * This tests the specific bug: isClaudeCode not being passed from options() to message()
  */
 
-import { ProviderTransform } from "../src/provider/transform"
-import type { Provider } from "../src/provider/provider"
+import { ProviderTransform } from "../packages/opencode/src/provider/transform"
+import type { Provider } from "../packages/opencode/src/provider/provider"
 
 // Mock model that uses @ai-sdk/anthropic
 const mockModel: Provider.Model = {
@@ -80,8 +80,8 @@ console.log("  Has cache_control:", hasCache2)
 console.log("\n=== RESULTS ===")
 const test1Pass = optionsWithout.isClaudeCode === undefined
 const test2Pass = optionsWith.isClaudeCode === true
-const test3Pass = !hasCache1  // Should NOT have cache_control with isClaudeCode
-const test4Pass = hasCache2   // Should have cache_control without isClaudeCode
+const test3Pass = !hasCache1 // Should NOT have cache_control with isClaudeCode
+const test4Pass = hasCache2 // Should have cache_control without isClaudeCode
 
 console.log(`Test 1 (no flag → undefined):     ${test1Pass ? "✓ PASS" : "✗ FAIL"}`)
 console.log(`Test 2 (with flag → true):        ${test2Pass ? "✓ PASS" : "✗ FAIL"}`)

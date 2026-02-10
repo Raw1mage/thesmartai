@@ -6,7 +6,7 @@
 import { readFileSync } from "fs"
 import { homedir } from "os"
 import { join } from "path"
-import { AnthropicAuthPlugin } from "../src/plugin/anthropic"
+import { AnthropicAuthPlugin } from "../packages/opencode/src/plugin/anthropic"
 import { createAnthropic } from "@ai-sdk/anthropic"
 import { generateText } from "ai"
 
@@ -95,9 +95,7 @@ async function main() {
       model: anthropic("claude-haiku-4-5-20251001"),
       maxTokens: 50,
       system: "You are Claude Code, Anthropic's official CLI for Claude.",
-      messages: [
-        { role: "user", content: "Say hello" }
-      ],
+      messages: [{ role: "user", content: "Say hello" }],
     })
     console.log(`✓ SUCCESS:`, result.text.slice(0, 60))
   } catch (e: any) {

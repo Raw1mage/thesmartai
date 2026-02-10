@@ -3,10 +3,10 @@ import fs from "fs"
 import os from "os"
 import path from "path"
 
-import { Global } from "../src/global"
+import { Global } from "../packages/opencode/src/global"
 
 const repoRoot = process.cwd()
-const templatesDir = path.join(repoRoot, "templates")
+const templatesDir = path.join(repoRoot, "packages/opencode/templates")
 const manifestPath = path.join(templatesDir, "manifest.json")
 
 const ensureDir = (dir: string) => {

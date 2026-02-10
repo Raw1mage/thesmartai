@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { Global } from "../src/global"
+import { Global } from "../packages/opencode/src/global"
 import fs from "fs"
 import os from "os"
 import path from "path"
@@ -69,7 +69,7 @@ const ensureDir = (dir: string) => {
 }
 
 const fsPromises = fs.promises
-const templatesDir = path.join(repoRoot, "templates")
+const templatesDir = path.join(repoRoot, "packages/opencode/templates")
 const manifestPath = path.join(templatesDir, "manifest.json")
 const TEMPLATE_SENSITIVE_FILES = new Set(["accounts.json", "mcp-auth.json"])
 const LEGACY_OPENCODE_DIR = path.join(os.homedir(), ".opencode")

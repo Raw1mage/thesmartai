@@ -4,5 +4,5 @@ preload = ["@opentui/solid/preload"]
 exact = true
 
 [test]
-preload = ["./test/preload.ts"]
+preload = ["./packages/opencode/test/preload.ts"]
 timeout = 10000

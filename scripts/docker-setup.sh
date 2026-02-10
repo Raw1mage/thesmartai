@@ -126,7 +126,7 @@ build_binary() {
         return 1
     fi
 
-    cd "${PROJECT_DIR}/packages/opencode"
+    cd "${PROJECT_DIR}"
 
     # Build single binary for linux-x64
     # Note: This creates a glibc-linked binary, so Docker must use glibc-based image (Ubuntu, not Alpine)
@@ -134,7 +134,7 @@ build_binary() {
     bun run build --single
 
     # Verify binary was created
-    BINARY_PATH="${PROJECT_DIR}/packages/opencode/dist/opencode-linux-x64/bin/opencode"
+    BINARY_PATH="${PROJECT_DIR}/dist/opencode-linux-x64/bin/opencode"
     if [ -f "${BINARY_PATH}" ]; then
         log_ok "Binary built successfully: ${BINARY_PATH}"
         ls -lh "${BINARY_PATH}"
@@ -157,7 +157,7 @@ build_docker_image() {
     cd "${PROJECT_DIR}"
 
     # Check if binary exists
-    BINARY_PATH="packages/opencode/dist/opencode-linux-x64/bin/opencode"
+    BINARY_PATH="dist/opencode-linux-x64/bin/opencode"
     if [ ! -f "${BINARY_PATH}" ]; then
         log_warn "Binary not found. Building it first..."
         build_binary || return 1

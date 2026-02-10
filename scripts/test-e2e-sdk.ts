@@ -10,7 +10,7 @@ import { join } from "path"
 import { createAnthropic } from "@ai-sdk/anthropic"
 import { generateText, tool } from "ai"
 import { z } from "zod"
-import { AnthropicAuthPlugin } from "../src/plugin/anthropic"
+import { AnthropicAuthPlugin } from "../packages/opencode/src/plugin/anthropic"
 
 async function main() {
   console.log("=== E2E SDK Test ===\n")

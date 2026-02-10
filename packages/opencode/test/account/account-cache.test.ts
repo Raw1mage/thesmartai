@@ -5,7 +5,7 @@ import { Global } from "../../src/global"
 
 describe("account cache", () => {
   test("reloads when accounts.json changes", async () => {
-    const file = path.join(Global.Path.data, "accounts.json")
+    const file = path.join(Global.Path.user, "accounts.json")
     const one = {
       version: 2,
       families: {

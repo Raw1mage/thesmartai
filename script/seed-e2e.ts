@@ -8,11 +8,11 @@ const modelID = parts[1] ?? "gpt-5-nano"
 const now = Date.now()
 
 const seed = async () => {
-  const { Instance } = await import("../src/project/instance")
-  const { InstanceBootstrap } = await import("../src/project/bootstrap")
-  const { Session } = await import("../src/session")
-  const { Identifier } = await import("../src/id/id")
-  const { Project } = await import("../src/project/project")
+  const { Instance } = await import("../packages/opencode/src/project/instance")
+  const { InstanceBootstrap } = await import("../packages/opencode/src/project/bootstrap")
+  const { Session } = await import("../packages/opencode/src/session")
+  const { Identifier } = await import("../packages/opencode/src/id/id")
+  const { Project } = await import("../packages/opencode/src/project/project")
 
   await Instance.provide({
     directory: dir,

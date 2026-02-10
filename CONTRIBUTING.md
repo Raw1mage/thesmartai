@@ -53,13 +53,13 @@ bun dev .
 To compile a standalone executable:
 
 ```bash
-./packages/opencode/script/build.ts --single
+./script/build.ts --single
 ```
 
 Then run it with:
 
 ```bash
-./packages/opencode/dist/opencode-<platform>/bin/opencode
+./dist/opencode-<platform>/bin/opencode
 ```
 
 Replace `<platform>` with your platform (e.g., `darwin-arm64`, `linux-x64`).
