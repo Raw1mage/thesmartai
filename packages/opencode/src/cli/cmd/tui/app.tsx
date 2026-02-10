@@ -54,23 +54,36 @@ import { debugCheckpoint } from "@/util/debug"
 import { Env } from "@/env"
 
 async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
+  // FIX: terminal raw-mode probing can hang/derail some emulators/bridges.
+  // Default to dark unless explicitly enabled for diagnostics.
+  // @event_20260210_tui_startup_rawmode_probe_guard
+  if (process.env.OPENCODE_TUI_DETECT_BG !== "1") return "dark"
   // can't set raw mode if not a TTY
   if (!process.stdin.isTTY) return "dark"
 
   return new Promise((resolve) => {
+    let resolved = false
     let timeout: NodeJS.Timeout
 
     const cleanup = () => {
-      process.stdin.setRawMode(false)
+      try {
+        if (process.stdin.isTTY && process.stdin.isRaw) process.stdin.setRawMode(false)
+      } catch {}
       process.stdin.removeListener("data", handler)
       clearTimeout(timeout)
+    }
+
+    const done = (mode: "dark" | "light") => {
+      if (resolved) return
+      resolved = true
+      cleanup()
+      resolve(mode)
     }
 
     const handler = (data: Buffer) => {
       const str = data.toString()
       const match = str.match(/\x1b]11;([^\x07\x1b]+)/)
       if (match) {
-        cleanup()
         const color = match[1]
         // Parse RGB values from color string
         // Formats: rgb:RR/GG/BB or #RRGGBB or rgb(R,G,B)
@@ -98,17 +111,21 @@ async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
         const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
 
         // Determine if dark or light based on luminance threshold
-        resolve(luminance > 0.5 ? "light" : "dark")
+        done(luminance > 0.5 ? "light" : "dark")
       }
     }
 
-    process.stdin.setRawMode(true)
+    try {
+      process.stdin.setRawMode(true)
+    } catch {
+      done("dark")
+      return
+    }
     process.stdin.on("data", handler)
     process.stdout.write("\x1b]11;?\x07")
 
     timeout = setTimeout(() => {
-      cleanup()
-      resolve("dark")
+      done("dark")
     }, 1000)
   })
 }
@@ -125,12 +142,15 @@ export function tui(input: {
 }) {
   // promise to prevent immediate exit
   return new Promise<void>(async (resolve) => {
+    debugCheckpoint("tui.startup", "begin")
     const mode = await getTerminalBackgroundColor()
+    debugCheckpoint("tui.startup", "bg_mode_resolved", { mode })
     const onExit = async () => {
       await input.onExit?.()
       resolve()
     }
 
+    debugCheckpoint("tui.startup", "render_init")
     render(
       () => {
         return (
@@ -186,7 +206,11 @@ export function tui(input: {
         targetFps: 60,
         gatherStats: false,
         exitOnCtrlC: false,
-        useKittyKeyboard: {},
+        // FIX: Some terminal emulators/bridges mishandle Kitty keyboard negotiation,
+        // causing black-screen/unresponsive startup states.
+        // Disable protocol negotiation for broader terminal compatibility.
+        // @event_20260210_tui_black_screen_terminal_negotiation
+        useKittyKeyboard: null,
         consoleOptions: {
           keyBindings: [{ name: "y", ctrl: true, action: "copy-selection" }],
           onCopySelection: (text) => {
@@ -197,6 +221,7 @@ export function tui(input: {
         },
       },
     )
+    debugCheckpoint("tui.startup", "render_started")
   })
 }
 
@@ -736,10 +761,22 @@ function App() {
     })
   })
 
+  const safeWidth = () => {
+    const measured = dimensions().width
+    const fallback = process.stdout.columns ?? 80
+    return Math.max(1, measured || fallback)
+  }
+
+  const safeHeight = () => {
+    const measured = dimensions().height
+    const fallback = process.stdout.rows ?? 24
+    return Math.max(1, measured || fallback)
+  }
+
   return (
     <box
-      width={dimensions().width}
-      height={dimensions().height}
+      width={safeWidth()}
+      height={safeHeight()}
       backgroundColor={theme.background}
       onMouseUp={async () => {
         if (Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT) {
