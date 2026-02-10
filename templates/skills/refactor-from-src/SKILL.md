@@ -71,11 +71,15 @@ Follow the `agent-workflow` state machine:
 
 ### 4. EXECUTION
 
-- **Goal**: Apply daily delta safely and leave auditable traces.
+- **Goal**: Apply daily delta safely with "Smart Execution".
 - **Action**:
-  - Prefer **manual port** for protected areas.
-  - Use cherry-pick / targeted merge only for low-risk compatible commits.
-  - Resolve conflicts with `cms` behavior as source-of-truth.
+  - **Analyze First**: For each commit, provide a clear "Value/Risk Analysis" summary to the user.
+  - **User Decision**: Ask user ONLY for the strategic decision (`Port`, `Integrate`, `Skip`).
+  - **Auto-Execution**:
+    - If `Integrate`: Automatically handle dirty state (stash/pop), cherry-pick, and simple conflict resolution.
+    - If `Port`: Read source code, apply logic to target files, and verify.
+    - If `Skip`: Update ledger only.
+  - **No Technical Nagging**: Do not ask user about git commands (stash, checkout) unless blocked by a non-trivial conflict.
 - **Verification gates**:
   - Batch-level tests must pass before next batch.
   - Final `typecheck` and regression tests before push.
