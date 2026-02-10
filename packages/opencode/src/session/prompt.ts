@@ -901,9 +901,9 @@ export namespace SessionPrompt {
       seen.set(item.id, item.source)
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
       tools[item.id] = tool({
-        id: item.id as any,
+        id: item.id as `${string}.${string}`,
         description: item.description,
-        inputSchema: jsonSchema(schema as any),
+        inputSchema: jsonSchema(schema as Record<string, unknown>),
         async execute(args, options) {
           const ctx = context(args, options)
           debugCheckpoint("tool.call", "start", {
