@@ -68,6 +68,7 @@ export namespace ToolRegistry {
   })
 
   function fromPlugin(id: string, def: ToolDefinition, source?: string): Tool.Info {
+    type PluginArgs = z.infer<z.ZodObject<typeof def.args>>
     return {
       id,
       source,
@@ -86,7 +87,7 @@ export namespace ToolRegistry {
             directory: Instance.directory,
             worktree: Instance.worktree,
           } as unknown as PluginToolContext
-          const result = await def.execute(args as any, pluginCtx)
+          const result = await def.execute(args as PluginArgs, pluginCtx)
           const out = await Truncate.output(result, {}, initCtx?.agent, ctx.sessionID)
           return {
             title: "",

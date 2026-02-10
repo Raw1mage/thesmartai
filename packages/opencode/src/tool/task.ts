@@ -265,9 +265,10 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       })
 
       const messages = await Session.messages({ sessionID: session.id })
+      const isToolPart = (part: MessageV2.Part): part is MessageV2.ToolPart => part.type === "tool"
       const summary = messages
         .filter((x) => x.info.role === "assistant")
-        .flatMap((msg) => msg.parts.filter((x: any) => x.type === "tool") as MessageV2.ToolPart[])
+        .flatMap((msg) => msg.parts.filter(isToolPart))
         .map((part) => ({
           id: part.id,
           tool: part.tool,
@@ -277,10 +278,25 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           },
         }))
       const text = result.parts.findLast((x) => x.type === "text")?.text ?? ""
-      const info = result.info as any
+      const maybeError = (() => {
+        const info = result.info
+        if (!info || typeof info !== "object" || !("error" in info)) return undefined
+        const err = (info as { error?: unknown }).error
+        if (!err) return undefined
+        if (err instanceof Error) return err.message
+        if (
+          typeof err === "object" &&
+          err &&
+          "message" in err &&
+          typeof (err as { message?: unknown }).message === "string"
+        ) {
+          return (err as { message: string }).message
+        }
+        return JSON.stringify(err)
+      })()
 
-      if (info.error) {
-        throw new Error(`Subagent task failed: ${info.error.message || JSON.stringify(info.error)}`)
+      if (maybeError) {
+        throw new Error(`Subagent task failed: ${maybeError}`)
       }
 
       const output = text + "\n\n" + ["<task_metadata>", `session_id: ${session.id}`, "</task_metadata>"].join("\n")
