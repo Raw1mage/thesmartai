@@ -46,7 +46,7 @@ export const ModelCheckCommand = cmd({
         const options: ProviderHealth.CheckAllOptions = {
           timeout: args.timeout,
           parallel: args.parallel,
-          mode: mode as any,
+          mode,
         }
 
         // Add provider filter if specified
