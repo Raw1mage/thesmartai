@@ -1002,14 +1002,12 @@ export namespace Provider {
     function mergeProvider(providerId: string, provider: Partial<Info>) {
       const existing = providers[providerId]
       if (existing) {
-        // @ts-expect-error
-        providers[providerId] = mergeDeep(existing, provider)
+        providers[providerId] = mergeDeep(existing, provider) as Info
         return
       }
       const match = database[providerId]
       if (!match) return
-      // @ts-expect-error
-      providers[providerId] = mergeDeep(match, provider)
+      providers[providerId] = mergeDeep(match, provider) as Info
     }
 
     // extend database from config
