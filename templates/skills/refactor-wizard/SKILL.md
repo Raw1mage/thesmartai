@@ -37,7 +37,7 @@ Follow the `agent-workflow` state machine:
 
 - **Goal**: Determine the strategy for each divergent commit.
 - **Action**:
-  - **Deep Analysis**: For High Risk items, perform a deep code analysis explaining *why* the change matters to CMS.
+  - **Deep Analysis**: For High Risk items, perform a deep code analysis explaining _why_ the change matters to CMS.
   - **Risk Assessment**: **NEW**: Include a risk assessment for proposed actions (potential side effects, API breaks, etc.).
   - **Interactive Analysis**: Engage the user in a dialogue using `mcp_question` (in Traditional Chinese).
   - Prioritize HIGH risk items (critical paths).
@@ -57,6 +57,7 @@ Follow the `agent-workflow` state machine:
 - **Goal**: Apply changes safely.
 - **Action**:
   - Execute the plan step-by-step.
+  - **Interactive Confirmation Required**: Before handling **each commit**, prompt user with `mcp_question` (or equivalent question tool) to confirm action (`Manual Port` / `Cherry-pick` / `Skip`).
   - For **High Risk/Critical Paths** (Providers, Admin Panel), perform manual porting. Read the incoming code and adapt it to the `cms` architecture. **Do not blind merge.**
   - For **Low Risk**, use `git cherry-pick`.
 - **Verification**: Run tests after significant changes.

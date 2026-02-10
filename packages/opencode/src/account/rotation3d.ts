@@ -475,10 +475,15 @@ export async function buildFallbackCandidates(
 
             // Quota is limited if:
             // 1. remainingFraction <= 0, OR
-            // 2. resetTime exists and is in the future (cockpit doesn't always return remainingFraction for Claude)
+            // 2. remainingFraction is missing AND resetTime exists in the future.
+            //
+            // IMPORTANT:
+            // cockpit can return both remainingFraction>0 and a future resetTime.
+            // In that case the model is still available and MUST NOT be treated
+            // as exhausted.
             if (
               (typeof remaining === "number" && remaining <= 0) ||
-              (resetMs !== null && Number.isFinite(resetMs) && resetMs > now)
+              (remaining === undefined && resetMs !== null && Number.isFinite(resetMs) && resetMs > now)
             ) {
               isQuotaLimited = true
               if (resetMs !== null && Number.isFinite(resetMs)) {

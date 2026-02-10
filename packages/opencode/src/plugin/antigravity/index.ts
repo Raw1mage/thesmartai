@@ -51,7 +51,7 @@ import { debugCheckpoint } from "../../util/debug"
 import { createAutoUpdateCheckerHook } from "./hooks/auto-update-checker"
 import { loadConfig, initRuntimeConfig, type AntigravityConfig } from "./plugin/config"
 import { createSessionRecoveryHook, getRecoverySuccessToast } from "./plugin/recovery"
-import { checkAccountsQuota, getCockpitBackoffMs } from "./plugin/quota"
+import { checkAccountsQuota, fetchModelQuotaResetTime, getCockpitBackoffMs } from "./plugin/quota"
 import { initDiskSignatureCache } from "./plugin/cache"
 import { createProactiveRefreshQueue, type ProactiveRefreshQueue } from "./plugin/refresh-queue"
 import { initLogger, createLogger } from "./plugin/logger"
@@ -1674,19 +1674,65 @@ export const createAntigravityPlugin =
                   const headerStyle = getHeaderStyleFromUrl(urlString, family, fixedProviderID)
 
                   const explicitQuota = isExplicitQuotaFromUrl(urlString)
-                  const limited = accountManager.isRateLimitedForHeaderStyle(fixed, family, headerStyle, model)
+                  let limited = accountManager.isRateLimitedForHeaderStyle(fixed, family, headerStyle, model)
                   const cooling = accountManager.isAccountCoolingDown(fixed)
+
+                  // FIX: Avoid stale local Claude cooldown in fixed mode.
+                  // Local rateLimitResetTimes may become stale while cockpit already reports
+                  // available quota (remainingFraction > 0). Re-validate once with cockpit
+                  // before hard-blocking fixed account selection.
+                  if (limited && !cooling && family === "claude" && fixed.access && fixed.parts.projectId && model) {
+                    try {
+                      const quota = await fetchModelQuotaResetTime(fixed.access, fixed.parts.projectId, model)
+                      if (quota.remainingFraction !== null && quota.remainingFraction > 0) {
+                        delete fixed.rateLimitResetTimes.claude
+                        fixed.consecutiveFailures = 0
+                        accountManager.requestSaveToDisk()
+                        limited = false
+
+                        debugCheckpoint("ANTIGRAVITY", "fixed_quota_revalidated", {
+                          family,
+                          model,
+                          accountIndex: fixed.index,
+                          remainingFraction: quota.remainingFraction,
+                          resetTimeMs: quota.resetTimeMs,
+                        })
+                      }
+                    } catch (e) {
+                      debugCheckpoint("ANTIGRAVITY", "fixed_quota_revalidate_failed", {
+                        family,
+                        model,
+                        accountIndex: fixed.index,
+                        error: e instanceof Error ? e.message : String(e),
+                      })
+                    }
+                  }
+
                   if (!limited && !cooling) return fixed
 
                   const waitMs = accountManager.getMinWaitTimeForFamily(family, model, headerStyle, explicitQuota) || 0
                   const waitTimeFormatted = waitMs > 0 ? formatWaitTime(waitMs) : "later"
+                  const cooldownReason = accountManager.getAccountCooldownReason(fixed)
+                  const reasonLabel = cooling
+                    ? `cooling down${cooldownReason ? ` (${cooldownReason})` : ""}`
+                    : "temporarily unavailable"
+
                   await showToast(
-                    `Selected account rate limited. Retry ${waitTimeFormatted} or choose another model.`,
+                    `Selected account ${reasonLabel}. Retry ${waitTimeFormatted} or choose another model.`,
                     "warning",
                   )
-                  throw new Error(
-                    `Selected account rate limited for ${family}. Retry ${waitTimeFormatted} or choose another model.`,
+
+                  const unavailableError: Error & {
+                    status?: number
+                    statusCode?: number
+                    retryAfter?: number
+                  } = new Error(
+                    `Selected account ${reasonLabel} for ${family}. Retry ${waitTimeFormatted} or choose another model.`,
                   )
+                  unavailableError.status = 503
+                  unavailableError.statusCode = 503
+                  unavailableError.retryAfter = Math.max(1, Math.ceil(waitMs / 1000))
+                  throw unavailableError
                 }
 
                 const account = await pickAccount()
@@ -2188,6 +2234,14 @@ export const createAntigravityPlugin =
                             )
                           }
 
+                          // Enforce hard cooldown for all HTTP 503 responses.
+                          // Root cause is often external/provider-side instability,
+                          // so we quarantine the account-model pair for 1 hour to
+                          // prevent repeated rotate3d thrashing.
+                          if (response.status === 503) {
+                            backoffMs = Math.max(backoffMs, 3_600_000)
+                          }
+
                           accountManager.markRateLimitedWithReason(
                             account,
                             family,
@@ -2211,17 +2265,23 @@ export const createAntigravityPlugin =
                           )
 
                           const waitTimeFormatted = formatWaitTime(backoffMs)
+                          const isCapacityError =
+                            rateLimitReason === "MODEL_CAPACITY_EXHAUSTED" ||
+                            response.status === 503 ||
+                            response.status === 529
+                          const errorLabel = isCapacityError ? "Model capacity exhausted" : "Rate limited"
+                          const statusCode = isCapacityError ? 503 : 429
 
-                          // Throw error with 429 status for processor's 3D rotation to handle
+                          // Throw typed transient error for processor's 3D rotation to handle
                           const rateLimitError: Error & {
                             status?: number
                             statusCode?: number
                             retryAfter?: number
                           } = new Error(
-                            `Rate limited for ${family}. Reason: ${rateLimitReason}. Cooldown: ${waitTimeFormatted}`,
+                            `${errorLabel} for ${family}. Reason: ${rateLimitReason}. Cooldown: ${waitTimeFormatted}`,
                           )
-                          rateLimitError.status = 429
-                          rateLimitError.statusCode = 429
+                          rateLimitError.status = statusCode
+                          rateLimitError.statusCode = statusCode
                           rateLimitError.retryAfter = Math.ceil(backoffMs / 1000)
 
                           throw rateLimitError
