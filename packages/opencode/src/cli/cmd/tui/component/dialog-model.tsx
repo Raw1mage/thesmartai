@@ -13,11 +13,11 @@ import * as fuzzysort from "fuzzysort"
 import { Account } from "@/account"
 import { Keybind } from "@/util/keybind"
 import { isDeepEqual } from "remeda"
-import { AccountManager } from "../../../../plugin/antigravity/plugin/accounts"
+import { AccountManager, type ManagedAccount } from "../../../../plugin/antigravity/plugin/accounts"
 import { DialogConfirm } from "@tui/ui/dialog-confirm"
 import { DialogProvider as DialogProviderList } from "./dialog-provider"
 import { useToast } from "@tui/ui/toast"
-import { saveAccounts } from "../../../../plugin/antigravity/plugin/storage"
+import { saveAccounts, type AccountMetadataV3 } from "../../../../plugin/antigravity/plugin/storage"
 import { debugCheckpoint } from "@/util/debug"
 import { DialogModelProbe } from "./dialog-model-probe"
 import { probeModelAvailability } from "../util/model-probe"
@@ -144,28 +144,30 @@ export function DialogModel(props: { providerId?: string }) {
         // Case 2: Generic "antigravity" ID -> Use Active Account
         if (provider.id === "antigravity") {
           const activeIndex = manager.getActiveIndex()
-          const acc = snap.find((a: any) => a.index === activeIndex)
+          const acc = snap.find((a) => a.index === activeIndex)
           if (acc && acc.email) return acc.email
         }
 
         // Case 3: Fallback by index match
-        const acc = snap.find((a: any) => String(a.index) === provider.id)
+        const acc = snap.find((a) => String(a.index) === provider.id)
         if (acc && acc.email) return acc.email
       }
     }
 
-    const info = {
+    const info: Account.SubscriptionAccount = {
       type: "subscription",
       name: provider.name,
       email: provider.email,
+      refreshToken: "display-only",
+      addedAt: 0,
     }
-    const display = Account.getDisplayName(provider.id, info as any, fam as string)
+    const display = Account.getDisplayName(provider.id, info, fam)
     return display || undefined
   }
 
   const activeOwners = createMemo(() => {
     const map = new Map<string, string>()
-    for (const provider of sync.data.provider as any[]) {
+    for (const provider of sync.data.provider) {
       if (!provider.active) continue
       const fam = family(provider.id)
       if (!fam) continue
@@ -265,7 +267,7 @@ export function DialogModel(props: { providerId?: string }) {
           category: "Providers",
           icon: "📂",
           description: accountTotal >= 1 ? `${accountTotal} account${accountTotal === 1 ? "" : "s"}` : undefined,
-          gutter: activeCount > 0 ? <text fg={theme.success as any}>●</text> : undefined,
+          gutter: activeCount > 0 ? <text fg={theme.success}>●</text> : undefined,
           onSelect: () => {
             setSelectedFamily(fam)
             setStep("account_select")
@@ -282,7 +284,14 @@ export function DialogModel(props: { providerId?: string }) {
       if (!fam) return []
 
       // Special handling for Antigravity: Get accounts directly from manager
-      let accountList: any[] = []
+      let accountList: Array<{
+        id: string
+        coreId: string
+        name: string
+        active: boolean
+        email?: string
+        type: string
+      }> = []
 
       if (fam === "antigravity") {
         const agAccounts = agManager()?.getAccountsSnapshot() || []
@@ -293,7 +302,7 @@ export function DialogModel(props: { providerId?: string }) {
           const coreByEmail = new Map<string, string>()
           for (const entry of Object.entries(core)) {
             const id = entry[0]
-            const info = entry[1] as any
+            const info = entry[1] as Account.Info
             if (info?.type !== "subscription") continue
             if (info.refreshToken) coreByToken.set(info.refreshToken, id)
             if (info.email) coreByEmail.set(info.email, id)
@@ -333,14 +342,14 @@ export function DialogModel(props: { providerId?: string }) {
             return true
           })
           .map(([id, info]) => {
-            const displayName = Account.getDisplayName(id, info as any, fam) || (info as any)?.name || id
+            const displayName = Account.getDisplayName(id, info, fam) || info.name || id
             return {
               id,
               coreId: id,
               name: displayName,
               active: activeId === id,
-              email: (info as any)?.email,
-              type: (info as any)?.type,
+              email: info.type === "subscription" ? info.email : undefined,
+              type: info.type,
             }
           })
       }
@@ -383,7 +392,7 @@ export function DialogModel(props: { providerId?: string }) {
                       manager.setActiveIndex(index)
                       await saveAccounts({
                         version: 3,
-                        accounts: manager.getAccountsSnapshot() as any,
+                        accounts: manager.getAccountsSnapshot() as unknown as AccountMetadataV3[],
                         activeIndex: manager.getActiveIndex(),
                         activeIndexByFamily: manager.getActiveIndexByFamily(),
                       })
@@ -504,23 +513,23 @@ export function DialogModel(props: { providerId?: string }) {
         }),
         map(([mid, info]) => {
           const isFav = favorites.some((f) => f.providerId === providerId && f.modelID === mid)
-          const pAny = p as any
+          const pMeta = p as typeof p & { coolingDownUntil?: number; cooldownReason?: string }
           return {
             value: { providerId: providerId, modelID: mid },
             title: info.name ?? mid,
             category: "Models",
             gutter: isFav ? <text fg={theme.accent}>⭐</text> : undefined,
             description: iife(() => {
-              if (pAny.coolingDownUntil && pAny.coolingDownUntil > Date.now()) {
-                const remaining = Math.ceil((pAny.coolingDownUntil - Date.now()) / 1000 / 60)
+              if (pMeta.coolingDownUntil && pMeta.coolingDownUntil > Date.now()) {
+                const remaining = Math.ceil((pMeta.coolingDownUntil - Date.now()) / 1000 / 60)
                 return `⏳ Rate limited (${remaining}m)`
               }
-              if (pAny.cooldownReason) return `⛔ ${pAny.cooldownReason}`
+              if (pMeta.cooldownReason) return `⛔ ${pMeta.cooldownReason}`
               return undefined
             }),
             disabled:
               (providerId === "opencode" && mid.includes("-nano")) ||
-              (pAny.cooldownReason?.includes("blocked") ?? false),
+              (pMeta.cooldownReason?.includes("blocked") ?? false),
             footer: isFreeCost(info) ? "Free" : undefined,
             onSelect: () => {
               probeAndSelectModel(providerId, mid)
@@ -653,7 +662,7 @@ export function DialogModel(props: { providerId?: string }) {
                         if (manager.removeAccountByIndex(index)) {
                           await saveAccounts({
                             version: 3,
-                            accounts: manager.getAccountsSnapshot() as any,
+                            accounts: manager.getAccountsSnapshot() as unknown as AccountMetadataV3[],
                             activeIndex: manager.getActiveIndex(),
                             activeIndexByFamily: manager.getActiveIndexByFamily(),
                           })
