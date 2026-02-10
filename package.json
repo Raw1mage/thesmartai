@@ -14,7 +14,8 @@
     "test": "bun test",
     "build": "bun run script/build.ts",
     "install": "bun run script/install.ts",
-    "prepare": "husky"
+    "prepare": "husky",
+    "mcp:refacting-merger": "bun scripts/refacting-merger-mcp.ts"
   },
   "bin": {
     "opencode": "./bin/opencode"
