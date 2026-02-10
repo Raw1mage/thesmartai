@@ -25,14 +25,21 @@ export function renderModelCheckReport(report: ProviderHealth.HealthReport): str
       // Generate smart display name (we might not have all info here, so we fallback)
       let displayName = account.accountName || account.accountEmail
       if (!displayName || JWT.isUUID(displayName)) {
-        // We try to reconstruct info for Account.getDisplayName if possible,
-        // but report might not have accessToken.
-        // However, we can use the providerFamily and id to trigger the hardcoded mappings.
-        displayName = Account.getDisplayName(
-          account.accountEmail || "",
-          { name: account.accountName, type: account.authType as any } as any,
-          account.providerFamily,
-        )
+        const guessedInfo =
+          account.authType === "api"
+            ? ({
+                type: "api",
+                name: account.accountName || account.accountEmail || "API",
+                apiKey: "report-only",
+                addedAt: 0,
+              } as const)
+            : ({
+                type: "subscription",
+                name: account.accountName || account.accountEmail || "Subscription",
+                refreshToken: "report-only",
+                addedAt: 0,
+              } as const)
+        displayName = Account.getDisplayName(account.accountEmail || "", guessedInfo, account.providerFamily)
       }
 
       lines.push(`#### Account: \`${displayName}\``)

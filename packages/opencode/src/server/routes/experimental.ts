@@ -10,6 +10,10 @@ import { zodToJsonSchema } from "zod-to-json-schema"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
 
+function isZodSchemaLike(value: unknown): value is z.ZodType {
+  return !!value && typeof value === "object" && "_def" in value
+}
+
 export const ExperimentalRoutes = lazy(() =>
   new Hono()
     .get(
@@ -81,7 +85,7 @@ export const ExperimentalRoutes = lazy(() =>
             id: t.id,
             description: t.description,
             // Handle both Zod schemas and plain JSON schemas
-            parameters: (t.parameters as any)?._def ? zodToJsonSchema(t.parameters as any) : t.parameters,
+            parameters: isZodSchemaLike(t.parameters) ? zodToJsonSchema(t.parameters) : t.parameters,
           })),
         )
       },

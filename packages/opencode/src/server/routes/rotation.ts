@@ -113,10 +113,12 @@ export const RotationRoutes = lazy(() =>
         const modelHealth: Record<string, { healthScore: number; isAvailable: boolean; lastRateLimit?: number }> = {}
         const registrySnapshot = modelRegistry.getSnapshot()
         for (const [key, data] of registrySnapshot) {
+          const typedData = data as { score?: number; lastRateLimit?: number }
+          const score = typedData.score ?? 100
           modelHealth[key] = {
-            healthScore: (data as any).score ?? 100,
-            isAvailable: ((data as any).score ?? 100) >= 50,
-            lastRateLimit: (data as any).lastRateLimit,
+            healthScore: score,
+            isAvailable: score >= 50,
+            lastRateLimit: typedData.lastRateLimit,
           }
         }
 
