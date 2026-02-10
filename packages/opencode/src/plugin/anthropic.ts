@@ -1,5 +1,6 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import { createHash } from "node:crypto"
+import type { Auth as SDKAuth } from "@opencode-ai/sdk"
 import { Log } from "../util/log"
 import { generatePKCE } from "@openauthjs/openauth/pkce"
 
@@ -174,7 +175,7 @@ export async function AnthropicAuthPlugin(input: PluginInput): Promise<Hooks> {
                             expires: Date.now() + json.expires_in * 1000,
                             orgID: auth.orgID,
                             email: auth.email,
-                          } as any,
+                          } as unknown as SDKAuth,
                         })
                         auth.access = json.access_token
                         auth.expires = Date.now() + json.expires_in * 1000
