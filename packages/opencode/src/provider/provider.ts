@@ -1523,7 +1523,7 @@ export namespace Provider {
                     return
                   }
                   debugCheckpoint("google-api", `processContents: ${path}`, {
-                    contentCount: (contents as any[]).length,
+                    contentCount: contents.length,
                   })
 
                   for (const content of contents) {
@@ -1536,8 +1536,13 @@ export namespace Provider {
                             if (partObj.functionCall && !partObj.thoughtSignature) {
                               partObj.thoughtSignature = "skip_thought_signature_validator"
                               signaturesAdded++
+                              const functionCall = partObj.functionCall
+                              const functionName =
+                                functionCall && typeof functionCall === "object" && "name" in functionCall
+                                  ? (functionCall as { name?: unknown }).name
+                                  : undefined
                               debugCheckpoint("google-api", "Added thoughtSignature", {
-                                functionName: (partObj.functionCall as any)?.name,
+                                functionName,
                               })
                             }
                           }
