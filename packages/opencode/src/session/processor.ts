@@ -72,23 +72,34 @@ export namespace SessionProcessor {
 
   // Helper to extract common error details
   function extractErrorDetails(error: unknown) {
-    const data = (error as any)?.data
+    const errorObject = error && typeof error === "object" ? (error as Record<string, unknown>) : undefined
+    const data =
+      errorObject?.data && typeof errorObject.data === "object"
+        ? (errorObject.data as Record<string, unknown>)
+        : undefined
     const status =
-      typeof (error as any)?.status === "number"
-        ? (error as any).status
-        : typeof (error as any)?.statusCode === "number"
-          ? (error as any).statusCode
+      typeof errorObject?.status === "number"
+        ? errorObject.status
+        : typeof errorObject?.statusCode === "number"
+          ? errorObject.statusCode
           : typeof data?.status === "number"
             ? data.status
             : undefined
 
+    const responseBody =
+      errorObject?.response && typeof errorObject.response === "object"
+        ? (errorObject.response as Record<string, unknown>).body
+        : undefined
+
+    const message = typeof errorObject?.message === "string" ? errorObject.message : undefined
+
     const parts = [
-      (error as any)?.message,
+      message,
       data?.message,
-      data?.error?.message,
-      (error as any)?.responseBody,
+      data?.error && typeof data.error === "object" ? (data.error as Record<string, unknown>).message : undefined,
+      errorObject?.responseBody,
       data?.responseBody,
-      (error as any)?.response?.body,
+      responseBody,
     ]
       .filter((item) => typeof item === "string")
       .join(" ")
@@ -301,7 +312,7 @@ export namespace SessionProcessor {
                       state: {
                         status: "error",
                         input: value.input ?? match.state.input,
-                        error: (value.error as any).toString(),
+                        error: String(value.error),
                         time: {
                           start: match.state.time.start,
                           end: Date.now(),
