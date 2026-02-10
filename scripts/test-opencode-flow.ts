@@ -5,7 +5,7 @@
  */
 
 // Import OpenCode modules directly
-import { AnthropicAuthPlugin } from "../src/plugin/anthropic"
+import { AnthropicAuthPlugin } from "../packages/opencode/src/plugin/anthropic"
 
 async function main() {
   console.log("=== OpenCode Flow Test ===\n")
@@ -75,7 +75,7 @@ async function main() {
       headers: {
         "Content-Type": "application/json",
         "anthropic-version": "2023-06-01",
-        "session_id": "test-session", // This should be removed by plugin
+        session_id: "test-session", // This should be removed by plugin
         "x-opencode-account-id": "test", // This should be removed by plugin
       },
       body: JSON.stringify(testBody),

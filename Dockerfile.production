@@ -2,7 +2,7 @@
 # Opencode Production Dockerfile
 # =============================================================================
 # Requires pre-built binary and config sync. Build with:
-#   1. cd packages/opencode && bun run build --single
+#   1. bun run build --single
 #   2. ./scripts/sync-config.sh
 #   3. docker build -f Dockerfile.production -t opencode:latest .
 #
@@ -49,8 +49,8 @@ RUN mkdir -p /opt/opencode/config/opencode \
     chown -R opencode:opencode /opt/opencode /workspace
 
 # Copy pre-built binary
-# Build with: cd packages/opencode && bun run build --single
-COPY packages/opencode/dist/opencode-linux-x64/bin/opencode /usr/local/bin/opencode
+# Build with: bun run build --single
+COPY dist/opencode-linux-x64/bin/opencode /usr/local/bin/opencode
 RUN chmod +x /usr/local/bin/opencode
 
 # Copy config files from ./config directory

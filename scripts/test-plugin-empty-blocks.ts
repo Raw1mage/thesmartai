@@ -6,7 +6,7 @@
 import { readFileSync } from "fs"
 import { homedir } from "os"
 import { join } from "path"
-import { AnthropicAuthPlugin } from "../src/plugin/anthropic"
+import { AnthropicAuthPlugin } from "../packages/opencode/src/plugin/anthropic"
 
 async function main() {
   // Load auth
@@ -45,24 +45,27 @@ async function main() {
       name: "System with empty text block (should be filtered by plugin)",
       system: [
         { type: "text", text: "Some content" },
-        { type: "text", text: "" },  // This should be filtered
+        { type: "text", text: "" }, // This should be filtered
       ],
     },
     {
       name: "System with whitespace-only block (should be filtered by plugin)",
       system: [
         { type: "text", text: "Some content" },
-        { type: "text", text: "   " },  // This should be filtered
+        { type: "text", text: "   " }, // This should be filtered
       ],
     },
     {
       name: "Messages with empty text block (should be filtered by plugin)",
       system: [{ type: "text", text: "You are helpful." }],
       messages: [
-        { role: "user", content: [
-          { type: "text", text: "Hello" },
-          { type: "text", text: "" },  // This should be filtered
-        ]},
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Hello" },
+            { type: "text", text: "" }, // This should be filtered
+          ],
+        },
       ],
     },
   ]

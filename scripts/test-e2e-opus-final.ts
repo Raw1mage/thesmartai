@@ -6,7 +6,7 @@
 import { readFileSync } from "fs"
 import { homedir } from "os"
 import { join } from "path"
-import { AnthropicAuthPlugin } from "../src/plugin/anthropic"
+import { AnthropicAuthPlugin } from "../packages/opencode/src/plugin/anthropic"
 import { createAnthropic } from "@ai-sdk/anthropic"
 import { generateText } from "ai"
 
@@ -98,9 +98,7 @@ async function main() {
         { type: "text", text: "You are a helpful assistant." },
         { type: "text", text: "" }, // Empty block that should be filtered
       ],
-      messages: [
-        { role: "user", content: "Say hello in one word" },
-      ],
+      messages: [{ role: "user", content: "Say hello in one word" }],
     })
     console.log(`✓ SUCCESS:`, result.text.slice(0, 60))
   } catch (e: any) {

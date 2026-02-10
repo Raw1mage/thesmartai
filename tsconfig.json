@@ -10,8 +10,8 @@
     "customConditions": ["browser"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@tui/*": ["./src/cli/cmd/tui/*"]
+      "@/*": ["./packages/opencode/src/*"],
+      "@tui/*": ["./packages/opencode/src/cli/cmd/tui/*"]
     }
   },
   "exclude": ["node_modules", "dist"]
