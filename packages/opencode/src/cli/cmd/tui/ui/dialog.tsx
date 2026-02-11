@@ -78,7 +78,7 @@ function init() {
   })
 
   useKeyboard((evt) => {
-    if (evt.name === "escape" && store.stack.length > 0) {
+    if ((evt.name === "escape" || (evt.ctrl && evt.name === "c")) && store.stack.length > 0) {
       const current = store.stack.at(-1)!
       debugCheckpoint("dialog", "escape close", { size: store.stack.length })
       current.onClose?.()

@@ -13,11 +13,12 @@ OpenCode podržava i **JSON** i **JSONC** (JSON sa komentarima) formate.
 
 ```jsonc title="opencode.jsonc"
 {
-"$schema": "https://opencode.ai/config.json",
-  // Konfiguracija teme
-  "tema": "otvoreni kod",
-  "model": "antropski/claude-sonnet-4-5",
-  "automatsko ažuriranje": istina,}
+  "$schema": "https://opencode.ai/config.json",
+  // Theme configuration
+  "theme": "opencode",
+  "model": "anthropic/claude-sonnet-4-5",
+  "autoupdate": true,
+}
 ```
 
 ---
@@ -26,7 +27,7 @@ OpenCode podržava i **JSON** i **JSONC** (JSON sa komentarima) formate.
 
 Možete postaviti svoju konfiguraciju na nekoliko različitih lokacija i one imaju a
 drugačiji redosled prioriteta.
-:::napomena
+:::note
 Konfiguracijski fajlovi su **spojeni zajedno**, a ne zamijenjeni.
 :::
 Konfiguracijski fajlovi se spajaju, ne zamjenjuju. Kombiniraju se postavke sa sljedećih konfiguracijskih lokacija. Kasnije konfiguracije poništavaju prethodne samo za konfliktne ključeve. Nekonfliktne postavke iz svih konfiguracija su sačuvane.
@@ -45,7 +46,7 @@ Izvori konfiguracije se učitavaju ovim redoslijedom (kasniji izvori poništavaj
 5. **`.opencode` direktoriji** - agenti, komande, dodaci
 6. **Inline config** (`OPENCODE_CONFIG_CONTENT` env var) - runtime nadjačava
    To znači da konfiguracije projekta mogu nadjačati globalne zadane postavke, a globalne konfiguracije mogu nadjačati postavke udaljene organizacije.
-   :::napomena
+   :::note
    Direktoriji `.opencode` i `~/.config/opencode` koriste **imena u množini** za poddirektorije: `agents/`, `commands/`, `modes/`, `plugins/`, `skills/`, `tools/` i `themes/`. Pojedinačna imena (npr. `agent/`) su također podržana za kompatibilnost unatrag.
    :::
 
@@ -73,11 +74,12 @@ Možete omogućiti određene servere u vašoj lokalnoj konfiguraciji:
 
 ```json title="opencode.json"
 {
-"mcp": {
+  "mcp": {
     "jira": {
-      "tip": "daljinski",
+      "type": "remote",
       "url": "https://jira.example.com/mcp",
-      "omogućeno": istina    }
+      "enabled": true
+    }
   }
 }
 ```
@@ -91,10 +93,10 @@ Globalna konfiguracija poništava zadane postavke udaljene organizacije.
 
 ---
 
-### Nakon projekta
+### Project
 
 Dodajte `opencode.json` u korijen projekta. Konfiguracija projekta ima najveći prioritet među standardnim konfiguracijskim datotekama - ona nadjačava globalne i udaljene konfiguracije.
-::: tip
+:::tip
 Postavite specifičnu konfiguraciju projekta u korijen vašeg projekta.
 :::
 Kada se OpenCode pokrene, traži konfiguracijsku datoteku u trenutnom direktoriju ili prelazi do najbližeg Git direktorija.
@@ -102,7 +104,7 @@ Ovo je također sigurno provjeriti u Git i koristi istu shemu kao globalna.
 
 ---
 
-### Custom track
+### Custom config
 
 Navedite prilagođenu putanju konfiguracijske datoteke koristeći varijablu okruženja `OPENCODE_CONFIG`.
 
@@ -115,7 +117,7 @@ Prilagođena konfiguracija se učitava između globalne i projektne konfiguracij
 
 ---
 
-### Prilagođeni imenik
+### Custom directory
 
 Navedite prilagođeni konfiguracijski direktorij koristeći `OPENCODE_CONFIG_DIR`
 varijabla okruženja. U ovom direktoriju će se tražiti agenti, komande,
@@ -125,7 +127,6 @@ prate istu strukturu.
 ```bash
 export OPENCODE_CONFIG_DIR=/path/to/my/config-directory
 opencode run "Hello world"
-
 ```
 
 Prilagođeni direktorij se učitava nakon direktorija globalne konfiguracije i `.opencode`, tako da **može nadjačati** njihove postavke.
@@ -193,7 +194,7 @@ Dostupne opcije:
 
 ---
 
-### Uvijek
+### Tools
 
 Možete upravljati alatima koje LLM može koristiti putem opcije `tools`.
 
@@ -273,14 +274,14 @@ Amazon Bedrock podržava konfiguraciju specifičnu za AWS:
 - `region` - AWS regija za Bedrock (zadano na `AWS_REGION` env var ili `us-east-1`)
 - `profile` - AWS imenovan profil od `~/.aws/credentials` (podrazumevano na `AWS_PROFILE` env var)
 - `endpoint` - URL prilagođene krajnje tačke za VPC krajnje tačke. Ovo je pseudonim za generičku opciju `baseURL` koristeći terminologiju specifičnu za AWS. Ako su oba navedena, `endpoint` ima prednost.
-  :::napomena
+  :::note
   Tokeni nosioca (`AWS_BEARER_TOKEN_BEDROCK` ili `/connect`) imaju prednost nad autentifikacijom zasnovanom na profilu. Pogledajte [prednost autentifikacije](/docs/providers#authentication-precedence) za detalje.
   :::
   [Saznajte više o konfiguraciji Amazon Bedrock](/docs/providers#amazon-bedrock).
 
 ---
 
-### Domaći
+### Theme
 
 Možete konfigurirati temu koju želite koristiti u svojoj OpenCode konfiguraciji putem opcije `theme`.
 
@@ -317,7 +318,7 @@ Možete konfigurirati specijalizirane agente za određene zadatke putem opcije `
 }
 ```
 
-Također možete definirati agente koristeći mardown datoteke u `~/.config/opencode/agents/` ili `.opencode/agents/`. [Saznajte više ovdje](/docs/agents).
+Također možete definirati agente koristeći markdown datoteke u `~/.config/opencode/agents/` ili `.opencode/agents/`. [Saznajte više ovdje](/docs/agents).
 
 ---
 
@@ -357,7 +358,7 @@ Ovo traje:
 
 ---
 
-### komandante
+### Command
 
 Možete konfigurirati prilagođene komande za ponavljanje zadataka putem opcije `command`.
 
@@ -379,7 +380,7 @@ Možete konfigurirati prilagođene komande za ponavljanje zadataka putem opcije 
 }
 ```
 
-Također možete definirati komande koristeći mardown fajlove u `~/.config/opencode/commands/` ili `.opencode/commands/`. [Saznajte više ovdje](/docs/commands).
+Također možete definirati komande koristeći markdown fajlove u `~/.config/opencode/commands/` ili `.opencode/commands/`. [Saznajte više ovdje](/docs/commands).
 
 ---
 
@@ -414,7 +415,7 @@ Imajte na umu da ovo funkcionira samo ako nije instalirano pomoću upravitelja p
 
 ---
 
-### Trenerke
+### Formatters
 
 Možete konfigurirati formatere koda putem opcije `formatter`.
 
@@ -553,7 +554,7 @@ Možete onemogućiti dobavljače koji se automatski učitavaju preko opcije `dis
 }
 ```
 
-:::napomena
+:::note
 `disabled_providers` ima prioritet nad `enabled_providers`.
 :::
 Opcija `disabled_providers` prihvata niz ID-ova provajdera. Kada je provajder onemogućen:
@@ -576,7 +577,7 @@ Možete odrediti listu dozvoljenih dobavljača putem opcije `enabled_providers`.
 ```
 
 Ovo je korisno kada želite da ograničite OpenCode da koristi samo određene provajdere umesto da ih onemogućavate jednog po jednog.
-:::napomena
+:::note
 `disabled_providers` ima prioritet nad `enabled_providers`.
 :::
 Ako se provajder pojavljuje i u `enabled_providers` i `disabled_providers`, `disabled_providers` ima prioritet za kompatibilnost unatrag.
@@ -594,7 +595,7 @@ Ključ `experimental` sadrži opcije koje su u aktivnom razvoju.
 }
 ```
 
-:::oprez
+:::caution
 Eksperimentalne opcije nisu stabilne. Mogu se promijeniti ili ukloniti bez prethodne najave.
 :::
 

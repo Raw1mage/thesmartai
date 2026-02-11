@@ -1,30 +1,30 @@
 ---
 title: Providers
-description: Korzystanie z dowolnego dostawcy LLM w OpenCode.
+description: Korzystanie z dowolnego dostawcy LLM w opencode.
 ---
 
 import config from "../../../../config.mjs"
 export const console = config.console
 
-OpenCode używa [AI SDK](https://ai-sdk.dev/) i [Models.dev](https://models.dev) do obsługi **ponad 75 dostawców LLM** i obsługuje uruchamianie modeli lokalnych.
+opencode używa [AI SDK](https://ai-sdk.dev/) i [Models.dev](https://models.dev) do obsługi **ponad 75 dostawców LLM** i obsługuje uruchamianie modeli lokalnych.
 
 Aby dodać dostawcę należy:
 
 1. Dodaj klucze API dla dostawcy za pomocą komendy `/connect`.
-2. Skonfiguruj dostawcę w konfiguracji OpenCode.
+2. Skonfiguruj dostawcę w konfiguracji opencode.
 
 ---
 
 ### Credentials
 
 Po dodaniu kluczy API dostawcy za pomocą polecenia `/connect` są one przechowywane
-in `~/.local/share/opencode/auth.json`.
+w `~/.local/share/opencode/auth.json`.
 
 ---
 
 ### Config
 
-Możesz dostosować dostawców za pomocą sekcji `provider` w swoim OpenCode
+Możesz dostosować dostawców za pomocą sekcji `provider` w swoim opencode
 config.
 
 ---
@@ -50,8 +50,8 @@ Możesz dostosować podstawowy adres URL dla dowolnego dostawcy, ustawiając opc
 
 ## OpenCode Zen
 
-OpenCode Zen to lista modeli dostarczonych przez zespół OpenCode, które zostały
-przetestowane i zweryfikowane, aby dobrze współpracować z OpenCode. [Dowiedz się więcej](/docs/zen).
+OpenCode Zen to lista modeli dostarczonych przez zespół opencode, które zostały
+przetestowane i zweryfikowane, aby dobrze współpracować z opencode. [Dowiedz się więcej](/docs/zen).
 
 :::tip
 Jeśli jesteś nowy, zalecamy rozpoczęcie od OpenCode Zen.
@@ -80,7 +80,7 @@ Jeśli jesteś nowy, zalecamy rozpoczęcie od OpenCode Zen.
    /models
    ```
 
-Działa jak każdy inny dostawca w OpenCode i jest całkowicie opcjonalny w użyciu.
+Działa jak każdy inny dostawca w opencode i jest całkowicie opcjonalny w użyciu.
 
 ---
 
@@ -124,7 +124,7 @@ Nie widzisz tutaj dostawcy? Prześlij PR.
 
 ### Amazon Bedrock
 
-Aby używać Amazon Bedrock z OpenCode:
+Aby używać Amazon Bedrock z opencode:
 
 1. Przejdź do **Katalogu modeli** w konsoli Amazon Bedrock i poproś
    dostęp do wybranych modeli.
@@ -137,7 +137,7 @@ Aby używać Amazon Bedrock z OpenCode:
 
    #### Zmienne środowiskowe (Szybki start)
 
-   Set one of these environment variables while running opencode:
+   Ustaw jedną z tych zmiennych środowiskowych podczas uruchamiania opencode:
 
    ```bash
    # Option 1: Using AWS access keys
@@ -157,7 +157,7 @@ Aby używać Amazon Bedrock z OpenCode:
    export AWS_REGION=us-east-1
    ```
 
-   #### Configuration File (Recommended)
+   #### Plik konfiguracyjny (zalecane)
 
    W przypadku konfiguracji specyficznej dla projektu lub trwałej użyj `opencode.json`:
 
@@ -176,15 +176,15 @@ Aby używać Amazon Bedrock z OpenCode:
    ```
 
    **Dostępne opcje:**
-   - `region` - AWS region (e.g., `us-east-1`, `eu-west-1`)
-   - `profile` - AWS named profile from `~/.aws/credentials`
+   - `region` - region AWS (np. `us-east-1`, `eu-west-1`)
+   - `profile` - profil nazwany AWS z `~/.aws/credentials`
    - `endpoint` — niestandardowy adres URL punktu końcowego dla punktów końcowych VPC (alias dla ogólnej opcji `baseURL`)
 
    :::tip
-   Configuration file options take precedence over environment variables.
+   Opcje z pliku konfiguracyjnego mają pierwszeństwo przed zmiennymi środowiskowymi.
    :::
 
-   #### Advanced: VPC Endpoints
+   #### Zaawansowane: endpointy VPC
 
    Jeśli używasz punktów końcowych VPC dla Bedrock:
 
@@ -207,20 +207,20 @@ Aby używać Amazon Bedrock z OpenCode:
    Opcja `endpoint` jest aliasem ogólnej opcji `baseURL`, używając terminologii specyficznej dla AWS. Jeśli określono zarówno `endpoint`, jak i `baseURL`, pierwszeństwo ma `endpoint`.
    :::
 
-   #### Authentication Methods
+   #### Metody uwierzytelniania
    - **`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`**: Utwórz użytkownika IAM i wygeneruj klucze dostępu w konsoli AWS
    - **`AWS_PROFILE`**: Użyj nazwanych profili z `~/.aws/credentials`. Najpierw skonfiguruj za pomocą `aws configure --profile my-profile` lub `aws sso login`
    - **`AWS_BEARER_TOKEN_BEDROCK`**: Wygeneruj długoterminowe klucze API z konsoli Amazon Bedrock
    - **`AWS_WEB_IDENTITY_TOKEN_FILE` / `AWS_ROLE_ARN`**: Dla EKS IRSA (Role IAM dla kont usług) lub innych środowisk Kubernetes z federacją OIDC. Te zmienne środowiskowe są automatycznie wstrzykiwane przez Kubernetes podczas korzystania z adnotacji konta usługi.
 
-   #### Authentication Precedence
+   #### Kolejność uwierzytelniania
 
    Amazon Bedrock wykorzystuje następujący priorytet uwierzytelniania:
    1. **Token nośnika** - zmienna środowiskowa `AWS_BEARER_TOKEN_BEDROCK` lub token z komendy `/connect`
    2. **AWS Credential Chain** - Profile, access keys, shared credentials, IAM roles, Web Identity Tokens (EKS IRSA), instance metadata
 
    :::note
-   When a bearer token is set (via `/connect` or `AWS_BEARER_TOKEN_BEDROCK`), it takes precedence over all AWS credential methods including configured profiles.
+   Gdy ustawisz bearer token (przez `/connect` lub `AWS_BEARER_TOKEN_BEDROCK`), ma on pierwszeństwo nad wszystkimi metodami poświadczeń AWS, w tym profilami.
    :::
 
 3. Uruchom komendę `/models`, aby wybrać żądany model.
@@ -279,10 +279,10 @@ W przypadku niestandardowych profili wnioskowania użyj nazwy modelu i dostawcy 
    ```
 
 :::info
-Korzystanie z subskrypcji Claude Pro/Max w OpenCode nie jest oficjalnie obsługiwane przez [Anthropic](https://anthropic.com).
+Korzystanie z subskrypcji Claude Pro/Max w opencode nie jest oficjalnie obsługiwane przez [Anthropic](https://anthropic.com).
 :::
 
-##### Using API keys
+##### Użycie kluczy API
 
 Możesz także wybrać opcję **Utwórz klucz API**, jeśli nie masz subskrypcji Pro/Max. Otworzy się także Twoja przeglądarka i poprosi Cię o zalogowanie się do Anthropic i poda kod, który możesz wkleić w terminalu.
 
@@ -297,7 +297,7 @@ Jeśli napotkasz błędy „Przykro mi, ale nie mogę pomóc w tej prośbie”, 
 :::
 
 1. Przejdź do [Azure portal](https://portal.azure.com/) i utwórz zasób **Azure OpenAI**. Będziesz potrzebować:
-   - **Nazwa zasobu**: staje się częścią punktu końcowego interfejsu API (`https://RESOURCE_NAME.openai.azure.com/`)
+   - **Nazwa zasobu**: staje się częścią punktu końcowego API (`https://RESOURCE_NAME.openai.azure.com/`)
    - **Klucz API**: `KEY 1` lub `KEY 2` z Twojego zasobu
 
 2. Przejdź do [Azure AI Foundry](https://ai.azure.com/) i wdróż model.
@@ -344,7 +344,7 @@ Jeśli napotkasz błędy „Przykro mi, ale nie mogę pomóc w tej prośbie”, 
 ### Azure Cognitive Services
 
 1. Przejdź do [Azure portal](https://portal.azure.com/) i utwórz zasób **Azure OpenAI**. Będziesz potrzebować:
-   - **Nazwa zasobu**: staje się częścią punktu końcowego interfejsu API (`https://AZURE_COGNITIVE_SERVICES_RESOURCE_NAME.cognitiveservices.azure.com/`)
+   - **Nazwa zasobu**: staje się częścią punktu końcowego API (`https://AZURE_COGNITIVE_SERVICES_RESOURCE_NAME.cognitiveservices.azure.com/`)
    - **Klucz API**: `KEY 1` lub `KEY 2` z Twojego zasobu
 
 2. Przejdź do [Azure AI Foundry](https://ai.azure.com/) i wdróż model.
@@ -583,15 +583,15 @@ Cloudflare AI Gateway umożliwia dostęp do modeli z OpenAI, Anthropic, Workers 
 
 ### Firmware
 
-1. Przejdź do [panelu oprogramowania sprzętowego](https://app.firmware.ai/signup), utwórz konto i wygeneruj klucz API.
+1. Przejdź do [Firmware dashboard](https://app.firmware.ai/signup), utwórz konto i wygeneruj klucz API.
 
-2. Uruchom polecenie `/connect` i wyszukaj **Oprogramowanie sprzętowe**.
+2. Uruchom polecenie `/connect` i wyszukaj **Firmware**.
 
    ```txt
    /connect
    ```
 
-3. Wprowadź klucz API oprogramowania układowego.
+3. Wprowadź klucz API Firmware.
 
    ```txt
    ┌ API key
@@ -685,8 +685,8 @@ to store token in opencode auth storage.
 ##### Self-Hosted GitLab
 
 :::note[compliance note]
-OpenCode używa małego modelu do niektórych zadań AI, takich jak generowanie tytułu sesji.
-Domyślnie jest skonfigurowany do używania gpt-5-nano, hostowanego przez Zen. Aby zablokować OpenCode
+opencode używa małego modelu do niektórych zadań AI, takich jak generowanie tytułu sesji.
+Domyślnie jest skonfigurowany do używania gpt-5-nano, hostowanego przez Zen. Aby zablokować opencode
 aby używać tylko własnej instancji hostowanej przez GitLab, dodaj następujące elementy do pliku
 `opencode.json` plik. Zalecane jest również wyłączenie udostępniania sesji.
 
@@ -740,13 +740,13 @@ Adres URL wywołania zwrotnego `http://127.0.0.1:8080/callback` i następujące 
 - read_user (Przeczytaj swoje dane osobowe)
 - read_repository (umożliwia dostęp do repozytorium tylko do odczytu)
 
-Then expose application ID as environment variable:
+Następnie ustaw ID aplikacji jako zmienną środowiskową:
 
 ```bash
 export GITLAB_OAUTH_CLIENT_ID=your_application_id_here
 ```
 
-More documentation on [opencode-gitlab-auth](https://www.npmjs.com/package/@gitlab/opencode-gitlab-auth) homepage.
+Więcej informacji znajdziesz na stronie [opencode-gitlab-auth](https://www.npmjs.com/package/@gitlab/opencode-gitlab-auth).
 
 ##### Configuration
 
@@ -789,9 +789,9 @@ Ta wtyczka zapewnia kompleksowe możliwości zarządzania repozytorium GitLab, w
 Aby korzystać z subskrypcji GitHub Copilot z kodem opencode:
 
 :::note
-Niektóre modele mogą wymagać [subskrypcji Pro+](https://github.com/features/copilot/plans), aby z nich korzystać.
+Niektóre modele mogą wymagać [subskrypcji Pro+](https://github.com/features/Copilot/plans), aby z nich korzystać.
 
-Niektóre modele należy włączyć ręcznie w [ustawieniach GitHub Copilot](https://docs.github.com/en/copilot/how-tos/use-ai-models/configure-access-to-ai-models#setup-for-individual-use).
+Niektóre modele należy włączyć ręcznie w [ustawieniach GitHub Copilot](https://docs.github.com/en/Copilot/how-tos/use-ai-models/configure-access-to-ai-models#setup-for-individual-use).
 :::
 
 1. Uruchom komendę `/connect` i wyszukaj GitHub Copilot.
@@ -822,7 +822,7 @@ Niektóre modele należy włączyć ręcznie w [ustawieniach GitHub Copilot](htt
 
 ### Google Vertex AI
 
-Aby używać Google Vertex AI z OpenCode:
+Aby używać Google Vertex AI z opencode:
 
 1. Przejdź do **Model Garden** w Google Cloud Console i sprawdź
    modele dostępne w Twoim regionie.
@@ -893,17 +893,17 @@ Region `global` poprawia dostępność i zmniejsza liczbę błędów bez dodatko
 
 ### Hugging Face
 
-[Dostawcy wnioskowania o uścisku twarzy](https://huggingface.co/docs/inference-providers) zapewniają dostęp do otwartych modeli obsługiwanych przez ponad 17 dostawców.
+[Inference Providers Hugging Face](https://huggingface.co/docs/inference-providers) zapewniają dostęp do otwartych modeli obsługiwanych przez ponad 17 dostawców.
 
-1. Przejdź do [Ustawień uścisku twarzy](https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&tokenType=fineGrained), aby utworzyć token z uprawnieniami do wykonywania połączeń z dostawcami wnioskowania.
+1. Przejdź do [ustawień Hugging Face](https://huggingface.co/settings/tokens/new?ownUserPermissions=inference.serverless.write&tokenType=fineGrained), aby utworzyć token z uprawnieniami do wykonywania połączeń z dostawcami wnioskowania.
 
-2. Uruchom komendę `/connect` i wyszukaj **Przytulona twarz**.
+2. Uruchom komendę `/connect` i wyszukaj **Hugging Face**.
 
    ```txt
    /connect
    ```
 
-3. Wprowadź swój token Przytulającej Twarzy.
+3. Wprowadź swój token Hugging Face.
 
    ```txt
    ┌ API key
@@ -949,9 +949,9 @@ Region `global` poprawia dostępność i zmniejsza liczbę błędów bez dodatko
 
 Więcej dostawców i zaawansowanych funkcji, takich jak buforowanie i ograniczanie szybkości, znajdziesz w [dokumentacji Helicone](https://docs.helicone.ai).
 
-#### Optional Configs
+#### Opcjonalna konfiguracja
 
-Jeśli zobaczysz funkcję lub model firmy Helicone, która nie jest konfigurowana automatycznie za pomocą kodu opencode, zawsze możesz ją skonfigurować samodzielnie.
+Jeśli zobaczysz funkcję lub model firmy Helicone, która nie jest konfigurowana automatycznie za pomocą opencode, zawsze możesz ją skonfigurować samodzielnie.
 
 Oto [Katalog modeli Helicone](https://helicone.ai/models), będziesz go potrzebować, aby pobrać identyfikatory modeli, które chcesz dodać.
 
@@ -979,7 +979,7 @@ Oto [Katalog modeli Helicone](https://helicone.ai/models), będziesz go potrzebo
 }
 ```
 
-#### Custom Headers
+#### Niestandardowe nagłówki
 
 Helicone obsługuje niestandardowe nagłówki dla funkcji takich jak buforowanie, śledzenie użytkowników i zarządzanie sesjami. Dodaj je do konfiguracji dostawcy za pomocą `options.headers`:
 
@@ -1004,7 +1004,7 @@ Helicone obsługuje niestandardowe nagłówki dla funkcji takich jak buforowanie
 
 ##### Śledzenie sesji
 
-Funkcja [Sesje](https://docs.helicone.ai/features/sessions) firmy Helicone umożliwia grupowanie powiązanych żądań LLM. Użyj wtyczki [opencode-helicone-session](https://github.com/H2Shami/opencode-helicone-session), aby automatycznie rejestrować każdą konwersację OpenCode jako sesję w Helicone.
+Funkcja [Sesje](https://docs.helicone.ai/features/sessions) firmy Helicone umożliwia grupowanie powiązanych żądań LLM. Użyj wtyczki [opencode-helicone-session](https://github.com/H2Shami/opencode-helicone-session), aby automatycznie rejestrować każdą konwersację opencode jako sesję w Helicone.
 
 ```bash
 npm install -g opencode-helicone-session
@@ -1018,9 +1018,9 @@ Dodaj go do swojej konfiguracji.
 }
 ```
 
-Wtyczka wstawia nagłówki `Helicone-Session-Id` i `Helicone-Session-Name` do Twoich żądań. Na stronie Sesje Helicone każda konwersacja OpenCode będzie wymieniona jako osobna sesja.
+Wtyczka wstawia nagłówki `Helicone-Session-Id` i `Helicone-Session-Name` do Twoich żądań. Na stronie Sesje Helicone każda konwersacja opencode będzie wymieniona jako osobna sesja.
 
-##### Common Helicone headers
+##### Najczęstsze nagłówki Helicone
 
 | Header                     | Description                                                   |
 | -------------------------- | ------------------------------------------------------------- |
@@ -1035,7 +1035,7 @@ Zobacz [Katalog nagłówków Helicone](https://docs.helicone.ai/helicone-headers
 
 ### llama.cpp
 
-Możesz skonfigurować kod otwarty tak, aby korzystał z modeli lokalnych, za pomocą narzędzia llama-server [llama.cpp](https://github.com/ggml-org/llama.cpp)
+Możesz skonfigurować opencode tak, aby korzystał z modeli lokalnych, za pomocą narzędzia llama-server [llama.cpp](https://github.com/ggml-org/llama.cpp)
 
 ```json title="opencode.json" "llama.cpp" {5, 6, 8, 10-15}
 {
@@ -1064,7 +1064,7 @@ Możesz skonfigurować kod otwarty tak, aby korzystał z modeli lokalnych, za po
 W tym przykładzie:
 
 - `llama.cpp` to niestandardowy identyfikator dostawcy. Może to być dowolny ciąg znaków.
-- `npm` określa pakiet, który ma być używany dla tego dostawcy. Tutaj `@ai-sdk/openai-compatible` jest używany dla dowolnego interfejsu API zgodnego z OpenAI.
+- `npm` określa pakiet, który ma być używany dla tego dostawcy. Tutaj `@ai-sdk/openai-compatible` jest używany dla dowolnego API zgodnego z OpenAI.
 - `name` to nazwa wyświetlana dostawcy w interfejsie użytkownika.
 - `options.baseURL` jest punktem końcowym serwera lokalnego.
 - `models` to mapa identyfikatorów modeli do ich konfiguracji. Nazwa modelu zostanie wyświetlona na liście wyboru modelu.
@@ -1102,7 +1102,7 @@ IO.NET oferuje 17 modeli zoptymalizowanych pod kątem różnych zastosowań:
 
 ### LM Studio
 
-Możesz skonfigurować kod otwarty tak, aby korzystał z modeli lokalnych poprzez LM Studio.
+Możesz skonfigurować opencode tak, aby korzystał z modeli lokalnych poprzez LM Studio.
 
 ```json title="opencode.json" "lmstudio" {5, 6, 8, 10-14}
 {
@@ -1127,7 +1127,7 @@ Możesz skonfigurować kod otwarty tak, aby korzystał z modeli lokalnych poprze
 W tym przykładzie:
 
 - `lmstudio` to niestandardowy identyfikator dostawcy. Może to być dowolny ciąg znaków.
-- `npm` określa pakiet, który ma być używany dla tego dostawcy. Tutaj `@ai-sdk/openai-compatible` jest używany dla dowolnego interfejsu API zgodnego z OpenAI.
+- `npm` określa pakiet, który ma być używany dla tego dostawcy. Tutaj `@ai-sdk/openai-compatible` jest używany dla dowolnego API zgodnego z OpenAI.
 - `name` to nazwa wyświetlana dostawcy w interfejsie użytkownika.
 - `options.baseURL` jest punktem końcowym serwera lokalnego.
 - `models` to mapa identyfikatorów modeli do ich konfiguracji. Nazwa modelu zostanie wyświetlona na liście wyboru modelu.
@@ -1165,7 +1165,7 @@ Aby użyć Kimi K2 z Moonshot AI:
 
 ### MiniMax
 
-1. Przejdź do [Konsoli API MiniMax](https://platform.minimax.io/login), utwórz konto i wygeneruj klucz API.
+1. Przejdź do [konsoli API MiniMax](https://platform.minimax.io/login), utwórz konto i wygeneruj klucz API.
 
 2. Uruchom komendę `/connect` i wyszukaj **MiniMax**.
 
@@ -1194,7 +1194,7 @@ Aby użyć Kimi K2 z Moonshot AI:
 
 1. Przejdź do [konsoli Nebius Token Factory](https://tokenfactory.nebius.com/), utwórz konto i kliknij **Dodaj klucz**.
 
-2. Uruchom komendę `/connect` i wyszukaj **Fabrykę tokenów Nebius**.
+2. Uruchom komendę `/connect` i wyszukaj **Nebius Token Factory**.
 
    ```txt
    /connect
@@ -1219,10 +1219,10 @@ Aby użyć Kimi K2 z Moonshot AI:
 
 ### Ollama
 
-Możesz skonfigurować kod otwarty tak, aby korzystał z modeli lokalnych poprzez Ollamę.
+Możesz skonfigurować opencode tak, aby korzystał z modeli lokalnych poprzez Ollamę.
 
 :::tip
-Ollama może automatycznie skonfigurować się pod kątem OpenCode. Aby uzyskać szczegółowe informacje, zobacz [dokumentację integracji Ollama](https://docs.ollama.com/integrations/opencode).
+Ollama może automatycznie skonfigurować się pod kątem opencode. Aby uzyskać szczegółowe informacje, zobacz [dokumentację integracji Ollama](https://docs.ollama.com/integrations/opencode).
 :::
 
 ```json title="opencode.json" "ollama" {5, 6, 8, 10-14}
@@ -1248,7 +1248,7 @@ Ollama może automatycznie skonfigurować się pod kątem OpenCode. Aby uzyskać
 W tym przykładzie:
 
 - `ollama` to niestandardowy identyfikator dostawcy. Może to być dowolny ciąg znaków.
-- `npm` określa pakiet, który ma być używany dla tego dostawcy. Tutaj `@ai-sdk/openai-compatible` jest używany dla dowolnego interfejsu API zgodnego z OpenAI.
+- `npm` określa pakiet, który ma być używany dla tego dostawcy. Tutaj `@ai-sdk/openai-compatible` jest używany dla dowolnego API zgodnego z OpenAI.
 - `name` to nazwa wyświetlana dostawcy w interfejsie użytkownika.
 - `options.baseURL` jest punktem końcowym serwera lokalnego.
 - `models` to mapa identyfikatorów modeli do ich konfiguracji. Nazwa modelu zostanie wyświetlona na liście wyboru modelu.
@@ -1261,13 +1261,13 @@ Jeśli wywołania narzędzi nie działają, spróbuj zwiększyć `num_ctx` w Oll
 
 ### Ollama Cloud
 
-Aby korzystać z Ollama Cloud z OpenCode:
+Aby korzystać z Ollama Cloud z opencode:
 
 1. Udaj się do [https://ollama.com/](https://ollama.com/) i zaloguj się lub utwórz konto.
 
 2. Przejdź do **Ustawienia** > **Klucze** i kliknij **Dodaj klucz API**, aby wygenerować nowy klucz API.
 
-3. Skopiuj klucz API do użycia w OpenCode.
+3. Skopiuj klucz API do użycia w opencode.
 
 4. Uruchom polecenie `/connect` i wyszukaj **Ollama Cloud**.
 
@@ -1284,7 +1284,7 @@ Aby korzystać z Ollama Cloud z OpenCode:
    └ enter
    ```
 
-6. **Ważne**: Przed użyciem modeli chmurowych w OpenCode musisz pobrać informacje o modelu lokalnie:
+6. **Ważne**: Przed użyciem modeli chmurowych w opencode musisz pobrać informacje o modelu lokalnie:
 
    ```bash
    ollama pull gpt-oss:20b-cloud
@@ -1325,7 +1325,7 @@ Zalecamy zarejestrowanie się w [ChatGPT Plus lub Pro](https://chatgpt.com/prici
    /models
    ```
 
-##### Using API keys
+##### Użycie kluczy API
 
 Jeśli posiadasz już klucz API, możesz wybrać opcję **Wprowadź klucz API ręcznie** i wkleić go w terminalu.
 
@@ -1333,7 +1333,7 @@ Jeśli posiadasz już klucz API, możesz wybrać opcję **Wprowadź klucz API r�
 
 ### OpenCode Zen
 
-OpenCode Zen to lista przetestowanych i zweryfikowanych modeli udostępniona przez zespół OpenCode. [Dowiedz się więcej](/docs/zen).
+OpenCode Zen to lista przetestowanych i zweryfikowanych modeli udostępniona przez zespół opencode. [Dowiedz się więcej](/docs/zen).
 
 1. Zaloguj się do **<a href={console}>OpenCode Zen</a>** i kliknij **Utwórz klucz API**.
 
@@ -1343,7 +1343,7 @@ OpenCode Zen to lista przetestowanych i zweryfikowanych modeli udostępniona prz
    /connect
    ```
 
-3. Wprowadź klucz API OpenCode.
+3. Wprowadź klucz API opencode.
 
    ```txt
    ┌ API key
@@ -1508,7 +1508,7 @@ SAP AI Core zapewnia dostęp do ponad 40 modeli z OpenAI, Anthropic, Google, Ama
 
 ### Scaleway
 
-Aby używać [generatywnych interfejsów API Scaleway](https://www.scaleway.com/en/docs/generative-apis/) z kodem Opencode:
+Aby używać [generatywnych interfejsów API Scaleway](https://www.scaleway.com/en/docs/generative-apis/) z opencode:
 
 1. Przejdź do [Ustawień uprawnień konsoli Scaleway](https://console.scaleway.com/iam/api-keys), aby wygenerować nowy klucz API.
 
@@ -1537,9 +1537,9 @@ Aby używać [generatywnych interfejsów API Scaleway](https://www.scaleway.com/
 
 ### Together AI
 
-1. Przejdź do [konsoli Razem AI](https://api.together.ai), utwórz konto i kliknij **Dodaj klucz**.
+1. Przejdź do [konsoli Together AI](https://api.together.ai), utwórz konto i kliknij **Dodaj klucz**.
 
-2. Uruchom komendę `/connect` i wyszukaj **Razem AI**.
+2. Uruchom komendę `/connect` i wyszukaj **Together AI**.
 
    ```txt
    /connect
@@ -1572,7 +1572,7 @@ Aby używać [generatywnych interfejsów API Scaleway](https://www.scaleway.com/
    /connect
    ```
 
-3. Wprowadź klucz API Wenecji AI.
+3. Wprowadź klucz API Venice AI.
 
    ```txt
    ┌ API key
@@ -1635,12 +1635,12 @@ Możesz także dostosować modele za pomocą konfiguracji opencode. Oto przykła
 }
 ```
 
-Some useful routing options:
+Przydatne opcje routingu:
 
 | Opcja               | Opis                                                                         |
 | ------------------- | ---------------------------------------------------------------------------- |
 | `order`             | Sekwencja dostawcy do wypróbowania                                           |
-| `only`              | Restrict to specific providers                                               |
+| `only`              | Ograniczenie do wskazanych dostawców                                         |
 | `zeroDataRetention` | Korzystaj wyłącznie z dostawców, którzy nie mają zasad przechowywania danych |
 
 ---
@@ -1748,7 +1748,7 @@ Some useful routing options:
 Aby dodać dowolnego dostawcę **kompatybilnego z OpenAI**, którego nie ma na liście w poleceniu `/connect`:
 
 :::tip
-Możesz użyć dowolnego dostawcy kompatybilnego z OpenAI z otwartym kodem. Większość nowoczesnych dostawców sztucznej inteligencji oferuje interfejsy API kompatybilne z OpenAI.
+Możesz użyć dowolnego dostawcy kompatybilnego z OpenAI z opencode. Większość nowoczesnych dostawców sztucznej inteligencji oferuje interfejsy API kompatybilne z OpenAI.
 :::
 
 1. Uruchom polecenie `/connect` i przewiń w dół do **Inne**.
@@ -1818,11 +1818,11 @@ Możesz użyć dowolnego dostawcy kompatybilnego z OpenAI z otwartym kodem. Wię
 
    Oto opcje konfiguracji:
    - **npm**: pakiet AI SDK do użycia, `@ai-sdk/openai-compatible` dla dostawców kompatybilnych z OpenAI
-   - **name**: Display name in UI.
+   - **name**: Nazwa wyświetlana w UI.
    - **modele**: Dostępne modele.
-   - **options.baseURL**: API endpoint URL.
+   - **options.baseURL**: URL endpointu API.
    - **options.apiKey**: Opcjonalnie ustaw klucz API, jeśli nie używasz autoryzacji.
-   - **options.headers**: Optionally set custom headers.
+   - **options.headers**: Opcjonalnie ustaw niestandardowe nagłówki.
 
    Więcej o opcjach zaawansowanych w przykładzie poniżej.
 
@@ -1862,14 +1862,14 @@ Oto przykład ustawienia opcji `apiKey`, `headers` i modelu `limit`.
 }
 ```
 
-Configuration details:
+Szczegóły konfiguracji:
 
 - **apiKey**: Ustaw przy użyciu składni zmiennej `env`, [dowiedz się więcej](/docs/config#env-vars).
 - **nagłówki**: niestandardowe nagłówki wysyłane z każdym żądaniem.
-- **limit.context**: Maksymalna liczba żetonów wejściowych akceptowanych przez model.
+- **limit.context**: Maksymalna liczba tokenów wejściowych akceptowanych przez model.
 - **limit.output**: Maksymalna liczba tokenów, które model może wygenerować.
 
-Pola `limit` pozwalają OpenCode zrozumieć, ile kontekstu pozostało. Standardowi dostawcy pobierają je automatycznie z models.dev.
+Pola `limit` pozwalają opencode zrozumieć, ile kontekstu pozostało. Standardowi dostawcy pobierają je automatycznie z models.dev.
 
 ---
 
@@ -1882,7 +1882,7 @@ Jeśli masz problemy z konfiguracją dostawcy, sprawdź następujące elementy:
 
    Nie dotyczy to dostawców takich jak Amazon Bedrock, którzy w procesie uwierzytelniania opierają się na zmiennych środowiskowych.
 
-2. W przypadku dostawców niestandardowych sprawdź konfigurację kodu opencode i:
-   - Upewnij się, że identyfikator dostawcy użyty w poleceniu `/connect` jest zgodny z identyfikatorem w konfiguracji kodu opencode.
+2. W przypadku dostawców niestandardowych sprawdź konfigurację opencode i:
+   - Upewnij się, że identyfikator dostawcy użyty w poleceniu `/connect` jest zgodny z identyfikatorem w konfiguracji opencode.
    - Dla dostawcy używany jest właściwy pakiet npm. Na przykład użyj `@ai-sdk/cerebras` dla Cerebras. W przypadku wszystkich innych dostawców zgodnych z OpenAI użyj `@ai-sdk/openai-compatible`.
    - Sprawdź, czy w polu `options.baseURL` użyto prawidłowego punktu końcowego API.

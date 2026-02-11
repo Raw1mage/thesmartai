@@ -3,27 +3,27 @@ title: Regler
 description: Set custom instructions for opencode.
 ---
 
-Du kan gi tilpassede instruksjoner for å OpenCode ved å opprette en `AGENTS.md`-fil. Dette ligner på Cursors regler. Den inneholder instruksjoner som vil bli inkludert i LLMs kontekst for å tilpasse oppførselen til ditt spesifikke prosjekt.
+Du kan gi tilpassede instruksjoner for at OpenCode ved at oprete en `AGENTS.md`-fil. Dette ligner på Cursors regler. Den inneholder instruksjoner som vil bli inkludert i LLMs kontekst for at tilpasse oppførselen til ditt spesifikke prosjekt.
 
 ---
 
 ## Initialiser
 
-For å lage en ny `AGENTS.md` fil, kan du kjøre kommandoen `/init` i opencode.
+For at lage en ny `AGENTS.md` fil, kan du kjøre kommandoen `/init` i opencode.
 
-:::tupp
+:::tip
 Du bør overgi prosjektets `AGENTS.md`-fil til Git.
 :::
 
-Dette vil skanne prosjektet og alt dets innhold for å forstå hva prosjektet handler om og generere en `AGENTS.md`-fil med det. Dette hjelper opencode å navigere i prosjektet bedre.
+Dette vil skanne prosjektet og alt dets innhold for at forstå hva prosjektet handler om og generere en `AGENTS.md`-fil med det. Dette hjelper opencode at navigere i prosjektet bedre.
 
-Hvis du har en eksisterende `AGENTS.md`-fil, vil denne prøve å legge til den.
+Hvis du har en eksisterende `AGENTS.md`-fil, vil denne prøve at tilføje til den.
 
 ---
 
 ## Eksempel
 
-Du kan også bare lage denne filen manuelt. Her er et eksempel på noen ting du kan legge inn i en `AGENTS.md`-fil.
+Du kan også bare lage denne filen manuelt. Her er et eksempel på nogle ting du kan tilføje inn i en `AGENTS.md`-fil.
 
 ```markdown title="AGENTS.md"
 # SST v3 Monorepo Project
@@ -48,7 +48,7 @@ This is an SST v3 monorepo with TypeScript. The project uses bun workspaces for 
 - Import shared modules using workspace names: `@my-app/core/example`
 ```
 
-Vi legger til prosjektspesifikke instruksjoner her, og dette vil bli delt på tvers av teamet ditt.
+Vi tilføjer til prosjektspesifikke instruksjoner her, og dette vil bli delt på tvers av teamet ditt.
 
 ---
 
@@ -62,19 +62,19 @@ Plasser en `AGENTS.md` i prosjektroten for prosjektspesifikke regler. Disse gjel
 
 ### Globalt
 
-Du kan også ha globale regler i en `~/.config/opencode/AGENTS.md`-fil. Dette blir brukt på alle opencode-økter.
+Du kan også ha globale regler i en `~/.config/opencode/AGENTS.md`-fil. Dette blir brugt på alle opencode-sessioner.
 
-Siden dette ikke er forpliktet til Git eller delt med teamet ditt, anbefaler vi å bruke dette til å spesifisere eventuelle personlige regler som LLM bør følge.
+Siden dette ikke er forpliktet til Git eller delt med teamet ditt, anbefaler vi at bruge dette til at spesifisere eventuelle personlige regler som LLM bør følge.
 
 ### Claude-kodekompatibilitet
 
-For brukere som migrerer fra Claude Code, støtter OpenCode Claude Codes filkonvensjoner som fallbacks:
+For brugere som migrerer fra Claude Code, støtter OpenCode Claude Codes filkonvensjoner som fallbacks:
 
-- **Prosjektregler**: `CLAUDE.md` i prosjektkatalogen din (brukes hvis ingen `AGENTS.md` eksisterer)
-- **Globale regler**: `~/.claude/CLAUDE.md` (brukes hvis ingen `~/.config/opencode/AGENTS.md` eksisterer)
+- **Prosjektregler**: `CLAUDE.md` i prosjektkatalogen din (bruges hvis ingen `AGENTS.md` eksisterer)
+- **Globale regler**: `~/.claude/CLAUDE.md` (bruges hvis ingen `~/.config/opencode/AGENTS.md` eksisterer)
 - **Skills**: `~/.claude/skills/` — se [Agent Skills](/docs/skills/) for detaljer
 
-For å deaktivere Claude Code-kompatibilitet, sett en av disse miljøvariablene:
+For at deaktivere Claude Code-kompatibilitet, sett en av disse miljøvariablene:
 
 ```bash
 export OPENCODE_DISABLE_CLAUDE_CODE=1        # Disable all .claude support
@@ -88,17 +88,17 @@ export OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1 # Disable only .claude/skills
 
 Når opencode starter, ser den etter regelfiler i denne rekkefølgen:
 
-1. **Lokale filer** ved å gå opp fra gjeldende katalog (`AGENTS.md`, `CLAUDE.md`)
+1. **Lokale filer** ved at gå opp fra nuværende katalog (`AGENTS.md`, `CLAUDE.md`)
 2. **Global fil** på `~/.config/opencode/AGENTS.md`
 3. **Claude Code-fil** på `~/.claude/CLAUDE.md` (med mindre de er deaktivert)
 
-Den første matchende filen vinner i hver kategori. For eksempel, hvis du har både `AGENTS.md` og `CLAUDE.md`, brukes bare `AGENTS.md`. På samme måte har `~/.config/opencode/AGENTS.md` forrang over `~/.claude/CLAUDE.md`.
+Den første matchende filen vinner i hver kategori. For eksempel, hvis du har både `AGENTS.md` og `CLAUDE.md`, bruges bare `AGENTS.md`. På samme måte har `~/.config/opencode/AGENTS.md` forrang over `~/.claude/CLAUDE.md`.
 
 ---
 
 ## Egendefinerte instruksjoner
 
-Du kan spesifisere egendefinerte instruksjonsfiler i din `opencode.json` eller den globale `~/.config/opencode/opencode.json`. Dette lar deg og teamet ditt gjenbruke eksisterende regler i stedet for å måtte duplisere dem til AGENTS.md.
+Du kan spesifisere egendefinerte instruksjonsfiler i din `opencode.json` eller den globale `~/.config/opencode/opencode.json`. Dette lar deg og teamet ditt gjenbruge eksisterende regler i stedet for at måtte duplisere dem til AGENTS.md.
 
 Eksempel:
 
@@ -109,7 +109,7 @@ Eksempel:
 }
 ```
 
-Du kan også bruke eksterne URL-er for å laste instruksjoner fra nettet.
+Du kan også bruge eksterne URL-er for at laste instruksjoner fra nettet.
 
 ```json title="opencode.json"
 {
@@ -128,9 +128,9 @@ Alle instruksjonsfilene er kombinert med `AGENTS.md`-filene dine.
 
 Selv om opencode ikke automatisk analyserer filreferanser i `AGENTS.md`, kan du oppnå lignende funksjonalitet på to måter:
 
-### Bruker opencode.json
+### Bruger opencode.json
 
-Den anbefalte tilnærmingen er å bruke feltet `instructions` i `opencode.json`:
+Den anbefalte tilnærmingen er at bruge feltet `instructions` i `opencode.json`:
 
 ```json title="opencode.json"
 {
@@ -141,7 +141,7 @@ Den anbefalte tilnærmingen er å bruke feltet `instructions` i `opencode.json`:
 
 ### Manuelle instruksjoner i AGENTS.md
 
-Du kan lære opencode å lese eksterne filer ved å gi eksplisitte instruksjoner i `AGENTS.md`. Her er et praktisk eksempel:
+Du kan lære opencode at lese eksterne filer ved at gi eksplisitte instruksjoner i `AGENTS.md`. Her er et praktisk eksempel:
 
 ```markdown title="AGENTS.md"
 # TypeScript Project Rules
@@ -170,11 +170,11 @@ Read the following file immediately as it's relevant to all workflows: @rules/ge
 
 Denne tilnærmingen lar deg:
 
-- Lag modulære, gjenbrukbare regelfiler
+- Lag modulære, gjenbrugbare regelfiler
 - Del regler på tvers av prosjekter via symbolkoblinger eller git-undermoduler
 - Hold AGENTS.md kortfattet mens du refererer til detaljerte retningslinjer
 - Sørg for at opencode laster filer kun når det er nødvendig for den spesifikke oppgaven
 
-:::tupp
-For monorepos eller prosjekter med delte standarder er bruk av `opencode.json` med glob-mønstre (som `packages/*/AGENTS.md`) mer vedlikeholdbart enn manuelle instruksjoner.
+:::tip
+For monorepos eller prosjekter med delte standarder er brug av `opencode.json` med glob-mønstre (som `packages/*/AGENTS.md`) mer vedlikeholdbart enn manuelle instruksjoner.
 :::

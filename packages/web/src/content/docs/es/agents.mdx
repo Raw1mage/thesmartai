@@ -5,7 +5,7 @@ description: Configurar y utilizar agentes especializados.
 
 Los agentes son asistentes de IA especializados que se pueden configurar para tareas y flujos de trabajo específicos. Le permiten crear herramientas enfocadas con indicaciones, modelos y acceso a herramientas personalizados.
 
-:::consejo
+:::tip
 Utilice el agente del plan para analizar el código y revisar sugerencias sin realizar ningún cambio en el código.
 :::
 
@@ -23,11 +23,11 @@ Hay dos tipos de agentes en OpenCode; agentes primarios y subagentes.
 
 Los agentes primarios son los asistentes principales con los que interactúas directamente. Puede recorrerlos usando la tecla **Tab** o la combinación de teclas `switch_agent` configurada. Estos agentes manejan su conversación principal. El acceso a las herramientas se configura mediante permisos; por ejemplo, Build tiene todas las herramientas habilitadas mientras que Plan está restringido.
 
-:::consejo
+:::tip
 Puede utilizar la tecla **Tab** para cambiar entre agentes principales durante una sesión.
 :::
 
-OpenCode viene con dos agentes principales integrados, **Construir** y **Planificar**. Bien
+OpenCode viene con dos agentes principales integrados, **Build** y **Plan**. Bien
 mira estos a continuación.
 
 ---
@@ -36,17 +36,17 @@ mira estos a continuación.
 
 Los subagentes son asistentes especializados que los agentes principales pueden invocar para tareas específicas. También puedes invocarlos manualmente **@ mencionándolos** en tus mensajes.
 
-OpenCode viene con dos subagentes integrados, **General** y **Explorar**. Veremos esto a continuación.
+OpenCode viene con dos subagentes integrados, **General** y **Explore**. Veremos esto a continuación.
 
 ---
 
-## Incorporado
+## Built-in
 
 OpenCode viene con dos agentes primarios integrados y dos subagentes integrados.
 
 ---
 
-### Usar compilación
+### Use build
 
 _Modo_: `primary`
 
@@ -54,7 +54,7 @@ Build es el agente principal **predeterminado** con todas las herramientas habil
 
 ---
 
-### Plan de uso
+### Use plan
 
 _Modo_: `primary`
 
@@ -68,7 +68,7 @@ Este agente es útil cuando desea que LLM analice código, sugiera cambios o cre
 
 ---
 
-### Uso general
+### Use general
 
 _Modo_: `subagent`
 
@@ -76,7 +76,7 @@ Un agente de uso general para investigar preguntas complejas y ejecutar tareas d
 
 ---
 
-### Usar explorar
+### Use explore
 
 _Modo_: `subagent`
 
@@ -84,7 +84,7 @@ Un agente rápido y de solo lectura para explorar bases de código. No se pueden
 
 ---
 
-### Utilice compactación
+### Use compaction
 
 _Modo_: `primary`
 
@@ -92,7 +92,7 @@ Agente de sistema oculto que compacta un contexto largo en un resumen más peque
 
 ---
 
-### Usar título
+### Use title
 
 _Modo_: `primary`
 
@@ -100,7 +100,7 @@ Agente del sistema oculto que genera títulos de sesión cortos. Se ejecuta auto
 
 ---
 
-### Usar resumen
+### Use summary
 
 _Modo_: `primary`
 
@@ -121,8 +121,8 @@ Agente del sistema oculto que crea resúmenes de sesiones. Se ejecuta automátic
      ```
 
 3. **Navegación entre sesiones**: cuando los subagentes crean sus propias sesiones secundarias, puede navegar entre la sesión principal y todas las sesiones secundarias usando:
-   - **\<Líder>+Derecha** (o su combinación de teclas `session_child_cycle` configurada) para avanzar a través de padre → hijo1 → hijo2 → ... → padre
-   - **\<Líder>+Izquierda** (o su combinación de teclas `session_child_cycle_reverse` configurada) para retroceder entre padre ← hijo1 ← hijo2 ← ... ← padre
+   - **\<Leader>+Right** (or su combinación de teclas `session_child_cycle` configurada) para avanzar a través de padre → hijo1 → hijo2 → ... → padre
+   - **\<Leader>+Left** (or su combinación de teclas `session_child_cycle_reverse` configurada) para retroceder entre padre ← hijo1 ← hijo2 ← ... ← padre
 
    Esto le permite cambiar sin problemas entre la conversación principal y el trabajo de subagente especializado.
 
@@ -177,9 +177,9 @@ Configure agentes en su archivo de configuración `opencode.json`:
 
 ---
 
-### Rebaja
+### Markdown
 
-También puede definir agentes utilizando archivos de rebajas. Colócalos en:
+También puede definir agentes utilizando archivos de Markdown. Colócalos en:
 
 - Global: `~/.config/opencode/agents/`
 - Por proyecto: `.opencode/agents/`
@@ -206,7 +206,7 @@ You are in code review mode. Focus on:
 Provide constructive feedback without making direct changes.
 ```
 
-El nombre del archivo de rebajas se convierte en el nombre del agente. Por ejemplo, `review.md` crea un agente `review`.
+El nombre del archivo de Markdown se convierte en el nombre del agente. Por ejemplo, `review.md` crea un agente `review`.
 
 ---
 
@@ -216,7 +216,7 @@ Veamos estas opciones de configuración en detalle.
 
 ---
 
-### Descripción
+### Description
 
 Utilice la opción `description` para proporcionar una breve descripción de lo que hace el agente y cuándo usarlo.
 
@@ -234,7 +234,7 @@ Esta es una opción de configuración **obligatoria**.
 
 ---
 
-### Temperatura
+### Temperature
 
 Controle la aleatoriedad y la creatividad de las respuestas de LLM con la configuración `temperature`.
 
@@ -281,7 +281,7 @@ Si no se especifica ninguna temperatura, OpenCode utiliza valores predeterminado
 
 ---
 
-### Pasos máximos
+### Max steps
 
 Controle la cantidad máxima de iteraciones agentes que un agente puede realizar antes de verse obligado a responder solo con texto. Esto permite a los usuarios que desean controlar los costos establecer un límite a las acciones de agencia.
 
@@ -301,13 +301,13 @@ Si no se establece esto, el agente continuará iterando hasta que el modelo deci
 
 Cuando se alcanza el límite, el agente recibe un mensaje especial del sistema que le indica que responda con un resumen de su trabajo y las tareas restantes recomendadas.
 
-:::precaución
+:::caution
 El campo heredado `maxSteps` está en desuso. Utilice `steps` en su lugar.
 :::
 
 ---
 
-### Desactivar
+### Disable
 
 Establezca en `true` para deshabilitar el agente.
 
@@ -323,7 +323,7 @@ Establezca en `true` para deshabilitar el agente.
 
 ---
 
-### Inmediato
+### Prompt
 
 Especifique un archivo de aviso del sistema personalizado para este agente con la configuración `prompt`. El archivo de aviso debe contener instrucciones específicas para el propósito del agente.
 
@@ -341,11 +341,11 @@ Esta ruta es relativa a donde se encuentra el archivo de configuración. Entonce
 
 ---
 
-### Modelo
+### Model
 
 Utilice la configuración `model` para anular el modelo de este agente. Útil para utilizar diferentes modelos optimizados para diferentes tareas. Por ejemplo, un modelo más rápido de planificación, un modelo más capaz de implementación.
 
-:::consejo
+:::tip
 Si no especifica un modelo, los agentes primarios usarán el [modelo configurado globalmente](/docs/config#models), mientras que los subagentes usarán el modelo del agente primario que invocó al subagente.
 :::
 
@@ -363,7 +363,7 @@ El ID del modelo en su configuración OpenCode usa el formato `provider/model-id
 
 ---
 
-### Herramientas
+### Tools
 
 Controle qué herramientas están disponibles en este agente con la configuración `tools`. Puede habilitar o deshabilitar herramientas específicas configurándolas en `true` o `false`.
 
@@ -385,7 +385,7 @@ Controle qué herramientas están disponibles en este agente con la configuraci�
 }
 ```
 
-:::nota
+:::note
 La configuración específica del agente anula la configuración global.
 :::
 
@@ -410,7 +410,7 @@ También puedes utilizar comodines para controlar varias herramientas a la vez. 
 
 ---
 
-### Permisos
+### Permissions
 
 Puede configurar permisos para administrar qué acciones puede realizar un agente. Actualmente, los permisos para las herramientas `edit`, `bash` y `webfetch` se pueden configurar para:
 
@@ -522,7 +522,7 @@ Dado que la última regla de coincidencia tiene prioridad, coloque el comodín `
 
 ---
 
-### Modo
+### Mode
 
 Controle el modo del agente con la configuración `mode`. La opción `mode` se utiliza para determinar cómo se puede utilizar el agente.
 
@@ -540,7 +540,7 @@ La opción `mode` se puede configurar en `primary`, `subagent` o `all`. Si no se
 
 ---
 
-### Oculto
+### Hidden
 
 Oculte un subagente del menú de autocompletar `@` con `hidden: true`. Útil para subagentes internos que solo deben ser invocados mediante programación por otros agentes a través de la herramienta Tarea.
 
@@ -557,13 +557,13 @@ Oculte un subagente del menú de autocompletar `@` con `hidden: true`. Útil par
 
 Esto sólo afecta la visibilidad del usuario en el menú de autocompletar. El modelo aún puede invocar agentes ocultos a través de la herramienta Tarea si los permisos lo permiten.
 
-:::nota
+:::note
 Sólo aplica para agentes `mode: subagent`.
 :::
 
 ---
 
-### Permisos de tareas
+### Task permissions
 
 Controle qué subagentes puede invocar un agente a través de la herramienta Tarea con `permission.task`. Utiliza patrones globales para una combinación flexible.
 
@@ -586,11 +586,11 @@ Controle qué subagentes puede invocar un agente a través de la herramienta Tar
 
 Cuando se establece en `deny`, el subagente se elimina por completo de la descripción de la herramienta Tarea, por lo que el modelo no intentará invocarlo.
 
-:::consejo
+:::tip
 Las reglas se evalúan en orden y la **última regla coincidente gana**. En el ejemplo anterior, `orchestrator-planner` coincide con `*` (denegar) y `orchestrator-*` (permitir), pero como `orchestrator-*` viene después de `*`, el resultado es `allow`.
 :::
 
-:::consejo
+:::tip
 Los usuarios siempre pueden invocar cualquier subagente directamente a través del menú de autocompletar `@`, incluso si los permisos de tarea del agente lo niegan.
 :::
 
@@ -617,7 +617,7 @@ Utilice un color hexadecimal válido (por ejemplo, `#FF5733`) o un color de tema
 
 ---
 
-### P superior
+### Top P
 
 Controle la diversidad de respuestas con la opción `top_p`. Alternativa a la temperatura para controlar la aleatoriedad.
 
@@ -635,7 +635,7 @@ Los valores oscilan entre 0,0 y 1,0. Los valores más bajos están más enfocado
 
 ---
 
-### Adicional
+### Additional
 
 Cualquier otra opción que especifique en la configuración de su agente se **pasará directamente** al proveedor como opciones de modelo. Esto le permite utilizar funciones y parámetros específicos del proveedor.
 
@@ -656,13 +656,13 @@ Por ejemplo, con los modelos de razonamiento de OpenAI, puedes controlar el esfu
 
 Estas opciones adicionales son específicas del modelo y del proveedor. Consulte la documentación de su proveedor para conocer los parámetros disponibles.
 
-:::consejo
+:::tip
 Ejecute `opencode models` para ver una lista de los modelos disponibles.
 :::
 
 ---
 
-## Crear agentes
+## Create agents
 
 Puede crear nuevos agentes usando el siguiente comando:
 
@@ -684,11 +684,11 @@ Este comando interactivo:
 
 A continuación se muestran algunos casos de uso comunes para diferentes agentes.
 
-- **Agente de compilación**: trabajo de desarrollo completo con todas las herramientas habilitadas
-- **Plan agente**: Análisis y planificación sin realizar cambios
-- **Agente de revisión**: revisión de código con acceso de solo lectura más herramientas de documentación
-- **Agente de depuración**: centrado en la investigación con bash y herramientas de lectura habilitadas
-- **Agente de documentos**: escritura de documentación con operaciones de archivos pero sin comandos del sistema.
+- **Build agent**: trabajo de desarrollo completo con todas las herramientas habilitadas
+- **Plan agent**: Análisis y planificación sin realizar cambios
+- **Review agent**: revisión de código con acceso de solo lectura más herramientas de documentación
+- **Debug agent**: centrado en la investigación con bash y herramientas de lectura habilitadas
+- **Docs agent**: escritura de documentación con operaciones de archivos pero sin comandos del sistema.
 
 ---
 
@@ -696,13 +696,13 @@ A continuación se muestran algunos casos de uso comunes para diferentes agentes
 
 A continuación se muestran algunos agentes de ejemplo que pueden resultarle útiles.
 
-:::consejo
+:::tip
 ¿Tiene un agente que le gustaría compartir? [Enviar un PR](https://github.com/anomalyco/opencode).
 :::
 
 ---
 
-### Agente de documentación
+### Documentation agent
 
 ```markdown title="~/.config/opencode/agents/docs-writer.md"
 ---
@@ -724,7 +724,7 @@ Focus on:
 
 ---
 
-### Auditor de seguridad
+### Security auditor
 
 ```markdown title="~/.config/opencode/agents/security-auditor.md"
 ---

@@ -4,7 +4,7 @@ import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { Decimal } from "decimal.js"
 import z from "zod"
-import { type LanguageModelUsage, type ProviderMetadata } from "ai"
+import { type ProviderMetadata } from "ai"
 import { Config } from "../config/config"
 import { Flag } from "../flag/flag"
 import { Identifier } from "../id/id"
@@ -22,20 +22,23 @@ import { Snapshot } from "@/snapshot"
 import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
 import { Global } from "@/global"
+import type { LanguageModelV2Usage } from "@ai-sdk/provider"
+import { iife } from "@/util/iife"
 
 export namespace Session {
   const log = Log.create({ service: "session" })
 
-  function createDefaultTitle() {
-    const now = new Date()
-    const pad = (value: number) => value.toString().padStart(2, "0")
-    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(
-      now.getMinutes(),
-    )}`
+  const parentTitlePrefix = "New session - "
+  const childTitlePrefix = "Child session - "
+
+  function createDefaultTitle(isChild = false) {
+    return (isChild ? childTitlePrefix : parentTitlePrefix) + new Date().toISOString()
   }
 
   export function isDefaultTitle(title: string) {
-    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(title)
+    return new RegExp(
+      `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
+    ).test(title)
   }
 
   function getForkedTitle(title: string): string {
@@ -216,7 +219,7 @@ export namespace Session {
       projectID: Instance.project.id,
       directory: input.directory,
       parentID: input.parentID,
-      title: input.title ?? createDefaultTitle(),
+      title: input.title ?? createDefaultTitle(!!input.parentID),
       permission: input.permission,
       time: {
         created: Date.now(),
@@ -224,7 +227,7 @@ export namespace Session {
       },
     }
     log.info("created", result)
-    await Storage.write(["session", result.id], result)
+    await Storage.write(["session", Instance.project.id, result.id], result)
     Bus.publish(Event.Created, {
       info: result,
     })
@@ -253,7 +256,7 @@ export namespace Session {
   }
 
   export const get = fn(Identifier.schema("session"), async (id) => {
-    const read = await Storage.read<Info>(["session", id])
+    const read = await Storage.read<Info>(["session", Instance.project.id, id])
     return read as Info
   })
 
@@ -294,7 +297,8 @@ export namespace Session {
   })
 
   export async function update(id: string, editor: (session: Info) => void, options?: { touch?: boolean }) {
-    const result = await Storage.update<Info>(["session", id], (draft) => {
+    const project = Instance.project
+    const result = await Storage.update<Info>(["session", project.id, id], (draft) => {
       editor(draft)
       if (options?.touch !== false) {
         draft.time.updated = Date.now()
@@ -327,53 +331,45 @@ export namespace Session {
     },
   )
 
-  export async function* list(projectID?: string, parentID?: string) {
-    for (const item of await Storage.list(["session", projectID!, parentID!])) {
-      yield Storage.read<Info>(item)
+  export async function* list() {
+    const project = Instance.project
+    for (const item of await Storage.list(["session", project.id])) {
+      const session = await Storage.read<Info>(item).catch(() => undefined)
+      if (!session) continue
+      yield session
     }
   }
 
   export const children = fn(Identifier.schema("session"), async (parentID) => {
+    const project = Instance.project
     const result = [] as Session.Info[]
-    for await (const session of list(undefined, parentID)) {
+    for (const item of await Storage.list(["session", project.id])) {
+      const session = await Storage.read<Info>(item).catch(() => undefined)
+      if (!session) continue
+      if (session.parentID !== parentID) continue
       result.push(session)
     }
     return result
   })
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
+    const project = Instance.project
     try {
       const session = await get(sessionID)
-      if (!session) return
-
-      // 1. Publish Deleted event immediately for Optimistic UI response
+      for (const child of await children(sessionID)) {
+        await remove(child.id)
+      }
+      await unshare(sessionID).catch(() => {})
+      for (const msg of await Storage.list(["message", sessionID])) {
+        for (const part of await Storage.list(["part", msg.at(-1)!])) {
+          await Storage.remove(part)
+        }
+        await Storage.remove(msg)
+      }
+      await Storage.remove(["session", project.id, sessionID])
       Bus.publish(Event.Deleted, {
         info: session,
       })
-
-      // 2. Perform heavy cleanup in parallel
-      const cleanup = async () => {
-        try {
-          // Recursively delete child sessions in parallel
-          const subs = await children(sessionID)
-          await Promise.all(subs.map((child) => remove(child.id)))
-
-          // Cleanup sharing and storage
-          await unshare(sessionID).catch(() => {})
-
-          // Note: Storage.remove(["session", id]) already performs recursive directory removal,
-          // so we don't need to manually list and remove messages/parts one by one.
-          await Storage.remove(["session", sessionID])
-        } catch (err) {
-          log.error(`Background cleanup failed for session ${sessionID}`, {
-            error: err,
-          })
-        }
-      }
-
-      // We still await the top-level logic here to ensure consistency in code flow,
-      // but the API layer will handle the actual backgrounding.
-      await cleanup()
     } catch (e) {
       log.error(e)
     }
@@ -445,44 +441,58 @@ export namespace Session {
   export const getUsage = fn(
     z.object({
       model: z.custom<Provider.Model>(),
-      usage: z.custom<LanguageModelUsage>(),
+      usage: z.custom<LanguageModelV2Usage>(),
       metadata: z.custom<ProviderMetadata>().optional(),
     }),
     (input) => {
-      const cacheReadInputTokens = input.usage.cachedInputTokens ?? 0
-      const readNumber = (value: unknown) => (typeof value === "number" ? value : undefined)
-      const readNestedNumber = (obj: unknown, key: string, nestedKey?: string) => {
-        if (!obj || typeof obj !== "object") return undefined
-        const record = obj as Record<string, unknown>
-        const target = nestedKey
-          ? record[key] && typeof record[key] === "object"
-            ? (record[key] as Record<string, unknown>)[nestedKey]
-            : undefined
-          : record[key]
-        return readNumber(target)
-      }
-
-      const anthropicCacheWrite = readNestedNumber(input.metadata?.["anthropic"], "cacheCreationInputTokens")
-      const bedrockCacheWrite = readNestedNumber(input.metadata?.["bedrock"], "usage", "cacheWriteInputTokens")
-      const veniceCacheWrite = readNestedNumber(input.metadata?.["venice"], "usage", "cacheCreationInputTokens")
-      const cacheWriteInputTokens = anthropicCacheWrite ?? bedrockCacheWrite ?? veniceCacheWrite ?? 0
-
-      const excludesCachedTokens = !!(input.metadata?.["anthropic"] || input.metadata?.["bedrock"])
-      const adjustedInputTokens = excludesCachedTokens
-        ? (input.usage.inputTokens ?? 0)
-        : (input.usage.inputTokens ?? 0) - cacheReadInputTokens - cacheWriteInputTokens
       const safe = (value: number) => {
         if (!Number.isFinite(value)) return 0
         return value
       }
+      const inputTokens = safe(input.usage.inputTokens ?? 0)
+      const outputTokens = safe(input.usage.outputTokens ?? 0)
+      const reasoningTokens = safe(input.usage.reasoningTokens ?? 0)
+
+      const cacheReadInputTokens = safe(input.usage.cachedInputTokens ?? 0)
+      const cacheWriteInputTokens = safe(
+        (input.metadata?.["anthropic"]?.["cacheCreationInputTokens"] ??
+          // @ts-expect-error
+          input.metadata?.["bedrock"]?.["usage"]?.["cacheWriteInputTokens"] ??
+          // @ts-expect-error
+          input.metadata?.["venice"]?.["usage"]?.["cacheCreationInputTokens"] ??
+          0) as number,
+      )
+
+      // OpenRouter provides inputTokens as the total count of input tokens (including cached).
+      // AFAIK other providers (OpenRouter/OpenAI/Gemini etc.) do it the same way e.g. vercel/ai#8794 (comment)
+      // Anthropic does it differently though - inputTokens doesn't include cached tokens.
+      // It looks like OpenCode's cost calculation assumes all providers return inputTokens the same way Anthropic does (I'm guessing getUsage logic was originally implemented with anthropic), so it's causing incorrect cost calculation for OpenRouter and others.
+      const excludesCachedTokens = !!(input.metadata?.["anthropic"] || input.metadata?.["bedrock"])
+      const adjustedInputTokens = safe(
+        excludesCachedTokens ? inputTokens : inputTokens - cacheReadInputTokens - cacheWriteInputTokens,
+      )
+
+      const total = iife(() => {
+        // Anthropic doesn't provide total_tokens, also ai sdk will vastly undercount if we
+        // don't compute from components
+        if (
+          input.model.api.npm === "@ai-sdk/anthropic" ||
+          input.model.api.npm === "@ai-sdk/amazon-bedrock" ||
+          input.model.api.npm === "@ai-sdk/google-vertex/anthropic"
+        ) {
+          return adjustedInputTokens + outputTokens + cacheReadInputTokens + cacheWriteInputTokens
+        }
+        return input.usage.totalTokens
+      })
 
       const tokens = {
-        input: safe(adjustedInputTokens),
-        output: safe(input.usage.outputTokens ?? 0),
-        reasoning: safe(input.usage?.reasoningTokens ?? 0),
+        total,
+        input: adjustedInputTokens,
+        output: outputTokens,
+        reasoning: reasoningTokens,
         cache: {
-          write: safe(cacheWriteInputTokens),
-          read: safe(cacheReadInputTokens),
+          write: cacheWriteInputTokens,
+          read: cacheReadInputTokens,
         },
       }
 
@@ -517,14 +527,14 @@ export namespace Session {
     z.object({
       sessionID: Identifier.schema("session"),
       modelID: z.string(),
-      providerId: z.string(),
+      providerID: z.string(),
       messageID: Identifier.schema("message"),
     }),
     async (input) => {
       await SessionPrompt.command({
         sessionID: input.sessionID,
         messageID: input.messageID,
-        model: input.providerId + "/" + input.modelID,
+        model: input.providerID + "/" + input.modelID,
         command: Command.Default.INIT,
         arguments: "",
       })
