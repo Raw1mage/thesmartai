@@ -1,6 +1,6 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
-import { batch, createMemo, createRoot, onCleanup } from "solid-js"
+import { batch, createMemo, createRoot, onCleanup, createEffect } from "solid-js"
 import { useParams } from "@solidjs/router"
 import type { FileSelection } from "@/context/file"
 import { Persist, persisted } from "@/utils/persist"
@@ -115,24 +115,44 @@ type PromptCacheEntry = {
 }
 
 function createPromptSession(dir: string, id: string | undefined) {
-  const legacy = `${dir}/prompt${id ? "/" + id : ""}.v2`
+  const legacyV2 = `${dir}/prompt${id ? "/" + id : ""}.v2`
+  const oldConfig = Persist.scoped(dir, id, "prompt", [legacyV2])
 
-  const [store, setStore, _, ready] = persisted(
-    Persist.scoped(dir, id, "prompt", [legacy]),
+  const [inputStore, setInputStore, _i, inputReady] = persisted(
+    Persist.scoped(dir, id, "prompt-input", [oldConfig.key, ...(oldConfig.legacy || [])]),
     createStore<{
       prompt: Prompt
       cursor?: number
-      context: {
+      context?: {
         items: (ContextItem & { key: string })[]
       }
     }>({
       prompt: clonePrompt(DEFAULT_PROMPT),
       cursor: undefined,
+    }),
+  )
+
+  const [contextStore, setContextStore, _c, contextReady] = persisted(
+    Persist.scoped(dir, id, "prompt-context"),
+    createStore<{
+      context: {
+        items: (ContextItem & { key: string })[]
+      }
+    }>({
       context: {
         items: [],
       },
     }),
   )
+
+  createEffect(() => {
+    if (inputReady() && inputStore.context && contextReady()) {
+      batch(() => {
+        setContextStore("context", inputStore.context!)
+        setInputStore("context", undefined)
+      })
+    }
+  })
 
   function keyForItem(item: ContextItem) {
     if (item.type !== "file") return item.type
@@ -151,32 +171,32 @@ function createPromptSession(dir: string, id: string | undefined) {
   }
 
   return {
-    ready,
-    current: createMemo(() => store.prompt),
-    cursor: createMemo(() => store.cursor),
-    dirty: createMemo(() => !isPromptEqual(store.prompt, DEFAULT_PROMPT)),
+    ready: () => inputReady() && contextReady(),
+    current: createMemo(() => inputStore.prompt),
+    cursor: createMemo(() => inputStore.cursor),
+    dirty: createMemo(() => !isPromptEqual(inputStore.prompt, DEFAULT_PROMPT)),
     context: {
-      items: createMemo(() => store.context.items),
+      items: createMemo(() => contextStore.context.items),
       add(item: ContextItem) {
         const key = keyForItem(item)
-        if (store.context.items.find((x) => x.key === key)) return
-        setStore("context", "items", (items) => [...items, { key, ...item }])
+        if (contextStore.context.items.find((x) => x.key === key)) return
+        setContextStore("context", "items", (items) => [...items, { key, ...item }])
       },
       remove(key: string) {
-        setStore("context", "items", (items) => items.filter((x) => x.key !== key))
+        setContextStore("context", "items", (items) => items.filter((x) => x.key !== key))
       },
     },
     set(prompt: Prompt, cursorPosition?: number) {
       const next = clonePrompt(prompt)
       batch(() => {
-        setStore("prompt", next)
-        if (cursorPosition !== undefined) setStore("cursor", cursorPosition)
+        setInputStore("prompt", next)
+        if (cursorPosition !== undefined) setInputStore("cursor", cursorPosition)
       })
     },
     reset() {
       batch(() => {
-        setStore("prompt", clonePrompt(DEFAULT_PROMPT))
-        setStore("cursor", 0)
+        setInputStore("prompt", clonePrompt(DEFAULT_PROMPT))
+        setInputStore("cursor", 0)
       })
     },
   }
