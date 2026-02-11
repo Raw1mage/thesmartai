@@ -22,7 +22,7 @@ Du kan angi loggnivået med kommandolinjealternativet `--log-level` for å få m
 
 ## Lagring
 
-opencode lagrer øktdata og andre applikasjonsdata på disken på:
+OpenCode lagrer øktdata og andre applikasjonsdata på disken på:
 
 - **macOS/Linux**: `~/.local/share/opencode/`
 - **Windows**: Trykk `WIN+R` og lim inn `%USERPROFILE%\.local\share\opencode`
@@ -252,7 +252,7 @@ For å løse dette:
 
 ### AI_APICallError og leverandørpakkeproblemer
 
-Hvis du støter på API anropsfeil, kan dette skyldes utdaterte leverandørpakker. opencode installerer dynamisk leverandørpakker (OpenAI, Anthropic, Google, etc.) etter behov og cacher dem lokalt.
+Hvis du støter på API-anropsfeil, kan dette skyldes utdaterte leverandørpakker. OpenCode installerer dynamisk leverandørpakker (OpenAI, Anthropic, Google, etc.) etter behov og cacher dem lokalt.
 
 For å løse problemer med leverandørpakke:
 
@@ -264,9 +264,9 @@ For å løse problemer med leverandørpakke:
 
    På Windows, trykk `WIN+R` og slett: `%USERPROFILE%\.cache\opencode`
 
-2. Start opencode på nytt for å installere de nyeste leverandørpakkene på nytt
+2. Start OpenCode på nytt for å installere de nyeste leverandørpakkene på nytt
 
-Dette vil tvinge opencode til å laste ned de nyeste versjonene av leverandørpakkene, som ofte løser kompatibilitetsproblemer med modellparametere og API endringer.
+Dette vil tvinge OpenCode til å laste ned de nyeste versjonene av leverandørpakkene, som ofte løser kompatibilitetsproblemer med modellparametere og API-endringer.
 
 ---
 
@@ -297,4 +297,4 @@ Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
 export DISPLAY=:99.0
 ```
 
-opencode vil oppdage om du bruker Wayland og foretrekker `wl-clipboard`, ellers vil den prøve å finne utklippstavleverktøy i rekkefølgen: `xclip` og `xsel`.
+OpenCode vil oppdage om du bruker Wayland og foretrekker `wl-clipboard`, ellers vil den prøve å finne utklippstavleverktøy i rekkefølgen: `xclip` og `xsel`.

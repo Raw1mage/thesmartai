@@ -1,6 +1,6 @@
 ---
 title: GitLab
-description: Bruk OpenCode i GitLab-problemer og sammenslåingsforespørsler.
+description: Bruk opencode i GitLab-problemer og sammenslåingsforespørsler.
 ---
 
 OpenCode integreres med GitLab arbeidsflyten gjennom GitLab CI/CD pipeline eller med GitLab Duo.
@@ -55,7 +55,7 @@ Nevn `@opencode` i en kommentar, og OpenCode vil utføre oppgaver innenfor din G
 
 - **Triage-problemer**: Be OpenCode se på et problem og forklare det for deg.
 - **Fiks og implementer**: Be OpenCode om å fikse et problem eller implementere en funksjon.
-  Det vil opprette en ny filial og sende en sammenslåingsforespørsel med endringene.
+  Det vil opprette en ny gren og sende en sammenslåingsforespørsel med endringene.
 - **Sikkert**: OpenCode kjører på GitLab-løperne dine.
 
 ---
@@ -64,7 +64,7 @@ Nevn `@opencode` i en kommentar, og OpenCode vil utføre oppgaver innenfor din G
 
 OpenCode kjører i GitLab CI/CD pipeline, her er det du trenger for å sette den opp:
 
-:::tupp
+:::tip
 Sjekk ut [**GitLab-dokumentene**](https://docs.gitlab.com/user/duo_agent_platform/agent_assistant/) for oppdaterte instruksjoner.
 :::
 
@@ -160,13 +160,13 @@ Du kan se [GitLab CLI agents docs](https://docs.gitlab.com/user/duo_agent_platfo
 
 Her er noen eksempler på hvordan du kan bruke OpenCode i GitLab.
 
-:::tupp
+:::tip
 Du kan konfigurere til å bruke en annen triggerfrase enn `@opencode`.
 :::
 
 - **Forklar et problem**
 
-  Legg til denne kommentaren i en GitLab-utgave.
+  Legg til denne kommentaren i en GitLab-sak.
 
   ```
   @opencode explain this issue
@@ -176,7 +176,7 @@ Du kan konfigurere til å bruke en annen triggerfrase enn `@opencode`.
 
 - **Fiks et problem**
 
-  I en GitLab-utgave, si:
+  I en GitLab-sak, si:
 
   ```
   @opencode fix this

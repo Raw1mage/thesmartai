@@ -1,6 +1,6 @@
 ---
 title: Enterprise
-description: Sikker bruk av OpenCode i din organisasjon.
+description: Sikker bruk av opencode i din organisasjon.
 ---
 
 import config from "../../../../config.mjs"
@@ -111,14 +111,14 @@ Dette er nå på veikartet vårt. Hvis du er interessert, **<a href={email}>gi o
 ## FAQ
 
 <details>
-<summary>What is OpenCode Enterprise?</summary>
+<summary>Hva er OpenCode Enterprise?</summary>
 
 OpenCode Enterprise er for organisasjoner som ønsker å sikre at deres kode og data aldri forlater deres infrastruktur. Den kan gjøre dette ved å bruke en sentralisert konfigurasjon som integreres med din SSO og interne AI gateway.
 
 </details>
 
 <details>
-<summary>How do I get started with OpenCode Enterprise?</summary>
+<summary>Hvordan kommer jeg i gang med OpenCode Enterprise?</summary>
 
 Bare start med en intern prøveversjon med teamet ditt. OpenCode lagrer som standard ikke koden eller kontekstdataene dine, noe som gjør det enkelt å komme i gang.
 
@@ -127,23 +127,23 @@ Så **<a href={email}>kontakt oss</a>** for å diskutere priser og implementerin
 </details>
 
 <details>
-<summary>How does enterprise pricing work?</summary>
+<summary>Hvordan fungerer bedriftsprising?</summary>
 
 Vi tilbyr bedriftspriser per sete. Hvis du har din egen LLM-gateway, tar vi ikke betalt for tokens som brukes. For ytterligere detaljer, **<a href={email}>kontakt oss</a>** for et tilpasset tilbud basert på organisasjonens behov.
 
 </details>
 
 <details>
-<summary>Is my data secure with OpenCode Enterprise?</summary>
+<summary>Er dataene mine trygge med OpenCode Enterprise?</summary>
 
 Ja. OpenCode lagrer ikke koden eller kontekstdataene dine. All behandling skjer lokalt eller gjennom direkte API-anrop til AI-leverandøren din. Med sentral konfigurasjon og SSO-integrasjon forblir dataene dine sikre i organisasjonens infrastruktur.
 
 </details>
 
 <details>
-<summary>Can we use our own private NPM registry?</summary>
+<summary>Kan vi bruke vårt eget private NPM-register?</summary>
 
-OpenCode støtter private npm-registre gjennom Buns opprinnelige `.npmrc`-filstøtte. Hvis organisasjonen din bruker et privat register, som JFrog Artifactory, Nexus eller lignende, sørg for at utviklerne er autentisert før du kjører OpenCode.
+OpenCode støtter private npm-registre gjennom Buns innebygde `.npmrc`-filstøtte. Hvis organisasjonen din bruker et privat register, som JFrog Artifactory, Nexus eller lignende, sørg for at utviklerne er autentisert før du kjører OpenCode.
 
 Slik setter du opp autentisering med ditt private register:
 
@@ -152,9 +152,9 @@ npm login --registry=https://your-company.jfrog.io/api/npm/npm-virtual/
 ```
 
 Dette oppretter `~/.npmrc` med autentiseringsdetaljer. OpenCode vil automatisk
-plukke opp dette.
+oppdage dette.
 
-:::forsiktighet
+:::caution
 Du må være logget inn i det private registeret før du kjører OpenCode.
 :::
 

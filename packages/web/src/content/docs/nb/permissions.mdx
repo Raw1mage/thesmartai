@@ -134,7 +134,7 @@ OpenCode-tillatelser tastes inn etter verktøynavn, pluss et par sikkerhetsvakte
 - `glob` — fil-globing (tilsvarer glob-mønsteret)
 - `grep` — innholdssøk (samsvarer med regex-mønsteret)
 - `list` — viser filer i en katalog (tilsvarer katalogbanen)
-- `bash` — kjører skallkommandoer (matcher analyserte kommandoer som `git status --porcelain`)
+- `bash` — kjører shell-kommandoer (matcher analyserte kommandoer som `git status --porcelain`)
 - `task` — lansering av subagenter (tilsvarer subagenttypen)
 - `skill` — laster en ferdighet (tilsvarer ferdighetsnavnet)
 - `lsp` — kjører LSP-spørringer (for øyeblikket ikke-granulære)
@@ -169,7 +169,7 @@ Hvis du ikke spesifiserer noe, starter OpenCode fra tillatte standardinnstilling
 
 ---
 
-## Hva "Spør" gjør
+## Hva "ask" gjør
 
 Når OpenCode ber om godkjenning, gir UI tre utfall:
 
@@ -232,6 +232,6 @@ permission:
 Only analyze code and suggest changes.
 ```
 
-:::tupp
+:::tip
 Bruk mønstertilpasning for kommandoer med argumenter. `"grep *"` tillater `grep pattern file.txt`, mens `"grep"` alene ville blokkert den. Kommandoer som `git status` fungerer for standard oppførsel, men krever eksplisitt tillatelse (som `"git status *"`) når argumenter sendes.
 :::
