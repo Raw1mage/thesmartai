@@ -205,7 +205,9 @@ if (version !== CACHE_VERSION) {
         }),
       ),
     )
-  } catch (e) {}
+  } catch (e) {
+      console.warn("Failed to clear cache during version migration", e)
+    }
   await Bun.file(path.join(Global.Path.cache, "version")).write(CACHE_VERSION)
 }
 
