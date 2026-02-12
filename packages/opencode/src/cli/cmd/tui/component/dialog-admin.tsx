@@ -43,7 +43,7 @@ import { probeModelAvailability } from "../util/model-probe"
 import { Auth } from "@/auth"
 import { checkAccountsQuota, type QuotaGroup, type QuotaGroupSummary } from "@/plugin/antigravity/plugin/quota"
 import { loadAccounts, saveAccounts, type AccountMetadataV3 } from "@/plugin/antigravity/plugin/storage"
-import { getModelFamily } from "@/plugin/antigravity/plugin/transform/model-resolver"
+import { resolveAntigravityQuotaGroup } from "@/plugin/antigravity/plugin/quota-group"
 import type { PluginClient } from "@/plugin/antigravity/plugin/types"
 import z from "zod"
 
@@ -635,12 +635,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   }
 
   function resolveQuotaGroup(modelID: string, displayName?: string): QuotaGroup | null {
-    const combined = `${modelID} ${displayName ?? ""}`.toLowerCase()
-    if (combined.includes("claude")) return "claude"
-    const isGemini3 = combined.includes("gemini-3") || combined.includes("gemini 3")
-    if (!isGemini3) return null
-    const family = getModelFamily(modelID)
-    return family === "gemini-flash" ? "gemini-flash" : "gemini-pro"
+    return resolveAntigravityQuotaGroup(modelID, displayName)
   }
 
   function getQuotaPercent(
