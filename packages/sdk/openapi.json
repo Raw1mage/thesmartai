@@ -3837,9 +3837,12 @@
                                   "properties": {
                                     "npm": {
                                       "type": "string"
+                                    },
+                                    "api": {
+                                      "type": "string"
                                     }
                                   },
-                                  "required": ["npm"]
+                                  "required": ["npm", "api"]
                                 },
                                 "variants": {
                                   "type": "object",
@@ -10448,9 +10451,12 @@
                   "properties": {
                     "npm": {
                       "type": "string"
+                    },
+                    "api": {
+                      "type": "string"
                     }
                   },
-                  "required": ["npm"]
+                  "required": ["npm", "api"]
                 },
                 "variants": {
                   "description": "Variant-specific configuration",
