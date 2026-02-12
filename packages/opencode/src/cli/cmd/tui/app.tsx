@@ -418,6 +418,7 @@ function App() {
       value: "session.new",
       keybind: "session_new",
       category: "Session",
+      slash: { name: "new" },
       onSelect: () => {
         const current = promptRef.current
         // Don't require focus - if there's any text, preserve it

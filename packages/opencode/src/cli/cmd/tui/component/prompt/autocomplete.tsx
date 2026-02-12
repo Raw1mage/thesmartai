@@ -346,7 +346,7 @@ export function Autocomplete(props: {
     const results: AutocompleteOption[] = [...command.slashes()]
 
     // 僅保留核心管理指令，其餘隱藏以符合 0 指令對話優先原則
-    const whitelist = ["/admin", "/session", "/model", "/connect", "/menu"]
+    const whitelist = ["/admin", "/session", "/model", "/connect", "/menu", "/new"]
     const filtered = results.filter((item) => {
       const display = item.display.trim()
       return whitelist.some((w) => display === w || item.aliases?.some((a) => a === w))
