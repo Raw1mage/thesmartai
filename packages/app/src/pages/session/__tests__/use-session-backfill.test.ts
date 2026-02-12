@@ -21,7 +21,6 @@ describe("useSessionBackfill", () => {
       rafCallbacks.push(cb)
       return 0
     }
-    // @ts-expect-error Missing in Bun test DOM environment
     window.requestIdleCallback = (cb) => {
       idleCallbacks.push(cb)
       return 0
@@ -47,7 +46,7 @@ describe("useSessionBackfill", () => {
           scroller: () => undefined,
           messagesReady,
           messageCount: () => 100,
-          onBackfill: (v) => { 
+          onBackfill: (v) => {
             backfillValue = v
             // The effect first sets it to 0, then to 80
             if (v === 80) {
@@ -65,7 +64,7 @@ describe("useSessionBackfill", () => {
         }, 50)
       })
     })
-    
+
     expect(backfillValue).toBe(80)
   })
 
@@ -74,7 +73,7 @@ describe("useSessionBackfill", () => {
       createRoot((dispose) => {
         const [turnStart, setTurnStart] = createSignal(40)
         let backfillValue = 40
-        
+
         const mockScroller = {
           scrollTop: 100,
           scrollHeight: 500,
@@ -84,7 +83,7 @@ describe("useSessionBackfill", () => {
           scroller: () => mockScroller as any,
           messagesReady: () => true,
           messageCount: () => 100,
-          onBackfill: (v) => { 
+          onBackfill: (v) => {
             backfillValue = v
           },
           turnStart,
@@ -92,25 +91,25 @@ describe("useSessionBackfill", () => {
 
         // Trigger backfill logic
         scheduleTurnBackfill()
-        
+
         // requestIdleCallback should have been called
         expect(idleCallbacks.length).toBe(1)
-        
+
         // Capture height before height change
         const beforeHeight = mockScroller.scrollHeight // 500
-        
+
         // Execute idle callback (which calls backfillTurns)
         idleCallbacks[0]()
-        
+
         // After backfillTurns, onBackfill should be called with next start (40 - 20 = 20)
         expect(backfillValue).toBe(20)
-        
+
         // Simulate height change after new messages rendered
-        mockScroller.scrollHeight = 700 
-        
+        mockScroller.scrollHeight = 700
+
         // Execute RAF callbacks
-        rafCallbacks.forEach(cb => cb(0))
-        
+        rafCallbacks.forEach((cb) => cb(0))
+
         // Expect scrollTop to be adjusted: beforeTop(100) + delta(700-500) = 300
         expect(mockScroller.scrollTop).toBe(300)
 
