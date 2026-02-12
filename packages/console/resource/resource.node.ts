@@ -12,13 +12,13 @@ export const Resource = new Proxy(
     get(_target, prop: keyof typeof ResourceBase) {
       const value = ResourceBase[prop]
       if ("type" in value) {
-        // @ts-expect-error sst type discrimination
+        // @ts-ignore sst type discrimination - runtime types broader than static
         if (value.type === "sst.cloudflare.Bucket") {
           return {
             put: async () => {},
           }
         }
-        // @ts-expect-error sst type discrimination
+        // @ts-ignore sst type discrimination - runtime types broader than static
         if (value.type === "sst.cloudflare.Kv") {
           const cloudflareApiToken =
             (ResourceBase as any)["CLOUDFLARE_API_TOKEN"]?.value ?? process.env.CLOUDFLARE_API_TOKEN
