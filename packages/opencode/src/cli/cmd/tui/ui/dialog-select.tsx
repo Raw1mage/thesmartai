@@ -470,14 +470,13 @@ function Option(props: {
 
   return (
     <>
-      <Show when={props.current}>
-        <text flexShrink={0} fg={props.active ? fg : props.current ? theme.primary : theme.text} marginRight={0}>
-          ●
-        </text>
-      </Show>
-      <Show when={!props.current && props.gutter}>
-        <box flexShrink={0} marginRight={0}>
-          {props.gutter}
+      <Show when={props.current || props.gutter}>
+        <box flexShrink={0} width={2} marginRight={0}>
+          <Show when={props.current} fallback={<box flexShrink={0}>{props.gutter}</box>}>
+            <text flexShrink={0} fg={props.active ? fg : props.current ? theme.primary : theme.text}>
+              ●
+            </text>
+          </Show>
         </box>
       </Show>
       <text
