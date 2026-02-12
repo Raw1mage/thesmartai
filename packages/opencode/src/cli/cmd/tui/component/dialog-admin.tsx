@@ -1091,16 +1091,22 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     if (!providerId || !modelID) return
     const resolvedProvider = Account.parseProvider(providerId) || providerId
 
-    // FIX: Set the selected account as active
+    // Check if selecting an already-selected model (triggers auto-exit)
+    // @event_20260208_double_enter_model_exit
+    // CRITICAL: Must check BEFORE handleSetActive, otherwise currentAccountId will already be updated
     const fam = family(providerId) || providerId
+    const current = local.model.current()
+    const currentAccountId = iife(() => {
+      const accountData = activityAccounts()?.[resolvedProvider] ?? activityAccounts()?.[fam]
+      return accountData?.activeAccount
+    })
+    const isAlreadySelected =
+      current?.providerId === resolvedProvider && current?.modelID === modelID && currentAccountId === accountId
+
+    // FIX: Set the selected account as active
     if (accountId && accountId !== "-") {
       await handleSetActive(fam, accountId)
     }
-
-    // Check if selecting an already-selected model (triggers auto-exit)
-    // @event_20260208_double_enter_model_exit
-    const current = local.model.current()
-    const isAlreadySelected = current?.providerId === resolvedProvider && current?.modelID === modelID
 
     debugCheckpoint("admin.activities", "select model", {
       accountId,
@@ -2317,6 +2323,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
         hideInput={true}
         title={title()}
         current={selectCurrent()}
+        hideCurrentIndicator={page() === "activities"}
         options={options()}
         keybindLayout="inline"
       />

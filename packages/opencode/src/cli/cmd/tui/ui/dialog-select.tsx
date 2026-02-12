@@ -33,6 +33,7 @@ export interface DialogSelectProps<T> {
   }[]
   current?: T
   keybindLayout?: "inline" | "columns"
+  hideCurrentIndicator?: boolean
 }
 
 export interface DialogSelectOption<T = any> {
@@ -388,7 +389,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                           moveTo(index)
                         }}
                         backgroundColor={active() ? (option.bg ?? theme.primary) : RGBA.fromInts(0, 0, 0, 0)}
-                        paddingLeft={current() || option.gutter ? 1 : 3}
+                        paddingLeft={(!props.hideCurrentIndicator && current()) || option.gutter ? 1 : 3}
                         paddingRight={0}
                         gap={1}
                       >
@@ -397,7 +398,7 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
                           footer={flatten() ? (option.category ?? option.footer) : option.footer}
                           description={option.description !== category ? option.description : undefined}
                           active={active()}
-                          current={current()}
+                          current={props.hideCurrentIndicator ? false : current()}
                           gutter={option.gutter}
                           truncate={option.truncate}
                         />
