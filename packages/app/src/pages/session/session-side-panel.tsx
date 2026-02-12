@@ -21,8 +21,57 @@ import { useFile, type SelectedLineRange } from "@/context/file"
 import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
+import type { Message, UserMessage } from "@opencode-ai/sdk/v2/client"
 
-export function SessionSidePanel(props: any) {
+type SessionSidePanelViewModel = {
+  messages: () => Message[]
+  visibleUserMessages: () => UserMessage[]
+  view: () => ReturnType<ReturnType<typeof useLayout>["view"]>
+  info: () => ReturnType<ReturnType<typeof useSync>["session"]["get"]>
+}
+
+export function SessionSidePanel(props: {
+  open: boolean
+  reviewOpen: boolean
+  language: ReturnType<typeof useLanguage>
+  layout: ReturnType<typeof useLayout>
+  command: ReturnType<typeof useCommand>
+  dialog: ReturnType<typeof useDialog>
+  file: ReturnType<typeof useFile>
+  comments: ReturnType<typeof useComments>
+  hasReview: boolean
+  reviewCount: number
+  reviewTab: boolean
+  contextOpen: () => boolean
+  openedTabs: () => string[]
+  activeTab: () => string
+  activeFileTab: () => string | undefined
+  tabs: () => ReturnType<ReturnType<typeof useLayout>["tabs"]>
+  openTab: (value: string) => void
+  showAllFiles: () => void
+  reviewPanel: () => JSX.Element
+  vm: SessionSidePanelViewModel
+  handoffFiles: () => Record<string, SelectedLineRange | null> | undefined
+  codeComponent: NonNullable<ValidComponent>
+  addCommentToContext: (input: {
+    file: string
+    selection: SelectedLineRange
+    comment: string
+    preview?: string
+    origin?: "review" | "file"
+  }) => void
+  activeDraggable: () => string | undefined
+  onDragStart: (event: unknown) => void
+  onDragEnd: () => void
+  onDragOver: (event: DragEvent) => void
+  fileTreeTab: () => "changes" | "all"
+  setFileTreeTabValue: (value: string) => void
+  diffsReady: boolean
+  diffFiles: string[]
+  kinds: Map<string, "add" | "del" | "mix">
+  activeDiff?: string
+  focusReviewDiff: (path: string) => void
+}) {
   return (
     <Show when={props.open}>
       <aside
@@ -142,10 +191,10 @@ export function SessionSidePanel(props: any) {
                         <Show when={props.activeTab() === "context"}>
                           <div class="relative pt-2 flex-1 min-h-0 overflow-hidden">
                             <SessionContextTab
-                              messages={props.messages as never}
-                              visibleUserMessages={props.visibleUserMessages as never}
-                              view={props.view as never}
-                              info={props.info as never}
+                              messages={props.vm.messages}
+                              visibleUserMessages={props.vm.visibleUserMessages}
+                              view={props.vm.view}
+                              info={props.vm.info}
                             />
                           </div>
                         </Show>
@@ -158,7 +207,7 @@ export function SessionSidePanel(props: any) {
                           tab={tab}
                           activeTab={props.activeTab}
                           tabs={props.tabs}
-                          view={props.view}
+                          view={props.vm.view}
                           handoffFiles={props.handoffFiles}
                           file={props.file}
                           comments={props.comments}
