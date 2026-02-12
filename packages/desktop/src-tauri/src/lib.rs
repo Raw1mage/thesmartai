@@ -580,10 +580,12 @@ async fn initialize(app: AppHandle) {
         let id = SqliteMigrationProgress::listen(&app, move |e| {
             let _ = init_tx.send(InitStep::SqliteWaiting);
 
-            if matches!(e.payload, SqliteMigrationProgress::Done)
-                && let Some(done_tx) = done_tx.lock().unwrap().take()
-            {
-                let _ = done_tx.send(());
+            if matches!(e.payload, SqliteMigrationProgress::Done) {
+                if let Ok(mut lock) = done_tx.lock() {
+                    if let Some(done_tx) = lock.take() {
+                        let _ = done_tx.send(());
+                    }
+                }
             }
         });
 

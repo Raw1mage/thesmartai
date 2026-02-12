@@ -144,6 +144,8 @@ export async function handler(
       }
 
       // Try another provider => stop retrying if using fallback provider
+      // NOTE: This now triggers failover for ANY non-200 status (except 404), not just 4xx/5xx errors.
+      // This is safer for LLM APIs which typically only return 200 on success.
       if (
         res.status !== 200 &&
         // ie. openai 404 error: Item with id 'msg_0ead8b004a3b165d0069436a6b6834819896da85b63b196a3f' not found.
@@ -245,7 +247,7 @@ export async function handler(
                   await reload(billingSource, authInfo, costInfo)
                   cost = calculateOccuredCost(billingSource, costInfo)
                 }
-                c.enqueue(encoder.encode(usageParser.buidlCostChunk(cost)))
+                c.enqueue(encoder.encode(usageParser.buildCostChunk(cost)))
                 c.close()
                 return
               }
@@ -711,6 +713,8 @@ export async function handler(
     if (billingSource === "anonymous") return
     authInfo = authInfo!
 
+    // NOTE: For BYOK (Bring Your Own Key) users, we track the cost but charge 0.
+    // However, the cost field in the database will reflect the actual calculated cost for analytics.
     const cost = centsToMicroCents(totalCostInCent)
     await Database.use((db) =>
       Promise.all([
@@ -811,7 +815,8 @@ export async function handler(
     authInfo = authInfo!
 
     const reloadTrigger = centsToMicroCents((authInfo.billing.reloadTrigger ?? Billing.RELOAD_TRIGGER) * 100)
-    if (authInfo.billing.balance - costInfo.totalCostInCent >= reloadTrigger) return
+    // FIX: Convert totalCostInCent (cents) to micro-cents to match balance unit
+    if (authInfo.billing.balance - centsToMicroCents(costInfo.totalCostInCent) >= reloadTrigger) return
     if (authInfo.billing.timeReloadLockedTill && authInfo.billing.timeReloadLockedTill > new Date()) return
 
     const lock = await Database.use((tx) =>
