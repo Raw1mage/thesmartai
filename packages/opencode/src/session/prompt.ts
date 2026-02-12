@@ -38,6 +38,13 @@ import { Tool } from "@/tool/tool"
 import { ToolInvoker } from "./tool-invoker"
 import { PermissionNext } from "@/permission/next"
 import { SessionStatus } from "./status"
+import {
+  assertNotBusy as assertNotBusyRuntime,
+  start as startRuntime,
+  cancel as cancelRuntime,
+  enqueueCallback,
+  consumeCallbacks,
+} from "./prompt-runtime"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import { runShellPrompt } from "./shell-runner"
 import { getPreloadedContext } from "./preloaded-context"
@@ -55,30 +62,9 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
   export const OUTPUT_TOKEN_MAX = Flag.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX || 32_000
-  const state = Instance.state(
-    () => {
-      const data: Record<
-        string,
-        {
-          abort: AbortController
-          callbacks: {
-            resolve(input: MessageV2.WithParts): void
-            reject(reason?: any): void
-          }[]
-        }
-      > = {}
-      return data
-    },
-    async (current) => {
-      for (const item of Object.values(current)) {
-        item.abort.abort()
-      }
-    },
-  )
 
   export function assertNotBusy(sessionID: string) {
-    const match = state()[sessionID]
-    if (match) throw new Session.BusyError(sessionID)
+    return assertNotBusyRuntime(sessionID)
   }
 
   export const PromptInput = z.object({
@@ -183,36 +169,19 @@ export namespace SessionPrompt {
   }
 
   function start(sessionID: string) {
-    const s = state()
-    if (s[sessionID]) return
-    const controller = new AbortController()
-    s[sessionID] = {
-      abort: controller,
-      callbacks: [],
-    }
-    return controller.signal
+    return startRuntime(sessionID)
   }
 
   export function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
-    const s = state()
-    const match = s[sessionID]
-    if (!match) {
-      SessionStatus.set(sessionID, { type: "idle" })
-      return
-    }
-    match.abort.abort()
-    delete s[sessionID]
-    SessionStatus.set(sessionID, { type: "idle" })
-    return
+    return cancelRuntime(sessionID)
   }
 
   export const loop = fn(Identifier.schema("session"), async (sessionID) => {
     const abort = start(sessionID)
     if (!abort) {
       return new Promise<MessageV2.WithParts>((resolve, reject) => {
-        const callbacks = state()[sessionID].callbacks
-        callbacks.push({ resolve, reject })
+        enqueueCallback(sessionID, { resolve, reject })
       })
     }
 
@@ -637,7 +606,7 @@ export namespace SessionPrompt {
     SessionCompaction.prune({ sessionID })
     for await (const item of MessageV2.stream(sessionID)) {
       if (item.info.role === "user") continue
-      const queued = state()[sessionID]?.callbacks ?? []
+      const queued = consumeCallbacks(sessionID)
       for (const q of queued) {
         q.resolve(item)
       }
