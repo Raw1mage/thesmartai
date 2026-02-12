@@ -79,13 +79,13 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
 
     const find = (key: ModelKey) => list().find((m) => m.id === key.modelID && m.provider.id === key.providerID)
 
-    function update(model: ModelKey, state: Visibility) {
+    const update = (model: ModelKey, partial: Partial<Omit<User, "providerID" | "modelID">>) => {
       const index = store.user.findIndex((x) => x.modelID === model.modelID && x.providerID === model.providerID)
       if (index >= 0) {
-        setStore("user", index, { visibility: state })
+        setStore("user", index, partial)
         return
       }
-      setStore("user", store.user.length, { ...model, visibility: state })
+      setStore("user", store.user.length, { ...model, visibility: "show", ...partial })
     }
 
     const visible = (model: ModelKey) => {
@@ -100,7 +100,17 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     }
 
     const setVisibility = (model: ModelKey, state: boolean) => {
-      update(model, state ? "show" : "hide")
+      update(model, { visibility: state ? "show" : "hide" })
+    }
+
+    const isFavorite = (model: ModelKey) => {
+      const user = store.user.find((x) => x.modelID === model.modelID && x.providerID === model.providerID)
+      return user?.favorite ?? false
+    }
+
+    const toggleFavorite = (model: ModelKey) => {
+      const current = isFavorite(model)
+      update(model, { favorite: !current })
     }
 
     const push = (model: ModelKey) => {
@@ -127,6 +137,8 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       find,
       visible,
       setVisibility,
+      isFavorite,
+      toggleFavorite,
       recent: {
         list: createMemo(() => store.recent),
         push,

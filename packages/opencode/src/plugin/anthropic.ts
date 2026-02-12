@@ -216,8 +216,8 @@ export async function AnthropicAuthPlugin(input: PluginInput): Promise<Hooks> {
             requestHeaders.set("Authorization", `Bearer ${auth.access}`)
             requestHeaders.set("anthropic-version", "2023-06-01")
             requestHeaders.set("Content-Type", "application/json")
-            // User-Agent format from reference: claude-cli/VERSION (external, cli)
-            requestHeaders.set("User-Agent", `claude-cli/${VERSION} (external, cli)`)
+            // User-Agent format from reference: claude-code/VERSION
+            requestHeaders.set("User-Agent", `claude-code/${VERSION}`)
 
             // Merge required betas with any incoming betas from SDK
             // claude-code-20250219 is CRITICAL - it identifies the request as Claude Code

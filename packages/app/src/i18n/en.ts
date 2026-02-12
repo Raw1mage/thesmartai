@@ -207,6 +207,9 @@ export const dict = {
   "model.tooltip.reasoning.none": "No reasoning",
   "model.tooltip.context": "Context limit {{limit}}",
 
+  "common.favorites": "Favorites",
+  "common.providers": "Providers",
+  "common.all": "All Models",
   "common.search.placeholder": "Search",
   "common.goBack": "Navigate back",
   "common.goForward": "Navigate forward",

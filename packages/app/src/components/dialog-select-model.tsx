@@ -1,5 +1,16 @@
 import { Popover as Kobalte } from "@kobalte/core/popover"
-import { Component, ComponentProps, createEffect, createMemo, JSX, onCleanup, Show, ValidComponent } from "solid-js"
+import {
+  Component,
+  ComponentProps,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  JSX,
+  onCleanup,
+  Show,
+  ValidComponent,
+} from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
@@ -14,6 +25,15 @@ import { DialogSelectProvider } from "./dialog-select-provider"
 import { DialogManageModels } from "./dialog-manage-models"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
+import { useModels, ModelKey } from "@/context/models"
+import { Icon } from "@opencode-ai/ui/icon"
+import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
+import { TextField } from "@opencode-ai/ui/text-field"
+import type { IconName } from "@opencode-ai/ui/icons/provider"
+
+function cn(...classes: (string | undefined | null | false)[]) {
+  return classes.filter(Boolean).join(" ")
+}
 
 const ModelList: Component<{
   provider?: string
@@ -240,32 +260,247 @@ export function ModelSelectorPopover(props: {
   )
 }
 
-export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
-  const dialog = useDialog()
+const ProviderItem: Component<{
+  id: string
+  name: string
+  icon?: string
+  providerIcon?: string
+  selected: boolean
+  onClick: () => void
+}> = (props) => {
+  return (
+    <button
+      class={cn(
+        "flex items-center gap-2 w-full px-3 py-2 text-13-regular rounded-md transition-colors text-left outline-none",
+        props.selected ? "bg-surface-raised-pressed text-text-strong" : "text-text-base hover:bg-surface-raised-hover",
+      )}
+      onClick={props.onClick}
+    >
+      <Show when={props.providerIcon} fallback={<Icon name={props.icon as any} class="size-4 shrink-0" />}>
+        <ProviderIcon id={props.providerIcon as IconName} class="size-4 shrink-0" />
+      </Show>
+      <span class="truncate flex-1">{props.name}</span>
+    </button>
+  )
+}
+
+const ModelItem: Component<{
+  item: ReturnType<ReturnType<typeof useModels>["list"]>[number]
+  selected: boolean
+  favorite: boolean
+  onToggleFavorite: (e: MouseEvent) => void
+}> = (props) => {
   const language = useLanguage()
 
   return (
-    <Dialog
-      title={language.t("dialog.model.select.title")}
-      action={
-        <Button
-          class="h-7 -my-1 text-14-medium"
-          icon="plus-small"
-          tabIndex={-1}
-          onClick={() => dialog.show(() => <DialogSelectProvider />)}
-        >
-          {language.t("command.provider.connect")}
-        </Button>
-      }
-    >
-      <ModelList provider={props.provider} onSelect={() => dialog.close()} />
-      <Button
+    <div class="flex items-center gap-2 w-full group">
+      <div class="flex-1 min-w-0 flex items-center gap-2">
+        <span class={cn("truncate", props.selected && "text-text-strong")}>{props.item.name}</span>
+        <Show when={props.item.provider.id === "opencode" && (!props.item.cost || props.item.cost?.input === 0)}>
+          <Tag>{language.t("model.tag.free")}</Tag>
+        </Show>
+        <Show when={props.item.latest}>
+          <Tag>{language.t("model.tag.latest")}</Tag>
+        </Show>
+      </div>
+      <IconButton
+        icon={props.favorite ? "star-filled" : "star"}
         variant="ghost"
-        class="ml-3 mt-5 mb-6 text-text-base self-start"
-        onClick={() => dialog.show(() => <DialogManageModels />)}
-      >
-        {language.t("dialog.model.manage")}
-      </Button>
+        class={cn(
+          "size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity",
+          props.favorite && "opacity-100 text-yellow-400 hover:text-yellow-500",
+          !props.favorite && "text-icon-weak-base hover:text-icon-base",
+        )}
+        onClick={props.onToggleFavorite}
+      />
+    </div>
+  )
+}
+
+export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
+  const dialog = useDialog()
+  const language = useLanguage()
+  const local = useLocal()
+  const modelsContext = useModels()
+
+  const [selectedProviderId, setSelectedProviderId] = createSignal<string>(props.provider || "all")
+  const [search, setSearch] = createSignal("")
+
+  const providers = createMemo(() => {
+    const list = local.model.list()
+    const uniqueProviders = new Map<string, { id: string; name: string }>()
+
+    list.forEach((m) => {
+      if (!uniqueProviders.has(m.provider.id)) {
+        uniqueProviders.set(m.provider.id, { id: m.provider.id, name: m.provider.name })
+      }
+    })
+
+    return Array.from(uniqueProviders.values()).sort((a, b) => {
+      const aIdx = popularProviders.indexOf(a.id)
+      const bIdx = popularProviders.indexOf(b.id)
+
+      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+      if (aIdx !== -1) return -1
+      if (bIdx !== -1) return 1
+      return a.name.localeCompare(b.name)
+    })
+  })
+
+  const filteredModels = createMemo(() => {
+    const providerId = selectedProviderId()
+    const query = search().toLowerCase()
+
+    return local.model
+      .list()
+      .filter((m) => {
+        if (!local.model.visible({ modelID: m.id, providerID: m.provider.id })) return false
+
+        if (providerId === "favorites") {
+          return modelsContext.isFavorite({ modelID: m.id, providerID: m.provider.id })
+        }
+        if (providerId === "all") return true
+        return m.provider.id === providerId
+      })
+      .filter((m) => {
+        if (!query) return true
+        return m.name.toLowerCase().includes(query) || m.provider.name.toLowerCase().includes(query)
+      })
+  })
+
+  const handleToggleFavorite = (e: MouseEvent, model: ModelKey) => {
+    e.stopPropagation()
+    e.preventDefault()
+    modelsContext.toggleFavorite(model)
+  }
+
+  return (
+    <Dialog
+      title={language.t("dialog.model.select.title") + " (v2)"}
+      class="w-[800px] max-w-[90vw] h-[600px] max-h-[85vh] flex flex-col p-0 overflow-hidden"
+    >
+      <div class="flex flex-1 min-h-0 h-full overflow-hidden">
+        <div class="w-64 flex-shrink-0 border-r border-border-base flex flex-col bg-surface-base">
+          <div class="p-2 space-y-1 overflow-y-auto flex-1">
+            <div class="px-3 py-2 text-11-medium text-text-weak uppercase tracking-wider">
+              {language.t("common.favorites")}
+            </div>
+            <ProviderItem
+              id="favorites"
+              name={language.t("common.favorites")}
+              icon="star"
+              selected={selectedProviderId() === "favorites"}
+              onClick={() => setSelectedProviderId("favorites")}
+            />
+
+            <div class="mt-4 px-3 py-2 text-11-medium text-text-weak uppercase tracking-wider">
+              {language.t("common.providers")}
+            </div>
+            <ProviderItem
+              id="all"
+              name={language.t("common.all")}
+              icon="globe"
+              selected={selectedProviderId() === "all"}
+              onClick={() => setSelectedProviderId("all")}
+            />
+            <For each={providers()}>
+              {(provider) => (
+                <ProviderItem
+                  id={provider.id}
+                  name={provider.name}
+                  providerIcon={provider.id}
+                  selected={selectedProviderId() === provider.id}
+                  onClick={() => setSelectedProviderId(provider.id)}
+                />
+              )}
+            </For>
+          </div>
+
+          <div class="p-2 border-t border-border-base space-y-1">
+            <Button
+              variant="ghost"
+              class="w-full justify-start text-text-weak hover:text-text-base h-8"
+              icon="plus-small"
+              onClick={() => dialog.show(() => <DialogSelectProvider />)}
+            >
+              {language.t("command.provider.connect")}
+            </Button>
+            <Button
+              variant="ghost"
+              class="w-full justify-start text-text-weak hover:text-text-base h-8"
+              icon="sliders"
+              onClick={() => dialog.show(() => <DialogManageModels />)}
+            >
+              {language.t("dialog.model.manage")}
+            </Button>
+          </div>
+        </div>
+
+        <div class="flex-1 flex flex-col min-w-0 bg-surface-raised-base">
+          <div class="p-3 border-b border-border-base bg-surface-base">
+            <TextField
+              class="w-full"
+              placeholder={language.t("dialog.model.search.placeholder")}
+              value={search()}
+              onInput={(e) => setSearch(e.currentTarget.value)}
+              autofocus
+              icon="magnifying-glass"
+            />
+          </div>
+
+          <div class="flex-1 overflow-hidden relative">
+            <List
+              class="h-full [&_[data-slot=list-scroll]]:h-full [&_[data-slot=list-scroll]]:p-2"
+              items={filteredModels()}
+              key={(x) => `${x.provider.id}:${x.id}`}
+              current={local.model.current()}
+              filterKeys={["provider.name", "name", "id"]}
+              sortBy={(a, b) => {
+                const favA = modelsContext.isFavorite({ modelID: a.id, providerID: a.provider.id })
+                const favB = modelsContext.isFavorite({ modelID: b.id, providerID: b.provider.id })
+                if (favA && !favB) return -1
+                if (!favA && favB) return 1
+                return a.name.localeCompare(b.name)
+              }}
+              itemWrapper={(item, node) => (
+                <Tooltip
+                  class="w-full"
+                  placement="right"
+                  gutter={12}
+                  value={
+                    <ModelTooltip
+                      model={item}
+                      latest={item.latest}
+                      free={item.provider.id === "opencode" && (!item.cost || item.cost.input === 0)}
+                    />
+                  }
+                >
+                  {node}
+                </Tooltip>
+              )}
+              onSelect={(x) => {
+                if (!x) return
+                local.model.set(
+                  { modelID: x.id, providerID: x.provider.id },
+                  {
+                    recent: true,
+                  },
+                )
+                dialog.close()
+              }}
+            >
+              {(item) => (
+                <ModelItem
+                  item={item}
+                  selected={false}
+                  favorite={modelsContext.isFavorite({ modelID: item.id, providerID: item.provider.id })}
+                  onToggleFavorite={(e) => handleToggleFavorite(e, { modelID: item.id, providerID: item.provider.id })}
+                />
+              )}
+            </List>
+          </div>
+        </div>
+      </div>
     </Dialog>
   )
 }
