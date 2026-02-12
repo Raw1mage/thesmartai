@@ -51,7 +51,7 @@ export async function maybeInjectWorkflowSubtasks(input: {
   parts: WorkflowInputPart[]
   agent: Agent.Info
   noReply?: boolean
-}) {
+}): Promise<WorkflowInputPart[]> {
   if (input.agent.mode === "subagent") return input.parts
   if (input.noReply) return input.parts
   if (input.parts.some((part) => part.type === "subtask" || part.type === "agent")) return input.parts
@@ -89,7 +89,7 @@ export async function maybeInjectWorkflowSubtasks(input: {
   })
 
   if (tasks.length === 0) return input.parts
-  return [...tasks.reverse(), ...input.parts]
+  return [...tasks.reverse(), ...input.parts] as WorkflowInputPart[]
 }
 
 export async function buildWorkflowSubtasks(input: {

@@ -32,7 +32,6 @@ import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
 import { resolveTools } from "./resolve-tools"
 import { resolveImageRequest, stripImageParts } from "./image-router"
-import { maybeInjectWorkflowSubtasks } from "./subagent-workflow"
 import { TaskTool } from "@/tool/task"
 import { Tool } from "@/tool/tool"
 import { ToolInvoker } from "./tool-invoker"
@@ -51,12 +50,12 @@ import { getPreloadedContext } from "./preloaded-context"
 import { insertReminders } from "./reminders"
 import { ensureTitle } from "./title-manager"
 import { resolvePromptParts as resolvePromptPartsInner } from "./prompt-part-resolver"
-import { lastModel } from "./last-model"
 import { renderCommandTemplate } from "./command-template"
 import { executeHandledCommand } from "./command-handler-executor"
 import { prepareCommandPrompt } from "./command-prompt-prep"
 import { dispatchCommandPrompt } from "./command-dispatcher"
 import { persistUserMessage } from "./user-message-persist"
+import { prepareUserMessageContext } from "./user-message-context"
 
 globalThis.AI_SDK_LOG_WARNINGS = false
 
@@ -617,41 +616,23 @@ export namespace SessionPrompt {
   })
 
   async function createUserMessage(input: PromptInput) {
-    const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
-
-    const model = input.model ?? agent.model ?? (await lastModel(input.sessionID))
-    const variant =
-      input.variant ??
-      (agent.variant &&
-      agent.model &&
-      model.providerId === agent.model.providerId &&
-      model.modelID === agent.model.modelID
-        ? agent.variant
-        : undefined)
-
-    const partsInput: PromptInput["parts"] = (await maybeInjectWorkflowSubtasks({
-      parts: input.parts,
-      agent,
-      noReply: input.noReply,
-    })) as PromptInput["parts"]
-
-    const info: MessageV2.Info = {
-      id: input.messageID ?? Identifier.ascending("message"),
-      role: "user",
+    const { agent, partsInput, info } = await prepareUserMessageContext({
       sessionID: input.sessionID,
-      time: {
-        created: Date.now(),
-      },
+      messageID: input.messageID,
+      agent: input.agent,
+      model: input.model,
+      variant: input.variant,
+      noReply: input.noReply,
       tools: input.tools,
-      agent: agent.name,
-      model,
       system: input.system,
-      variant,
-    }
+      parts: input.parts,
+    })
     using _ = defer(() => InstructionPrompt.clear(info.id))
 
+    const safePartsInput = partsInput as PromptInput["parts"]
+
     const parts = await Promise.all(
-      partsInput.map(async (part): Promise<MessageV2.Part[]> => {
+      safePartsInput.map(async (part): Promise<MessageV2.Part[]> => {
         if (part.type === "file") {
           const urlPrefix = part.url.includes(",") ? part.url.split(",")[0] : part.url.slice(0, 80)
           debugCheckpoint("prompt.file", "part:received", {
