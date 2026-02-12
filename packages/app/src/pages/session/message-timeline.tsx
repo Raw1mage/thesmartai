@@ -9,7 +9,88 @@ import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
 import { shouldMarkBoundaryGesture, normalizeWheelDelta } from "@/pages/session/message-gesture"
 
-export function MessageTimeline(props: any) {
+const boundaryTarget = (root: HTMLElement, target: EventTarget | null) => {
+  const current = target instanceof Element ? target : undefined
+  const nested = current?.closest("[data-scrollable]")
+  if (!nested || nested === root) return root
+  if (!(nested instanceof HTMLElement)) return root
+  return nested
+}
+
+const markBoundaryGesture = (input: {
+  root: HTMLDivElement
+  target: EventTarget | null
+  delta: number
+  onMarkScrollGesture: (target?: EventTarget | null) => void
+}) => {
+  const target = boundaryTarget(input.root, input.target)
+  if (target === input.root) {
+    input.onMarkScrollGesture(input.root)
+    return
+  }
+  if (
+    shouldMarkBoundaryGesture({
+      delta: input.delta,
+      scrollTop: target.scrollTop,
+      scrollHeight: target.scrollHeight,
+      clientHeight: target.clientHeight,
+    })
+  ) {
+    input.onMarkScrollGesture(input.root)
+  }
+}
+
+export function MessageTimeline(props: {
+  mobileChanges: boolean
+  mobileFallback: JSX.Element
+  scroll: { overflow: boolean; bottom: boolean }
+  onResumeScroll: () => void
+  setScrollRef: (el: HTMLDivElement | undefined) => void
+  onScheduleScrollState: (el: HTMLDivElement) => void
+  onAutoScrollHandleScroll: () => void
+  onMarkScrollGesture: (target?: EventTarget | null) => void
+  hasScrollGesture: () => boolean
+  isDesktop: boolean
+  onScrollSpyScroll: () => void
+  onAutoScrollInteraction: (event: MouseEvent) => void
+  showHeader: boolean
+  centered: boolean
+  title?: string
+  parentID?: string
+  openTitleEditor: () => void
+  closeTitleEditor: () => void
+  saveTitleEditor: () => void | Promise<void>
+  titleRef: (el: HTMLInputElement) => void
+  titleState: {
+    draft: string
+    editing: boolean
+    saving: boolean
+    menuOpen: boolean
+    pendingRename: boolean
+  }
+  onTitleDraft: (value: string) => void
+  onTitleMenuOpen: (open: boolean) => void
+  onTitlePendingRename: (value: boolean) => void
+  onNavigateParent: () => void
+  sessionID: string
+  onArchiveSession: (sessionID: string) => void
+  onDeleteSession: (sessionID: string) => void
+  t: (key: string, vars?: Record<string, string | number | boolean>) => string
+  setContentRef: (el: HTMLDivElement) => void
+  turnStart: number
+  onRenderEarlier: () => void
+  historyMore: boolean
+  historyLoading: boolean
+  onLoadEarlier: () => void
+  renderedUserMessages: UserMessage[]
+  anchor: (id: string) => string
+  onRegisterMessage: (el: HTMLDivElement, id: string) => void
+  onUnregisterMessage: (id: string) => void
+  onFirstTurnMount?: () => void
+  lastUserMessageID?: string
+  expanded: Record<string, boolean>
+  onToggleExpanded: (id: string) => void
+}) {
   let touchGesture: number | undefined
 
   return (
@@ -36,35 +117,13 @@ export function MessageTimeline(props: any) {
           ref={props.setScrollRef}
           onWheel={(e) => {
             const root = e.currentTarget
-            const target = e.target instanceof Element ? e.target : undefined
-            const nested = target?.closest("[data-scrollable]")
-            if (!nested || nested === root) {
-              props.onMarkScrollGesture(root)
-              return
-            }
-
-            if (!(nested instanceof HTMLElement)) {
-              props.onMarkScrollGesture(root)
-              return
-            }
-
             const delta = normalizeWheelDelta({
               deltaY: e.deltaY,
               deltaMode: e.deltaMode,
               rootHeight: root.clientHeight,
             })
             if (!delta) return
-
-            if (
-              shouldMarkBoundaryGesture({
-                delta,
-                scrollTop: nested.scrollTop,
-                scrollHeight: nested.scrollHeight,
-                clientHeight: nested.clientHeight,
-              })
-            ) {
-              props.onMarkScrollGesture(root)
-            }
+            markBoundaryGesture({ root, target: e.target, delta, onMarkScrollGesture: props.onMarkScrollGesture })
           }}
           onTouchStart={(e) => {
             touchGesture = e.touches[0]?.clientY
@@ -79,28 +138,7 @@ export function MessageTimeline(props: any) {
             if (!delta) return
 
             const root = e.currentTarget
-            const target = e.target instanceof Element ? e.target : undefined
-            const nested = target?.closest("[data-scrollable]")
-            if (!nested || nested === root) {
-              props.onMarkScrollGesture(root)
-              return
-            }
-
-            if (!(nested instanceof HTMLElement)) {
-              props.onMarkScrollGesture(root)
-              return
-            }
-
-            if (
-              shouldMarkBoundaryGesture({
-                delta,
-                scrollTop: nested.scrollTop,
-                scrollHeight: nested.scrollHeight,
-                clientHeight: nested.clientHeight,
-              })
-            ) {
-              props.onMarkScrollGesture(root)
-            }
+            markBoundaryGesture({ root, target: e.target, delta, onMarkScrollGesture: props.onMarkScrollGesture })
           }}
           onTouchEnd={() => {
             touchGesture = undefined
