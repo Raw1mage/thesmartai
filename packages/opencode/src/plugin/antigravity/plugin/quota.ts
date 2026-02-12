@@ -2,7 +2,7 @@ import { ANTIGRAVITY_ENDPOINT_PROD, ANTIGRAVITY_HEADERS, ANTIGRAVITY_PROVIDER_ID
 import { accessTokenExpired, formatRefreshParts, parseRefreshParts } from "./auth"
 import { ensureProjectContext } from "./project"
 import { refreshAccessToken } from "./token"
-import { getModelFamily } from "./transform/model-resolver"
+import { resolveAntigravityQuotaGroup } from "./quota-group"
 import type { PluginClient, OAuthAuthDetails } from "./types"
 import type { AccountMetadataV3 } from "./storage"
 import { debugCheckpoint } from "../../../util/debug"
@@ -80,16 +80,7 @@ function parseResetTime(resetTime?: string): number | null {
 }
 
 function classifyQuotaGroup(modelName: string, displayName?: string): QuotaGroup | null {
-  const combined = `${modelName} ${displayName ?? ""}`.toLowerCase()
-  if (combined.includes("claude")) {
-    return "claude"
-  }
-  const isGemini3 = combined.includes("gemini-3") || combined.includes("gemini 3")
-  if (!isGemini3) {
-    return null
-  }
-  const family = getModelFamily(modelName)
-  return family === "gemini-flash" ? "gemini-flash" : "gemini-pro"
+  return resolveAntigravityQuotaGroup(modelName, displayName)
 }
 
 function aggregateQuota(models?: Record<string, FetchAvailableModelEntry>): QuotaSummary {

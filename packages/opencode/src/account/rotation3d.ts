@@ -19,7 +19,7 @@ import { getRateLimitTracker, getHealthTracker } from "./rotation"
 import { debugCheckpoint } from "../util/debug"
 import { checkAccountsQuota, type QuotaGroup, type QuotaGroupSummary } from "../plugin/antigravity/plugin/quota"
 import { loadAccounts } from "../plugin/antigravity/plugin/storage"
-import { getModelFamily as getAntigravityModelFamily } from "../plugin/antigravity/plugin/transform/model-resolver"
+import { resolveAntigravityQuotaGroup } from "../plugin/antigravity/plugin/quota-group"
 import type { PluginClient } from "../plugin/antigravity/plugin/types"
 
 const log = Log.create({ service: "rotation3d" })
@@ -438,12 +438,7 @@ export async function buildFallbackCandidates(
 
   // Helper to determine quota group for antigravity models
   const resolveQuotaGroup = (modelId: string): QuotaGroup | null => {
-    const lower = modelId.toLowerCase()
-    if (lower.includes("claude")) return "claude"
-    const family = getAntigravityModelFamily(modelId)
-    if (family === "gemini-flash") return "gemini-flash"
-    if (family === "gemini-pro") return "gemini-pro"
-    return null
+    return resolveAntigravityQuotaGroup(modelId)
   }
 
   // Helper to enrich candidate with capabilities

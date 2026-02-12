@@ -48,7 +48,7 @@ import { Auth } from "@/auth"
 import { Account } from "@/account"
 import { checkAccountsQuota, type QuotaGroup } from "@/plugin/antigravity/plugin/quota"
 import { loadAccounts, saveAccounts } from "@/plugin/antigravity/plugin/storage"
-import { getModelFamily } from "@/plugin/antigravity/plugin/transform/model-resolver"
+import { resolveAntigravityQuotaGroup } from "@/plugin/antigravity/plugin/quota-group"
 import type { PluginClient } from "@/plugin/antigravity/plugin/types"
 import z from "zod"
 
@@ -221,12 +221,7 @@ export function Prompt(props: PromptProps) {
   }
 
   function resolveQuotaGroup(modelID: string): QuotaGroup | null {
-    const combined = modelID.toLowerCase()
-    if (combined.includes("claude")) return "claude"
-    const isGemini3 = combined.includes("gemini-3") || combined.includes("gemini 3")
-    if (!isGemini3) return null
-    const family = getModelFamily(modelID)
-    return family === "gemini-flash" ? "gemini-flash" : "gemini-pro"
+    return resolveAntigravityQuotaGroup(modelID)
   }
 
   const [quotaGroups] = createResource(quotaRefresh, async () => {
