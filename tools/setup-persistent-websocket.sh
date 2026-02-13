@@ -4,6 +4,9 @@
 
 set -e
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+
 echo "🚀 設置 Synology 反向代理 WebSocket 持久化配置..."
 echo ""
 
@@ -22,7 +25,7 @@ case $choice in
         
         # 複製腳本到 Synology
         echo "📤 上傳持久化腳本..."
-        scp /home/pkcs12/opencode/persistent-websocket-config.sh yeatsluo@rawdb:/tmp/
+        scp "$PROJECT_ROOT/persistent-websocket-config.sh" yeatsluo@rawdb:/tmp/
         ssh yeatsluo@rawdb "sudo mv /tmp/persistent-websocket-config.sh /root/ && sudo chmod +x /root/persistent-websocket-config.sh"
         
         # 測試腳本
@@ -45,12 +48,12 @@ case $choice in
         
         # 複製持久化腳本
         echo "📤 上傳持久化腳本..."
-        scp /home/pkcs12/opencode/persistent-websocket-config.sh yeatsluo@rawdb:/tmp/
+        scp "$PROJECT_ROOT/persistent-websocket-config.sh" yeatsluo@rawdb:/tmp/
         ssh yeatsluo@rawdb "sudo mv /tmp/persistent-websocket-config.sh /root/ && sudo chmod +x /root/persistent-websocket-config.sh"
         
         # 複製 hook 腳本
         echo "📤 上傳 hook 腳本..."
-        scp /home/pkcs12/opencode/synow3tool-hook.sh yeatsluo@rawdb:/tmp/
+        scp "$PROJECT_ROOT/synow3tool-hook.sh" yeatsluo@rawdb:/tmp/
         ssh yeatsluo@rawdb "sudo mv /tmp/synow3tool-hook.sh /root/ && sudo chmod +x /root/synow3tool-hook.sh"
         
         # 備份原始 synow3tool 並替換為 hook

@@ -1,7 +1,10 @@
 import fs from "fs"
+import os from "os"
 import path from "path"
 
-const root = "/home/pkcs12/opencode/logs"
+const home = process.env.HOME ?? os.homedir()
+const xdgDataHome = process.env.XDG_DATA_HOME ?? path.join(home, ".local", "share")
+const root = path.join(xdgDataHome, "opencode", "log")
 const file = path.join(root, "debug.log")
 let running = false
 let pending = false

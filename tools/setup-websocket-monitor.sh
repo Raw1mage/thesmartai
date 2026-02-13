@@ -4,6 +4,9 @@
 
 set -e
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+
 SCRIPT_PATH="/root/ensure-websocket-config.sh"
 CRON_JOB="*/5 * * * * $SCRIPT_PATH >> /var/log/websocket-config-monitor.log 2>&1"
 
@@ -11,7 +14,7 @@ echo "🚀 設置 WebSocket 配置監控..."
 
 # 1. 複製腳本到 Synology
 echo "📋 步驟 1: 複製監控腳本到 Synology..."
-scp /home/pkcs12/opencode/ensure-websocket-config.sh yeatsluo@rawdb:/tmp/
+scp "$PROJECT_ROOT/ensure-websocket-config.sh" yeatsluo@rawdb:/tmp/
 ssh yeatsluo@rawdb "sudo mv /tmp/ensure-websocket-config.sh $SCRIPT_PATH && sudo chmod +x $SCRIPT_PATH"
 echo "✅ 腳本已複製到: $SCRIPT_PATH"
 
