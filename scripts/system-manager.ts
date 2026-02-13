@@ -4,20 +4,30 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { promises as fs } from "fs"
 import { exec } from "child_process"
 import { promisify } from "util"
+import os from "os"
+import path from "path"
+import { fileURLToPath } from "url"
 
 const execAsync = promisify(exec)
 
-const ACCOUNTS_PATH = "/home/pkcs12/.config/opencode/accounts.json"
-const ANTIGRAVITY_ACCOUNTS_PATH = "/home/pkcs12/.config/opencode/antigravity-accounts.json"
-const CONFIG_PATH = "/home/pkcs12/.config/opencode/opencode.json"
-const MODEL_STATE_PATH = "/home/pkcs12/.local/state/opencode/model.json"
-const KV_PATH = "/home/pkcs12/.local/state/opencode/kv.json"
-const STORAGE_BASE = "/home/pkcs12/.local/share/opencode/storage"
+const HOME = process.env.HOME ?? os.homedir()
+const XDG_CONFIG_HOME = process.env.XDG_CONFIG_HOME ?? path.join(HOME, ".config")
+const XDG_STATE_HOME = process.env.XDG_STATE_HOME ?? path.join(HOME, ".local", "state")
+const XDG_DATA_HOME = process.env.XDG_DATA_HOME ?? path.join(HOME, ".local", "share")
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = path.resolve(SCRIPT_DIR, "..")
+
+const ACCOUNTS_PATH = path.join(XDG_CONFIG_HOME, "opencode", "accounts.json")
+const ANTIGRAVITY_ACCOUNTS_PATH = path.join(XDG_CONFIG_HOME, "opencode", "antigravity-accounts.json")
+const CONFIG_PATH = path.join(XDG_CONFIG_HOME, "opencode", "opencode.json")
+const MODEL_STATE_PATH = path.join(XDG_STATE_HOME, "opencode", "model.json")
+const KV_PATH = path.join(XDG_STATE_HOME, "opencode", "kv.json")
+const STORAGE_BASE = path.join(XDG_DATA_HOME, "opencode", "storage")
 const CODEX_ISSUER = "https://auth.openai.com"
 const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 
-const THEME_DIR = "/home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/context/theme"
+const THEME_DIR = path.join(REPO_ROOT, "packages", "opencode", "src", "cli", "cmd", "tui", "context", "theme")
 const DEFAULT_THEMES = [
   "aura",
   "ayu",
@@ -425,7 +435,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name === "execute_command") {
       const { name: cmdName } = args as { name: string }
-      const cmdPath = `/home/pkcs12/projects/opencode/.opencode/command/${cmdName}.md`
+      const cmdPath = path.join(REPO_ROOT, ".opencode", "command", `${cmdName}.md`)
       try {
         const content = await fs.readFile(cmdPath, "utf-8")
         return { content: [{ type: "text", text: content }] }
@@ -435,7 +445,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "update_models") {
-      await execAsync("bun run /home/pkcs12/projects/opencode/bin/opencode.ts models --refresh")
+      await execAsync(`bun run ${JSON.stringify(path.join(REPO_ROOT, "bin", "opencode.ts"))} models --refresh`)
       return { content: [{ type: "text", text: "Models list refreshed" }] }
     }
 
@@ -449,9 +459,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "open_in_editor") {
-      const { path } = args as { path: string }
-      await execAsync(`xdg-open ${JSON.stringify(path)}`)
-      return { content: [{ type: "text", text: `Opened ${path} in editor` }] }
+      const { path: targetPath } = args as { path: string }
+      await execAsync(`xdg-open ${JSON.stringify(targetPath)}`)
+      return { content: [{ type: "text", text: `Opened ${targetPath} in editor` }] }
     }
 
     if (name === "set_ui_config") {
@@ -523,7 +533,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               const partDir = `${STORAGE_BASE}/part/${msg.id}`
               const pFiles = await fs.readdir(partDir)
               const parts = await Promise.all(
-                pFiles.sort().map(async (f) => JSON.parse(await fs.readFile(`${partDir}/${f}`, "utf-8"))),
+                pFiles.sort().map(async (f: string) => JSON.parse(await fs.readFile(`${partDir}/${f}`, "utf-8"))),
               )
               lastUserContent = parts
                 .filter((p: any) => p.type === "text")

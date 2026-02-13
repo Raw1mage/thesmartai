@@ -4,17 +4,21 @@
 # Listens on 0.0.0.0:1080 with authentication
 
 # Initialize environment
-export PATH="/home/pkcs12/.nvm/versions/node/v20.19.6/bin:$PATH"
+if [ -d "$HOME/.nvm/versions/node/v20.19.6/bin" ]; then
+    export PATH="$HOME/.nvm/versions/node/v20.19.6/bin:$PATH"
+fi
 
-if [ -f "/home/pkcs12/.bashrc" ]; then
+if [ -f "$HOME/.bashrc" ]; then
     # Source bashrc but ignore non-zero exits as it might contain interactive checks
-    source "/home/pkcs12/.bashrc" || true
+    source "$HOME/.bashrc" || true
 fi
 
 export OPENCODE_SERVER_USERNAME="opencode"
 export OPENCODE_SERVER_PASSWORD="Ne20240Wsl!"
 
-cd /home/pkcs12/opencode
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+cd "$PROJECT_ROOT"
 
 echo "Starting OpenCode Web Server..."
 echo "URL: http://0.0.0.0:1080"

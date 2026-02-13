@@ -8,6 +8,7 @@ import { spawn } from "child_process"
 import { promisify } from "util"
 
 const execAsync = promisify(require("child_process").exec)
+const repoRoot = process.cwd()
 
 console.log("🧪 整合測試：輸出過濾功能\n")
 
@@ -16,7 +17,7 @@ console.log("📋 測試場景 1: grep 搜尋 JSON 模式")
 console.log("執行命令: grep -r 'export' src/cli/cmd/run.ts")
 
 try {
-  const { stdout } = await execAsync("cd /home/pkcs12/opencode && grep -r 'function' src/cli/cmd/run.ts | head -20")
+  const { stdout } = await execAsync(`cd ${JSON.stringify(repoRoot)} && grep -r 'function' src/cli/cmd/run.ts | head -20`)
   const lines = stdout.split("\n").filter((l) => l.trim())
 
   console.log(`✓ 找到 ${lines.length} 行結果`)
@@ -34,7 +35,7 @@ console.log("📋 測試場景 2: 產生重複輸出")
 console.log("執行命令: find . -name '*.ts' | head -50")
 
 try {
-  const { stdout } = await execAsync("cd /home/pkcs12/opencode && find src -name '*.ts' | head -50")
+  const { stdout } = await execAsync(`cd ${JSON.stringify(repoRoot)} && find src -name '*.ts' | head -50`)
   const lines = stdout.split("\n").filter((l) => l.trim())
   const unique = new Set(lines.map((l) => l.split("/").pop())).size
   const repetitionRate = ((1 - unique / lines.length) * 100).toFixed(1)

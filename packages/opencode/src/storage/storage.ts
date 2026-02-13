@@ -344,7 +344,7 @@ export namespace Storage {
           slug: sid,
           version: "local",
           projectID: firstMsg.projectID || "global",
-          directory: firstMsg.path?.root || "/home/pkcs12/opencode",
+          directory: firstMsg.path?.root || process.cwd(),
           title: "Rescued Session",
           time: {
             created: firstMsg.time?.created || Date.now(),
@@ -629,9 +629,7 @@ export namespace Storage {
             if (!entry.isFile() || !entry.name.endsWith(".json")) continue
             const id = path.basename(entry.name, ".json")
             if (prefix[1] || prefix[2]) {
-              const indexed = await readJSON<{ projectID: string; parentID?: string }>(
-                path.join(indexRoot, entry.name),
-              )
+              const indexed = await readJSON<{ projectID: string; parentID?: string }>(path.join(indexRoot, entry.name))
               if (prefix[1] && indexed?.projectID !== prefix[1]) continue
               if (prefix[2] && indexed?.parentID !== prefix[2]) continue
               ids.add(id)

@@ -3,7 +3,8 @@
 # opencode.sh - OpenCode Dev Environment Manager
 # Created to manage background dev server and execute CLI commands
 
-PROJECT_ROOT="/home/pkcs12/opencode"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 PID_FILE="${PROJECT_ROOT}/opencode.pid"
 LOG_FILE="${PROJECT_ROOT}/opencode.log"
 
