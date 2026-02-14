@@ -738,13 +738,21 @@ export namespace Provider {
     },
     gmicloud: async (input) => {
       // @event_2026-02-06:gmicloud_provider
+      log.info("gmicloud loader called", { inputId: input.id, inputKeys: Object.keys(input) })
       const apiKey = await (async () => {
         const envKey = Env.get("GMI_API_KEY")
+        log.info("gmicloud env check", { hasEnvKey: !!envKey })
         if (envKey) return envKey
         const auth = await Auth.get(input.id)
+        log.info("gmicloud auth check", {
+          inputId: input.id,
+          authType: auth?.type,
+          hasKey: auth?.type === "api" ? "yes" : "no",
+        })
         if (auth?.type === "api") return auth.key
         return undefined
       })()
+      log.info("gmicloud loader result", { hasApiKey: !!apiKey, autoload: !!apiKey })
       return {
         autoload: !!apiKey,
         options: {
@@ -1335,13 +1343,13 @@ export namespace Provider {
       env: ["GMI_API_KEY"],
       options: { baseURL: "https://api.gmi-serving.com/v1" },
       models: {
-        "deepseek-ai/DeepSeek-R1": {
-          id: "deepseek-ai/DeepSeek-R1",
+        "deepseek-ai/DeepSeek-R1-0528": {
+          id: "deepseek-ai/DeepSeek-R1-0528",
           name: "DeepSeek R1",
           providerId: "gmicloud",
           family: "deepseek",
           api: {
-            id: "deepseek-ai/DeepSeek-R1",
+            id: "deepseek-ai/DeepSeek-R1-0528",
             url: "https://api.gmi-serving.com/v1",
             npm: "@ai-sdk/openai-compatible",
           },
@@ -2015,12 +2023,11 @@ export namespace Provider {
       const provider = s.providers[model.providerId]
       const options = { ...provider.options }
 
-      debugCheckpoint("provider", "getSDK called", {
+      log.info("getSDK debug", {
         providerId: model.providerId,
         modelID: model.id,
-        apiNpm: model.api.npm,
-        providerSource: provider?.source,
-        hasCustomFetch: typeof options.fetch === "function",
+        hasProviderKey: !!provider.key,
+        optionsApiKey: options.apiKey ? "exists" : "missing",
         optionKeys: Object.keys(options),
       })
 
