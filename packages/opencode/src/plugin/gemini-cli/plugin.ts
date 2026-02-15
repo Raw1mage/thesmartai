@@ -87,7 +87,7 @@ export const GeminiCLIOAuthPlugin = async ({ client }: any): Promise<any> => ({
               debugCheckpoint("gemini-cli", "Auth present, proceeding with transformation", { authType: latestAuth.type })
     
               const authRecord = latestAuth
-              const accessToken = authRecord.key
+              const accessToken = authRecord.key as string
               const isApiKey = true
               let projectId = configuredProjectId
     

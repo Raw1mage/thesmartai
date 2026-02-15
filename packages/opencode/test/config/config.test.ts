@@ -1809,4 +1809,10 @@ describe("OPENCODE_CONFIG_CONTENT token substitution", () => {
         delete process.env["OPENCODE_CONFIG_CONTENT"]
       }
       if (originalTestVar !== undefined) {
+        process.env["TEST_CONFIG_VAR"] = originalTestVar
+      } else {
+        delete process.env["TEST_CONFIG_VAR"]
+      }
+    }
+  })
 })
