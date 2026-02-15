@@ -639,19 +639,45 @@ export namespace LLM {
     // Mark current vector as rate-limited to prevent bouncing back to it
     const rateLimitTracker = getRateLimitTracker()
     if (!rateLimitTracker.isRateLimited(currentAccountId, currentModel.providerId, currentModel.id)) {
-      // Apply cooldown (5 minutes) to prevent immediate retry storms across subagents
-      rateLimitTracker.markRateLimited(
-        currentAccountId,
-        currentModel.providerId,
-        "RATE_LIMIT_EXCEEDED",
-        300_000,
-        currentModel.id,
-      )
-      log.info("Marked current vector as rate-limited to prevent bounce-back", {
-        provider: currentModel.providerId,
-        account: currentAccountId,
-        model: currentModel.id,
-      })
+      const { reason } = error ? extractRateLimitDetails(error) : { reason: "RATE_LIMIT_EXCEEDED" as RateLimitReason }
+
+      // ONLY mark as rate-limited if it's a temporary/rate-limit error.
+      // Do NOT mark as 429 if it's a permanent error like "model not found".
+      // @event_20260215_fix_false_429
+      const isTemporary =
+        reason === "RATE_LIMIT_EXCEEDED" ||
+        reason === "RATE_LIMIT_SHORT" ||
+        reason === "RATE_LIMIT_LONG" ||
+        reason === "QUOTA_EXHAUSTED" ||
+        reason === "SERVICE_UNAVAILABLE_503" ||
+        reason === "SITE_OVERLOADED_529" ||
+        reason === "MODEL_CAPACITY_EXHAUSTED" ||
+        reason === "SERVER_ERROR"
+
+      if (isTemporary) {
+        // Calculate dynamic backoff instead of hardcoded 5 minutes
+        // We need consecutive failures to calculate backoff properly if it's exponential
+        const consecutiveFailures = currentAccountId
+          ? getHealthTracker().getConsecutiveFailures(currentAccountId, currentModel.providerId)
+          : 0
+        const backoffMs = calculateBackoffMs(reason, consecutiveFailures)
+
+        // Apply cooldown to prevent immediate retry storms
+        rateLimitTracker.markRateLimited(currentAccountId, currentModel.providerId, reason, backoffMs, currentModel.id)
+        log.info("Marked current vector as rate-limited to prevent bounce-back", {
+          provider: currentModel.providerId,
+          account: currentAccountId,
+          model: currentModel.id,
+          reason,
+          backoffMs,
+        })
+      } else {
+        log.warn("Not marking as rate-limited: error is permanent", {
+          provider: currentModel.providerId,
+          model: currentModel.id,
+          reason,
+        })
+      }
     }
 
     // Build current vector

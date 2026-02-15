@@ -358,6 +358,8 @@ export class HealthScoreTracker {
 export type RateLimitReason =
   | "QUOTA_EXHAUSTED"
   | "RATE_LIMIT_EXCEEDED"
+  | "RATE_LIMIT_SHORT"
+  | "RATE_LIMIT_LONG"
   | "SERVICE_UNAVAILABLE_503"
   | "SITE_OVERLOADED_529"
   | "MODEL_CAPACITY_EXHAUSTED"
@@ -437,6 +439,28 @@ export function parseRateLimitReason(
     if (lower.includes("capacity") || lower.includes("overloaded") || lower.includes("resource exhausted")) {
       return "MODEL_CAPACITY_EXHAUSTED"
     }
+
+    // Check for explicit short-term rate limits (RPM, TPM, RPS)
+    if (
+      lower.includes("per minute") ||
+      lower.includes("per second") ||
+      lower.includes("requests per minute") ||
+      lower.includes("tokens per minute") ||
+      /\b(tpm|rpm|rps|tps)\b/.test(lower)
+    ) {
+      return "RATE_LIMIT_SHORT"
+    }
+
+    // Check for explicit long-term rate limits (Daily, Quota)
+    if (
+      lower.includes("per day") ||
+      lower.includes("daily") ||
+      lower.includes("limit reached") ||
+      lower.includes("quota")
+    ) {
+      return "RATE_LIMIT_LONG"
+    }
+
     if (
       lower.includes("per minute") ||
       lower.includes("rate limit") ||
@@ -474,7 +498,14 @@ export function calculateBackoffMs(
       const index = Math.min(consecutiveFailures, QUOTA_EXHAUSTED_BACKOFFS.length - 1)
       return QUOTA_EXHAUSTED_BACKOFFS[index] ?? UNKNOWN_BACKOFF
     }
+    case "RATE_LIMIT_SHORT":
+      // Short-term RPM/TPM limit: 5 minutes is usually enough to clear rolling windows
+      return 300_000 // 5 minutes
+    case "RATE_LIMIT_LONG":
+      // Long-term Daily limit: 24 hours to be safe
+      return 86_400_000 // 24 hours
     case "RATE_LIMIT_EXCEEDED":
+      // Generic rate limit (unknown duration): 1 hour default
       // @event_20260215_free_tier_cooldown: 1 hour for free tier 429s
       return 3_600_000 // 1 hour
     case "SERVICE_UNAVAILABLE_503":
