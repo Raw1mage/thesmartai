@@ -75,6 +75,26 @@ _適用於：翻譯、格式化、簡單腳本、Log 分析_
 
 ---
 
+## Provider 配額與限制參考 (Quota & Limits)
+
+以下為 `gemini-cli` 與 `google-api` 在 Free Tier 下的最新觀測限制（2026-02-15 更新）：
+
+| 模型 (Model)              | RPM (每分鐘) | TPM (每分鐘 Token) | RPD (每日請求) |
+| :------------------------ | :----------- | :----------------- | :------------- |
+| **Gemini 2.5 Flash**      | 5            | 250K               | 20             |
+| **Gemini 2.5 Pro**        | 15           | Unlimited          | 1.5K           |
+| **Gemini 2 Flash**        | 15           | Unlimited          | 1.5K           |
+| **Gemini 2 Flash Exp**    | 15           | Unlimited          | 1.5K           |
+| **Gemini 2 Flash Lite**   | 15           | Unlimited          | 1.5K           |
+| **Gemini 2 Pro Exp**      | 15           | Unlimited          | 1.5K           |
+| **Gemini 2.5 Flash Lite** | 10           | 250K               | 20             |
+| **Gemini 3 Pro**          | 15           | Unlimited          | 1.5K           |
+| **Gemini 3 Flash**        | 5            | 250K               | 20             |
+
+**注意**：當觸發 RPM 限制時，系統會自動切換至同 Tier 的其他備選模型或帳號。
+
+---
+
 ## 建議輸出格式
 
 在分析階段 (Analysis) 結束後，請輸出路由計畫：

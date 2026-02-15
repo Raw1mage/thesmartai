@@ -1619,6 +1619,24 @@ export namespace Provider {
           "gpt-5.1-codex",
         ])
 
+        // Whitelist of supported Google API models (to prevent invalid IDs like gemini-3-flash leaking from antigravity)
+        // @event_20260215_google_api_model_cleanup
+        const GOOGLE_API_WHITELIST = new Set([
+          "gemini-3-pro-preview",
+          "gemini-3-flash-preview",
+          "gemini-2.5-pro",
+          "gemini-2.5-flash",
+          "gemini-2.5-flash-lite",
+          "gemini-2.0-pro",
+          "gemini-2.0-flash",
+          "gemini-2.0-flash-lite",
+          "gemini-1.5-pro",
+          "gemini-1.5-flash",
+          "gemini-1.5-flash-8b",
+          "gemini-1.5-pro-latest",
+          "gemini-1.5-flash-latest",
+        ])
+
         database[effectiveId] = {
           id: effectiveId,
           source: "custom",
@@ -1634,8 +1652,11 @@ export namespace Provider {
               ...model,
               providerId: effectiveId,
             })),
-            (model, id) =>
-              (family !== "antigravity" || ANTIGRAVITY_WHITELIST.has(id)) && !isModelIgnored(effectiveId, id),
+            (model, id) => {
+              if (family === "antigravity") return ANTIGRAVITY_WHITELIST.has(id)
+              if (family === "google-api") return GOOGLE_API_WHITELIST.has(id) || id.startsWith("gemini-")
+              return !isModelIgnored(effectiveId, id)
+            },
           ),
         }
 
