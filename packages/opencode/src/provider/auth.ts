@@ -108,8 +108,12 @@ export namespace ProviderAuth {
           if (result.accountId) {
             info.accountId = result.accountId
           }
+          // Standardized identity fields from AuthIdentity contract
           if ("email" in result && typeof result.email === "string") {
             info.email = result.email
+          }
+          if ("username" in result && typeof result.username === "string") {
+            info.username = result.username
           }
           await Auth.set(input.providerId, info)
         }

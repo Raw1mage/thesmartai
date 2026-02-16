@@ -263,6 +263,27 @@ export async function CopilotAuthPlugin(input: PluginInput): Promise<Hooks> {
                   }
 
                   if (data.access_token) {
+                    // Fetch GitHub user identity for multi-account support
+                    const apiBase = domain === "github.com" ? "https://api.github.com" : `https://${domain}/api/v3`
+                    let username: string | undefined
+                    let email: string | undefined
+                    try {
+                      const userResp = await fetch(`${apiBase}/user`, {
+                        headers: {
+                          Authorization: `Bearer ${data.access_token}`,
+                          Accept: "application/json",
+                          "User-Agent": "opencode",
+                        },
+                      })
+                      if (userResp.ok) {
+                        const userData = (await userResp.json()) as { login?: string; email?: string }
+                        username = userData.login
+                        email = userData.email || undefined
+                      }
+                    } catch {
+                      // Non-fatal: fall back to token-hash based ID generation
+                    }
+
                     const result: {
                       type: "success"
                       refresh: string
@@ -270,11 +291,15 @@ export async function CopilotAuthPlugin(input: PluginInput): Promise<Hooks> {
                       expires: number
                       provider?: string
                       enterpriseUrl?: string
+                      username?: string
+                      email?: string
                     } = {
                       type: "success",
                       refresh: data.access_token,
                       access: data.access_token,
                       expires: 0,
+                      username,
+                      email,
                     }
 
                     if (actualProvider === "github-copilot-enterprise") {

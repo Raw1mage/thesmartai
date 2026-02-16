@@ -102,6 +102,18 @@ export type AuthHook = {
   )[]
 }
 
+/**
+ * Standard identity fields that plugins SHOULD return after OAuth.
+ * At least one of email/username should be provided to enable multi-account support.
+ * If neither is provided, the account ID will fall back to a token hash (unique but opaque).
+ */
+export interface AuthIdentity {
+  /** User's email address (preferred for account ID generation) */
+  email?: string
+  /** User's username/login (fallback when email is unavailable, e.g. GitHub) */
+  username?: string
+}
+
 export type AuthOuathResult = { url: string; instructions: string } & (
   | {
       method: "auto"
@@ -109,15 +121,16 @@ export type AuthOuathResult = { url: string; instructions: string } & (
         | ({
             type: "success"
             provider?: string
-          } & (
-            | {
-                refresh: string
-                access: string
-                expires: number
-                accountId?: string
-              }
-            | { key: string }
-          ))
+          } & AuthIdentity &
+            (
+              | {
+                  refresh: string
+                  access: string
+                  expires: number
+                  accountId?: string
+                }
+              | { key: string }
+            ))
         | {
             type: "failed"
           }
@@ -129,15 +142,16 @@ export type AuthOuathResult = { url: string; instructions: string } & (
         | ({
             type: "success"
             provider?: string
-          } & (
-            | {
-                refresh: string
-                access: string
-                expires: number
-                accountId?: string
-              }
-            | { key: string }
-          ))
+          } & AuthIdentity &
+            (
+              | {
+                  refresh: string
+                  access: string
+                  expires: number
+                  accountId?: string
+                }
+              | { key: string }
+            ))
         | {
             type: "failed"
           }
