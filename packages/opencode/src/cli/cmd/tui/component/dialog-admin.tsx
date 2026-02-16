@@ -38,7 +38,9 @@ import { Locale } from "@/util/locale"
 import { debugCheckpoint, debugSpan } from "@/util/debug"
 import { useExit } from "@tui/context/exit"
 import { DialogModelProbe } from "./dialog-model-probe"
-import { getModelHealthRegistry, getRateLimitTracker } from "@/account/rotation"
+import { getRateLimitTracker } from "@/account/rotation"
+import { RateLimitEvent } from "@/account/rate-limit-judge"
+import { Bus } from "@/bus"
 import { getModelRPDLimit } from "@/account/limits"
 import { Provider } from "@/provider/provider"
 import { probeModelAvailability } from "../util/model-probe"
@@ -47,7 +49,13 @@ import { checkAccountsQuota, type QuotaGroup, type QuotaGroupSummary } from "@/p
 import { loadAccounts, saveAccounts, type AccountMetadataV3 } from "@/plugin/antigravity/plugin/storage"
 import { resolveAntigravityQuotaGroup } from "@/plugin/antigravity/plugin/quota-group"
 import type { PluginClient } from "@/plugin/antigravity/plugin/types"
-import z from "zod"
+import {
+  refreshCodexAccessToken,
+  extractAccountIdFromTokens,
+  parseCodexUsage,
+  clampPercentage,
+  CODEX_USAGE_URL,
+} from "@/account/quota"
 
 type DialogAdminOption = DialogSelectOption<unknown> & {
   coreId?: string
@@ -123,26 +131,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   const probePrompt = "say hi"
   const probeTimeoutMs = 10_000
   const [quotaRefresh, setQuotaRefresh] = createSignal(0)
-  const CODEX_ISSUER = "https://auth.openai.com"
-  const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
-  const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
-  const CodexUsageSchema = z
-    .object({
-      rate_limit: z
-        .object({
-          primary_window: z.object({ used_percent: z.number().optional() }).optional(),
-          secondary_window: z.object({ used_percent: z.number().optional() }).optional(),
-        })
-        .optional(),
-    })
-    .passthrough()
   const EmptyPluginClient = new Proxy({}, { get: () => () => undefined }) as unknown as PluginClient
-
-  type CodexUsage = z.infer<typeof CodexUsageSchema>
-  const parseCodexUsage = (value: unknown): CodexUsage | undefined => {
-    const parsed = CodexUsageSchema.safeParse(value)
-    return parsed.success ? parsed.data : undefined
-  }
 
   // Navigation State
   // steps: root -> account_select -> model_select
@@ -389,10 +378,23 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   const activityInterval = setInterval(() => {
     RequestMonitor.get()
       .sync()
-      .catch(() => {})
+      .catch(() => { })
     setActivityTick((t) => t + 1)
   }, 1000)
   onCleanup(() => clearInterval(activityInterval))
+
+  // @event_20260216_phase5 — Bus-driven instant rate limit updates
+  // Subscribe to RateLimitEvent so the activity panel refreshes immediately
+  // when a rate limit is detected or cleared, instead of waiting for the 1s poll.
+  const unsubDetected = Bus.subscribe(RateLimitEvent.Detected, () => {
+    setActivityTick((t) => t + 1)
+    // Also trigger quota refresh so cockpit/Codex data stays current
+    setQuotaRefresh((t) => t + 1)
+  })
+  const unsubCleared = Bus.subscribe(RateLimitEvent.Cleared, () => {
+    setActivityTick((t) => t + 1)
+  })
+  onCleanup(() => { unsubDetected(); unsubCleared() })
 
   const [activityProviders] = createResource<Record<string, Provider.Info>>(() => Provider.list().catch(() => ({})))
   const [activityAccounts] = createResource(refreshSignal, async () => {
@@ -573,73 +575,9 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     return isFreeCost(modelInfo)
   }
 
-  function clampPercentage(value: number): number {
-    if (!Number.isFinite(value)) return 0
-    if (value < 0) return 0
-    if (value > 100) return 100
-    return Math.round(value)
-  }
-
-  type CodexTokenResponse = {
-    id_token?: string
-    access_token: string
-    refresh_token?: string
-    expires_in?: number
-  }
-
-  type CodexIdTokenClaims = {
-    chatgpt_account_id?: string
-    organizations?: Array<{ id: string }>
-    "https://api.openai.com/auth"?: {
-      chatgpt_account_id?: string
-    }
-  }
-
-  function parseCodexJwtClaims(token: string): CodexIdTokenClaims | undefined {
-    const parts = token.split(".")
-    if (parts.length !== 3) return undefined
-    try {
-      return JSON.parse(Buffer.from(parts[1], "base64url").toString())
-    } catch {
-      return undefined
-    }
-  }
-
-  function extractAccountIdFromClaims(claims: CodexIdTokenClaims): string | undefined {
-    return (
-      claims.chatgpt_account_id ||
-      claims["https://api.openai.com/auth"]?.chatgpt_account_id ||
-      claims.organizations?.[0]?.id
-    )
-  }
-
-  function extractAccountIdFromTokens(tokens: CodexTokenResponse): string | undefined {
-    if (tokens.id_token) {
-      const claims = parseCodexJwtClaims(tokens.id_token)
-      if (claims) {
-        const accountId = extractAccountIdFromClaims(claims)
-        if (accountId) return accountId
-      }
-    }
-    const claims = parseCodexJwtClaims(tokens.access_token)
-    return claims ? extractAccountIdFromClaims(claims) : undefined
-  }
-
-  async function refreshCodexAccessToken(refreshToken: string): Promise<CodexTokenResponse> {
-    const response = await fetch(`${CODEX_ISSUER}/oauth/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-        client_id: CODEX_CLIENT_ID,
-      }).toString(),
-    })
-    if (!response.ok) {
-      throw new Error(`Codex token refresh failed: ${response.status}`)
-    }
-    return response.json()
-  }
+  // @event_20260216_quota_consolidation — Codex helpers moved to @/account/quota/openai.ts
+  // clampPercentage, CodexTokenResponse, parseCodexJwtClaims, extractAccountIdFromClaims,
+  // extractAccountIdFromTokens, refreshCodexAccessToken now imported from @/account/quota
 
   function resolveQuotaGroup(modelID: string, displayName?: string): QuotaGroup | null {
     return resolveAntigravityQuotaGroup(modelID, displayName)
@@ -686,6 +624,28 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     return waitMs > 0 ? waitMs : undefined
   }
 
+  /**
+   * Format the Status column for a model row.
+   *
+   * @event_20260216_phase5 — Priority-based status display
+   *
+   * Decision tree (first match wins):
+   *
+   *   Priority 1: Cooldown (rate-limited)
+   *   ├── isRateLimited + waitMs > 0  → "⏳ Xm"       (from RateLimitTracker 3D entry)
+   *   ├── isRateLimited (no waitMs)   → "0%"           (rate-limited but no ETA)
+   *   └── cockpit resetTime (AG only) → "⏳ Xm"        (quota exhausted, real reset from cockpit)
+   *
+   *   Priority 2: Usage info (provider-specific)
+   *   ├── OpenAI (Codex)              → "5H:XX% WK:XX%" (hourly + weekly remaining)
+   *   ├── Antigravity (cockpit)       → "XX%"           (remainingFraction from quota group)
+   *   ├── Gemini (RequestMonitor)     → "XX% (used/rpd)" (RPD remaining percentage)
+   *   └── Others                      → "--" or undefined
+   *
+   * Called from:
+   *   - activityData memo    → isRateLimited=false (cooldown already handled by 3D check)
+   *   - modelSelectItems     → isRateLimited=true/false (carries provider-level rate limit info)
+   */
   function formatQuotaFooter(
     accountId: string,
     providerId: string,
@@ -695,27 +655,61 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     isRateLimited?: boolean,
     waitMs?: number,
   ): string | undefined {
-    if (family(providerId) === "openai" || providerId === "openai") {
-      if (isRateLimited && waitMs && waitMs > 0) return `0% ⏳ ${formatWait(waitMs)}`
-      if (isRateLimited) return "5H:0% WK:0%"
+    const providerFamily = family(providerId)
+
+    // ──────────────────────────────────────────────────────────
+    // Priority 1: Cooldown display (rate-limited state)
+    // ──────────────────────────────────────────────────────────
+
+    if (isRateLimited) {
+      if (providerFamily === "openai" || providerId === "openai") {
+        if (waitMs && waitMs > 0) return `⏳ ${formatWait(waitMs)}`
+        return "5H:0% WK:0%"
+      }
+      if (waitMs && waitMs > 0) return `⏳ ${formatWait(waitMs)}`
+      return "0%"
+    }
+
+    // Antigravity cockpit-based cooldown (quota exhausted with real resetTime)
+    if (providerFamily === "antigravity") {
+      const quotaWaitMs = getQuotaWaitMs(accountId, providerId, modelID, displayName)
+      if (quotaWaitMs && quotaWaitMs > 0) {
+        return `⏳ ${formatWait(quotaWaitMs)}`
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // Priority 2: Usage info (provider-specific)
+    // ──────────────────────────────────────────────────────────
+
+    // OpenAI: Codex 5-hour + weekly usage from chatgpt.com/backend-api/wham/usage
+    if (providerFamily === "openai" || providerId === "openai") {
       const quotaMap = codexQuota()
       const quota = quotaMap?.[accountId]
       if (!quota) return "5H:-- WK:--"
       return `5H:${quota.hourlyRemaining}% WK:${quota.weeklyRemaining}%`
     }
-    if (isRateLimited && waitMs && waitMs > 0) return `0% ⏳ ${formatWait(waitMs)}`
-    if (isRateLimited) return "0%"
 
-    // Check quota-based wait time from cockpit resetTime
-    const quotaWaitMs = getQuotaWaitMs(accountId, providerId, modelID, displayName)
-    if (quotaWaitMs && quotaWaitMs > 0) {
-      return `⏳ ${formatWait(quotaWaitMs)}`
+    // Antigravity: cockpit quota group remaining fraction
+    if (providerFamily === "antigravity") {
+      const percent = getQuotaPercent(accountId, providerId, modelID, displayName)
+      if (typeof percent === "number") return `${percent}%`
+      return "--"
     }
 
-    const percent = getQuotaPercent(accountId, providerId, modelID, displayName)
-    if (typeof percent === "number") return `${percent}%`
-    // if (fallbackFree) return "100%" // Removed to show RPD instead
-    if (family(providerId) === "antigravity") return "--"
+    // Gemini: RPD remaining from local RequestMonitor
+    if (providerFamily === "google-api" || providerFamily === "gemini-cli") {
+      const monitor = RequestMonitor.get()
+      const stats = monitor.getStats(providerId, accountId || "unknown", modelID)
+      const limits = monitor.getModelLimits(providerId, modelID)
+      if (limits.rpd > 0) {
+        const remaining = Math.max(0, limits.rpd - stats.rpd)
+        const pct = clampPercentage(Math.round((remaining / limits.rpd) * 100))
+        return `${pct}% (${stats.rpd}/${limits.rpd})`
+      }
+    }
+
+    // Unknown provider — no quota info available
     return undefined
   }
 
@@ -835,9 +829,9 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
           })
           .filter(Boolean)
           .filter((m: { id: string; title: string }) => isGoogleModelWhitelisted(m.id)) as {
-          id: string
-          title: string
-        }[]
+            id: string
+            title: string
+          }[]
         setGoogleModels(normalized)
       } catch (error) {
         setGoogleModelError(error instanceof Error ? error.message : String(error))
@@ -866,8 +860,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     const rateLimitTracker = getRateLimitTracker()
     const rateLimits3D = rateLimitTracker.getSnapshot3D()
 
-    const registry = getModelHealthRegistry()
-    const snapshot2D = registry.getSnapshot()
+
 
     const providerMap = activityProviders() ?? {}
     const accountMap = activityAccounts() ?? {}
@@ -991,15 +984,8 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
         const isCurrentAccount = isCurrentModel && activeAccountId && activeAccountId === accountId
         const rowSuffix = isCurrentAccount ? " ✅" : ""
 
-        const monitor = RequestMonitor.get()
-        const stats = monitor.getStats(providerId, accountId || "unknown", modelId)
-        const limits = monitor.getModelLimits(providerId, modelId)
-        const status = monitor.getStatus(providerId, accountId || "unknown", modelId)
-
+        // @event_20260216_phase5 — Gemini RPD display moved to formatQuotaFooter
         let displayStatus = "--"
-        if (accountFamily === "google-api" || accountFamily === "gemini-cli") {
-          displayStatus = `${stats.rpd}/${limits.rpd}`
-        }
 
         const modelKey = `${providerId}:${modelId}`
         const modelEntry = modelLimits.get(`${accountId}:${providerId}:${modelId}`)
@@ -1034,21 +1020,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
           continue
         }
 
-        const state2d = snapshot2D.get(modelKey)
-        if (state2d && state2d.waitMs > 0) {
-          limited += 1
-          const waitTime = `⏳ ${formatWait(state2d.waitMs)}`
-          const statusText = `${waitTime.padStart(16)}${rowSuffix}`
-          items.push({
-            value: `${accountId}:${providerId}:${modelId}`,
-            title: `${titleProviderCol} ${titleModelCol} ${branchColValue}${accountCol} ${statusText}`,
-            description: "",
-            category: "",
-            footer: "",
-            truncate: "none",
-          })
-          continue
-        }
+
 
         // @event_2026-02-06:rotation_unify - Show quota for all models with quota data
         // Previously required state2d.available, now shows quota regardless of rate limit history
@@ -1060,7 +1032,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
         const statusColumn = displayStatus.padStart(16)
 
-        if (quotaFooter || (state2d && state2d.available)) {
+        if (quotaFooter) {
           ready += 1
           const readyFooter = `${statusColumn}${rowSuffix}`
           items.push({
@@ -1688,22 +1660,22 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       const existingIds = new Set(baseEntries.map((entry) => entry.value.modelID))
       const dynamicEntries = isGoogleProvider
         ? googleModels()
-            .filter((model) => hiddenCheck(model.id) && !existingIds.has(model.id))
-            .map((model) => {
-              const isFav = favorites.some((f) => f.providerId === baseProviderID && f.modelID === model.id)
-              return {
-                value: { providerId: baseProviderID, modelID: model.id },
-                modelTitle: model.title,
-                category: "Models",
-                gutter: isFav ? <text fg={theme.accent}>⭐</text> : undefined,
-                description: "Google AI Studio list",
-                footer: undefined,
-                onSelect: () => {
-                  debugCheckpoint("admin", "select dynamic model", { provider: modelProviderID, model: model.id })
-                  probeAndSelectModel(modelProviderID, model.id)
-                },
-              }
-            })
+          .filter((model) => hiddenCheck(model.id) && !existingIds.has(model.id))
+          .map((model) => {
+            const isFav = favorites.some((f) => f.providerId === baseProviderID && f.modelID === model.id)
+            return {
+              value: { providerId: baseProviderID, modelID: model.id },
+              modelTitle: model.title,
+              category: "Models",
+              gutter: isFav ? <text fg={theme.accent}>⭐</text> : undefined,
+              description: "Google AI Studio list",
+              footer: undefined,
+              onSelect: () => {
+                debugCheckpoint("admin", "select dynamic model", { provider: modelProviderID, model: model.id })
+                probeAndSelectModel(modelProviderID, model.id)
+              },
+            }
+          })
         : []
 
       const combined = sortBy([...baseEntries, ...dynamicEntries], (entry) => entry.modelTitle)
@@ -1976,53 +1948,53 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
           },
           ...(page() === "providers"
             ? [
-                {
-                  keybind: Keybind.parse("s")[0],
-                  title: showHidden() ? "Hide" : "Showall",
-                  label: "S",
-                  disabled: !connected() || (step() !== "model_select" && step() !== "root"),
-                  onTrigger: () => {
-                    const next = !showHidden()
-                    debugCheckpoint("admin", "toggle show hidden", { enabled: next, step: step() })
-                    setShowHidden(next)
-                  },
+              {
+                keybind: Keybind.parse("s")[0],
+                title: showHidden() ? "Hide" : "Showall",
+                label: "S",
+                disabled: !connected() || (step() !== "model_select" && step() !== "root"),
+                onTrigger: () => {
+                  const next = !showHidden()
+                  debugCheckpoint("admin", "toggle show hidden", { enabled: next, step: step() })
+                  setShowHidden(next)
                 },
-              ]
+              },
+            ]
             : []),
           ...(page() === "activities"
             ? [
-                {
-                  keybind: Keybind.parse("s")[0],
-                  title: "(S)ort",
-                  label: activitySort() === "usage" ? "Usage" : activitySort() === "provider" ? "Provider" : "Model",
-                  disabled: false,
-                  onTrigger: () => {
-                    const next =
-                      activitySort() === "usage" ? "provider" : activitySort() === "provider" ? "model" : "usage"
-                    debugCheckpoint("admin.activities", "sort", { mode: next })
-                    setActivitySort(next)
-                  },
+              {
+                keybind: Keybind.parse("s")[0],
+                title: "(S)ort",
+                label: activitySort() === "usage" ? "Usage" : activitySort() === "provider" ? "Provider" : "Model",
+                disabled: false,
+                onTrigger: () => {
+                  const next =
+                    activitySort() === "usage" ? "provider" : activitySort() === "provider" ? "model" : "usage"
+                  debugCheckpoint("admin.activities", "sort", { mode: next })
+                  setActivitySort(next)
                 },
-                {
-                  keybind: Keybind.parse("delete")[0],
-                  title: "(D)elete",
-                  label: "",
-                  disabled: false,
-                  // @event_2026-02-06:fix-model-activities - Add delete key to remove from favorites in activities page
-                  onTrigger: (option: DialogSelectOption<unknown> | undefined) => {
-                    const val = option?.value
-                    if (val && typeof val === "string") {
-                      const parts = val.split(":")
-                      if (parts.length >= 3) {
-                        const providerId = parts[1]
-                        const modelID = parts[2]
-                        debugCheckpoint("admin.activities", "delete favorite", { providerId, modelID })
-                        local.model.toggleFavorite({ providerId, modelID }, { skipValidation: true })
-                      }
+              },
+              {
+                keybind: Keybind.parse("delete")[0],
+                title: "(D)elete",
+                label: "",
+                disabled: false,
+                // @event_2026-02-06:fix-model-activities - Add delete key to remove from favorites in activities page
+                onTrigger: (option: DialogSelectOption<unknown> | undefined) => {
+                  const val = option?.value
+                  if (val && typeof val === "string") {
+                    const parts = val.split(":")
+                    if (parts.length >= 3) {
+                      const providerId = parts[1]
+                      const modelID = parts[2]
+                      debugCheckpoint("admin.activities", "delete favorite", { providerId, modelID })
+                      local.model.toggleFavorite({ providerId, modelID }, { skipValidation: true })
                     }
-                  },
+                  }
                 },
-              ]
+              },
+            ]
             : []),
           {
             keybind: Keybind.parse("r")[0],
@@ -2198,97 +2170,97 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
           ...(page() === "activities"
             ? []
             : [
-                {
-                  keybind: Keybind.parse("delete")[0],
-                  title: step() === "model_select" ? "Hide" : step() === "root" ? "Hide" : "(Del)ete",
-                  label: "",
-                  disabled: !connected(),
-                  onTrigger: async (option: DialogSelectOption<unknown> | undefined) => {
-                    const adminOption = asDialogAdminOption(option)
-                    const val = adminOption.value
+              {
+                keybind: Keybind.parse("delete")[0],
+                title: step() === "model_select" ? "Hide" : step() === "root" ? "Hide" : "(Del)ete",
+                label: "",
+                disabled: !connected(),
+                onTrigger: async (option: DialogSelectOption<unknown> | undefined) => {
+                  const adminOption = asDialogAdminOption(option)
+                  const val = adminOption.value
 
-                    // Hide provider on root step
-                    const providerSelection = asProviderSelectionValue(val)
-                    if (step() === "root" && providerSelection && adminOption.category === "Providers") {
-                      const fam = providerSelection.family
-                      const isUnconfigured = providerSelection.isUnconfigured
-                      // Check if not already hidden
-                      const isInHiddenList = local.model.isProviderHidden(fam)
-                      const effectivelyHidden = isUnconfigured ? !isInHiddenList : isInHiddenList
-                      if (!effectivelyHidden) {
-                        debugCheckpoint("admin", "hide provider", { family: fam, isUnconfigured })
-                        // For unconfigured: toggle removes from list (makes it hidden again)
-                        // For configured: toggle adds to list (makes it hidden)
-                        local.model.toggleHiddenProvider(fam)
-                        toast.show({ message: `Provider "${fam}" hidden`, variant: "info", duration: 2000 })
-                      }
-                      return
+                  // Hide provider on root step
+                  const providerSelection = asProviderSelectionValue(val)
+                  if (step() === "root" && providerSelection && adminOption.category === "Providers") {
+                    const fam = providerSelection.family
+                    const isUnconfigured = providerSelection.isUnconfigured
+                    // Check if not already hidden
+                    const isInHiddenList = local.model.isProviderHidden(fam)
+                    const effectivelyHidden = isUnconfigured ? !isInHiddenList : isInHiddenList
+                    if (!effectivelyHidden) {
+                      debugCheckpoint("admin", "hide provider", { family: fam, isUnconfigured })
+                      // For unconfigured: toggle removes from list (makes it hidden again)
+                      // For configured: toggle adds to list (makes it hidden)
+                      local.model.toggleHiddenProvider(fam)
+                      toast.show({ message: `Provider "${fam}" hidden`, variant: "info", duration: 2000 })
                     }
+                    return
+                  }
 
-                    if (step() === "account_select" && typeof val === "string" && val !== "__add_account__") {
-                      const fam = selectedFamily()
-                      if (fam) {
-                        // Use coreFamily for account operations (accounts may be stored in different family than displayed)
-                        const lookupFamily = adminOption.coreFamily || fam
-                        debugCheckpoint("admin", "delete account prompt", { family: lookupFamily, id: val })
-                        const confirmed = await DialogConfirm.show(
-                          dialog,
-                          "Delete Account",
-                          `Are you sure you want to delete this account?`,
-                        )
+                  if (step() === "account_select" && typeof val === "string" && val !== "__add_account__") {
+                    const fam = selectedFamily()
+                    if (fam) {
+                      // Use coreFamily for account operations (accounts may be stored in different family than displayed)
+                      const lookupFamily = adminOption.coreFamily || fam
+                      debugCheckpoint("admin", "delete account prompt", { family: lookupFamily, id: val })
+                      const confirmed = await DialogConfirm.show(
+                        dialog,
+                        "Delete Account",
+                        `Are you sure you want to delete this account?`,
+                      )
 
-                        if (confirmed) {
-                          try {
-                            // Remove from core Account module (single source of truth)
-                            // Use the mapped coreId and coreFamily for correct lookup
-                            const coreId = adminOption.coreId || val
-                            await Account.remove(lookupFamily, coreId)
-                            await Account.refresh()
+                      if (confirmed) {
+                        try {
+                          // Remove from core Account module (single source of truth)
+                          // Use the mapped coreId and coreFamily for correct lookup
+                          const coreId = adminOption.coreId || val
+                          await Account.remove(lookupFamily, coreId)
+                          await Account.refresh()
 
-                            // Reload AccountManager to sync in-memory state
-                            if (lookupFamily === "antigravity") {
-                              const manager = agManager()
-                              if (manager) {
-                                await manager.reloadFromAccountModule()
-                              }
+                          // Reload AccountManager to sync in-memory state
+                          if (lookupFamily === "antigravity") {
+                            const manager = agManager()
+                            if (manager) {
+                              await manager.reloadFromAccountModule()
                             }
-
-                            debugCheckpoint("admin", "delete account success", { family: lookupFamily, id: coreId })
-                            toast.show({ message: "Account deleted successfully", variant: "success" })
-                            await refreshAntigravity()
-                            setSelectedFamily(fam)
-                            forceRefresh()
-                            lockBackOnce()
-                          } catch (e: unknown) {
-                            debugCheckpoint("admin", "delete account error", {
-                              family: fam,
-                              error: String(e instanceof Error ? e.stack || e.message : e),
-                            })
-                            toast.error(e)
                           }
+
+                          debugCheckpoint("admin", "delete account success", { family: lookupFamily, id: coreId })
+                          toast.show({ message: "Account deleted successfully", variant: "success" })
+                          await refreshAntigravity()
+                          setSelectedFamily(fam)
+                          forceRefresh()
+                          lockBackOnce()
+                        } catch (e: unknown) {
+                          debugCheckpoint("admin", "delete account error", {
+                            family: fam,
+                            error: String(e instanceof Error ? e.stack || e.message : e),
+                          })
+                          toast.error(e)
                         }
                       }
-                      return
                     }
+                    return
+                  }
 
-                    if (step() === "model_select" || step() === "root") {
-                      // Only handle model values (objects)
-                      const modelVal = asModelSelectionValue(val)
-                      if (modelVal) {
-                        debugCheckpoint("admin", "delete model action", {
-                          origin: modelVal.origin,
-                          provider: modelVal.providerId,
-                          model: modelVal.modelID,
-                        })
-                        if (modelVal.origin === "recent") local.model.removeFromRecent(modelVal)
-                        else if (modelVal.origin === "favorite") {
-                          local.model.toggleFavorite(modelVal, { skipValidation: true })
-                        } else if (step() !== "root") local.model.toggleHidden(modelVal)
-                      }
+                  if (step() === "model_select" || step() === "root") {
+                    // Only handle model values (objects)
+                    const modelVal = asModelSelectionValue(val)
+                    if (modelVal) {
+                      debugCheckpoint("admin", "delete model action", {
+                        origin: modelVal.origin,
+                        provider: modelVal.providerId,
+                        model: modelVal.modelID,
+                      })
+                      if (modelVal.origin === "recent") local.model.removeFromRecent(modelVal)
+                      else if (modelVal.origin === "favorite") {
+                        local.model.toggleFavorite(modelVal, { skipValidation: true })
+                      } else if (step() !== "root") local.model.toggleHidden(modelVal)
                     }
-                  },
+                  }
                 },
-              ]),
+              },
+            ]),
           {
             keybind: Keybind.parse("insert")[0],
             title: "Unhide",

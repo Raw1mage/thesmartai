@@ -25,26 +25,22 @@ import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
 import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
-import {
-  isRateLimitError,
-  isAuthError,
-  extractRateLimitDetails,
-  calculateBackoffMs,
-  getHealthTracker,
-  getRateLimitTracker,
-  type RateLimitReason,
-} from "@/account/rotation"
+
 import {
   findFallback,
   type ModelVector,
   type FallbackStrategy,
   isVectorRateLimited,
-  type RotationPurpose,
 } from "@/account/rotation3d"
 import { Bus } from "@/bus"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import { debugCheckpoint } from "@/util/debug"
-import type { OAuthAuthDetails, PluginClient } from "@/plugin/antigravity/plugin/types"
+import {
+  RateLimitJudge,
+  isRateLimitError,
+  isAuthError,
+  formatRateLimitReason,
+} from "@/account/rate-limit-judge"
 
 import { RequestMonitor } from "@/account/monitor"
 
@@ -55,7 +51,7 @@ export namespace LLM {
 
   // Toast debouncing for rate-limit and rotation notifications
   const TOAST_DEBOUNCE_MS = 15_000
-  const MODEL_CAPACITY_MIN_BACKOFF_MS = 300_000
+
   let lastRateLimitToastAt = 0
   let lastRotationToastAt = 0
 
@@ -153,9 +149,9 @@ export namespace LLM {
       // 6. Role Identity Reinforcement
       // Tells the model exactly who it is in this specific request.
       `\n\n[IDENTITY REINFORCEMENT]\n` +
-        `Session ID: ${input.sessionID}\n` +
-        `Current Role: ${(await isSubagentSession(input.sessionID)) ? "Subagent" : "Main Agent"}\n` +
-        `Session Context: ${(await isSubagentSession(input.sessionID)) ? "Sub-task" : "Main-task Orchestration"}`,
+      `Session ID: ${input.sessionID}\n` +
+      `Current Role: ${(await isSubagentSession(input.sessionID)) ? "Subagent" : "Main Agent"}\n` +
+      `Session Context: ${(await isSubagentSession(input.sessionID)) ? "Sub-task" : "Main-task Orchestration"}`,
     ]
 
     system.push(systemParts.filter((x) => x).join("\n"))
@@ -182,11 +178,11 @@ export namespace LLM {
     const base = input.small
       ? ProviderTransform.smallOptions(input.model, provider.options)
       : ProviderTransform.options({
-          model: input.model,
-          sessionID: input.sessionID,
-          providerOptions: provider.options,
-          accountId: currentAccountId,
-        })
+        model: input.model,
+        sessionID: input.sessionID,
+        providerOptions: provider.options,
+        accountId: currentAccountId,
+      })
     const options: Record<string, any> = pipe(
       base,
       mergeDeep(input.model.options),
@@ -233,11 +229,11 @@ export namespace LLM {
     const maxOutputTokens = capabilities.skipMaxOutputTokens
       ? undefined
       : ProviderTransform.maxOutputTokens(
-          input.model.api.npm,
-          params.options,
-          input.model.limit.output,
-          OUTPUT_TOKEN_MAX,
-        )
+        input.model.api.npm,
+        params.options,
+        input.model.limit.output,
+        OUTPUT_TOKEN_MAX,
+      )
 
     const tools = await resolveTools(input)
 
@@ -268,17 +264,17 @@ export namespace LLM {
     const systemMessages =
       capabilities.systemMessageRole === "user"
         ? ([
-            {
-              role: "user",
-              content: filteredSystem.join("\n\n"),
-            },
-          ] as ModelMessage[])
+          {
+            role: "user",
+            content: filteredSystem.join("\n\n"),
+          },
+        ] as ModelMessage[])
         : filteredSystem.map(
-            (x): ModelMessage => ({
-              role: "system",
-              content: x,
-            }),
-          )
+          (x): ModelMessage => ({
+            role: "system",
+            content: x,
+          }),
+        )
 
     const streamMessages = [...systemMessages, ...input.messages]
 
@@ -300,30 +296,14 @@ export namespace LLM {
           error: error instanceof Error ? { message: error.message, stack: error.stack, name: error.name } : error,
         })
 
-        // Handle Authentication Errors (Hard Stop)
+        if (!accountId) return
+
+        // @event_20260216_rate_limit_judge: Delegate all classification to RateLimitJudge
+        // Judge handles: error classification, backoff calculation, provider-specific strategy,
+        // tracker updates, and Bus event broadcasting — all in one call.
+
         if (isAuthError(error)) {
-          l.error("Authentication error detected", {
-            accountId,
-            providerId: input.model.providerId,
-            modelID: input.model.id,
-          })
-
-          if (accountId) {
-            const { Account } = await import("@/account")
-            await Account.recordFailure(accountId, input.model.providerId)
-
-            const { getRateLimitTracker } = await import("@/account/rotation")
-            const rateLimitTracker = getRateLimitTracker()
-
-            // 2. Hard block for 1 hour to prevent retries
-            rateLimitTracker.markRateLimited(
-              accountId,
-              input.model.providerId,
-              "AUTH_FAILED",
-              3_600_000, // 1 hour
-              input.model.id,
-            )
-          }
+          await RateLimitJudge.recordAuthFailure(accountId, input.model.providerId, input.model.id, error)
 
           // Show persistent error toast
           Bus.publish(TuiEvent.ToastShow, {
@@ -331,136 +311,25 @@ export namespace LLM {
             message: `Auth failed for ${accountId}. Please re-authenticate.`,
             variant: "error",
             duration: 15000,
-          }).catch(() => {})
-
-          return // Stop processing
+          }).catch(() => { })
+          return
         }
 
-        // @event_2026-02-06:rotation_unify
-        // Track rate limits with account dimension for proper cross-process sharing
-        // Removed ModelHealthRegistry (global) - use RateLimitTracker (per-account) only
         if (isRateLimitError(error)) {
-          const { reason, retryAfterMs } = extractRateLimitDetails(error)
+          const result = await RateLimitJudge.judge(accountId, input.model.providerId, input.model.id, error)
 
-          // Absolute 3D Counter for RPD Detection (Reset 16:00 Taipei)
-          const dailyFailures = accountId
-            ? getRateLimitTracker().incrementDailyFailureCount(accountId, input.model.providerId, input.model.id)
-            : 0
-
-          const consecutiveFailures = accountId
-            ? getHealthTracker().getConsecutiveFailures(accountId, input.model.providerId, input.model.id)
-            : 0
-
-          let backoffMs = calculateBackoffMs(reason, consecutiveFailures, retryAfterMs, dailyFailures)
-
-          // @event_user_request: antigravity/openai rate limit check
-          // For Antigravity/OpenAI, fetch real reset time from cockpit instead of guessing.
-          if (
-            (input.model.providerId === "antigravity" || input.model.providerId === "openai") &&
-            accountId &&
-            reason !== "TOKEN_REFRESH_FAILED"
-          ) {
-            try {
-              const { Account } = await import("@/account")
-              const { getCockpitBackoffMs } = await import("@/plugin/antigravity/plugin/quota")
-              const { refreshAccessToken } = await import("@/plugin/antigravity/plugin/token")
-              const { formatRefreshParts } = await import("@/plugin/antigravity/plugin/auth")
-
-              const info = await Account.get(input.model.providerId, accountId)
-              if (info && info.type === "subscription") {
-                let auth: OAuthAuthDetails = {
-                  type: "oauth",
-                  refresh: formatRefreshParts({
-                    refreshToken: info.refreshToken,
-                    projectId: info.projectId,
-                    managedProjectId: info.managedProjectId,
-                  }),
-                  access: info.accessToken,
-                  expires: info.expiresAt,
-                }
-
-                if (!auth.access || !auth.expires || Date.now() >= auth.expires - 300000) {
-                  const noopClient = { auth: { set: async () => true } } as unknown as PluginClient
-                  const refreshed = await refreshAccessToken(auth, noopClient, "antigravity")
-                  if (refreshed) {
-                    auth = refreshed
-                    const pId = info.projectId || info.managedProjectId
-                    if (pId && auth.access) {
-                      const result = await getCockpitBackoffMs(auth.access, pId, input.model.id, backoffMs)
-                      if (result.fromCockpit) backoffMs = result.backoffMs
-                    }
-                  }
-                } else {
-                  const pId = info.projectId || info.managedProjectId
-                  if (pId && auth.access) {
-                    const result = await getCockpitBackoffMs(auth.access, pId, input.model.id, backoffMs)
-                    if (result.fromCockpit) backoffMs = result.backoffMs
-                  }
-                }
-              }
-            } catch (e) {
-              l.warn("Failed to fetch cockpit backoff", { error: e })
-            }
-          }
-
-          // @event_20260215_strict_rpd: If rate limit occurs while RPM is obviously low, assume RPD
-          const monitor = RequestMonitor.get()
-          const stats = monitor.getStats(input.model.providerId, accountId || "unknown", input.model.id)
-          const limits = monitor.getModelLimits(input.model.providerId, input.model.id)
-          const isNotRPMViolation = stats.rpm < limits.rpm
-
-          if (isNotRPMViolation && reason !== "RATE_LIMIT_SHORT") {
-            const { getNextQuotaReset } = await import("@/account/rotation")
-            const msUntilReset = getNextQuotaReset() - Date.now()
-            backoffMs = Math.max(msUntilReset, 60_000)
-            l.info("Detected obvious RPD violation (RPM is below limit), cooling down until 16:00 Taipei", {
-              rpm: stats.rpm,
-              limit: limits.rpm,
-              backoffMinutes: Math.round(backoffMs / 60000),
-            })
-          }
-
-          // Guardrail: keep 503/529/capacity cooldown at least 5 minutes across all subagents.
-          const MODEL_CAPACITY_MIN_BACKOFF_MS = 300_000
-          if (
-            (reason === "SERVICE_UNAVAILABLE_503" ||
-              reason === "SITE_OVERLOADED_529" ||
-              reason === "MODEL_CAPACITY_EXHAUSTED") &&
-            backoffMs < MODEL_CAPACITY_MIN_BACKOFF_MS
-          ) {
-            backoffMs = MODEL_CAPACITY_MIN_BACKOFF_MS
-          }
-
-          // If daily failures are high, we can also force the status to RPD in the monitor
-          // to ensure UI displays it correctly before the next success.
-
-          // Update account-level tracking (with account dimension)
-          if (accountId) {
-            const { Account } = await import("@/account")
-            // 3D Standard: Always include model ID to ensure (provider, model, account) consistency.
-            await Account.recordRateLimit(accountId, input.model.providerId, reason, backoffMs, input.model.id)
-          }
-
-          l.warn("Rate limit detected", {
-            accountId,
-            providerId: input.model.providerId,
-            modelID: input.model.id,
-            reason,
-            backoffMs,
-          })
-
-          // Publish toast notification for rate limit (debounced)
+          // Publish toast notification (debounced)
           const now = Date.now()
           if (now - lastRateLimitToastAt >= TOAST_DEBOUNCE_MS) {
             lastRateLimitToastAt = now
-            const waitMinutes = Math.ceil(backoffMs / 60000)
-            const reasonText = formatRateLimitReason(reason)
+            const waitMinutes = Math.ceil(result.backoffMs / 60000)
+            const reasonText = formatRateLimitReason(result.reason)
             Bus.publish(TuiEvent.ToastShow, {
               title: "Rate Limit",
               message: `${input.model.id}: ${reasonText}. Cooling down for ${waitMinutes}m.`,
               variant: "warning",
               duration: 8000,
-            }).catch(() => {}) // Ignore publish errors
+            }).catch(() => { })
           }
         }
       },
@@ -497,15 +366,15 @@ export namespace LLM {
         ...(accountId ? { "x-opencode-account-id": accountId } : {}),
         ...(input.model.providerId.startsWith("opencode")
           ? {
-              "x-opencode-project": Instance.project.id,
-              "x-opencode-session": input.sessionID,
-              "x-opencode-request": input.user.id,
-              "x-opencode-client": Flag.OPENCODE_CLIENT,
-            }
+            "x-opencode-project": Instance.project.id,
+            "x-opencode-session": input.sessionID,
+            "x-opencode-request": input.user.id,
+            "x-opencode-client": Flag.OPENCODE_CLIENT,
+          }
           : input.model.providerId !== "claude-cli"
             ? {
-                "User-Agent": `opencode/${Installation.VERSION}`,
-              }
+              "User-Agent": `opencode/${Installation.VERSION}`,
+            }
             : undefined),
         ...input.model.headers,
         ...headers,
@@ -602,27 +471,20 @@ export namespace LLM {
    * Record a successful request for the current provider.
    * Call this after a stream completes successfully.
    *
-   * @event_2026-02-06:rotation_unify
-   * Removed ModelHealthRegistry - use account-level tracking only
+   * @event_20260216_rate_limit_judge: Delegates to RateLimitJudge.recordSuccess
+   * which clears rate limits, updates health, and broadcasts Cleared event.
    */
   export async function recordSuccess(providerId: string, modelID?: string): Promise<void> {
     log.info("recordSuccess called", { providerId, modelID })
     debugCheckpoint("health", "llm.recordSuccess", { providerId, modelID })
 
-    // Update account-level tracking
     const accountId = await getAccountIdForProvider(providerId)
-    if (accountId) {
+    if (accountId && modelID) {
+      await RateLimitJudge.recordSuccess(providerId, accountId, modelID)
+    } else if (accountId) {
+      // Fallback: if no modelID, use the old path
       const { Account } = await import("@/account")
       await Account.recordSuccess(accountId, providerId)
-
-      // Clear rate limit for this specific account:provider:model combination
-      if (modelID) {
-        const { getRateLimitTracker } = await import("@/account/rotation")
-        const rateLimitTracker = getRateLimitTracker()
-        rateLimitTracker.clear(accountId, providerId, modelID)
-      }
-
-      log.info("Recorded success with account", { providerId, modelID, accountId })
     }
   }
 
@@ -656,7 +518,6 @@ export namespace LLM {
     error?: unknown,
   ): Promise<Provider.Model | null> {
     const { Account } = await import("@/account")
-    const { getRateLimitTracker } = await import("@/account/rotation")
 
     const family = Account.parseFamily(currentModel.providerId)
     if (!family) return null
@@ -669,168 +530,9 @@ export namespace LLM {
     const currentVectorKey = `${currentModel.providerId}:${currentAccountId}:${currentModel.id}`
     triedVectors.add(currentVectorKey)
 
-    // Mark current vector as rate-limited to prevent bouncing back to it
-    const rateLimitTracker = getRateLimitTracker()
-    if (!rateLimitTracker.isRateLimited(currentAccountId, currentModel.providerId, currentModel.id)) {
-      let { reason, retryAfterMs } = error
-        ? extractRateLimitDetails(error)
-        : { reason: "RATE_LIMIT_EXCEEDED" as RateLimitReason, retryAfterMs: undefined }
-
-      // @event_20260215_paid_account_fix
-      // For Antigravity/OpenAI, attempt to fetch real reset time from cockpit during 3D rotation too.
-      // This matches the precision used in the stream() onError handler.
-      if ((currentModel.providerId === "antigravity" || currentModel.providerId === "openai") && currentAccountId) {
-        try {
-          const { Account: AccountMod } = await import("@/account")
-          const { getCockpitBackoffMs } = await import("@/plugin/antigravity/plugin/quota")
-          const { refreshAccessToken } = await import("@/plugin/antigravity/plugin/token")
-          const { formatRefreshParts } = await import("@/plugin/antigravity/plugin/auth")
-
-          const info = await AccountMod.get(currentModel.providerId, currentAccountId)
-          if (info && info.type === "subscription") {
-            let auth: OAuthAuthDetails = {
-              type: "oauth",
-              refresh: formatRefreshParts({
-                refreshToken: info.refreshToken,
-                projectId: info.projectId,
-                managedProjectId: info.managedProjectId,
-              }),
-              access: info.accessToken,
-              expires: info.expiresAt,
-            }
-
-            // Refresh token if needed
-            if (!auth.access || !auth.expires || Date.now() >= auth.expires - 300000) {
-              const noopClient = { auth: { set: async () => true } } as unknown as PluginClient
-              const refreshed = await refreshAccessToken(auth, noopClient, currentModel.providerId)
-              if (refreshed) auth = refreshed
-            }
-
-            const pId = info.projectId || info.managedProjectId
-            if (pId && auth.access) {
-              const cockpitResult = await getCockpitBackoffMs(auth.access, pId, currentModel.id, 0)
-              if (cockpitResult.fromCockpit) {
-                retryAfterMs = cockpitResult.backoffMs
-                log.info("Updated rate limit backoff from cockpit during 3D fallback", {
-                  model: currentModel.id,
-                  newBackoff: retryAfterMs,
-                })
-              }
-            }
-          }
-        } catch (e) {
-          log.warn("Failed to fetch cockpit backoff during fallback", { error: e })
-        }
-      }
-
-      // ONLY mark as rate-limited if it's a temporary/rate-limit error.
-      // Do NOT mark as 429 if it's a permanent error like "model not found".
-      // @event_20260215_fix_false_429
-      const isTemporary =
-        reason === "RATE_LIMIT_EXCEEDED" ||
-        reason === "RATE_LIMIT_SHORT" ||
-        reason === "RATE_LIMIT_LONG" ||
-        reason === "QUOTA_EXHAUSTED" ||
-        reason === "SERVICE_UNAVAILABLE_503" ||
-        reason === "SITE_OVERLOADED_529" ||
-        reason === "MODEL_CAPACITY_EXHAUSTED" ||
-        reason === "SERVER_ERROR"
-
-      if (isTemporary) {
-        // Calculate dynamic backoff instead of hardcoded 5 minutes
-        // We need consecutive failures to calculate backoff properly if it's exponential
-
-        // Absolute 3D Counter for RPD Detection (Reset 16:00 Taipei)
-        const dailyFailures = currentAccountId
-          ? getRateLimitTracker().incrementDailyFailureCount(currentAccountId, currentModel.providerId, currentModel.id)
-          : 0
-
-        const consecutiveFailures = currentAccountId
-          ? getHealthTracker().getConsecutiveFailures(currentAccountId, currentModel.providerId, currentModel.id)
-          : 0
-        let backoffMs = calculateBackoffMs(reason, consecutiveFailures, retryAfterMs, dailyFailures)
-
-        // @event_user_request: antigravity/openai rate limit check
-        // For Antigravity/OpenAI, fetch real reset time from cockpit instead of guessing.
-        if ((currentModel.providerId === "antigravity" || currentModel.providerId === "openai") && currentAccountId) {
-          try {
-            const { Account } = await import("@/account")
-            const { getCockpitBackoffMs } = await import("@/plugin/antigravity/plugin/quota")
-            const { refreshAccessToken } = await import("@/plugin/antigravity/plugin/token")
-            const { formatRefreshParts } = await import("@/plugin/antigravity/plugin/auth")
-
-            const info = await Account.get(currentModel.providerId, currentAccountId)
-            if (info && info.type === "subscription") {
-              let auth: OAuthAuthDetails = {
-                type: "oauth",
-                refresh: formatRefreshParts({
-                  refreshToken: info.refreshToken,
-                  projectId: info.projectId,
-                  managedProjectId: info.managedProjectId,
-                }),
-                access: info.accessToken,
-                expires: info.expiresAt,
-              }
-
-              if (!auth.access || !auth.expires || Date.now() >= auth.expires - 300000) {
-                const noopClient = { auth: { set: async () => true } } as unknown as PluginClient
-                const refreshed = await refreshAccessToken(auth, noopClient, "antigravity")
-                if (refreshed) {
-                  auth = refreshed
-                  const pId = info.projectId || info.managedProjectId
-                  if (pId && auth.access) {
-                    const result = await getCockpitBackoffMs(auth.access, pId, currentModel.id, backoffMs)
-                    if (result.fromCockpit) backoffMs = result.backoffMs
-                  }
-                }
-              } else {
-                const pId = info.projectId || info.managedProjectId
-                if (pId && auth.access) {
-                  const result = await getCockpitBackoffMs(auth.access, pId, currentModel.id, backoffMs)
-                  if (result.fromCockpit) backoffMs = result.backoffMs
-                }
-              }
-            }
-          } catch (e) {
-            log.warn("Failed to fetch cockpit backoff during fallback", { error: e })
-          }
-        }
-
-        // @event_20260215_strict_rpd: If rate limit occurs while RPM is obviously low, assume RPD
-        const monitor = RequestMonitor.get()
-        const stats = monitor.getStats(currentModel.providerId, currentAccountId || "unknown", currentModel.id)
-        const limits = monitor.getModelLimits(currentModel.providerId, currentModel.id)
-        const isNotRPMViolation = stats.rpm < limits.rpm
-
-        if (isNotRPMViolation && reason !== "RATE_LIMIT_SHORT") {
-          const { getNextQuotaReset } = await import("@/account/rotation")
-          const msUntilReset = getNextQuotaReset() - Date.now()
-          backoffMs = Math.max(msUntilReset, 60_000)
-          log.info("Detected obvious RPD violation during fallback, cooling down until 16:00 Taipei", {
-            rpm: stats.rpm,
-            limit: limits.rpm,
-            backoffMinutes: Math.round(backoffMs / 60000),
-          })
-        }
-
-        // Apply cooldown to prevent immediate retry storms
-        // 3D Standard: Always include model ID to ensure (provider, model, account) consistency.
-        rateLimitTracker.markRateLimited(currentAccountId, currentModel.providerId, reason, backoffMs, currentModel.id)
-        log.info("Marked current vector as rate-limited to prevent bounce-back", {
-          provider: currentModel.providerId,
-          account: currentAccountId,
-          model: currentModel.id,
-          reason,
-          backoffMs,
-        })
-      } else {
-        log.warn("Not marking as rate-limited: error is permanent", {
-          provider: currentModel.providerId,
-          model: currentModel.id,
-          reason,
-        })
-      }
-    }
+    // @event_20260216_rate_limit_judge: Delegate marking to RateLimitJudge
+    // This replaces ~160 lines of inline cockpit queries, RPD inference, and tracker updates
+    await RateLimitJudge.markRateLimited(currentModel.providerId, currentAccountId, currentModel.id, error)
 
     // Build current vector
     const currentVector: ModelVector = {
@@ -931,7 +633,7 @@ export namespace LLM {
           message: toastMsg,
           variant: "info",
           duration: 8000,
-        }).catch(() => {})
+        }).catch(() => { })
       }
 
       // Return currentModel here, as the rotation only changed the account, not the model object itself
@@ -966,33 +668,11 @@ export namespace LLM {
         message: toastMsg,
         variant: "info",
         duration: 8000,
-      }).catch(() => {})
+      }).catch(() => { })
     }
 
     return fallbackModel
   }
 
-  /**
-   * Format rate limit reason for display in toast.
-   */
-  function formatRateLimitReason(reason: RateLimitReason): string {
-    switch (reason) {
-      case "QUOTA_EXHAUSTED":
-        return "Quota exhausted"
-      case "RATE_LIMIT_EXCEEDED":
-        return "Rate limit exceeded"
-      case "SERVICE_UNAVAILABLE_503":
-        return "Service unavailable (503)"
-      case "SITE_OVERLOADED_529":
-        return "Site overloaded (529)"
-      case "MODEL_CAPACITY_EXHAUSTED":
-        return "Model at capacity"
-      case "SERVER_ERROR":
-        return "Server error"
-      case "AUTH_FAILED":
-        return "Authentication failed"
-      default:
-        return "Rate limited"
-    }
-  }
+  // formatRateLimitReason moved to @/account/rate-limit-judge.ts
 }
