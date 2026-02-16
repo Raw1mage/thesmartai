@@ -10,33 +10,40 @@ import { Command } from "../command"
 import { Instance } from "./instance"
 import { Vcs } from "./vcs"
 import { Log } from "@/util/log"
+import { debugCheckpoint, debugSpan } from "@/util/debug"
 import { ShareNext } from "@/share/share-next"
 import { Snapshot } from "../snapshot"
 import { Truncate } from "../tool/truncation"
 
 export async function InstanceBootstrap() {
+  debugCheckpoint("bootstrap", "start", { directory: Instance.directory })
+
   // Force migration from auth.json to accounts.json (single source of truth)
   const { Account } = await import("../account")
-  await Account.forceFullMigration()
+  await debugSpan("bootstrap", "Account.forceFullMigration", {}, () => Account.forceFullMigration())
 
   // Clean up duplicate accounts (e.g., same token stored with different IDs)
-  await Account.deduplicateByToken("antigravity")
+  await debugSpan("bootstrap", "Account.deduplicateByToken", { provider: "antigravity" }, () =>
+    Account.deduplicateByToken("antigravity"),
+  )
 
   Log.Default.info("bootstrapping", { directory: Instance.directory })
-  await Plugin.init()
-  Share.init()
-  ShareNext.init()
-  Format.init()
-  await LSP.init()
-  FileWatcher.init()
-  File.init()
-  Vcs.init()
-  Snapshot.init()
-  Truncate.init()
+  await debugSpan("bootstrap", "Plugin.init", {}, () => Plugin.init())
+  await debugSpan("bootstrap", "Share.init", {}, () => Share.init())
+  await debugSpan("bootstrap", "ShareNext.init", {}, () => ShareNext.init())
+  await debugSpan("bootstrap", "Format.init", {}, () => Format.init())
+  await debugSpan("bootstrap", "LSP.init", {}, () => LSP.init())
+  await debugSpan("bootstrap", "FileWatcher.init", {}, () => FileWatcher.init())
+  await debugSpan("bootstrap", "File.init", {}, () => File.init())
+  await debugSpan("bootstrap", "Vcs.init", {}, () => Vcs.init())
+  await debugSpan("bootstrap", "Snapshot.init", {}, () => Snapshot.init())
+  await debugSpan("bootstrap", "Truncate.init", {}, () => Truncate.init())
 
   Bus.subscribe(Command.Event.Executed, async (payload) => {
     if (payload.properties.name === Command.Default.INIT) {
       await Project.setInitialized(Instance.project.id)
     }
   })
+
+  debugCheckpoint("bootstrap", "ready", { directory: Instance.directory })
 }

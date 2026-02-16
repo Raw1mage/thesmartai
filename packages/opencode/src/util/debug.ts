@@ -11,6 +11,7 @@ export const DEBUG_LOG_PATH = file
 let initialized = false
 let seq = 0
 const keytraceEnabled = process.env.OPENCODE_DEBUG_KEYTRACE === "1"
+const isDebugLogEnabled = () => process.env.OPENCODE_DEBUG_LOG === "1"
 let last = 0
 let normalizing = false
 let queued = false
@@ -220,6 +221,7 @@ function hook() {
 }
 
 function ensure() {
+  if (!isDebugLogEnabled()) return
   if (initialized) return
   initialized = true
   if (sniffEnabled) {
@@ -262,10 +264,12 @@ function flow(data?: Record<string, unknown>) {
 }
 
 export function debugInit() {
+  if (!isDebugLogEnabled()) return
   ensure()
 }
 
 export function debugCheckpoint(scope: string, message: string, data?: Record<string, unknown>) {
+  if (!isDebugLogEnabled()) return
   if (scope === "admin.keytrace" && !keytraceEnabled) return
   ensure()
   seq = seq + 1
@@ -289,6 +293,7 @@ export function debugSpan<T>(
   data: Record<string, unknown>,
   fn: () => Promise<T> | T,
 ): Promise<T> {
+  if (!isDebugLogEnabled()) return Promise.resolve().then(fn)
   const span = crypto.randomUUID()
   const trace = typeof data?.trace === "string" ? data.trace : crypto.randomUUID()
   const extra = { ...data, trace, span }
