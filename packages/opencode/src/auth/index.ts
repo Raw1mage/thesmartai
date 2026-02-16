@@ -1,4 +1,5 @@
 import z from "zod"
+import { createHash } from "node:crypto"
 import { JWT } from "../util/jwt"
 
 export const OAUTH_DUMMY_KEY = "opencode-oauth-dummy-key"
@@ -16,6 +17,7 @@ export namespace Auth {
       expires: z.number(),
       accountId: z.string().optional(),
       email: z.string().optional(),
+      username: z.string().optional(),
       orgID: z.string().optional(),
       enterpriseUrl: z.string().optional(),
     })
@@ -196,8 +198,10 @@ export namespace Auth {
         projectId: info.projectId,
       })
     } else if (info.type === "oauth") {
-      // Priority: 1. explicit email, 2. JWT decode from access token, 3. JWT decode from refresh token
-      // 4. accountId only if it looks like an email (contains @), not if it's a UUID
+      // Unified identity resolution chain:
+      // 1. explicit email, 2. JWT decode from access token, 3. JWT decode from refresh token
+      // 4. accountId only if it looks like an email (contains @), 5. explicit username
+      // 6. short hash of token (ultimate fallback — always unique)
       let email = info.email
       if (!email && info.access) {
         email = JWT.getEmail(info.access)
@@ -208,6 +212,7 @@ export namespace Auth {
       if (!email && info.accountId && info.accountId.includes("@")) {
         email = info.accountId
       }
+      const username = info.username
 
       // Check for existing account with same base token to avoid duplicates
       const parts = parseRefreshParts(info.refresh)
@@ -239,11 +244,13 @@ export namespace Auth {
           metadata: info.orgID ? { orgID: info.orgID } : undefined,
         })
       } else {
-        const slug = email || providerId
+        // Unified slug resolution: email > username > token-hash (never falls back to providerId)
+        const tokenHash = createHash("sha256").update(baseToken).digest("hex").slice(0, 8)
+        const slug = email || username || `${providerId}-${tokenHash}`
         const accountId = Account.generateId(family, "subscription", slug)
         await Account.add(family, accountId, {
           type: "subscription",
-          name: slug,
+          name: email || username || providerId,
           email: email,
           refreshToken: baseToken, // Store base token without projectId suffix
           accessToken: info.access,
