@@ -3,27 +3,9 @@ import path from "path"
 import fs from "fs/promises"
 import { existsSync } from "fs"
 import { Log } from "../util/log"
+import { getQuotaDayStart } from "./rotation/types"
 
 const log = Log.create({ service: "request-monitor" })
-
-/**
- * Get the start of the current quota day (16:00 Asia/Taipei = 08:00 UTC).
- * RPD limits reset at this exact time.
- */
-function getQuotaDayStart(): number {
-  const now = new Date()
-  const resetHourUTC = 8 // 16:00 Taipei is 08:00 UTC
-  const todayReset = new Date(now)
-  todayReset.setUTCHours(resetHourUTC, 0, 0, 0)
-
-  if (now.getTime() < todayReset.getTime()) {
-    // Before 16:00 today, the "day" started at 16:00 yesterday
-    const yesterdayReset = new Date(todayReset)
-    yesterdayReset.setUTCDate(yesterdayReset.getUTCDate() - 1)
-    return yesterdayReset.getTime()
-  }
-  return todayReset.getTime()
-}
 
 type DailyStats = {
   lastReset: number // Timestamp of the 16:00 Taipei reset
@@ -85,7 +67,7 @@ export class RequestMonitor {
   private constructor() {
     // Determine path
     this.filePath = path.join(Global.Path.config, "usage-stats.json")
-    this.load().catch(() => {})
+    this.load().catch(() => { })
   }
 
   static get(): RequestMonitor {

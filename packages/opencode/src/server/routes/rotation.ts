@@ -5,7 +5,7 @@ import { lazy } from "../../util/lazy"
 import { errors } from "../error"
 import { Account } from "../../account"
 import { Provider } from "../../provider/provider"
-import { getHealthTracker, getRateLimitTracker, getModelHealthRegistry } from "../../account/rotation"
+import { getHealthTracker, getRateLimitTracker } from "../../account/rotation"
 import {
   getRotation3DStatus,
   buildFallbackCandidates,
@@ -76,7 +76,6 @@ export const RotationRoutes = lazy(() =>
       async (c) => {
         const healthTracker = getHealthTracker()
         const rateLimitTracker = getRateLimitTracker()
-        const modelRegistry = getModelHealthRegistry()
 
         // Get all accounts with their status
         const accounts: z.infer<typeof AccountStatusSchema>[] = []
@@ -109,16 +108,15 @@ export const RotationRoutes = lazy(() =>
           }
         }
 
-        // Get model health from registry
+        // Get model health from 3D rate limit tracker (replaces dead ModelHealthRegistry)
         const modelHealth: Record<string, { healthScore: number; isAvailable: boolean; lastRateLimit?: number }> = {}
-        const registrySnapshot = modelRegistry.getSnapshot()
-        for (const [key, data] of registrySnapshot) {
-          const typedData = data as { score?: number; lastRateLimit?: number }
-          const score = typedData.score ?? 100
+        const rateLimits3D = rateLimitTracker.getSnapshot3D()
+        for (const entry of rateLimits3D) {
+          const key = entry.modelID ? `${entry.providerId}:${entry.modelID}` : entry.providerId
           modelHealth[key] = {
-            healthScore: score,
-            isAvailable: score >= 50,
-            lastRateLimit: typedData.lastRateLimit,
+            healthScore: Math.max(0, 100 - Math.round(entry.waitMs / 60_000)),
+            isAvailable: entry.waitMs <= 0,
+            lastRateLimit: Date.now(),
           }
         }
 

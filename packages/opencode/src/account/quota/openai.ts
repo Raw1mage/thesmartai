@@ -1,0 +1,224 @@
+/**
+ * OpenAI Codex quota — single source of truth for Codex usage / token refresh.
+ *
+ * @event_20260216_quota_consolidation
+ * Moved from account/openai_quota.ts and exported Codex helpers that were
+ * duplicated in dialog-admin.tsx (90+ lines of identical code).
+ *
+ * Consumers:
+ *  - rotation3d.ts   → getOpenAIQuotas()
+ *  - dialog-admin.tsx → refreshCodexAccessToken(), extractAccountIdFromTokens(),
+ *                        parseCodexUsage(), clampPercentage(), CODEX_USAGE_URL
+ */
+
+import { Account } from "../index"
+import { Log } from "../../util/log"
+import z from "zod"
+
+const log = Log.create({ service: "openai-quota" })
+
+// ============================================================================
+// Constants (exported for dialog-admin reuse)
+// ============================================================================
+
+export const CODEX_ISSUER = "https://auth.openai.com"
+export const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
+export const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface OpenAIQuota {
+    hourlyRemaining: number
+    weeklyRemaining: number
+}
+
+export type CodexTokenResponse = {
+    id_token?: string
+    access_token: string
+    refresh_token?: string
+    expires_in?: number
+}
+
+export type CodexIdTokenClaims = {
+    chatgpt_account_id?: string
+    organizations?: Array<{ id: string }>
+    "https://api.openai.com/auth"?: {
+        chatgpt_account_id?: string
+    }
+}
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
+export const CodexUsageSchema = z
+    .object({
+        rate_limit: z
+            .object({
+                primary_window: z.object({ used_percent: z.number().optional() }).optional(),
+                secondary_window: z.object({ used_percent: z.number().optional() }).optional(),
+            })
+            .optional(),
+    })
+    .passthrough()
+
+export type CodexUsage = z.infer<typeof CodexUsageSchema>
+
+// ============================================================================
+// Utilities (exported to eliminate duplication in dialog-admin.tsx)
+// ============================================================================
+
+export function clampPercentage(value: number): number {
+    if (!Number.isFinite(value)) return 0
+    if (value < 0) return 0
+    if (value > 100) return 100
+    return Math.round(value)
+}
+
+export function parseCodexUsage(value: unknown): CodexUsage | undefined {
+    const parsed = CodexUsageSchema.safeParse(value)
+    return parsed.success ? parsed.data : undefined
+}
+
+export function parseCodexJwtClaims(token: string): CodexIdTokenClaims | undefined {
+    const parts = token.split(".")
+    if (parts.length !== 3) return undefined
+    try {
+        return JSON.parse(Buffer.from(parts[1], "base64url").toString())
+    } catch {
+        return undefined
+    }
+}
+
+export function extractAccountIdFromClaims(claims: CodexIdTokenClaims): string | undefined {
+    return (
+        claims.chatgpt_account_id ||
+        claims["https://api.openai.com/auth"]?.chatgpt_account_id ||
+        claims.organizations?.[0]?.id
+    )
+}
+
+export function extractAccountIdFromTokens(tokens: CodexTokenResponse): string | undefined {
+    if (tokens.id_token) {
+        const claims = parseCodexJwtClaims(tokens.id_token)
+        if (claims) {
+            const accountId = extractAccountIdFromClaims(claims)
+            if (accountId) return accountId
+        }
+    }
+    const claims = parseCodexJwtClaims(tokens.access_token)
+    return claims ? extractAccountIdFromClaims(claims) : undefined
+}
+
+export async function refreshCodexAccessToken(refreshToken: string): Promise<CodexTokenResponse> {
+    const response = await fetch(`${CODEX_ISSUER}/oauth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+            grant_type: "refresh_token",
+            refresh_token: refreshToken,
+            client_id: CODEX_CLIENT_ID,
+        }).toString(),
+    })
+    if (!response.ok) {
+        throw new Error(`Codex token refresh failed: ${response.status}`)
+    }
+    return response.json()
+}
+
+// ============================================================================
+// Cache
+// ============================================================================
+
+const quotaCache = new Map<string, { quota: OpenAIQuota | null; timestamp: number }>()
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
+// ============================================================================
+// Main API
+// ============================================================================
+
+/**
+ * Get quota information for all OpenAI subscription accounts.
+ * Handles token refreshing and caching.
+ */
+export async function getOpenAIQuotas(): Promise<Record<string, OpenAIQuota | null>> {
+    try {
+        const accounts = await Account.list("openai")
+        const results: Record<string, OpenAIQuota | null> = {}
+        const now = Date.now()
+
+        for (const [id, info] of Object.entries(accounts)) {
+            if (info.type !== "subscription") continue
+
+            // Check cache first
+            const cached = quotaCache.get(id)
+            if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+                results[id] = cached.quota
+                continue
+            }
+
+            let access = info.accessToken
+            let expires = info.expiresAt
+            let refresh = info.refreshToken
+            let accountId = info.accountId
+
+            // Refresh token if needed
+            if (!access || !expires || expires < now) {
+                try {
+                    const tokens = await refreshCodexAccessToken(refresh)
+                    access = tokens.access_token
+                    refresh = tokens.refresh_token ?? refresh
+                    expires = now + (tokens.expires_in ?? 3600) * 1000
+                    accountId = accountId ?? extractAccountIdFromTokens(tokens)
+
+                    // Update account in storage
+                    await Account.update("openai", id, {
+                        refreshToken: refresh,
+                        accessToken: access,
+                        expiresAt: expires,
+                        accountId,
+                    })
+                } catch (e) {
+                    log.warn("Token refresh failed for OpenAI account", { id, error: String(e) })
+                    quotaCache.set(id, { quota: null, timestamp: now })
+                    results[id] = null
+                    continue
+                }
+            }
+
+            // Fetch usage
+            try {
+                const headers = new Headers({ Authorization: `Bearer ${access}`, Accept: "application/json" })
+                if (accountId) headers.set("ChatGPT-Account-Id", accountId)
+
+                const response = await fetch(CODEX_USAGE_URL, { headers })
+                if (!response.ok) {
+                    log.warn("Failed to fetch OpenAI usage", { id, status: response.status })
+                    quotaCache.set(id, { quota: null, timestamp: now })
+                    results[id] = null
+                    continue
+                }
+
+                const usage = parseCodexUsage(await response.json())
+                const hourlyUsed = usage?.rate_limit?.primary_window?.used_percent ?? 0
+                const weeklyUsed = usage?.rate_limit?.secondary_window?.used_percent ?? 0
+                const hourlyRemaining = clampPercentage(100 - hourlyUsed)
+                const weeklyRemaining = clampPercentage(100 - weeklyUsed)
+
+                const quota = { hourlyRemaining, weeklyRemaining }
+                quotaCache.set(id, { quota, timestamp: now })
+                results[id] = quota
+            } catch (e) {
+                log.warn("Error fetching OpenAI usage", { id, error: String(e) })
+                quotaCache.set(id, { quota: null, timestamp: now })
+                results[id] = null
+            }
+        }
+        return results
+    } catch (error) {
+        log.error("Failed to get OpenAI quotas", { error: String(error) })
+        return {}
+    }
+}
