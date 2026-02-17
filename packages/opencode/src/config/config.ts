@@ -62,6 +62,64 @@ export namespace Config {
     return merged
   }
 
+  function isMemoryServerCommand(command: string[]) {
+    return command.some((part) => part.includes("@modelcontextprotocol/server-memory"))
+  }
+
+  function getLocalMemoryMcp(config: Info) {
+    const memory = config.mcp?.memory
+    if (!memory || typeof memory !== "object") return undefined
+    if (!("type" in memory) || memory.type !== "local") return undefined
+    if (!("command" in memory) || !Array.isArray(memory.command)) return undefined
+    if (!isMemoryServerCommand(memory.command)) return undefined
+    return memory
+  }
+
+  function applyLayeredMemoryConfig(config: Info): Info {
+    const memory = getLocalMemoryMcp(config)
+    if (!memory) return config
+
+    const projectMemoryPath = path.join(Instance.worktree, ".opencode", "memory", "project.jsonl")
+    const globalMemoryPath = path.join(Global.Path.data, "memory", "global.jsonl")
+
+    const shared = {
+      ...memory,
+      environment: {
+        ...memory.environment,
+      },
+    }
+
+    return {
+      ...config,
+      mcp: {
+        ...(config.mcp ?? {}),
+        // Primary memory tools default to project scope.
+        memory: {
+          ...shared,
+          environment: {
+            ...shared.environment,
+            MEMORY_FILE_PATH: projectMemoryPath,
+          },
+        },
+        // Keep explicit handles for layered reads/writes.
+        "memory-project": {
+          ...shared,
+          environment: {
+            ...shared.environment,
+            MEMORY_FILE_PATH: projectMemoryPath,
+          },
+        },
+        "memory-global": {
+          ...shared,
+          environment: {
+            ...shared.environment,
+            MEMORY_FILE_PATH: globalMemoryPath,
+          },
+        },
+      },
+    }
+  }
+
   export const state = Instance.state(async () => {
     const auth = await Auth.all()
 
@@ -235,6 +293,11 @@ export namespace Config {
     }
 
     result.plugin = deduplicatePlugins(result.plugin ?? [])
+
+    // @event_2026-02-17_memory_layering: layer memory by scope like AGENTS hierarchy
+    // - memory / memory-project => repo-scoped memory
+    // - memory-global => user global memory
+    result = applyLayeredMemoryConfig(result)
 
     return {
       config: result,

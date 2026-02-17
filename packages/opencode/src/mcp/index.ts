@@ -24,6 +24,8 @@ import { Bus } from "@/bus"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import open from "open"
 import { Env } from "@/env"
+import fs from "fs/promises"
+import path from "path"
 
 export namespace MCP {
   const log = Log.create({ service: "mcp" })
@@ -409,6 +411,20 @@ export namespace MCP {
     if (mcp.type === "local") {
       const [cmd, ...args] = mcp.command
       const cwd = Instance.directory
+
+      // Ensure memory storage directory exists when MEMORY_FILE_PATH is configured.
+      if (key.startsWith("memory")) {
+        const memoryFilePath = mcp.environment?.MEMORY_FILE_PATH
+        if (memoryFilePath) {
+          await fs.mkdir(path.dirname(memoryFilePath), { recursive: true }).catch((error) => {
+            log.warn("failed to prepare memory directory", {
+              key,
+              memoryFilePath,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          })
+        }
+      }
 
       // Auto-inject CWD for filesystem MCP if not already present
       const finalArgs = [...args]
