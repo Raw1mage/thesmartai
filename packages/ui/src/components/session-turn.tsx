@@ -465,7 +465,14 @@ export function SessionTurn(
   function duration() {
     const msg = message()
     if (!msg) return ""
-    const completed = lastAssistantMessage()?.time.completed
+
+    const completed = assistantMessages().reduce<number | undefined>((max, item) => {
+      const value = item.time.completed
+      if (typeof value !== "number") return max
+      if (max === undefined) return value
+      return Math.max(max, value)
+    }, undefined)
+
     const from = DateTime.fromMillis(msg.time.created)
     const to = completed ? DateTime.fromMillis(completed) : DateTime.now()
     const interval = Interval.fromDateTimes(from, to)
