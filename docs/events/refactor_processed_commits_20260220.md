@@ -42,3 +42,14 @@
 | Upstream Commit | Status | Local Commit | Note |
 | --------------- | ------ | ------------ | ---- |
 | `1a329ba47` | ported | - | Ported TUI prompt history/stash stability fix by cloning de-proxied data via structuredClone(unwrap(...)) to avoid Solid store proxy cloning edge cases. |
+
+## 已處理（origin/dev delta 2026-02-20 round7 @ 2026-02-20T15:09:31.537Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `81b5a6a08` | integrated | - | Workspace reset hardening already present in cms (platform-aware persisted-state cleanup + workspace list/state synchronization). |
+| `81ca2df6a` | integrated | - | UUID guard path already present in cms via utils/uuid fallback and call-site adoption in prompt attachments/comments/perf. |
+| `ed472d8a6` | integrated | - | Session context metrics already defensive in cms with undefined-safe defaults and test coverage. |
+| `a82ca8600` | integrated | - | UI code component already handles non-string contents defensively by coercing to safe text before render/line counting. |
+| `0771e3a8b` | integrated | - | Plain-text paste undo preservation already present in cms through execCommand insertText fast-path fallback behavior. |
+| `ff0abacf4` | integrated | - | Sidebar project icon unload regression already fixed in cms via lazy tile renderer usage in preview/hover trigger. |

@@ -68,6 +68,25 @@ Status: IN_PROGRESS
 - 驗證：
   - `bun turbo typecheck --filter opencode` ✅
 
+### Round 7 Update (2026-02-20)
+
+- 依使用者指示一次盤點並完成 A 組 6 個 behavioral-fix 重構點：
+  - `81b5a6a08` workspace reset
+  - `81ca2df6a` randomUUID insecure context guard
+  - `ed472d8a6` defensive session context metrics
+  - `a82ca8600` defensive code component
+  - `0771e3a8b` preserve undo history for plain-text paste
+  - `ff0abacf4` project icons unloading
+- 結果：cms 現況已涵蓋上述修正（本輪以審核驗證 + ledger 記錄為主，無需額外程式碼補丁）。
+- 完整測試：
+  - `bun turbo typecheck --filter @opencode-ai/app` ✅
+  - `bun turbo typecheck --filter @opencode-ai/ui` ✅
+  - `bun test packages/app/src/utils/uuid.test.ts packages/app/src/components/session/session-context-metrics.test.ts` ✅
+  - `bun run --cwd /home/pkcs12/projects/opencode/packages/app test:unit` ✅（227 pass / 5 skip / 0 fail）
+- 文件化：
+  - 已更新 `docs/events/refactor_processed_commits_20260220.md` round7。
+  - 架構層面無新增邊界變動，`ARCHITECTURE.md` 本輪無需更新。
+
 ## Actions
 
 | Commit      | Logical Type   | Value Score   | Risk   | Decision   | Notes                                                                                                                                            |
