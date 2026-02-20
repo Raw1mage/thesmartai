@@ -31,6 +31,14 @@ Status: IN_PROGRESS
   - `bun turbo typecheck --filter @opencode-ai/app` ✅
   - 直接跑 DOM 單測在當前 CLI 環境缺少 `document`（非本次變更回歸）；未阻斷本輪移植。
 
+### Round 3 Update (2026-02-20)
+
+- 已移植 `packages/ui` 兩個低風險 UI 修正：
+  - `1de12604c`：root workspace (`/` 或 `\`) 下路徑相對化保護，避免把整段字串清空。
+  - `7e1051af0`：turn duration 改以該 turn 內 assistant messages 的最大 completed 時間計算，顯示完整回合耗時。
+- 驗證：
+  - `bun turbo typecheck --filter @opencode-ai/ui` ✅
+
 ## Actions
 
 | Commit      | Logical Type   | Value Score   | Risk   | Decision   | Notes                                                                                                                                            |

@@ -16,3 +16,10 @@
 | --------------- | ------ | ------------ | ---- |
 | `7e681b0bc` | ported | - | Ported large-paste prompt input hardening: avoid expensive normalization path, fast-path empty detection, large paste fallback insertion, and line-break cap in text fragment builder. |
 | `4e9ef3ecc` | ported | - | Ported terminal lifecycle mitigations in cms app layer: close websocket with code 1000, render only active terminal instance, and defer focus handoff to next tick. Skipped upstream pty token-matching hunk due cms pty architecture divergence (socket-id isolation already present). |
+
+## 已處理（origin/dev delta 2026-02-20 round3 @ 2026-02-20T14:27:16.864Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `1de12604c` | ported | - | Preserve path text when workspace directory is root path ('/' or '\\') by guarding relativizeProjectPaths replacement. |
+| `7e1051af0` | ported | - | Turn duration now uses max completed timestamp across assistant messages in the same turn, preventing under-reporting when final text part completes earlier than other assistant parts. |
