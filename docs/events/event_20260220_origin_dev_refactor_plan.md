@@ -166,6 +166,30 @@ Status: IN_PROGRESS
   - 已更新 `docs/events/refactor_processed_commits_20260220.md` round12（2 ported）。
   - 本輪無新增跨模組架構邊界，`ARCHITECTURE.md` 無需更新。
 
+### Round 13 Planning Update (2026-02-20)
+
+- 使用者指示忽略候選 1/2/3/4/5/6/8/9，下一階段僅評估：
+  - `e269788a8` structured outputs (session/llm/sdk contract)
+  - `a580fb47d` attachment ID ownership shift (tool -> prompt)
+- 盤點結論：
+  - 兩者屬同一條高風險主線（訊息/工具輸出協定重構），不建議拆成零碎 patch，應以單一專案階段處理。
+  - 現況觀察：`Tool` 型別已改為 attachment 不含 id/sessionID/messageID，但 `webfetch` 等工具仍在工具層填 ID；表示 pipeline 正處於混合態，需要一致化遷移。
+- 建議執行策略（先設計後實作）：
+  1. 先完成「attachment ownership 一致化」：所有 tool attachments 移除 ID/Session metadata，由 prompt 單點注入。
+  2. 再導入 structured output：Message schema、prompt toolChoice、error/retry contract、SDK v2 參數同步。
+  3. 最後補全整合測試矩陣（tool attachments + structured output + resume/retry）。
+
+### Round 13 Execution Update (2026-02-20)
+
+- 已執行 Phase S1（attachment ownership 一致化）第一步：
+  - `packages/opencode/src/tool/webfetch.ts`：移除工具層 attachment `id/sessionID/messageID` 注入。
+  - `packages/opencode/src/tool/batch.ts`：batch 對外回傳附件改用原始 tool output（不再回傳已注入 id 的附件）；內部子工具狀態 persistence 仍保留 session part metadata。
+- 驗證：
+  - `bun turbo typecheck --filter opencode` ✅
+  - `bun test packages/opencode/test/tool/webfetch.test.ts packages/opencode/test/tool/read.test.ts` ⚠️ webfetch 全綠；read 存在既有 AGENTS metadata 測試失敗（與本輪附件 ownership 變更無直接關聯）。
+- 下一步（未實作）：
+  - 將 remaining attachment 相關路徑完全收斂到 prompt/processor 單點注入，再進入 structured outputs (`e269788a8`) 主線。
+
 ## Actions
 
 | Commit      | Logical Type   | Value Score   | Risk   | Decision   | Notes                                                                                                                                            |
