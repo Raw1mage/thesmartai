@@ -55,6 +55,7 @@ import { dispatchCommandPrompt } from "./command-dispatcher"
 import { persistUserMessage } from "./user-message-persist"
 import { prepareUserMessageContext } from "./user-message-context"
 import { buildUserMessageParts } from "./user-message-parts"
+import { materializeToolAttachments } from "./attachment-ownership"
 
 globalThis.AI_SDK_LOG_WARNINGS = false
 
@@ -392,14 +393,10 @@ export namespace SessionPrompt {
         assistantMessage.time.completed = Date.now()
         await Session.updateMessage(assistantMessage)
         if (result && part.state.status === "running") {
-          const attachments = result.attachments?.map(
-            (attachment: Omit<MessageV2.FilePart, "id" | "messageID" | "sessionID">) => ({
-              ...attachment,
-              id: Identifier.ascending("part"),
-              messageID: assistantMessage.id,
-              sessionID: assistantMessage.sessionID,
-            }),
-          )
+          const attachments = materializeToolAttachments(result.attachments, {
+            messageID: assistantMessage.id,
+            sessionID: assistantMessage.sessionID,
+          })
           await Session.updatePart({
             ...part,
             state: {

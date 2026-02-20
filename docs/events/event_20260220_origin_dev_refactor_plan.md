@@ -205,6 +205,18 @@ Status: IN_PROGRESS
 - 備註：
   - 尚未補齊 end-to-end integration（含 resume/retry/compaction 交互）覆蓋，保留於後續 round 擴充。
 
+### Round 14.1 Convergence Update (2026-02-20)
+
+- 針對 remaining attachment ownership 路徑完成收斂：
+  - 新增 `session/attachment-ownership.ts`，以 `materializeToolAttachments()` 單點注入 `id/sessionID/messageID`。
+  - `SessionProcessor` 的 tool-result attachment 注入改用共用 helper。
+  - `SessionPrompt` subtask tool-result attachment 注入改用共用 helper。
+- 效果：
+  - 附件身份欄位分配規則由「多點內嵌 map」收斂為「session 層共用函式」，降低後續 structured output 與 tool pipeline 演進時的分岔風險。
+- 驗證：
+  - `bun turbo typecheck --filter opencode` ✅
+  - `bun test packages/opencode/test/tool/webfetch.test.ts packages/opencode/test/session/message-v2.test.ts packages/opencode/test/session/structured-output.test.ts` ✅
+
 ## Actions
 
 | Commit      | Logical Type   | Value Score   | Risk   | Decision   | Notes                                                                                                                                            |
