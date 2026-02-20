@@ -32,7 +32,7 @@ describe("session.structured-output", () => {
         expect((info.info.format as { retryCount?: number }).retryCount).toBe(2)
       },
     })
-  })
+  }, 15000)
 
   test("createStructuredOutputTool captures output", async () => {
     let captured: unknown

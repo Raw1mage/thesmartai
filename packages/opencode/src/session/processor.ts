@@ -20,6 +20,7 @@ import { isRateLimitError, getRateLimitTracker } from "@/account/rotation"
 import { isVectorRateLimited } from "@/account/rotation3d"
 import { Global } from "@/global"
 import path from "path"
+import { materializeToolAttachments } from "./attachment-ownership"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -328,14 +329,10 @@ export namespace SessionProcessor {
                 case "tool-result": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
-                    const attachments = value.output.attachments?.map(
-                      (attachment: Omit<MessageV2.FilePart, "id" | "messageID" | "sessionID">) => ({
-                        ...attachment,
-                        id: Identifier.ascending("part"),
-                        messageID: match.messageID,
-                        sessionID: match.sessionID,
-                      }),
-                    )
+                    const attachments = materializeToolAttachments(value.output.attachments, {
+                      messageID: match.messageID,
+                      sessionID: match.sessionID,
+                    })
                     await Session.updatePart({
                       ...match,
                       state: {
