@@ -29,3 +29,10 @@
 | Upstream Commit | Status | Local Commit | Note |
 | --------------- | ------ | ------------ | ---- |
 | `7419ebc87` | ported | - | Ported experimental cross-project session listing using cms file-storage model: added Session.listGlobal(), /experimental/session route with filters/cursor pagination, and global session listing tests. |
+
+## 已處理（origin/dev delta 2026-02-20 round5 @ 2026-02-20T14:38:30.526Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `1c2416b6d` | ported | - | Ported desktop connection policy: skip sidecar spawn when configured default server is already localhost, expose username/is_sidecar in ServerReadyData, and align health-check timeout/helper changes. |
+| `92ab4217c` | integrated | - | No action needed: current cms already uses interactive login shell args ('-il') when spawning non-Windows sidecar command. |

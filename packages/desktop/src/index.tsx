@@ -29,7 +29,7 @@ import { UPDATER_ENABLED } from "./updater"
 import { initI18n, t } from "./i18n"
 import pkg from "../package.json"
 import "./styles.css"
-import { commands, InitStep } from "./bindings"
+import { commands, type InitStep, type ServerReadyData } from "./bindings"
 import { Channel } from "@tauri-apps/api/core"
 import { createMenu } from "./menu"
 
@@ -455,9 +455,9 @@ render(() => {
       <AppBaseProviders>
         <ServerGate>
           {(data) => {
-            setServerPassword(data().password)
+            setServerPassword(data.password)
             window.__OPENCODE__ ??= {}
-            window.__OPENCODE__.serverPassword = data().password ?? undefined
+            window.__OPENCODE__.serverPassword = data.password ?? undefined
 
             function Inner() {
               const cmd = useCommand()
@@ -468,7 +468,7 @@ render(() => {
             }
 
             return (
-              <AppInterface defaultUrl={data().url} isSidecar>
+              <AppInterface defaultUrl={data.url} isSidecar={data.is_sidecar}>
                 <Inner />
               </AppInterface>
             )
@@ -479,10 +479,8 @@ render(() => {
   )
 }, root!)
 
-type ServerReadyData = { url: string; password: string | null }
-
 // Gate component that waits for the server to be ready
-function ServerGate(props: { children: (data: Accessor<ServerReadyData>) => JSX.Element }) {
+function ServerGate(props: { children: (data: ServerReadyData) => JSX.Element }) {
   const [serverData] = createResource(() => commands.awaitInitialization(new Channel<InitStep>() as any))
   if (serverData.state === "errored") throw serverData.error
 
@@ -496,7 +494,7 @@ function ServerGate(props: { children: (data: Accessor<ServerReadyData>) => JSX.
         </div>
       }
     >
-      {(data) => props.children(data)}
+      {(data) => props.children(data())}
     </Show>
   )
 }
