@@ -101,3 +101,10 @@
 | --------------- | ------ | ------------ | ---- |
 | `693127d38` | ported | - | Ported run --dir support: local mode changes cwd before bootstrap, attach mode forwards directory context to remote SDK client. |
 | `b0afdf6ea` | ported | - | Ported session delete subcommand with existence check, safe error message for missing session, and success confirmation output. |
+
+## 已處理（origin/dev delta 2026-02-20 round13 @ 2026-02-20T16:25:39.808Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `a580fb47d` | ported | - | Phase-S1 partial port: tool attachment ownership normalization started by removing id/session/message metadata emission from webfetch and avoiding id-decorated attachment re-export in batch output. |
+| `e269788a8` | skipped | - | Deferred by scope for dedicated high-risk phase after attachment ownership normalization completes; requires cross-layer session/llm/sdk contract rollout. |

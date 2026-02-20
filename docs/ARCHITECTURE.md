@@ -69,6 +69,10 @@ The following refactor-ported changes were integrated into `cms` and are relevan
    - `webfetch` now returns non-SVG image responses as file attachments (data URLs) instead of forcing text decoding.
    - Architectural effect: plugin hook contract gains argument-level visibility, and tool result pipeline now supports binary-first web artifacts in the same attachment channel as other file parts.
 
+7. **Attachment ownership normalization (phase-in) (`packages/opencode/src/tool/webfetch.ts`, `packages/opencode/src/tool/batch.ts`, session prompt/processor pipeline)**
+   - Tool outputs are being normalized so attachments are returned without transport identity fields (`id/sessionID/messageID`), with message-part identity injected centrally in session processing.
+   - Architectural effect: attachment identity responsibility shifts from per-tool implementation to session pipeline boundaries, reducing duplicated metadata logic and preventing mixed ownership bugs.
+
 ---
 
 ## Detailed Package Analysis

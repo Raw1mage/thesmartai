@@ -105,7 +105,7 @@ export const BatchTool = Tool.define("batch", async () => {
             },
           })
 
-          return { success: true as const, tool: call.tool, result: { ...result, attachments } }
+          return { success: true as const, tool: call.tool, result }
         } catch (error) {
           await Session.updatePart({
             id: partID,
