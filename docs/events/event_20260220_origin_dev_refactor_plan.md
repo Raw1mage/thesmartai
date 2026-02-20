@@ -49,6 +49,17 @@ Status: IN_PROGRESS
   - `bun test packages/opencode/test/server/global-session-list.test.ts` ✅
   - `bun turbo typecheck --filter opencode` ✅
 
+### Round 5 Update (2026-02-20)
+
+- 已移植 `1c2416b6d`（desktop：若 default server 已是 localhost，不再額外啟 sidecar）：
+  - Rust 端 `ServerReadyData` 擴充 `username` / `is_sidecar`，前端可辨識是否 sidecar 連線。
+  - 連線策略調整：custom/default URL 健康且為 localhost 時直接使用 existing server；remote URL 則保留 sidecar fallback。
+  - `server::check_health` timeout 由 3s 提高到 7s，並新增 `is_localhost_url` helper。
+  - Desktop bindings 與 `index.tsx` 已同步。
+- 驗證：
+  - `bun turbo typecheck --filter @opencode-ai/desktop` ✅
+  - `cargo check` ✅（安裝 rust/cargo、GTK/WebKit 依賴並補齊 sidecar 後已通過）
+
 ## Actions
 
 | Commit      | Logical Type   | Value Score   | Risk   | Decision   | Notes                                                                                                                                            |

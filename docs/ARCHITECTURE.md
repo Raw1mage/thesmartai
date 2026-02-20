@@ -60,6 +60,10 @@ The following refactor-ported changes were integrated into `cms` and are relevan
    - Added `Session.listGlobal()` and `GET /experimental/session` to enumerate sessions across all projects with optional filtering and cursor pagination.
    - Architectural effect: session discovery now has an explicit global-read path (project-agnostic index + project metadata join), separate from project-scoped `/session` APIs.
 
+5. **Desktop server connection policy refinement (`packages/desktop/src-tauri/src/lib.rs`, `packages/desktop/src-tauri/src/server.rs`, `packages/desktop/src/index.tsx`)**
+   - Desktop now avoids spawning a local sidecar when the configured default server is already localhost; remote defaults still permit local sidecar fallback.
+   - Architectural effect: desktop runtime now supports a dual-mode bootstrap (existing local server vs sidecar) with explicit `is_sidecar` signaling from Rust to frontend.
+
 ---
 
 ## Detailed Package Analysis
