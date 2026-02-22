@@ -89,6 +89,13 @@ The following refactor-ported changes were integrated into `cms` and are relevan
 - Consumers that read config model defaults now normalize both legacy string refs and object-shaped model refs (from newer SDK config schema) into `{ providerId, modelID }` before selection logic.
 - Architectural effect: SDK build pipeline is isolated from CLI/TUI runtime side effects, and model-selection consumers are resilient across schema evolution boundaries.
 
+11. **MCP surface simplification + dev/binary parity (`packages/opencode/src/config/config.ts`, `packages/opencode/src/cli/cmd/tui/routes/session/sidebar.tsx`, `package.json`)**
+
+- Memory MCP config normalization now keeps a single visible `memory` MCP entry instead of auto-expanding additional `memory-project` / `memory-global` MCP server entries.
+- Sidebar MCP rows now rely on status dot color for common states and hide redundant `Connected` / `Disabled` text labels.
+- `bun run dev` no longer forces `OPENCODE_SKIP_MCP_AUTO=1`, aligning default MCP connect behavior with binary runtime.
+- Architectural effect: lower MCP UI/config surface complexity, reduced status noise, and consistent MCP lifecycle semantics across development and binary execution paths.
+
 ---
 
 ## Detailed Package Analysis

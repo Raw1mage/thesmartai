@@ -8,7 +8,7 @@ Use this skill when the task is to build or improve `/memory`-based knowledge gr
 - higher retrieval precision,
 - better response grounding and traceability.
 
-This skill is designed for opencode's memory MCP tools (`memory`, `memory-project`, `memory-global`) and assumes graph CRUD is already available.
+This skill is designed for opencode's single `memory` MCP tool surface and assumes graph CRUD is already available.
 
 ## When to use
 
@@ -94,8 +94,7 @@ Always return:
 
 ## Implementation notes
 
-- Use `memory-project` for repo-specific facts.
-- Use `memory-global` for cross-project personal conventions/preferences.
+- Use `memory` with explicit scope metadata for repo-specific vs cross-project facts.
 - Keep major architecture decisions in `docs/events/`.
 
 ## References

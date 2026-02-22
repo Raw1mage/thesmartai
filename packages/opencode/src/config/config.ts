@@ -75,45 +75,22 @@ export namespace Config {
     return memory
   }
 
-  function applyLayeredMemoryConfig(config: Info): Info {
+  function normalizeMemoryConfig(config: Info): Info {
     const memory = getLocalMemoryMcp(config)
     if (!memory) return config
 
     const projectMemoryPath = path.join(Instance.worktree, ".opencode", "memory", "project.jsonl")
-    const globalMemoryPath = path.join(Global.Path.data, "memory", "global.jsonl")
-
-    const shared = {
-      ...memory,
-      environment: {
-        ...memory.environment,
-      },
-    }
 
     return {
       ...config,
       mcp: {
         ...(config.mcp ?? {}),
-        // Primary memory tools default to project scope.
+        // Keep a single memory MCP entry. Default to repo-scoped memory.
         memory: {
-          ...shared,
+          ...memory,
           environment: {
-            ...shared.environment,
+            ...memory.environment,
             MEMORY_FILE_PATH: projectMemoryPath,
-          },
-        },
-        // Keep explicit handles for layered reads/writes.
-        "memory-project": {
-          ...shared,
-          environment: {
-            ...shared.environment,
-            MEMORY_FILE_PATH: projectMemoryPath,
-          },
-        },
-        "memory-global": {
-          ...shared,
-          environment: {
-            ...shared.environment,
-            MEMORY_FILE_PATH: globalMemoryPath,
           },
         },
       },
@@ -327,10 +304,8 @@ export namespace Config {
 
     result.plugin = deduplicatePlugins(result.plugin ?? [])
 
-    // @event_2026-02-17_memory_layering: layer memory by scope like AGENTS hierarchy
-    // - memory / memory-project => repo-scoped memory
-    // - memory-global => user global memory
-    result = applyLayeredMemoryConfig(result)
+    // @event_2026-02-23_single_memory_mcp: keep one memory MCP surface
+    result = normalizeMemoryConfig(result)
 
     // Validate layered memory configuration
     validateMemoryConfig(result)
