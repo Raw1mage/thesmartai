@@ -22,6 +22,8 @@ export interface Settings {
   general: {
     autoSave: boolean
     releaseNotes: boolean
+    shellToolPartsExpanded: boolean
+    editToolPartsExpanded: boolean
   }
   updates: {
     startup: boolean
@@ -42,6 +44,8 @@ const defaultSettings: Settings = {
   general: {
     autoSave: true,
     releaseNotes: true,
+    shellToolPartsExpanded: true,
+    editToolPartsExpanded: false,
   },
   updates: {
     startup: true,
@@ -118,6 +122,20 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         releaseNotes: withFallback(() => store.general?.releaseNotes, defaultSettings.general.releaseNotes),
         setReleaseNotes(value: boolean) {
           setStore("general", "releaseNotes", value)
+        },
+        shellToolPartsExpanded: withFallback(
+          () => store.general?.shellToolPartsExpanded,
+          defaultSettings.general.shellToolPartsExpanded,
+        ),
+        setShellToolPartsExpanded(value: boolean) {
+          setStore("general", "shellToolPartsExpanded", value)
+        },
+        editToolPartsExpanded: withFallback(
+          () => store.general?.editToolPartsExpanded,
+          defaultSettings.general.editToolPartsExpanded,
+        ),
+        setEditToolPartsExpanded(value: boolean) {
+          setStore("general", "editToolPartsExpanded", value)
         },
       },
       updates: {

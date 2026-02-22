@@ -142,6 +142,8 @@ function AssistantMessageItem(props: {
   hideResponsePart: boolean
   hideReasoning: boolean
   hidden?: () => readonly { messageID: string; callID: string }[]
+  shellToolDefaultOpen?: boolean
+  editToolDefaultOpen?: boolean
 }) {
   const data = useData()
   const emptyParts: PartType[] = []
@@ -180,7 +182,14 @@ function AssistantMessageItem(props: {
     })
   })
 
-  return <Message message={props.message} parts={filteredParts()} />
+  return (
+    <Message
+      message={props.message}
+      parts={filteredParts()}
+      shellToolDefaultOpen={props.shellToolDefaultOpen}
+      editToolDefaultOpen={props.editToolDefaultOpen}
+    />
+  )
 }
 
 export function SessionTurn(
@@ -189,6 +198,8 @@ export function SessionTurn(
     sessionTitle?: string
     messageID: string
     lastUserMessageID?: string
+    shellToolDefaultOpen?: boolean
+    editToolDefaultOpen?: boolean
     stepsExpanded?: boolean
     onStepsExpandedToggle?: () => void
     onUserInteracted?: () => void
@@ -739,6 +750,8 @@ export function SessionTurn(
                               hideResponsePart={hideResponsePart()}
                               hideReasoning={!working()}
                               hidden={hidden}
+                              shellToolDefaultOpen={props.shellToolDefaultOpen}
+                              editToolDefaultOpen={props.editToolDefaultOpen}
                             />
                           )}
                         </For>

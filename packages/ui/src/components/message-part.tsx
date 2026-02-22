@@ -92,6 +92,8 @@ function DiagnosticsDisplay(props: { diagnostics: Diagnostic[] }): JSX.Element {
 export interface MessageProps {
   message: MessageType
   parts: PartType[]
+  shellToolDefaultOpen?: boolean
+  editToolDefaultOpen?: boolean
 }
 
 export interface MessagePartProps {
@@ -283,14 +285,34 @@ export function Message(props: MessageProps) {
       </Match>
       <Match when={props.message.role === "assistant" && props.message}>
         {(assistantMessage) => (
-          <AssistantMessageDisplay message={assistantMessage() as AssistantMessage} parts={props.parts} />
+          <AssistantMessageDisplay
+            message={assistantMessage() as AssistantMessage}
+            parts={props.parts}
+            shellToolDefaultOpen={props.shellToolDefaultOpen}
+            editToolDefaultOpen={props.editToolDefaultOpen}
+          />
         )}
       </Match>
     </Switch>
   )
 }
 
-export function AssistantMessageDisplay(props: { message: AssistantMessage; parts: PartType[] }) {
+function toolDefaultOpen(tool: string, shell = false, edit = false) {
+  if (tool === "bash") return shell
+  if (tool === "edit" || tool === "write" || tool === "apply_patch") return edit
+}
+
+function partDefaultOpen(part: PartType, shell = false, edit = false) {
+  if (part.type !== "tool") return
+  return toolDefaultOpen(part.tool, shell, edit)
+}
+
+export function AssistantMessageDisplay(props: {
+  message: AssistantMessage
+  parts: PartType[]
+  shellToolDefaultOpen?: boolean
+  editToolDefaultOpen?: boolean
+}) {
   const emptyParts: PartType[] = []
   const filteredParts = createMemo(
     () =>
@@ -300,7 +322,17 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
     emptyParts,
     { equals: same },
   )
-  return <For each={filteredParts()}>{(part) => <Part part={part} message={props.message} />}</For>
+  return (
+    <For each={filteredParts()}>
+      {(part) => (
+        <Part
+          part={part}
+          message={props.message}
+          defaultOpen={partDefaultOpen(part, props.shellToolDefaultOpen, props.editToolDefaultOpen)}
+        />
+      )}
+    </For>
+  )
 }
 
 export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[] }) {
