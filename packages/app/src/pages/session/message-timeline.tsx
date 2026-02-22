@@ -8,6 +8,7 @@ import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
 import { shouldMarkBoundaryGesture, normalizeWheelDelta } from "@/pages/session/message-gesture"
+import { useSettings } from "@/context/settings"
 
 const boundaryTarget = (root: HTMLElement, target: EventTarget | null) => {
   const current = target instanceof Element ? target : undefined
@@ -91,6 +92,8 @@ export function MessageTimeline(props: {
   expanded: Record<string, boolean>
   onToggleExpanded: (id: string) => void
 }) {
+  const settings = useSettings()
+
   let touchGesture: number | undefined
 
   return (
@@ -316,6 +319,8 @@ export function MessageTimeline(props: {
                       sessionID={props.sessionID}
                       messageID={message.id}
                       lastUserMessageID={props.lastUserMessageID}
+                      shellToolDefaultOpen={settings.general.shellToolPartsExpanded()}
+                      editToolDefaultOpen={settings.general.editToolPartsExpanded()}
                       stepsExpanded={props.expanded[message.id] ?? false}
                       onStepsExpandedToggle={() => props.onToggleExpanded(message.id)}
                       classes={{

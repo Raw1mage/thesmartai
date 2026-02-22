@@ -592,6 +592,7 @@ export const dict = {
   "settings.desktop.wsl.description": "Run the OpenCode server inside WSL on Windows.",
 
   "settings.general.section.appearance": "Appearance",
+  "settings.general.section.feed": "Feed",
   "settings.general.section.notifications": "System notifications",
   "settings.general.section.updates": "Updates",
   "settings.general.section.sounds": "Sound effects",
@@ -605,6 +606,11 @@ export const dict = {
   "settings.general.row.theme.description": "Customise how OpenCode is themed.",
   "settings.general.row.font.title": "Font",
   "settings.general.row.font.description": "Customise the mono font used in code blocks",
+  "settings.general.row.shellToolPartsExpanded.title": "Expand shell output by default",
+  "settings.general.row.shellToolPartsExpanded.description": "Show bash tool output expanded in the session feed",
+  "settings.general.row.editToolPartsExpanded.title": "Expand code diffs by default",
+  "settings.general.row.editToolPartsExpanded.description":
+    "Show edit/write/apply_patch details expanded in the session feed",
 
   "settings.general.row.wayland.title": "Use native Wayland",
   "settings.general.row.wayland.description": "Disable X11 fallback on Wayland. Requires restart.",
@@ -679,6 +685,7 @@ export const dict = {
   "sound.option.yup04": "Yup 04",
   "sound.option.yup05": "Yup 05",
   "sound.option.yup06": "Yup 06",
+  "sound.option.none": "None",
 
   "settings.general.notifications.agent.title": "Agent",
   "settings.general.notifications.agent.description":
