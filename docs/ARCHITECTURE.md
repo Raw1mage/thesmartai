@@ -96,6 +96,13 @@ The following refactor-ported changes were integrated into `cms` and are relevan
 - `bun run dev` no longer forces `OPENCODE_SKIP_MCP_AUTO=1`, aligning default MCP connect behavior with binary runtime.
 - Architectural effect: lower MCP UI/config surface complexity, reduced status noise, and consistent MCP lifecycle semantics across development and binary execution paths.
 
+12. **MCP implementation layout refactor (`packages/mcp/**`, `scripts/\*.ts`, `templates/skills/refactor-from-src/**`)**
+
+- Project-owned MCP server implementations are now centralized under `packages/mcp/` (e.g. `system-manager`, `refacting-merger`).
+- Legacy script entrypoints are retained as thin compatibility shims in `scripts/` to avoid breaking existing local commands and configs.
+- Developer tooling/docs were updated to point to the new canonical MCP paths.
+- Architectural effect: clearer separation between operational scripts and MCP runtime services, improving discoverability and future MCP scalability.
+
 ---
 
 ## Detailed Package Analysis

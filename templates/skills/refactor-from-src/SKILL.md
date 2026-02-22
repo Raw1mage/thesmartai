@@ -12,7 +12,8 @@ description: Workflow for analyzing upstream behavior changes and planning manua
 The `cms` branch architecture has diverged significantly from `origin/dev`. Any attempt to merge or cherry-pick will result in catastrophic architectural conflicts.
 
 **The ONLY allowed operation is:**
-1. **Analyze** upstream commits for *behavioral* value.
+
+1. **Analyze** upstream commits for _behavioral_ value.
 2. **Document** the behavioral gap.
 3. **Plan** a manual re-implementation (port) of the behavior using `cms` architecture.
 
@@ -23,7 +24,8 @@ We are **archaeologists**, not mergers. We dig through `origin/dev` commits to f
 ## Workflow
 
 ### 1. ANALYSIS (Archaeology)
-- **Goal**: Identify *what* happened in `origin/dev` that `cms` might be missing.
+
+- **Goal**: Identify _what_ happened in `origin/dev` that `cms` might be missing.
 - **Tools**: `git log`, `git show`, `refacting-merger-mcp`.
 - **Action**:
   - Fetch `origin/dev`.
@@ -32,40 +34,44 @@ We are **archaeologists**, not mergers. We dig through `origin/dev` commits to f
   - **Focus** on `fix:`, `feat:`, `perf:` that touch logic/behavior.
 
 ### 2. BEHAVIORAL EVALUATION
+
 For each candidate commit, ask:
 
-1.  **Architecture Check**: Does `cms` even *have* this problem?
-    *   *Example*: Upstream fixed a JSON-lock race condition. `cms` uses SQLite. -> **Irrelevant**.
+1.  **Architecture Check**: Does `cms` even _have_ this problem?
+    - _Example_: Upstream fixed a JSON-lock race condition. `cms` uses SQLite. -> **Irrelevant**.
 2.  **Behavioral Gap**: Is this a logic bug that affects both?
-    *   *Example*: Upstream fixed a regex for parsing model output. `cms` likely uses similar regex. -> **Relevant**.
+    - _Example_: Upstream fixed a regex for parsing model output. `cms` likely uses similar regex. -> **Relevant**.
 3.  **Protocol Alignment**: Is this a change in how we talk to LLMs/APIs?
-    *   *Example*: Anthropic added a new header requirement. -> **Critical**.
+    - _Example_: Anthropic added a new header requirement. -> **Critical**.
 
 ### 3. PLANNING (Replication Plan)
+
 - **Goal**: Create a "Spec" for manual implementation.
 - **Output**: A new `event_log` or update to `TECH_DEBT.md` / `TODO.md`.
 - **Format**:
-    ```markdown
-    ## Behavior Candidate: [Commit Hash] - [Subject]
-    - **Upstream Logic**: [Explanation of what they fixed/changed]
-    - **CMS Status**: [Explanation of current CMS behavior]
-    - **Gap Analysis**: [Does CMS need this? Why?]
-    - **Implementation Plan**: [How to implement this in CMS architecture]
-    ```
+  ```markdown
+  ## Behavior Candidate: [Commit Hash] - [Subject]
+
+  - **Upstream Logic**: [Explanation of what they fixed/changed]
+  - **CMS Status**: [Explanation of current CMS behavior]
+  - **Gap Analysis**: [Does CMS need this? Why?]
+  - **Implementation Plan**: [How to implement this in CMS architecture]
+  ```
 
 ### 4. EXECUTION (Manual Replication)
-- **Action**: Write *new code* in `cms` to match the desired behavior.
+
+- **Action**: Write _new code_ in `cms` to match the desired behavior.
 - **Verification**: Add tests to prove the behavior matches the intent.
 
 ## Decision Categories
 
 When analyzing commits, categorize them as:
 
-*   **`IRRELEVANT`**: Architecture specific to `origin/dev` (e.g., locking, old file, removed module).
-*   **`ALREADY_IMPLEMENTED`**: `cms` naturally handles this or already has the fix.
-*   **`CANDIDATE`**: A logical/behavioral fix that `cms` needs but lacks. -> **Needs Plan**.
+- **`IRRELEVANT`**: Architecture specific to `origin/dev` (e.g., locking, old file, removed module).
+- **`ALREADY_IMPLEMENTED`**: `cms` naturally handles this or already has the fix.
+- **`CANDIDATE`**: A logical/behavioral fix that `cms` needs but lacks. -> **Needs Plan**.
 
 ## Tools & References
 
-- `scripts/refacting-merger-mcp.ts`: Analysis tool (use `--cli` mode).
+- `packages/mcp/refacting-merger/src/index.ts`: Analysis tool (use `--cli` mode).
 - `docs/events/`: Store analysis logs here.

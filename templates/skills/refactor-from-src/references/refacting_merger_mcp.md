@@ -7,7 +7,7 @@
 ## 啟動
 
 ```bash
-bun scripts/refacting-merger-mcp.ts
+bun packages/mcp/refacting-merger/src/index.ts
 ```
 
 可選環境變數：
