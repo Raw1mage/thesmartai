@@ -277,6 +277,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                       : (fallbackModel ?? "")
                     const title = formatIsoTitle(info.title || "Untitled session")
                     const agentSuffix = info.agent ? ` (${info.agent})` : ""
+                    const titleLabel = Locale.truncate(`${title}${agentSuffix}`, 32)
                     const isActiveSession = activeRouteSessionID() === info.sessionID
                     const metaLabel =
                       info.level === "tool"
@@ -298,15 +299,19 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                         onMouseDown={() => route.navigate({ type: "session", sessionID: info.sessionID })}
                       >
                         <box flexDirection="row" gap={1} alignItems="center">
-                          <text fg={theme.text} wrapMode="word">
-                            <span style={{ fg: theme.textMuted }}>[{levelLabel}]</span> {title}
-                            <span style={{ fg: theme.textMuted }}>{agentSuffix}</span>
+                          <text fg={theme.text} wrapMode="none">
+                            <span style={{ fg: theme.textMuted }}>[{levelLabel}]</span> {titleLabel}
+                          </text>
+                        </box>
+                        <box flexDirection="row" gap={1} alignItems="center">
+                          <text fg={theme.textMuted} wrapMode="word">
                             <Show when={statusLabel}>
-                              <span style={{ fg: dotColor }}> {statusLabel}</span>
+                              <span style={{ fg: dotColor }}>{statusLabel}</span>
+                              <span> </span>
                             </Show>
-                            <span style={{ fg: theme.textMuted }}> {metaLabel}</span>
+                            <span>{metaLabel}</span>
                             <Show when={toolLabel}>
-                              <span style={{ fg: theme.textMuted }}> {toolLabel}</span>
+                              <span> · {toolLabel}</span>
                             </Show>
                           </text>
                         </box>
