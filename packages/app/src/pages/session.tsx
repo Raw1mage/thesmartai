@@ -1453,15 +1453,12 @@ export default function Page() {
       if (next === store.promptHeight) return
 
       const el = scroller
-      const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 : false
+      const delta = next - store.promptHeight
+      const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 + Math.max(0, delta) : false
 
       setStore("promptHeight", next)
 
-      if (stick && el) {
-        requestAnimationFrame(() => {
-          el.scrollTo({ top: el.scrollHeight, behavior: "auto" })
-        })
-      }
+      if (stick) autoScroll.forceScrollToBottom()
 
       if (el) scheduleScrollState(el)
       scrollSpy.markDirty()
