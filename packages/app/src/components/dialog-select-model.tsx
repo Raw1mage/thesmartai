@@ -4,6 +4,7 @@ import {
   ComponentProps,
   createEffect,
   createMemo,
+  createResource,
   createSignal,
   For,
   JSX,
@@ -13,8 +14,10 @@ import {
 } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
+import { useGlobalSync } from "@/context/global-sync"
+import { useSDK } from "@/context/sdk"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { popularProviders } from "@/hooks/use-providers"
+import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { Button } from "@opencode-ai/ui/button"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tag } from "@opencode-ai/ui/tag"
@@ -29,6 +32,7 @@ import { useModels, ModelKey } from "@/context/models"
 import { Icon } from "@opencode-ai/ui/icon"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { TextField } from "@opencode-ai/ui/text-field"
+import { showToast } from "@opencode-ai/ui/toast"
 import type { IconName } from "@opencode-ai/ui/icons/provider"
 
 function cn(...classes: (string | undefined | null | false)[]) {
@@ -232,6 +236,7 @@ const ModelItem: Component<{
   item: ReturnType<ReturnType<typeof useModels>["list"]>[number]
   selected: boolean
   favorite: boolean
+  unavailableReason?: string
   onToggleFavorite: (e: MouseEvent) => void
 }> = (props) => {
   const language = useLanguage()
@@ -245,6 +250,9 @@ const ModelItem: Component<{
         </Show>
         <Show when={props.item.latest}>
           <Tag>{language.t("model.tag.latest")}</Tag>
+        </Show>
+        <Show when={props.unavailableReason}>
+          <Tag>{language.t("dialog.model.activity.unavailable")}</Tag>
         </Show>
       </div>
       <IconButton
@@ -265,25 +273,99 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
   const dialog = useDialog()
   const language = useLanguage()
   const local = useLocal()
+  const globalSync = useGlobalSync()
+  const sdk = useSDK()
   const modelsContext = useModels()
+  const providersContext = useProviders()
 
-  const [selectedProviderId, setSelectedProviderId] = createSignal<string>(props.provider || "all")
   const [search, setSearch] = createSignal("")
+  const [accountInfo] = createResource(async () => {
+    return sdk.client.account.listAll().then((x) => x.data)
+  })
+
+  const [selectedProviderId, setSelectedProviderId] = createSignal<string>(props.provider || "favorites")
+  const [selectedAccountId, setSelectedAccountId] = createSignal<string>("")
+
+  const providerStatus = createMemo(() => {
+    const map = new Map<string, string>()
+    const disabled = new Set<string>((globalSync.data.config.disabled_providers ?? []) as string[])
+    for (const id of disabled) map.set(id, language.t("dialog.model.activity.providerDisabled"))
+
+    const families = accountInfo.latest?.families
+    if (!families || typeof families !== "object") return map
+
+    for (const [family, value] of Object.entries(families as Record<string, unknown>)) {
+      const row = value as { activeAccount?: unknown; accounts?: Record<string, unknown> }
+      const activeAccount = typeof row?.activeAccount === "string" ? row.activeAccount : undefined
+      if (!activeAccount) continue
+      const account =
+        row?.accounts && typeof row.accounts === "object"
+          ? (row.accounts[activeAccount] as Record<string, unknown> | undefined)
+          : undefined
+      const until = typeof account?.coolingDownUntil === "number" ? account.coolingDownUntil : undefined
+      if (!until || until <= Date.now()) continue
+      const reason = typeof account?.cooldownReason === "string" ? account.cooldownReason : undefined
+      const minutes = Math.max(1, Math.ceil((until - Date.now()) / 60000))
+      map.set(family, reason || language.t("settings.models.recommendations.cooldown", { minutes }))
+    }
+
+    return map
+  })
+
+  const familyOf = (providerId: string) => (providerId.includes(":") ? providerId.split(":")[0] : providerId)
+
+  const activeAccountForFamily = (family: string) => {
+    const families = accountInfo.latest?.families as Record<string, unknown> | undefined
+    const familyRow = families?.[family] as { activeAccount?: unknown } | undefined
+    return typeof familyRow?.activeAccount === "string" ? familyRow.activeAccount : undefined
+  }
+
+  const modelUnavailableReason = (providerId: string, accountId?: string) => {
+    const direct = providerStatus().get(providerId)
+    if (direct) return direct
+    const family = familyOf(providerId)
+    const familyStatus = providerStatus().get(family)
+    if (familyStatus) return familyStatus
+
+    if (!accountId) return
+    const families = accountInfo.latest?.families as Record<string, unknown> | undefined
+    const familyRow = families?.[family] as { accounts?: Record<string, unknown> } | undefined
+    const account = familyRow?.accounts?.[accountId] as Record<string, unknown> | undefined
+    const until = typeof account?.coolingDownUntil === "number" ? account.coolingDownUntil : undefined
+    if (until && until > Date.now()) {
+      const reason = typeof account?.cooldownReason === "string" ? account.cooldownReason : undefined
+      const minutes = Math.max(1, Math.ceil((until - Date.now()) / 60000))
+      return reason || language.t("settings.models.recommendations.cooldown", { minutes })
+    }
+  }
 
   const providers = createMemo(() => {
     const list = local.model.list()
-    const uniqueProviders = new Map<string, { id: string; name: string }>()
-
-    list.forEach((m) => {
-      if (!uniqueProviders.has(m.provider.id)) {
-        uniqueProviders.set(m.provider.id, { id: m.provider.id, name: m.provider.name })
+    const knownProviders = new Map(
+      providersContext
+        .all()
+        .map((provider) => [provider.id, { id: provider.id, name: provider.name, family: familyOf(provider.id) }]),
+    )
+    const out = new Map<string, { id: string; family: string; name: string; models: number }>()
+    for (const m of list) {
+      if (!local.model.visible({ modelID: m.id, providerID: m.provider.id })) continue
+      if (!knownProviders.has(m.provider.id)) continue
+      const item = out.get(m.provider.id)
+      if (item) item.models += 1
+      else {
+        const known = knownProviders.get(m.provider.id)
+        if (!known) continue
+        out.set(m.provider.id, {
+          id: known.id,
+          family: known.family,
+          name: known.name,
+          models: 1,
+        })
       }
-    })
-
-    return Array.from(uniqueProviders.values()).sort((a, b) => {
+    }
+    return Array.from(out.values()).sort((a, b) => {
       const aIdx = popularProviders.indexOf(a.id)
       const bIdx = popularProviders.indexOf(b.id)
-
       if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
       if (aIdx !== -1) return -1
       if (bIdx !== -1) return 1
@@ -291,26 +373,92 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
     })
   })
 
+  createEffect(() => {
+    const selected = selectedProviderId()
+    if (selected === "favorites") return
+    if (selected && providers().some((provider) => provider.id === selected)) return
+    if (providers().length > 0) {
+      setSelectedProviderId(providers()[0].id)
+      return
+    }
+    setSelectedProviderId("favorites")
+  })
+
+  const accountsForSelectedProvider = createMemo(() => {
+    const providerId = selectedProviderId()
+    if (providerId === "favorites")
+      return [] as Array<{ id: string; label: string; active: boolean; unavailable?: string }>
+    if (!providerId) return [] as Array<{ id: string; label: string; active: boolean; unavailable?: string }>
+    const family = familyOf(providerId)
+    const families = accountInfo.latest?.families as Record<string, unknown> | undefined
+    const familyRow = families?.[family] as { activeAccount?: unknown; accounts?: Record<string, unknown> } | undefined
+    const activeAccount = typeof familyRow?.activeAccount === "string" ? familyRow.activeAccount : undefined
+    const accounts = familyRow?.accounts && typeof familyRow.accounts === "object" ? familyRow.accounts : {}
+    const rows = Object.entries(accounts).map(([id, value]) => {
+      const item = value as Record<string, unknown>
+      const name =
+        (typeof item?.name === "string" && item.name) || (typeof item?.email === "string" && item.email) || id
+      const until = typeof item?.coolingDownUntil === "number" ? item.coolingDownUntil : undefined
+      const reason = typeof item?.cooldownReason === "string" ? item.cooldownReason : undefined
+      const unavailable =
+        until && until > Date.now()
+          ? reason ||
+            language.t("settings.models.recommendations.cooldown", {
+              minutes: Math.max(1, Math.ceil((until - Date.now()) / 60000)),
+            })
+          : undefined
+      return {
+        id,
+        label: name,
+        active: activeAccount === id,
+        unavailable,
+      }
+    })
+    return rows.sort((a, b) => {
+      if (a.active && !b.active) return -1
+      if (!a.active && b.active) return 1
+      return a.label.localeCompare(b.label)
+    })
+  })
+
+  createEffect(() => {
+    const rows = accountsForSelectedProvider()
+    if (!rows.length) {
+      setSelectedAccountId("")
+      return
+    }
+    const current = selectedAccountId()
+    if (current && rows.some((row) => row.id === current)) return
+    const active = rows.find((row) => row.active)
+    setSelectedAccountId(active?.id ?? rows[0].id)
+  })
+
   const filteredModels = createMemo(() => {
     const providerId = selectedProviderId()
-    const query = search().toLowerCase()
-
+    const query = search().toLowerCase().trim()
+    if (!providerId) return [] as ReturnType<ReturnType<typeof useModels>["list"]>
     return local.model
       .list()
+      .filter((m) => local.model.visible({ modelID: m.id, providerID: m.provider.id }))
       .filter((m) => {
-        if (!local.model.visible({ modelID: m.id, providerID: m.provider.id })) return false
-
         if (providerId === "favorites") {
           return modelsContext.isFavorite({ modelID: m.id, providerID: m.provider.id })
         }
-        if (providerId === "all") return true
         return m.provider.id === providerId
       })
       .filter((m) => {
         if (!query) return true
-        return m.name.toLowerCase().includes(query) || m.provider.name.toLowerCase().includes(query)
+        return m.name.toLowerCase().includes(query) || m.id.toLowerCase().includes(query)
       })
   })
+
+  const favoriteModelCount = createMemo(
+    () =>
+      local.model
+        .list()
+        .filter((m) => local.model.visible({ modelID: m.id, providerID: m.provider.id }))
+        .filter((m) => modelsContext.isFavorite({ modelID: m.id, providerID: m.provider.id })).length,
+  )
 
   const handleToggleFavorite = (e: MouseEvent, model: ModelKey) => {
     e.stopPropagation()
@@ -320,38 +468,27 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
 
   return (
     <Dialog
-      title={language.t("dialog.model.select.title") + " (v2)"}
+      title={language.t("dialog.model.select.title") + " (activities)"}
       class="w-[800px] max-w-[90vw] h-[600px] max-h-[85vh] flex flex-col p-0 overflow-hidden"
     >
       <div class="flex flex-1 min-h-0 h-full overflow-hidden">
-        <div class="w-64 flex-shrink-0 border-r border-border-base flex flex-col bg-surface-base">
+        <div class="w-56 flex-shrink-0 border-r border-border-base flex flex-col bg-surface-base">
           <div class="p-2 space-y-1 overflow-y-auto flex-1">
             <div class="px-3 py-2 text-11-medium text-text-weak uppercase tracking-wider">
-              {language.t("common.favorites")}
-            </div>
-            <ProviderItem
-              id="favorites"
-              name={language.t("common.favorites")}
-              icon="star"
-              selected={selectedProviderId() === "favorites"}
-              onClick={() => setSelectedProviderId("favorites")}
-            />
-
-            <div class="mt-4 px-3 py-2 text-11-medium text-text-weak uppercase tracking-wider">
               {language.t("common.providers")}
             </div>
             <ProviderItem
-              id="all"
-              name={language.t("common.all")}
-              icon="globe"
-              selected={selectedProviderId() === "all"}
-              onClick={() => setSelectedProviderId("all")}
+              id="favorites"
+              name={`${language.t("common.favorites")} (${favoriteModelCount()})`}
+              icon="star"
+              selected={selectedProviderId() === "favorites"}
+              onClick={() => setSelectedProviderId("favorites")}
             />
             <For each={providers()}>
               {(provider) => (
                 <ProviderItem
                   id={provider.id}
-                  name={provider.name}
+                  name={`${provider.name} (${provider.models})`}
                   providerIcon={provider.id}
                   selected={selectedProviderId() === provider.id}
                   onClick={() => setSelectedProviderId(provider.id)}
@@ -377,6 +514,51 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
             >
               {language.t("dialog.model.manage")}
             </Button>
+          </div>
+        </div>
+
+        <div class="w-64 flex-shrink-0 border-r border-border-base flex flex-col bg-surface-base">
+          <div class="px-3 py-2 text-11-medium text-text-weak uppercase tracking-wider border-b border-border-base">
+            Accounts
+          </div>
+          <div class="p-2 space-y-1 overflow-y-auto flex-1">
+            <Show
+              when={accountsForSelectedProvider().length > 0}
+              fallback={
+                <div class="px-3 py-2 text-12-regular text-text-weak">
+                  <Show when={selectedProviderId() === "favorites"} fallback={"No account data"}>
+                    Favorites span multiple providers.
+                  </Show>
+                </div>
+              }
+            >
+              <For each={accountsForSelectedProvider()}>
+                {(row) => (
+                  <button
+                    class={cn(
+                      "w-full text-left rounded-md px-3 py-2 transition-colors",
+                      selectedAccountId() === row.id
+                        ? "bg-surface-raised-pressed text-text-strong"
+                        : "hover:bg-surface-raised-hover text-text-base",
+                    )}
+                    onClick={() => setSelectedAccountId(row.id)}
+                  >
+                    <div class="flex items-center gap-2">
+                      <span class="truncate flex-1">{row.label}</span>
+                      <Show when={row.active}>
+                        <Tag>{language.t("settings.accounts.active")}</Tag>
+                      </Show>
+                      <Show when={row.unavailable}>
+                        <Tag>{language.t("dialog.model.activity.unavailable")}</Tag>
+                      </Show>
+                    </div>
+                    <Show when={row.unavailable}>
+                      {(msg) => <div class="text-11-regular text-icon-warning-base pt-1 truncate">{msg()}</div>}
+                    </Show>
+                  </button>
+                )}
+              </For>
+            </Show>
           </div>
         </div>
 
@@ -424,13 +606,42 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
               )}
               onSelect={(x) => {
                 if (!x) return
-                local.model.set(
-                  { modelID: x.id, providerID: x.provider.id },
-                  {
-                    recent: true,
-                  },
-                )
-                dialog.close()
+                const providerFamily = familyOf(x.provider.id)
+                const accountId =
+                  selectedProviderId() === "favorites" ? activeAccountForFamily(providerFamily) : selectedAccountId()
+                const unavailable = modelUnavailableReason(x.provider.id, accountId)
+                if (unavailable) {
+                  showToast({
+                    variant: "error",
+                    title: language.t("dialog.model.activity.selectBlocked"),
+                    description: unavailable,
+                  })
+                  return
+                }
+                const family = providerFamily
+                const setModel = () => {
+                  local.model.set(
+                    { modelID: x.id, providerID: x.provider.id },
+                    {
+                      recent: true,
+                    },
+                  )
+                  dialog.close()
+                }
+                if (!accountId) {
+                  setModel()
+                  return
+                }
+                sdk.client.account
+                  .setActive({ family, accountId })
+                  .then(setModel)
+                  .catch((err) => {
+                    showToast({
+                      variant: "error",
+                      title: language.t("common.requestFailed"),
+                      description: err instanceof Error ? err.message : String(err),
+                    })
+                  })
               }}
             >
               {(item) => (
@@ -438,6 +649,7 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
                   item={item}
                   selected={false}
                   favorite={modelsContext.isFavorite({ modelID: item.id, providerID: item.provider.id })}
+                  unavailableReason={modelUnavailableReason(item.provider.id, selectedAccountId())}
                   onToggleFavorite={(e) => handleToggleFavorite(e, { modelID: item.id, providerID: item.provider.id })}
                 />
               )}

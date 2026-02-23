@@ -1,6 +1,6 @@
 import { Button } from "@opencode-ai/ui/button"
 import { TextField } from "@opencode-ai/ui/text-field"
-import { Show, createEffect, createSignal, type ParentComponent } from "solid-js"
+import { Show, createEffect, createMemo, createSignal, type ParentComponent } from "solid-js"
 import { useServer } from "@/context/server"
 import { useWebAuth } from "@/context/web-auth"
 
@@ -11,6 +11,10 @@ export const AuthGate: ParentComponent = (props) => {
   const [password, setPassword] = createSignal("")
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal("")
+  const canRenderApp = createMemo(() => {
+    if (auth.loading()) return false
+    return !auth.enabled() || auth.authenticated()
+  })
 
   createEffect(() => {
     if (username().trim()) return
@@ -35,7 +39,7 @@ export const AuthGate: ParentComponent = (props) => {
 
   return (
     <Show
-      when={!auth.enabled() || auth.authenticated()}
+      when={canRenderApp()}
       fallback={
         <div class="size-full min-h-screen bg-bg-default flex items-center justify-center p-6">
           <form

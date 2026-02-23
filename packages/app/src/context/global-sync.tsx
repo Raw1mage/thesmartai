@@ -48,6 +48,18 @@ type GlobalStore = {
   reload: undefined | "pending" | "complete"
 }
 
+function normalizeDirectoryKey(value: string) {
+  if (!value || value === "global") return "global"
+  const normalized = value.replaceAll("\\", "/")
+  if (normalized === "/") return normalized
+  return normalized.replace(/\/+$/, "")
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === "string" && error) return error
+  return "Unknown error"
+}
 function setDevStats(value: {
   activeDirectoryStores: number
   evictions: number
@@ -250,7 +262,7 @@ function createGlobalSync() {
   }
 
   const unsub = globalSDK.event.listen((e) => {
-    const directory = e.name
+    const directory = normalizeDirectoryKey(e.name)
     const event = e.details
 
     if (directory === "global") {
@@ -269,19 +281,25 @@ function createGlobalSync() {
       return
     }
 
-    const existing = children.children[directory]
+    const exact = children.children[directory]
+    const resolvedDirectory = exact
+      ? directory
+      : Object.keys(children.children).find((key) => normalizeDirectoryKey(key) === directory)
+    if (!resolvedDirectory) return
+
+    const existing = children.children[resolvedDirectory]
     if (!existing) return
-    children.mark(directory)
+    children.mark(resolvedDirectory)
     const [store, setStore] = existing
     applyDirectoryEvent({
       event,
-      directory,
+      directory: resolvedDirectory,
       store,
       setStore,
       push: queue.push,
-      vcsCache: children.vcsCache.get(directory),
+      vcsCache: children.vcsCache.get(resolvedDirectory),
       loadLsp: () => {
-        sdkFor(directory)
+        sdkFor(resolvedDirectory)
           .lsp.status()
           .then((x) => setStore("lsp", x.data ?? []))
       },

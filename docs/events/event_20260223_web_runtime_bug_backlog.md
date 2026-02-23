@@ -105,6 +105,11 @@ For each web-runtime bug report, capture all of the following:
     - auto re-enable when user reconnects a previously disabled provider.
   - Phase 3 read-only slice landed:
     - model routing recommendations panel in `Settings > Models`.
+  - Phase 3 guided switching slice landed:
+    - one-click apply for recommendation (account switch + model switch),
+    - cooldown-aware disable state for recommended accounts still cooling down.
+  - Phase 3 popover action landed:
+    - status popover `accounts` tab now supports one-click apply for recommendations with the same cooldown guardrails.
 
 ### BUG-003: Docker workspace sandbox mismatch vs host system workspace
 
@@ -225,3 +230,104 @@ For each web-runtime bug report, capture all of the following:
 
 - Validation target:
   - In Web terminal, type continuously and verify immediate visual echo/output without reload.
+
+### LOG-FIX-008: pre-login load stage emits massive 401 errors and blocks usable UX
+
+- Symptom:
+  - During load (before sign-in), browser console showed repeated 401 errors (`/global/event`, `/project`, etc.).
+  - UI appeared unstable/noisy and user-reported inability to continue normal conversation flow.
+
+- Root cause:
+  1. Web server was serving proxied hosted frontend rather than local built frontend parity bundle when `OPENCODE_FRONTEND_PATH` was not set.
+  2. Global event stream attempted connection before authenticated state was established, producing expected-but-noisy 401 SSE failures.
+
+- Fix:
+  - Runtime: start Web with local frontend bundle path (`OPENCODE_FRONTEND_PATH=/home/betaman/projects/opencode-web/packages/app/dist`).
+  - App: gate global event stream reconnection until authenticated when auth is enabled (`packages/app/src/context/global-sdk.tsx`).
+
+- Validation:
+  - Headless browser check shows login page renders and pre-login console errors drop to 0.
+  - Post-login check shows recent-project/session entry path available with no console errors.
+
+### LOG-FIX-009: model picker does not reflect runtime availability (rotation/account cooldown)
+
+- Symptom:
+  - User can open model picker but cannot reliably determine which models are actually usable now.
+  - Selection UX diverged from TUI `/admin` model-activity expectations.
+
+- Fix:
+  - Prompt model button now opens `DialogSelectModel` (full dialog path) instead of lightweight popover list.
+  - `DialogSelectModel` now annotates unavailable entries and blocks selection when:
+    - provider is disabled,
+    - active account for provider family is cooling down.
+  - Selection-block toast now explains why model is unavailable.
+
+- Changed files:
+  - `packages/app/src/components/prompt-input.tsx`
+  - `packages/app/src/components/dialog-select-model.tsx`
+  - `packages/app/src/i18n/en.ts`
+  - `packages/app/src/i18n/zh.ts`
+  - `packages/app/src/i18n/zht.ts`
+
+### LOG-FIX-010: terminal tab visual bleed when opening a new tab
+
+- Symptom:
+  - Opening Terminal 2 briefly shows residual frame from Terminal 1.
+
+- Fix:
+  - On fresh terminal mount (no restore path), force clear/reset terminal surface before fit/connect.
+
+- Changed file:
+  - `packages/app/src/components/terminal.tsx`
+
+### LOG-FIX-011: project path display uses misleading `~/` prefix and directory picker lacks explicit parent row
+
+- Symptom:
+  - Recent project list could show misleading `~/` prefixes when home path resolution is empty/mismatched.
+  - Directory picker lacked an explicit `..` parent entry, making full-system traversal less obvious.
+
+- Fix:
+  - Home recent-project path rendering now only shortens to `~` when path is actually under real home prefix.
+  - Directory picker now:
+    - defaults browsing root to filesystem root (`/` on linux),
+    - displays absolute paths (no forced `~` alias),
+    - prepends explicit `..` row to navigate parent directory.
+
+- Changed files:
+  - `packages/app/src/pages/home.tsx`
+  - `packages/app/src/components/dialog-select-directory.tsx`
+
+### LOG-FIX-012: chat response only appears after Ctrl+F5 (no live session updates)
+
+- Symptom:
+  - User can send prompt successfully, but assistant response is not rendered live.
+  - Response appears after hard refresh, indicating backend completed but frontend missed realtime event application.
+
+- Root cause:
+  - Directory-key mismatch between SSE event payload and frontend store keys (path normalization differences such as trailing slashes/backslashes) caused session events to be dropped.
+
+- Fix:
+  - Normalize directory keys in event pipeline and subscriptions:
+    - `packages/app/src/context/global-sdk.tsx`
+    - `packages/app/src/context/sdk.tsx`
+    - `packages/app/src/context/global-sync.tsx`
+  - Added fallback resolution in global-sync listener to map normalized event directory to existing child-store keys.
+
+- Validation target:
+  - Send prompt in existing session and verify message parts update in-place without page reload.
+
+### LOG-FIX-013: directory browser cannot traverse full filesystem
+
+- Symptom:
+  - Open-project directory chooser could not reliably traverse outside project/home scope for single-user admin workflows.
+
+- Fix:
+  - Added global filesystem browse mode for global project context:
+    - new env flag: `OPENCODE_ALLOW_GLOBAL_FS_BROWSE=1`.
+  - Backend file listing now accepts absolute `dir` in global-browse mode.
+  - Directory picker UX already updated to root-first + explicit `..` parent row + absolute path display.
+  - Startup script now enables global browse by default in this single-user environment.
+
+- Changed files:
+  - `packages/opencode/src/file/index.ts`
+  - `scripts/tools/start-opencode-web.sh`

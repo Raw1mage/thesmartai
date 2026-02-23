@@ -308,9 +308,23 @@ export namespace File {
   }
 
   let projectRootRealCache: { directory: string; root: string } | undefined
+
+  function allowGlobalFilesystemBrowse() {
+    const flag = Bun.env.OPENCODE_ALLOW_GLOBAL_FS_BROWSE
+    if (flag !== "1" && flag !== "true") return false
+    return Instance.project.id === "global"
+  }
+
   async function getProjectRootReal(): Promise<string> {
     const directory = Instance.directory
-    if (projectRootRealCache?.directory === directory) return projectRootRealCache.root
+    const cacheKey = `${directory}:${allowGlobalFilesystemBrowse() ? "globalfs" : "project"}`
+    if (projectRootRealCache?.directory === cacheKey) return projectRootRealCache.root
+
+    if (allowGlobalFilesystemBrowse()) {
+      const root = path.parse(directory).root || "/"
+      projectRootRealCache = { directory: cacheKey, root }
+      return root
+    }
 
     let root: string
     try {
@@ -319,7 +333,7 @@ export namespace File {
       root = directory
     }
 
-    projectRootRealCache = { directory, root }
+    projectRootRealCache = { directory: cacheKey, root }
     return root
   }
 
@@ -669,7 +683,12 @@ export namespace File {
       }
       ignored = ig.ignores.bind(ig)
     }
-    const requested = dir ? path.join(Instance.directory, dir) : Instance.directory
+    const requested =
+      dir && allowGlobalFilesystemBrowse() && path.isAbsolute(dir)
+        ? dir
+        : dir
+          ? path.join(Instance.directory, dir)
+          : Instance.directory
     const resolved = await assertWithinProject(requested)
 
     const nodes: Node[] = []

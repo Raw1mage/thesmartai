@@ -4,6 +4,13 @@ import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { createEffect, createMemo, onCleanup, type Accessor } from "solid-js"
 import { useGlobalSDK } from "./global-sdk"
 
+function normalizeDirectoryKey(value: string) {
+  if (!value || value === "global") return "global"
+  const normalized = value.replaceAll("\\", "/")
+  if (normalized === "/") return normalized
+  return normalized.replace(/\/+$/, "")
+}
+
 type SDKEventMap = {
   [key in Event["type"]]: Extract<Event, { type: key }>
 }
@@ -13,7 +20,7 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
   init: (props: { directory: Accessor<string> }) => {
     const globalSDK = useGlobalSDK()
 
-    const directory = createMemo(props.directory)
+    const directory = createMemo(() => normalizeDirectoryKey(props.directory()))
     const client = createMemo(() =>
       createOpencodeClient({
         baseUrl: globalSDK.url,

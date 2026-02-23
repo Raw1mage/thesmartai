@@ -30,6 +30,14 @@ export default function Home() {
       .slice(0, 5)
   })
 
+  const displayProjectPath = (worktree: string) => {
+    const home = homedir()
+    if (!home) return worktree
+    if (worktree === home) return "~"
+    if (worktree.startsWith(home + "/")) return `~${worktree.slice(home.length)}`
+    return worktree
+  }
+
   const serverDotClass = createMemo(() => {
     const healthy = server.healthy()
     if (healthy === true) return "bg-icon-success-base"
@@ -103,7 +111,7 @@ export default function Home() {
                     class="text-14-mono text-left justify-between px-3"
                     onClick={() => openProject(project.worktree)}
                   >
-                    {project.worktree.replace(homedir(), "~")}
+                    {displayProjectPath(project.worktree)}
                     <div class="text-14-regular text-text-weak">
                       {DateTime.fromMillis(project.time.updated ?? project.time.created).toRelative()}
                     </div>

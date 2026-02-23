@@ -142,6 +142,15 @@ const persistTerminal = (input: {
   })
 }
 
+const clearTerminalSurface = (term: Term) => {
+  const runtime = term as unknown as {
+    clear?: () => void
+    reset?: () => void
+  }
+  runtime.clear?.()
+  runtime.reset?.()
+}
+
 export const Terminal = (props: TerminalProps) => {
   const platform = usePlatform()
   const sdk = useSDK()
@@ -410,6 +419,8 @@ export const Terminal = (props: TerminalProps) => {
           startResize()
         })
       } else {
+        // FIX: avoid ghost frame bleed when mounting a fresh terminal tab (@event_20260223_web_architecture_first_plan)
+        clearTerminalSurface(t)
         fit.fit()
         scheduleSize(t.cols, t.rows)
         if (restore) {
