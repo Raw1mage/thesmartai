@@ -135,6 +135,9 @@ export const dict = {
   "dialog.model.empty": "未找到模型",
   "dialog.model.manage": "管理模型",
   "dialog.model.manage.description": "自定义模型选择器中显示的模型。",
+  "dialog.model.activity.unavailable": "不可用",
+  "dialog.model.activity.providerDisabled": "提供商已禁用",
+  "dialog.model.activity.selectBlocked": "该模型当前不可用",
   "dialog.model.unpaid.freeModels.title": "OpenCode 提供的免费模型",
   "dialog.model.unpaid.addMore.title": "从热门提供商添加更多模型",
 
@@ -722,6 +725,11 @@ export const dict = {
   "settings.models.description": "模型设置将在此处可配置。",
   "settings.models.recommendations.title": "路由建议",
   "settings.models.recommendations.empty": "暂无可用的轮换建议。",
+  "settings.models.recommendations.apply": "应用",
+  "settings.models.recommendations.cooldown": "冷却中（{{minutes}} 分钟）",
+  "settings.models.recommendations.toast.applied.title": "已应用建议",
+  "settings.models.recommendations.toast.applied.description": "{{task}} → {{value}}",
+  "settings.models.recommendations.toast.failed.title": "应用建议失败",
 
   "settings.agents.title": "智能体",
   "settings.agents.description": "智能体设置将在此处可配置。",

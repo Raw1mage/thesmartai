@@ -6,6 +6,13 @@ import { usePlatform } from "./platform"
 import { useServer } from "./server"
 import { useWebAuth } from "./web-auth"
 
+function normalizeDirectoryKey(value: string) {
+  if (!value || value === "global") return "global"
+  const normalized = value.replaceAll("\\", "/")
+  if (normalized === "/") return normalized
+  return normalized.replace(/\/+$/, "")
+}
+
 export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleContext({
   name: "GlobalSDK",
   init: () => {
@@ -104,12 +111,27 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     let streamErrorLogged = false
     const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+    const shouldConnectEventStream = () => {
+      if (!webAuth.enabled()) return true
+      return webAuth.authenticated()
+    }
+    const isUnauthorized = (error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error)
+      return message.includes("401") || message.toLowerCase().includes("unauthorized")
+    }
 
     void (async () => {
       while (!abort.signal.aborted) {
+        if (!shouldConnectEventStream()) {
+          streamErrorLogged = false
+          await wait(RECONNECT_DELAY_MS)
+          continue
+        }
+
         try {
           const events = await eventSdk.global.event({
             onSseError: (error) => {
+              if (isUnauthorized(error) && webAuth.enabled() && !webAuth.authenticated()) return
               if (streamErrorLogged) return
               streamErrorLogged = true
               console.error("[global-sdk] event stream error", {
@@ -122,7 +144,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
           let yielded = Date.now()
           for await (const event of events.stream) {
             streamErrorLogged = false
-            const directory = event.directory ?? "global"
+            const directory = normalizeDirectoryKey(event.directory ?? "global")
             const payload = event.payload
             const k = key(directory, payload)
             if (k) {
@@ -145,6 +167,10 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
             await wait(0)
           }
         } catch (error) {
+          if (isUnauthorized(error) && webAuth.enabled() && !webAuth.authenticated()) {
+            await wait(RECONNECT_DELAY_MS)
+            continue
+          }
           if (!streamErrorLogged) {
             streamErrorLogged = true
             console.error("[global-sdk] event stream failed", {

@@ -23,6 +23,7 @@ import { useSDK } from "@/context/sdk"
 import { normalizeServerUrl, useServer } from "@/context/server"
 import { usePlatform } from "@/context/platform"
 import { useLanguage } from "@/context/language"
+import { useLocal } from "@/context/local"
 import { DialogSelectServer } from "./dialog-select-server"
 import { DialogSettings } from "./dialog-settings"
 import { ServerRow } from "@/components/server/server-row"
@@ -166,6 +167,7 @@ const useMcpToggle = (input: {
 export function StatusPopover() {
   const sync = useSync()
   const sdk = useSDK()
+  const local = useLocal()
   const server = useServer()
   const platform = usePlatform()
   const dialog = useDialog()
@@ -289,6 +291,60 @@ export function StatusPopover() {
     }
     return entries
   })
+
+  const accountCooldownMap = createMemo(() => {
+    const out = new Map<string, { coolingDownUntil?: number; cooldownReason?: string }>()
+    const families = accountInfo.latest?.families
+    if (!families || typeof families !== "object") return out
+    for (const [family, familyValue] of Object.entries(families as Record<string, unknown>)) {
+      const row = familyValue as { accounts?: Record<string, unknown> }
+      const accountMap = row?.accounts && typeof row.accounts === "object" ? row.accounts : {}
+      for (const [accountId, value] of Object.entries(accountMap)) {
+        const item = value as Record<string, unknown>
+        out.set(`${family}/${accountId}`, {
+          coolingDownUntil: typeof item?.coolingDownUntil === "number" ? item.coolingDownUntil : undefined,
+          cooldownReason: typeof item?.cooldownReason === "string" ? item.cooldownReason : undefined,
+        })
+      }
+    }
+    return out
+  })
+
+  const recommendationCooldown = (providerId: string, accountId: string) => {
+    const info = accountCooldownMap().get(`${providerId}/${accountId}`)
+    if (!info?.coolingDownUntil || info.coolingDownUntil <= Date.now()) return
+    const minutes = Math.max(1, Math.ceil((info.coolingDownUntil - Date.now()) / 60000))
+    return info.cooldownReason
+      ? `${info.cooldownReason} (${minutes}m)`
+      : language.t("settings.models.recommendations.cooldown", { minutes })
+  }
+
+  const applyRecommendation = async (entry: { task: string; value: string }) => {
+    const [providerId, accountId, modelID] = entry.value.split("/")
+    if (!providerId || !accountId || !modelID) return
+    try {
+      await sdk.client.account.setActive({ family: providerId, accountId })
+      local.model.set({ providerID: providerId, modelID }, { recent: true })
+      await sdk.client.global.dispose().catch(() => undefined)
+      await accountActions.refetch()
+      await rotationActions.refetch()
+      showToast({
+        variant: "success",
+        icon: "circle-check",
+        title: language.t("settings.models.recommendations.toast.applied.title"),
+        description: language.t("settings.models.recommendations.toast.applied.description", {
+          task: entry.task,
+          value: entry.value,
+        }),
+      })
+    } catch (err) {
+      showToast({
+        variant: "error",
+        title: language.t("settings.models.recommendations.toast.failed.title"),
+        description: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
   const overallHealthy = createMemo(() => {
     const serverHealthy = server.healthy() === true
     const anyMcpIssue = mcpNames().some((name) => {
@@ -541,9 +597,26 @@ export function StatusPopover() {
                 >
                   <For each={rotationRecommended()}>
                     {(entry) => (
-                      <div class="flex items-center justify-between gap-3">
-                        <span class="text-12-regular text-text-weak uppercase">{entry.task}</span>
-                        <code class="text-12-regular text-text-base truncate">{entry.value}</code>
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="min-w-0 flex-1 flex flex-col gap-0.5">
+                          <span class="text-12-regular text-text-weak uppercase">{entry.task}</span>
+                          <code class="text-12-regular text-text-base truncate">{entry.value}</code>
+                          <Show
+                            when={recommendationCooldown(...(entry.value.split("/").slice(0, 2) as [string, string]))}
+                          >
+                            {(cooling) => <span class="text-11-regular text-icon-warning-base">{cooling()}</span>}
+                          </Show>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          class="h-7 px-2"
+                          disabled={
+                            !!recommendationCooldown(...(entry.value.split("/").slice(0, 2) as [string, string]))
+                          }
+                          onClick={() => void applyRecommendation(entry)}
+                        >
+                          {language.t("settings.models.recommendations.apply")}
+                        </Button>
                       </div>
                     )}
                   </For>

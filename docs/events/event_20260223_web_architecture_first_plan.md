@@ -161,3 +161,108 @@ Changed files:
 Validation:
 
 - `bun x tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit` ✅
+
+## 11) Phase 3 progress update (guided fallback switching)
+
+- Upgraded recommendation panel from read-only to guided action flow in `Settings > Models`.
+- Added one-click `Apply` action per recommendation:
+  1. switch active account for the recommended provider family,
+  2. switch current model to recommended provider/model,
+  3. refresh global state and rotation status.
+- Added cooldown-aware guardrails:
+  - recommendation rows now show cooldown reason/time when available,
+  - apply button is disabled while account is cooling down.
+
+Changed files:
+
+- `packages/app/src/components/settings-models.tsx`
+- `packages/app/src/i18n/en.ts`
+- `packages/app/src/i18n/zh.ts`
+- `packages/app/src/i18n/zht.ts`
+
+Validation:
+
+- `bun x tsc -p /home/betaman/projects/opencode-web/packages/app/tsconfig.json --noEmit` ✅
+
+## 12) Phase 3 progress update (status popover apply path)
+
+- Added `Apply` action for rotation recommendations in status popover `accounts` tab.
+- Behavior mirrors settings-guided flow:
+  1. switch active account for recommended provider family,
+  2. switch model to recommended provider/model,
+  3. dispose/refresh global state and recommendation snapshots.
+- Added cooldown-aware guardrail in popover recommendation rows:
+  - shows cooldown reason/time when present,
+  - disables apply while account is cooling down.
+
+Changed files:
+
+- `packages/app/src/components/status-popover.tsx`
+
+Validation:
+
+- `bun x tsc -p /home/betaman/projects/opencode-web/packages/app/tsconfig.json --noEmit` ✅
+
+## 13) Runtime stabilization update (pre-login 401 noise)
+
+- Identified and mitigated pre-login error storm source:
+  - ensure Web serves local built frontend (`OPENCODE_FRONTEND_PATH`),
+  - defer global SSE stream attempts until authenticated when auth is enabled.
+
+Changed files:
+
+- `packages/app/src/context/global-sdk.tsx`
+
+Runtime operation note:
+
+- Start Web with:
+  - `OPENCODE_FRONTEND_PATH=/home/betaman/projects/opencode-web/packages/app/dist`
+
+Validation:
+
+- Pre-login (login screen) browser console errors: 0 in automated check.
+- Post-login recent project/session path reachable in automated check.
+
+## 14) Phase 3 parity update (model availability chooser)
+
+- Prompt model trigger now opens `DialogSelectModel` (full dialog) to align with TUI-style activity selection depth.
+- Refactored model chooser structure into explicit three-layer flow:
+  - provider column,
+  - account column (active/cooldown state),
+  - model column (selection target).
+- Added availability-aware gating in model dialog:
+  - unavailable tag for entries blocked by provider/account state,
+  - blocked-select toast with reason text,
+  - select action now sets active account first, then applies model.
+
+Changed files:
+
+- `packages/app/src/components/prompt-input.tsx`
+- `packages/app/src/components/dialog-select-model.tsx`
+- `packages/app/src/i18n/en.ts`
+- `packages/app/src/i18n/zh.ts`
+- `packages/app/src/i18n/zht.ts`
+
+## 15) Runtime visual update (terminal tab bleed)
+
+- Added fresh-mount clear/reset to terminal surface before initial fit/connect in non-restore path.
+
+Changed file:
+
+- `packages/app/src/components/terminal.tsx`
+
+## 16) Phase 3 correction update (provider/account/model boundary)
+
+- Corrected provider source-of-truth in model dialog:
+  - provider column now derives from provider catalog (`useProviders().all()`), not inferred from model rows.
+  - prevents accidental account-like ids from appearing as providers.
+- Updated provider popularity map to cms split-provider reality:
+  - removed legacy `google`,
+  - uses `gemini-cli` and `google-api` as independent providers.
+- Reintroduced favorites as a first-class chooser scope while keeping visibility filters.
+- Kept availability gating on provider/account state and preserved account-first model apply flow.
+
+Changed files:
+
+- `packages/app/src/components/dialog-select-model.tsx`
+- `packages/app/src/hooks/use-providers.ts`

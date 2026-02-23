@@ -26,7 +26,6 @@ export namespace Pty {
 
   type Subscriber = {
     id: number
-    token: unknown
   }
 
   const sockets = new WeakMap<object, number>()
@@ -240,10 +239,6 @@ export namespace Pty {
           session.subscribers.delete(ws)
           continue
         }
-        if (token(ws) !== sub.token) {
-          session.subscribers.delete(ws)
-          continue
-        }
         try {
           ws.send(data)
         } catch {
@@ -346,7 +341,7 @@ export namespace Pty {
     }
 
     owners.set(ws, id)
-    session.subscribers.set(ws, { id: socketId, token: token(identity ?? ws) })
+    session.subscribers.set(ws, { id: socketId })
 
     const cleanup = () => {
       session.subscribers.delete(ws)

@@ -13,8 +13,10 @@ if [ -f "$HOME/.bashrc" ]; then
     source "$HOME/.bashrc" || true
 fi
 
-export OPENCODE_SERVER_USERNAME="opencode"
-export OPENCODE_SERVER_PASSWORD="Ne20240Wsl!"
+unset OPENCODE_SERVER_USERNAME
+unset OPENCODE_SERVER_PASSWORD
+export OPENCODE_SERVER_HTPASSWD="${OPENCODE_SERVER_HTPASSWD:-$HOME/.config/opencode/.htpasswd}"
+export OPENCODE_ALLOW_GLOBAL_FS_BROWSE="${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
@@ -22,7 +24,8 @@ cd "$PROJECT_ROOT"
 
 echo "Starting OpenCode Web Server..."
 echo "URL: http://0.0.0.0:1080"
-echo "Username: opencode"
+echo "Auth mode: htpasswd"
+echo "Global FS browse: $OPENCODE_ALLOW_GLOBAL_FS_BROWSE"
 echo ""
 
 # @event_2026-02-06_xdg-install: resolve binary dynamically

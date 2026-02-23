@@ -19,6 +19,7 @@ interface DialogSelectDirectoryProps {
 type Row = {
   absolute: string
   search: string
+  parentEntry?: boolean
 }
 
 function cleanInput(value: string) {
@@ -97,8 +98,7 @@ function tildeOf(absolute: string, home: string) {
 
 function displayPath(path: string, input: string, home: string) {
   const full = trimTrailing(path)
-  if (modeOf(input) === "absolute") return full
-  return tildeOf(full, home) || full
+  return full
 }
 
 function toRow(absolute: string, home: string): Row {
@@ -256,9 +256,12 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   )
 
   const home = createMemo(() => sync.data.path.home || fallbackPath()?.home || "")
-  const start = createMemo(
-    () => sync.data.path.home || sync.data.path.directory || fallbackPath()?.home || fallbackPath()?.directory,
-  )
+  const start = createMemo(() => {
+    const absoluteBase =
+      sync.data.path.directory || fallbackPath()?.directory || sync.data.path.home || fallbackPath()?.home
+    const root = absoluteBase ? rootOf(absoluteBase) : "/"
+    return root || "/"
+  })
 
   const directories = useDirectorySearch({
     sdk,
@@ -268,7 +271,27 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
 
   const items = async (value: string) => {
     const results = await directories(value)
-    return results.map((absolute) => toRow(absolute, home()))
+    const rows = results.map((absolute) => toRow(absolute, home()))
+
+    const raw = normalizeDriveRoot(cleanInput(value))
+    const base = (() => {
+      if (!raw) return trimTrailing(start() ?? "/")
+      if (raw === "~") return trimTrailing(home() || start() || "/")
+      if (raw.startsWith("~/")) return trimTrailing(joinPath(home() || start() || "/", raw.slice(2)))
+      if (rootOf(raw)) return trimTrailing(raw)
+      return trimTrailing(joinPath(start(), raw))
+    })()
+
+    const parent = parentOf(base)
+    if (parent !== base) {
+      rows.unshift({
+        absolute: parent,
+        search: ["..", parent, tildeOf(parent, home())].filter(Boolean).join("\n"),
+        parentEntry: true,
+      })
+    }
+
+    return rows
   }
 
   function resolve(absolute: string) {
@@ -304,6 +327,22 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
         }}
       >
         {(item) => {
+          if (item.parentEntry) {
+            return (
+              <div class="w-full flex items-center justify-between rounded-md">
+                <div class="flex items-center gap-x-3 grow min-w-0">
+                  <FileIcon node={{ path: item.absolute, type: "directory" }} class="shrink-0 size-4" />
+                  <div class="flex items-center text-14-regular min-w-0">
+                    <span class="text-text-strong whitespace-nowrap">..</span>
+                    <span class="text-text-weak whitespace-nowrap pl-2 truncate">
+                      {displayPath(item.absolute, filter(), home())}
+                    </span>
+                    <span class="text-text-weak whitespace-nowrap">/</span>
+                  </div>
+                </div>
+              </div>
+            )
+          }
           const path = displayPath(item.absolute, filter(), home())
           if (path === "~") {
             return (
