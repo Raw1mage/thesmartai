@@ -32,7 +32,8 @@ function isIgnoredPathsTouched() {
 }
 
 const decoder = new TextDecoder()
-const result = run(["bun", "turbo", "typecheck"], "/home/pkcs12/projects/opencode")
+const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, "")
+const result = run(["bun", "turbo", "typecheck"], ROOT)
 const stdout = text(decoder, result.stdout)
 const stderr = text(decoder, result.stderr)
 const output = `${stdout}${stderr}`

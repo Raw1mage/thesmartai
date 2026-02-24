@@ -44,6 +44,7 @@ type GlobalStore = {
   project: Project[]
   provider: ProviderListResponse
   provider_auth: ProviderAuthResponse
+  account_families: Record<string, { accounts: Record<string, any>; activeAccount?: string }>
   config: Config
   reload: undefined | "pending" | "complete"
 }
@@ -55,9 +56,18 @@ function normalizeDirectoryKey(value: string) {
   return normalized.replace(/\/+$/, "")
 }
 
-function errorMessage(error: unknown) {
+export function errorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message
   if (typeof error === "string" && error) return error
+  if (typeof error === "object" && error !== null) {
+    if ("message" in error && typeof (error as any).message === "string" && (error as any).message) return (error as any).message
+    if ("error" in error && typeof (error as any).error === "string" && (error as any).error) return (error as any).error
+    try {
+      return JSON.stringify(error)
+    } catch {
+      return "Unknown error"
+    }
+  }
   return "Unknown error"
 }
 function setDevStats(value: {
@@ -65,7 +75,7 @@ function setDevStats(value: {
   evictions: number
   loadSessionsFullFetchFallback: number
 }) {
-  ;(globalThis as { __OPENCODE_GLOBAL_SYNC_STATS?: typeof value }).__OPENCODE_GLOBAL_SYNC_STATS = value
+  ; (globalThis as { __OPENCODE_GLOBAL_SYNC_STATS?: typeof value }).__OPENCODE_GLOBAL_SYNC_STATS = value
 }
 
 function createGlobalSync() {
@@ -96,6 +106,7 @@ function createGlobalSync() {
     project: projectCache.value,
     provider: { all: [], connected: [], default: {} },
     provider_auth: {},
+    account_families: {},
     config: {},
     reload: undefined,
   })
@@ -139,14 +150,46 @@ function createGlobalSync() {
   const sdkFor = (directory: string) => {
     const cached = sdkCache.get(directory)
     if (cached) return cached
-    const sdk = createOpencodeClient({
+
+    // Wrap fetch to intercept X-Opencode-Resolved-Directory from server.
+    // When server falls back (e.g., stale directory → process.cwd()),
+    // it sets this header. We detect the mismatch and auto-heal by replacing
+    // the stale project entry so the client never needs manual localStorage clearing.
+    const healedDirs = new Set<string>()
+    const interceptedFetch = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const baseFetch = globalSDK.fetch ?? globalThis.fetch
+        const response = await baseFetch(input, init)
+        const resolved = response.headers.get("x-opencode-resolved-directory")
+        if (resolved && resolved !== directory && !healedDirs.has(resolved)) {
+          healedDirs.add(resolved)
+          console.warn(`[global-sync] Directory healed: ${directory} → ${resolved}`)
+          // Replace the stale project in the global store using the resolved path
+          setGlobalStore("project", (prev: Project[]) =>
+            prev.map((p) =>
+              p.worktree === directory || p.id === directory
+                ? { ...p, worktree: resolved, id: resolved }
+                : p,
+            ),
+          )
+          // Re-key the sdk cache under the resolved directory
+          sdkCache.delete(directory)
+          sdkCache.set(resolved, newSdk)
+        }
+        return response
+      },
+      {
+        preconnect: (globalThis.fetch as unknown as { preconnect?: (...args: unknown[]) => unknown }).preconnect,
+      },
+    ) as typeof fetch
+    const newSdk = createOpencodeClient({
       baseUrl: globalSDK.url,
-      fetch: platform.fetch,
+      fetch: interceptedFetch,
       directory,
       throwOnError: true,
     })
-    sdkCache.set(directory, sdk)
-    return sdk
+    sdkCache.set(directory, newSdk)
+    return newSdk
   }
 
   createEffect(() => {
@@ -323,6 +366,7 @@ function createGlobalSync() {
       connectErrorDescription: language.t("error.globalSync.connectFailed", { url: globalSDK.url }),
       requestFailedTitle: language.t("common.requestFailed"),
       setGlobalStore,
+      getGlobalProjects: () => globalStore.project,
     })
   }
 

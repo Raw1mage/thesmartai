@@ -1,4 +1,6 @@
 import { Button } from "@opencode-ai/ui/button"
+import { IconButton } from "@opencode-ai/ui/icon-button"
+import { Icon } from "@opencode-ai/ui/icon"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Tag } from "@opencode-ai/ui/tag"
@@ -39,10 +41,18 @@ export const SettingsProviders: Component = () => {
   }
 
   const connected = createMemo(() => {
+    const ids = new Set(providers.connected().map((p) => p.id))
     return providers
-      .connected()
+      .all()
+      .filter((p) => ids.has(p.id) || !isDisabled(p.id))
       .filter((p) => p.id !== "opencode" || Object.values(p.models).find((m) => m.cost?.input))
   })
+
+  const accountCount = (providerID: string) => {
+    const family = globalSync.data.account_families[providerID]
+    if (!family) return 0
+    return Object.keys(family.accounts).length
+  }
 
   const disabledIDs = createMemo(() => new Set(globalSync.data.config.disabled_providers ?? []))
   const isDisabled = (providerID: string) => disabledIDs().has(providerID)
@@ -195,11 +205,13 @@ export const SettingsProviders: Component = () => {
                   <div class="group flex flex-wrap items-center justify-between gap-4 min-h-16 py-3 border-b border-border-weak-base last:border-none">
                     <div class="flex items-center gap-3 min-w-0">
                       <ProviderIcon id={icon(item.id)} class="size-5 shrink-0 icon-strong-base" />
-                      <span class="text-14-medium text-text-strong truncate">{item.name}</span>
+                      <span class="text-14-medium text-text-strong truncate">
+                        {item.name}
+                        <Show when={accountCount(item.id) > 0}>
+                          <span class="ml-1 opacity-50">({accountCount(item.id)})</span>
+                        </Show>
+                      </span>
                       <Tag>{type(item)}</Tag>
-                      <Show when={isDisabled(item.id)}>
-                        <Tag>{language.t("settings.providers.action.disable")}</Tag>
-                      </Show>
                     </div>
                     <Show
                       when={canDisconnect(item)}
@@ -210,22 +222,18 @@ export const SettingsProviders: Component = () => {
                       }
                     >
                       <div class="flex items-center gap-2">
-                        <Show
-                          when={!isDisabled(item.id)}
-                          fallback={
-                            <Button
-                              size="large"
-                              variant="secondary"
-                              onClick={() => void enableProvider(item.id, item.name)}
-                            >
-                              {language.t("settings.providers.action.enable")}
-                            </Button>
-                          }
-                        >
-                          <Button size="large" variant="ghost" onClick={() => void disableProvider(item.id, item.name)}>
-                            {language.t("settings.providers.action.disable")}
-                          </Button>
-                        </Show>
+                        <IconButton
+                          variant="ghost"
+                          icon="eye"
+                          class={!isDisabled(item.id) ? "text-icon-interactive-base" : "text-icon-weak-base opacity-40"}
+                          onClick={() => {
+                            if (isDisabled(item.id)) {
+                              void enableProvider(item.id, item.name)
+                            } else {
+                              void disableProvider(item.id, item.name)
+                            }
+                          }}
+                        />
                         <Button size="large" variant="ghost" onClick={() => void disconnect(item.id, item.name)}>
                           {language.t("common.disconnect")}
                         </Button>
@@ -252,12 +260,19 @@ export const SettingsProviders: Component = () => {
                   <div class="flex flex-wrap items-center justify-between gap-4 min-h-16 py-3 border-b border-border-weak-base last:border-none">
                     <div class="flex items-center gap-3 min-w-0">
                       <ProviderIcon id={icon(item.id)} class="size-5 shrink-0 icon-strong-base" />
-                      <span class="text-14-medium text-text-strong truncate">{item.name}</span>
-                      <Tag>{language.t("settings.providers.action.disable")}</Tag>
+                      <span class="text-14-medium text-text-strong truncate">
+                        {item.name}
+                        <Show when={accountCount(item.id) > 0}>
+                          <span class="ml-1 opacity-50">({accountCount(item.id)})</span>
+                        </Show>
+                      </span>
                     </div>
-                    <Button size="large" variant="secondary" onClick={() => void enableProvider(item.id, item.name)}>
-                      {language.t("settings.providers.action.enable")}
-                    </Button>
+                    <IconButton
+                      variant="ghost"
+                      icon="eye"
+                      class="text-icon-weak-base opacity-40"
+                      onClick={() => void enableProvider(item.id, item.name)}
+                    />
                   </div>
                 )}
               </For>

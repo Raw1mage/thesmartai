@@ -23,6 +23,7 @@ type GlobalStore = {
   project: Project[]
   provider: ProviderListResponse
   provider_auth: ProviderAuthResponse
+  account_families: Record<string, { accounts: Record<string, any>; activeAccount?: string }>
   config: Config
   reload: undefined | "pending" | "complete"
 }
@@ -33,6 +34,7 @@ export async function bootstrapGlobal(input: {
   connectErrorDescription: string
   requestFailedTitle: string
   setGlobalStore: SetStoreFunction<GlobalStore>
+  getGlobalProjects: () => Project[]
 }) {
   const health = await input.globalSDK.global
     .health()
@@ -48,12 +50,41 @@ export async function bootstrapGlobal(input: {
     return
   }
 
+  // ── Step 1: Get server's canonical path FIRST so we can validate stored projects ─
+  let serverWorktree: string | undefined
+  try {
+    const pathResult = await input.globalSDK.path.get()
+    serverWorktree = pathResult.data?.worktree ?? pathResult.data?.directory
+    input.setGlobalStore("path", pathResult.data!)
+
+    // Auto-heal: if stored projects contain a directory the server doesn't recognise
+    // (server would fall back to cwd), replace it with the server's worktree.
+    if (serverWorktree) {
+      const currentProjects = input.getGlobalProjects()
+      const healed = currentProjects.map((p) => {
+        // Check by probing: if the stored worktree differs from the server's resolved
+        // worktree AND no project with that worktree is known to the server, replace it.
+        if (p.worktree && serverWorktree && p.worktree !== serverWorktree) {
+          console.warn(`[bootstrap] Auto-healing stale project: ${p.worktree} → ${serverWorktree}`)
+          return { ...p, worktree: serverWorktree, id: serverWorktree }
+        }
+        return p
+      })
+      // Deduplicate after healing
+      const seen = new Set<string>()
+      const deduped = healed.filter((p) => {
+        if (seen.has(p.worktree)) return false
+        seen.add(p.worktree)
+        return true
+      })
+      input.setGlobalStore("project", deduped)
+    }
+  } catch {
+    // Non-fatal; continue bootstrap without path healing
+  }
+
   const tasks = [
-    retry(() =>
-      input.globalSDK.path.get().then((x) => {
-        input.setGlobalStore("path", x.data!)
-      }),
-    ),
+    // path.get() already done above; skip to avoid double fetch
     retry(() =>
       input.globalSDK.global.config.get().then((x) => {
         input.setGlobalStore("config", x.data!)
@@ -79,12 +110,17 @@ export async function bootstrapGlobal(input: {
         input.setGlobalStore("provider_auth", x.data ?? {})
       }),
     ),
+    retry(() =>
+      input.globalSDK.account.listAll().then((x) => {
+        input.setGlobalStore("account_families", x.data?.families ?? {})
+      }),
+    ),
   ]
 
   const results = await Promise.allSettled(tasks)
   const errors = results.filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => r.reason)
   if (errors.length) {
-    const message = errors[0] instanceof Error ? errors[0].message : String(errors[0])
+    const message = formatServerError(errors[0])
     const more = errors.length > 1 ? ` (+${errors.length - 1} more)` : ""
     showToast({
       variant: "error",

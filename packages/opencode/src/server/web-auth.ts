@@ -128,27 +128,26 @@ function parseCookies(cookieHeader: string | undefined) {
   return result
 }
 
+function isSecureRequest(c: Context) {
+  // Check X-Forwarded-Proto first (reverse proxy with SSL termination)
+  const proto = c.req.header("x-forwarded-proto")
+  if (proto) return proto.split(",")[0].trim() === "https"
+  try {
+    return new URL(c.req.url).protocol === "https:"
+  } catch {
+    return false
+  }
+}
+
 function cookieHeader(c: Context, token: string, maxAgeSeconds: number) {
-  const secure = (() => {
-    try {
-      return new URL(c.req.url).protocol === "https:"
-    } catch {
-      return false
-    }
-  })()
+  const secure = isSecureRequest(c)
   return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${
     secure ? "; Secure" : ""
   }`
 }
 
 function clearCookieHeader(c: Context) {
-  const secure = (() => {
-    try {
-      return new URL(c.req.url).protocol === "https:"
-    } catch {
-      return false
-    }
-  })()
+  const secure = isSecureRequest(c)
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? "; Secure" : ""}`
 }
 

@@ -156,21 +156,18 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
 			class="w-[860px] max-w-[92vw] flex flex-col h-[85vh] max-h-[800px]"
 		>
 			<div class="flex flex-col gap-3 flex-1 overflow-hidden p-4">
-				<div class="flex items-center justify-between gap-4 w-full shrink-0">
-					<div class="text-12-regular text-text-weak shrink-0 truncate flex-1" title={currentDir()}>{currentDir()}</div>
-					<div class="flex-1 min-w-0 max-w-sm">
-						<TextField
-							value={pathInput()}
-							onInput={(e) => setPathInput(e.currentTarget.value)}
-							onKeyDown={(e: KeyboardEvent) => {
-								if (e.key !== "Enter") return;
-								e.preventDefault();
-								void browseFromInput();
-							}}
-							class="w-full"
-							placeholder={language.t("dialog.directory.search.placeholder") || "Enter or paste path..."}
-						/>
-					</div>
+				<div class="w-full shrink-0">
+					<TextField
+						value={pathInput()}
+						onInput={(e) => setPathInput(e.currentTarget.value)}
+						onKeyDown={(e: KeyboardEvent) => {
+							if (e.key !== "Enter") return;
+							e.preventDefault();
+							void browseFromInput();
+						}}
+						class="w-full"
+						placeholder={language.t("dialog.directory.search.placeholder") || "Enter or paste path..."}
+					/>
 				</div>
 
 				<div class="flex-1 overflow-hidden flex flex-col min-h-0 border border-border-base rounded-md">
@@ -197,7 +194,6 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
 										class="size-4 shrink-0"
 									/>
 									<span>..</span>
-									<span class="text-text-weak truncate">{upDirectory()}</span>
 								</button>
 								<For each={rows() ?? []}>
 									{(row) => (

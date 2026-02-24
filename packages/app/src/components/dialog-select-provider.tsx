@@ -8,6 +8,7 @@ import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { iconNames, type IconName } from "@opencode-ai/ui/icons/provider"
 import { DialogConnectProvider } from "./dialog-connect-provider"
 import { useLanguage } from "@/context/language"
+import { useGlobalSync } from "@/context/global-sync"
 import { DialogCustomProvider } from "./dialog-custom-provider"
 
 const CUSTOM_ID = "_custom"
@@ -19,8 +20,9 @@ function icon(id: string): IconName {
 
 export const DialogSelectProvider: Component = () => {
   const dialog = useDialog()
-  const providers = useProviders()
   const language = useLanguage()
+  const globalSync = useGlobalSync()
+  const providers = useProviders()
 
   const popularGroup = () => language.t("dialog.provider.group.popular")
   const otherGroup = () => language.t("dialog.provider.group.other")
@@ -66,19 +68,28 @@ export const DialogSelectProvider: Component = () => {
           dialog.show(() => <DialogConnectProvider provider={x.id} />)
         }}
       >
-        {(i) => (
-          <div class="px-1.25 w-full flex items-center gap-x-3">
-            <ProviderIcon data-slot="list-item-extra-icon" id={icon(i.id)} />
-            <span>{i.name}</span>
-            <Show when={i.id === CUSTOM_ID}>
-              <Tag>{language.t("settings.providers.tag.custom")}</Tag>
-            </Show>
-            <Show when={i.id === "opencode"}>
-              <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
-            </Show>
-            <Show when={note(i.id)}>{(value) => <div class="text-14-regular text-text-weak">{value()}</div>}</Show>
-          </div>
-        )}
+        {(i) => {
+          const sync = globalSync.data.account_families[i.id]
+          const count = sync ? Object.keys(sync.accounts).length : 0
+          return (
+            <div class="px-1.25 w-full flex items-center gap-x-3">
+              <ProviderIcon data-slot="list-item-extra-icon" id={icon(i.id)} />
+              <span class="flex-1 truncate">
+                {i.name}
+                <Show when={count > 0}>
+                  <span class="ml-1 opacity-50 text-12-regular">({count})</span>
+                </Show>
+              </span>
+              <Show when={i.id === CUSTOM_ID}>
+                <Tag>{language.t("settings.providers.tag.custom")}</Tag>
+              </Show>
+              <Show when={i.id === "opencode"}>
+                <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
+              </Show>
+              <Show when={note(i.id)}>{(value) => <div class="text-14-regular text-text-weak">{value()}</div>}</Show>
+            </div>
+          )
+        }}
       </List>
     </Dialog>
   )

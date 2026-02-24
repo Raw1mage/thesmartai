@@ -1778,7 +1778,9 @@ export namespace Provider {
         const accountLoaderPromises = Object.keys(familyData.accounts).map(async (accountId) => {
           if (!providers[accountId] || !plugin.auth?.loader) return
 
+          debugCheckpoint("provider", "account loader start", { family, accountId })
           const accountOptions = await plugin.auth.loader(() => loadAuth(accountId), providers[accountId])
+          debugCheckpoint("provider", "account loader end", { family, accountId, hasResult: !!accountOptions })
           if (accountOptions) {
             providers[accountId].options = mergeDeep(providers[accountId].options, accountOptions) as Info["options"]
           }
@@ -1808,7 +1810,9 @@ export namespace Provider {
       if (family === "antigravity" || family === "google-api") {
         const legacyLoaderPromises = Object.keys(antigravityAccounts).map(async (accountID) => {
           if (providers[accountID] && plugin.auth?.loader) {
+            debugCheckpoint("provider", "legacy antigravity loader start", { accountID })
             const accountOptions = await plugin.auth.loader(() => loadAuth(accountID), providers[accountID])
+            debugCheckpoint("provider", "legacy antigravity loader end", { accountID, hasResult: !!accountOptions })
             if (accountOptions) {
               providers[accountID].options = mergeDeep(providers[accountID].options, accountOptions) as Info["options"]
             }
@@ -1851,7 +1855,9 @@ export namespace Provider {
             ? `https://copilot-api.${auth.enterpriseUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}`
             : undefined
 
+          debugCheckpoint("provider", "fetching dynamic models start", { copilotID, baseURL })
           const fetchedModels = await fetchProviderModels(copilotID, token, baseURL)
+          debugCheckpoint("provider", "fetching dynamic models end", { copilotID, count: fetchedModels?.length })
 
           if (fetchedModels && fetchedModels.length > 0) {
             log.info("Fetched dynamic models from provider", {
