@@ -1,6 +1,6 @@
 import { Button } from "@opencode-ai/ui/button"
 import { TextField } from "@opencode-ai/ui/text-field"
-import { Show, createEffect, createMemo, createSignal, type ParentComponent } from "solid-js"
+import { Show, createMemo, createSignal, type ParentComponent } from "solid-js"
 import { useServer } from "@/context/server"
 import { useWebAuth } from "@/context/web-auth"
 
@@ -16,11 +16,7 @@ export const AuthGate: ParentComponent = (props) => {
     return !auth.enabled() || auth.authenticated()
   })
 
-  createEffect(() => {
-    if (username().trim()) return
-    const hint = auth.session()?.usernameHint
-    if (hint) setUsername(hint)
-  })
+
 
   const submit = async (event: SubmitEvent) => {
     event.preventDefault()
