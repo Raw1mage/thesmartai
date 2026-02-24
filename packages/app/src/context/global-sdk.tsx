@@ -1,7 +1,7 @@
 import { createOpencodeClient, type Event } from "@opencode-ai/sdk/v2/client"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
-import { batch, onCleanup } from "solid-js"
+import { batch, createEffect, onCleanup } from "solid-js"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
 import { useWebAuth } from "./web-auth"
@@ -27,6 +27,39 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         preconnect: (globalThis.fetch as unknown as { preconnect?: (...args: unknown[]) => unknown }).preconnect,
       },
     ) as typeof fetch
+
+    // ── Auto-heal: prune stored projects that no longer exist on the active server ──
+    // Runs once when server.url is set. Queries /api/v2/path (with auth) to get the
+    // server's canonical worktree, then removes any stale project entries from the
+    // persisted store so the user never needs to clear localStorage manually.
+    createEffect(() => {
+      const url = server.url
+      if (!url) return
+
+      void (async () => {
+        try {
+          const res = await fetchWithAuth(`${url}/api/v2/path`)
+          if (!res.ok) return
+          const data = await res.json() as { worktree?: string; directory?: string }
+          const serverWorktree = data?.worktree ?? data?.directory
+          if (!serverWorktree) return
+
+          const currentProjects = server.projects.list()
+          if (!currentProjects || currentProjects.length === 0) return
+
+          const stale = currentProjects.filter((p: { worktree: string }) => p.worktree !== serverWorktree)
+          if (stale.length === 0) return
+
+          console.warn(`[global-sdk] Auto-healing ${stale.length} stale project(s). Server worktree: ${serverWorktree}`)
+          server.projects.open(serverWorktree)
+          for (const p of stale) {
+            server.projects.close(p.worktree)
+          }
+        } catch {
+          // Non-critical cleanup — ignore errors
+        }
+      })()
+    })
 
     const eventFetch = (() => {
       if (!platform.fetch) return

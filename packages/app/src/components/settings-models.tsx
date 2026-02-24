@@ -168,27 +168,9 @@ export const SettingsModels: Component = () => {
 
   return (
     <div class="flex flex-col h-full overflow-y-auto no-scrollbar px-4 pb-10 sm:px-10 sm:pb-10">
-      <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
-        <div class="flex flex-col gap-4 pt-6 pb-6 max-w-[720px]">
+      <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-raised-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
+        <div class="flex flex-col gap-1 pt-6 pb-8 max-w-[720px]">
           <h2 class="text-16-medium text-text-strong">{language.t("settings.models.title")}</h2>
-          <div class="flex items-center gap-2 px-3 h-9 rounded-lg bg-surface-base">
-            <Icon name="magnifying-glass" class="text-icon-weak-base flex-shrink-0" />
-            <TextField
-              variant="ghost"
-              type="text"
-              value={list.filter()}
-              onChange={list.onInput}
-              placeholder={language.t("dialog.model.search.placeholder")}
-              spellcheck={false}
-              autocorrect="off"
-              autocomplete="off"
-              autocapitalize="off"
-              class="flex-1"
-            />
-            <Show when={list.filter()}>
-              <IconButton icon="circle-x" variant="ghost" onClick={list.clear} />
-            </Show>
-          </div>
         </div>
       </div>
 
@@ -266,15 +248,16 @@ export const SettingsModels: Component = () => {
                               <span class="text-14-regular text-text-strong truncate block">{item.name}</span>
                             </div>
                             <div class="flex-shrink-0">
-                              <Switch
-                                checked={models.visible(key)}
-                                onChange={(checked) => {
-                                  models.setVisibility(key, checked)
+                              <IconButton
+                                variant="ghost"
+                                icon="eye"
+                                class={
+                                  models.visible(key) ? "text-icon-interactive-base" : "text-icon-weak-base opacity-40"
+                                }
+                                onClick={() => {
+                                  models.setVisibility(key, !models.visible(key))
                                 }}
-                                hideLabel
-                              >
-                                {item.name}
-                              </Switch>
+                              />
                             </div>
                           </div>
                         )

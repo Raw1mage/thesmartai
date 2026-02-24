@@ -16,12 +16,12 @@ type SessionStatus = {
 
 type LoginResult =
   | {
-      ok: true
-    }
+    ok: true
+  }
   | {
-      ok: false
-      message: string
-    }
+    ok: false
+    message: string
+  }
 
 function isMutation(method: string) {
   const upper = method.toUpperCase()
@@ -37,14 +37,18 @@ export const { use: useWebAuth, provider: WebAuthProvider } = createSimpleContex
     const [session, sessionActions] = createResource(
       () => server.url,
       async (baseUrl): Promise<SessionStatus> => {
-        const response = await fetcher(`${baseUrl}/global/auth/session`)
-        if (!response.ok) {
-          return {
-            enabled: false,
-            authenticated: true,
+        try {
+          const response = await fetcher(`${baseUrl}/global/auth/session`)
+          if (!response.ok) {
+            if (response.status === 404) {
+              return { enabled: false, authenticated: true }
+            }
+            return { enabled: true, authenticated: false }
           }
+          return (await response.json()) as SessionStatus
+        } catch {
+          return { enabled: true, authenticated: false }
         }
-        return (await response.json()) as SessionStatus
       },
     )
 
@@ -87,7 +91,7 @@ export const { use: useWebAuth, provider: WebAuthProvider } = createSimpleContex
         try {
           const payload = (await response.json()) as { message?: string }
           if (payload?.message) message = payload.message
-        } catch {}
+        } catch { }
         void sessionActions.refetch()
         return { ok: false, message }
       }

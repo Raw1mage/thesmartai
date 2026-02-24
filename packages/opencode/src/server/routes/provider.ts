@@ -9,7 +9,8 @@ import { mapValues } from "remeda"
 import { errors } from "../error"
 import { Account } from "../../account"
 import { lazy } from "../../util/lazy"
-
+import { Log } from "../../util/log"
+const log = Log.create({ service: "provider.routes" })
 export const ProviderRoutes = lazy(() =>
   new Hono()
     .get(
@@ -36,20 +37,15 @@ export const ProviderRoutes = lazy(() =>
         },
       }),
       async (c) => {
+        log.info("GET /provider")
         const config = await Config.get()
-        const disabled = new Set(config.disabled_providers ?? [])
-        const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
-
         const allProviders = await ModelsDev.get()
-        const filteredProviders: Record<string, (typeof allProviders)[string]> = {}
-        for (const [key, value] of Object.entries(allProviders)) {
-          if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) {
-            filteredProviders[key] = value
-          }
-        }
+        const filteredProviders = allProviders
+        log.info("ModelsDev.get done")
 
         // Wait for discovery to be sure we have the latest account-specific models
         const connected = await Provider.list()
+        log.info("Provider.list done")
 
         const providers: Record<string, Provider.Info> = {}
 

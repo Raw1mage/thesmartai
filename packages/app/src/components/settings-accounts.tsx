@@ -1,4 +1,5 @@
 import { Button } from "@opencode-ai/ui/button"
+import { Icon } from "@opencode-ai/ui/icon"
 import { showToast } from "@opencode-ai/ui/toast"
 import { createMemo, createResource, For, Show, type Component } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -162,9 +163,7 @@ export const SettingsAccounts: Component = () => {
                                 <span class="text-14-medium text-text-strong truncate">{account.name}</span>
                                 <span class="text-11-regular text-text-weak">{labelForType(account.type)}</span>
                                 <Show when={account.active}>
-                                  <span class="text-11-regular text-icon-success-base">
-                                    {language.t("settings.accounts.active")}
-                                  </span>
+                                  <Icon name="check-small" class="size-4 text-icon-success-base" />
                                 </Show>
                               </div>
                               <Show when={account.email || account.projectId || cooldown}>
@@ -181,7 +180,7 @@ export const SettingsAccounts: Component = () => {
                                 onClick={() => setActive(group.family, account.id)}
                               >
                                 {account.active
-                                  ? language.t("settings.accounts.active")
+                                  ? ""
                                   : language.t("settings.accounts.setActive")}
                               </Button>
                             </div>

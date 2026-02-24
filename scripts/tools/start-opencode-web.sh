@@ -19,12 +19,16 @@ export OPENCODE_SERVER_HTPASSWD="${OPENCODE_SERVER_HTPASSWD:-$HOME/.config/openc
 export OPENCODE_ALLOW_GLOBAL_FS_BROWSE="${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 cd "$PROJECT_ROOT"
+
+# Serve CMS frontend build (with AuthGate/login) instead of proxying upstream
+export OPENCODE_FRONTEND_PATH="${OPENCODE_FRONTEND_PATH:-$PROJECT_ROOT/packages/app/dist}"
 
 echo "Starting OpenCode Web Server..."
 echo "URL: http://0.0.0.0:1080"
 echo "Auth mode: htpasswd"
+echo "Frontend: $OPENCODE_FRONTEND_PATH"
 echo "Global FS browse: $OPENCODE_ALLOW_GLOBAL_FS_BROWSE"
 echo ""
 

@@ -32,44 +32,49 @@ import { useModels } from "@/context/models"
 import { Icon } from "@opencode-ai/ui/icon"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Switch } from "@opencode-ai/ui/switch"
-import { TextField } from "@opencode-ai/ui/text-field"
 import { showToast } from "@opencode-ai/ui/toast"
-import type { IconName } from "@opencode-ai/ui/icons/provider"
+import { iconNames, type IconName } from "@opencode-ai/ui/icons/provider"
 
 function cn(...classes: (string | undefined | null | false)[]) {
   return classes.filter(Boolean).join(" ")
 }
 
-const BUILTIN_PROVIDER_FAMILIES = new Set([
+const KNOWN_PROVIDER_FAMILIES = [
   "opencode",
   "anthropic",
+  "claude-cli",
   "openai",
   "github-copilot",
   "gemini-cli",
   "google-api",
   "antigravity",
+  "gmicloud",
   "openrouter",
   "vercel",
   "gitlab",
-])
+] as const
 
 function normalizeProviderFamily(id: string): string | undefined {
   if (!id) return undefined
-  const raw = id.trim()
+  const raw = id.trim().toLowerCase()
   if (!raw) return undefined
-  const lower = raw.toLowerCase()
 
-  if (lower.includes(":")) return lower.split(":")[0]
-  if (lower === "google") return "google-api"
-  if (lower.startsWith("google-")) return "google-api"
-  if (lower.startsWith("opencode-")) return "opencode"
-  if (lower.includes("@")) {
-    if (lower.endsWith("gmail.com") || lower.endsWith("gmail.com.tw")) return "google-api"
-    return undefined
+  if (raw.includes(":")) return normalizeProviderFamily(raw.split(":")[0]!)
+  if (raw === "google") return "google-api"
+
+  for (const provider of KNOWN_PROVIDER_FAMILIES) {
+    if (raw === provider || raw.startsWith(`${provider}-`)) return provider
   }
 
-  if (BUILTIN_PROVIDER_FAMILIES.has(lower)) return lower
-  return /^[a-z0-9][a-z0-9-]*$/i.test(lower) ? lower : undefined
+  const apiMatch = raw.match(/^(.+)-api-/)
+  if (apiMatch) return apiMatch[1]
+
+  const subscriptionMatch = raw.match(/^(.+)-subscription-/)
+  if (subscriptionMatch) return subscriptionMatch[1]
+
+  if (!raw.includes("-")) return raw
+  if (!raw.includes("-api-") && !raw.includes("-subscription-")) return raw
+  return undefined
 }
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
@@ -94,7 +99,6 @@ const ModelList: Component<{
   return (
     <List
       class={`flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
-      search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true, action: props.action }}
       emptyMessage={language.t("dialog.model.empty")}
       key={(x) => `${x.provider.id}:${x.id}`}
       items={models}
@@ -248,20 +252,35 @@ const ProviderItem: Component<{
   providerIcon?: string
   selected: boolean
   onClick: () => void
+  onToggleEnabled?: (e: MouseEvent) => void
+  enabled?: boolean
 }> = (props) => {
   return (
-    <button
-      class={cn(
-        "flex items-center gap-2 w-full px-3 py-2 text-13-regular rounded-md transition-colors text-left outline-none",
-        props.selected ? "bg-surface-raised-pressed text-text-strong" : "text-text-base hover:bg-surface-raised-hover",
-      )}
-      onClick={props.onClick}
-    >
-      <Show when={props.providerIcon} fallback={<Icon name={props.icon as any} class="size-4 shrink-0" />}>
-        <ProviderIcon id={props.providerIcon as IconName} class="size-4 shrink-0" />
+    <div class="flex items-center w-full group">
+      <button
+        class={cn(
+          "flex items-center gap-2 flex-1 px-3 py-2 text-13-regular rounded-md transition-colors text-left outline-none min-w-0",
+          props.selected ? "bg-surface-raised-pressed text-text-strong" : "text-text-base hover:bg-surface-raised-hover",
+        )}
+        onClick={props.onClick}
+      >
+        <Show when={props.providerIcon} fallback={<Icon name={props.icon as any} class="size-4 shrink-0" />}>
+          <ProviderIcon id={props.providerIcon as IconName} class="size-4 shrink-0 opacity-80" />
+        </Show>
+        <span class="truncate flex-1">{props.name}</span>
+      </button>
+      <Show when={props.onToggleEnabled}>
+        <IconButton
+          icon="eye"
+          variant="ghost"
+          class={cn(
+            "size-6 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:text-icon-base",
+            props.enabled !== false ? "text-icon-weak-base" : "text-icon-warning-base opacity-100",
+          )}
+          onClick={props.onToggleEnabled}
+        />
       </Show>
-      <span class="truncate flex-1">{props.name}</span>
-    </button>
+    </div>
   )
 }
 
@@ -287,9 +306,6 @@ const ModelItem: Component<{
         <Show when={props.unavailableReason}>
           <Tag>{language.t("dialog.model.activity.unavailable")}</Tag>
         </Show>
-        <Show when={!props.enabled}>
-          <Tag>{language.t("dialog.model.activity.disabled")}</Tag>
-        </Show>
       </div>
       <IconButton
         icon="eye"
@@ -311,7 +327,6 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
   const globalSync = useGlobalSync()
   const sdk = useSDK()
 
-  const [search, setSearch] = createSignal("")
   const [accountInfo] = createResource(async () => {
     return sdk.client.account.listAll().then((x) => x.data)
   })
@@ -373,28 +388,8 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
     }
   }
 
-  const modelCountByFamily = createMemo(() => {
-    const out = new Map<string, number>()
-    for (const model of local.model.list()) {
-      const family = familyOf(model.provider.id)
-      out.set(family, (out.get(family) ?? 0) + 1)
-    }
-    return out
-  })
-
-  const enabledModelCountByFamily = createMemo(() => {
-    const out = new Map<string, number>()
-    for (const model of local.model.list()) {
-      const family = familyOf(model.provider.id)
-      const key = { modelID: model.id, providerID: model.provider.id }
-      if (!local.model.enabled(key)) continue
-      out.set(family, (out.get(family) ?? 0) + 1)
-    }
-    return out
-  })
-
   const providers = createMemo(() => {
-    const out = new Map<string, { id: string; family: string; name: string; models: number }>()
+    const out = new Map<string, { id: string; family: string; name: string; accounts: number; enabled: boolean }>()
 
     const labelMap: Record<string, string> = {
       anthropic: "Anthropic",
@@ -416,10 +411,11 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
         .filter((id): id is string => !!id),
     )
 
+    const allProviders = globalSync.data.provider.all ?? []
     const familyUniverse = new Set<string>()
-    for (const provider of globalSync.data.provider.all ?? []) {
+    for (const provider of allProviders) {
       const normalized = normalizeProviderFamily(provider.id)
-      if (!normalized || normalized === "google") continue
+      if (!normalized) continue
       familyUniverse.add(normalized)
     }
 
@@ -428,22 +424,37 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
       for (const [family, data] of Object.entries(families)) {
         const normalized = normalizeProviderFamily(family)
         if (!normalized) continue
-        const accountCount = data?.accounts ? Object.keys(data.accounts).length : 0
-        if (accountCount <= 0) continue
         familyUniverse.add(normalized)
       }
     }
 
+    for (const id of globalSync.data.config.disabled_providers ?? []) {
+      const normalized = normalizeProviderFamily(id)
+      if (!normalized) continue
+      familyUniverse.add(normalized)
+    }
+
+    for (const id of popularProviders) {
+      const normalized = normalizeProviderFamily(id)
+      if (!normalized || normalized === "google") continue
+      familyUniverse.add(normalized)
+    }
+
     for (const family of familyUniverse) {
-      const totalModels = modelCountByFamily().get(family) ?? 0
-      const enabledModels = enabledModelCountByFamily().get(family) ?? 0
-      if (mode() === "favorites" && enabledModels <= 0) continue
-      if (mode() === "favorites" && disabledFamilies.has(family)) continue
+      const providerDisabled = disabledFamilies.has(family)
+      if (mode() === "favorites" && providerDisabled) continue
+
+      const famData = families?.[family]
+      const accountsCount = famData?.accounts ? Object.keys(famData.accounts).length : 0
+      const providersInFamily = allProviders.filter((provider) => familyOf(provider.id) === family)
+      const familyProvider = providersInFamily.find((provider) => provider.id === family) ?? providersInFamily[0]
+
       out.set(family, {
         id: family,
         family,
-        name: labelMap[family] ?? family,
-        models: mode() === "favorites" ? enabledModels : totalModels,
+        name: familyProvider?.name ?? labelMap[family] ?? family,
+        accounts: accountsCount,
+        enabled: !providerDisabled,
       })
     }
 
@@ -484,9 +495,9 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
       const unavailable =
         until && until > Date.now()
           ? reason ||
-            language.t("settings.models.recommendations.cooldown", {
-              minutes: Math.max(1, Math.ceil((until - Date.now()) / 60000)),
-            })
+          language.t("settings.models.recommendations.cooldown", {
+            minutes: Math.max(1, Math.ceil((until - Date.now()) / 60000)),
+          })
           : undefined
       return {
         id,
@@ -516,7 +527,6 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
 
   const filteredModels = createMemo(() => {
     const providerId = selectedProviderId()
-    const query = search().toLowerCase().trim()
     if (!providerId) return [] as ReturnType<ReturnType<typeof useModels>["list"]>
     return local.model
       .list()
@@ -529,19 +539,41 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
         if (mode() === "favorites") return enabled
         return true
       })
-      .filter((m) => {
-        if (!query) return true
-        return m.name.toLowerCase().includes(query) || m.id.toLowerCase().includes(query)
-      })
   })
+
+  const toggleProviderEnabled = (e: MouseEvent, family: string) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const before = (globalSync.data.config.disabled_providers ?? []) as string[]
+    const current = new Set(before)
+    const normalized = normalizeProviderFamily(family)
+    if (!normalized) return
+    if (current.has(normalized)) {
+      current.delete(normalized)
+    } else {
+      current.add(normalized)
+    }
+    const next = [...current]
+    globalSync.set("config", "disabled_providers", next)
+    globalSync
+      .updateConfig({ disabled_providers: next })
+      .catch((err) => {
+        globalSync.set("config", "disabled_providers", before)
+        showToast({
+          variant: "error",
+          title: language.t("common.requestFailed"),
+          description: err instanceof Error ? err.message : String(err),
+        })
+      })
+  }
 
   return (
     <Dialog
-      title={language.t("dialog.model.select.title") + " (activities)"}
+      title={language.t("dialog.model.select.title")}
       class="w-[800px] max-w-[90vw] h-[600px] max-h-[85vh] flex flex-col p-0 overflow-hidden"
     >
       <div class="flex flex-1 min-h-0 h-full overflow-hidden">
-        <div class="w-56 flex-shrink-0 border-r border-border-base flex flex-col bg-surface-base">
+        <div class="w-64 flex-shrink-0 border-r border-border-base flex flex-col bg-surface-base">
           <div class="p-2 space-y-1 overflow-y-auto flex-1">
             <div class="px-3 py-2 text-11-medium text-text-weak uppercase tracking-wider">
               {language.t("common.providers")}
@@ -550,9 +582,11 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
               {(provider) => (
                 <ProviderItem
                   id={provider.id}
-                  name={provider.models > 0 ? `${provider.name} (${provider.models})` : provider.name}
-                  providerIcon={provider.id}
+                  name={provider.accounts > 0 ? `${provider.name} (${provider.accounts})` : provider.name}
+                  providerIcon={iconNames.includes(provider.id as IconName) ? provider.id : "synthetic"}
                   selected={selectedProviderId() === provider.id}
+                  enabled={provider.enabled}
+                  onToggleEnabled={(e) => toggleProviderEnabled(e, provider.id)}
                   onClick={() => setSelectedProviderId(provider.id)}
                 />
               )}
@@ -592,7 +626,7 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
 
         <div class="w-64 flex-shrink-0 border-r border-border-base flex flex-col bg-surface-base">
           <div class="px-3 py-2 text-11-medium text-text-weak uppercase tracking-wider border-b border-border-base">
-            Accounts
+            {language.t("settings.accounts.title")}
           </div>
           <div class="p-2 space-y-1 overflow-y-auto flex-1">
             <Show
@@ -613,7 +647,7 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
                     <div class="flex items-center gap-2">
                       <span class="truncate flex-1">{row.label}</span>
                       <Show when={row.active}>
-                        <Tag>{language.t("settings.accounts.active")}</Tag>
+                        <Icon name="check-small" class="text-icon-success-base shrink-0" />
                       </Show>
                       <Show when={row.unavailable}>
                         <Tag>{language.t("dialog.model.activity.unavailable")}</Tag>
@@ -630,17 +664,6 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
         </div>
 
         <div class="flex-1 flex flex-col min-w-0 bg-surface-raised-base">
-          <div class="p-3 border-b border-border-base bg-surface-base">
-            <TextField
-              class="w-full"
-              placeholder={language.t("dialog.model.search.placeholder")}
-              value={search()}
-              onInput={(e) => setSearch(e.currentTarget.value)}
-              autofocus
-              icon="magnifying-glass"
-            />
-          </div>
-
           <div class="flex-1 overflow-hidden relative">
             <List
               class="h-full [&_[data-slot=list-scroll]]:h-full [&_[data-slot=list-scroll]]:p-2"

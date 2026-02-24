@@ -60,7 +60,7 @@ describe("extractGmiCloudTextProtocolToolCalls", () => {
     const input = [
       "Let me continue.",
       "<| tool_calls_begin |><| tool_call_begin |>function<| tool_sep |>read",
-      "{filePath: /home/pkcs12/projects/opencode/docs/ARCHITECTURE.md}",
+      "{filePath: /workspace/opencode/docs/ARCHITECTURE.md}",
       "```<| tool_call_end |><| tool_calls_end | >",
     ].join("\n")
 
@@ -69,7 +69,7 @@ describe("extractGmiCloudTextProtocolToolCalls", () => {
     expect(result?.toolCalls.length).toBe(1)
     expect(result?.toolCalls[0].name).toBe("read")
     expect(result?.toolCalls[0].input).toBe(
-      JSON.stringify({ filePath: "/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md" }),
+      JSON.stringify({ filePath: "/workspace/opencode/docs/ARCHITECTURE.md" }),
     )
   })
 
@@ -77,7 +77,7 @@ describe("extractGmiCloudTextProtocolToolCalls", () => {
     const input = [
       "Let me proceed with the code review by examining the changes in the Antigravity plugin:",
       "<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>read",
-      "{filePath: /home/pkcs12/projects/opencode/packages/opencode/src/plugin/antigravity/index.ts}",
+      "{filePath: /workspace/opencode/packages/opencode/src/plugin/antigravity/index.ts}",
       "```<｜tool▁call▁end｜><｜tool▁calls▁end｜>",
     ].join("\n")
 
@@ -86,7 +86,7 @@ describe("extractGmiCloudTextProtocolToolCalls", () => {
     expect(result?.toolCalls.length).toBe(1)
     expect(result?.toolCalls[0].name).toBe("read")
     expect(result?.toolCalls[0].input).toBe(
-      JSON.stringify({ filePath: "/home/pkcs12/projects/opencode/packages/opencode/src/plugin/antigravity/index.ts" }),
+      JSON.stringify({ filePath: "/workspace/opencode/packages/opencode/src/plugin/antigravity/index.ts" }),
     )
   })
 
@@ -94,7 +94,7 @@ describe("extractGmiCloudTextProtocolToolCalls", () => {
     const input = [
       "Let me examine the TUI components next",
       "<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>read",
-      "{filePath: /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx}",
+      "{filePath: /workspace/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx}",
       "```<｜tool▁call▁end｜><｜tool▁calls▁end｜",
     ].join("\n")
 
@@ -103,7 +103,7 @@ describe("extractGmiCloudTextProtocolToolCalls", () => {
     expect(result?.toolCalls.length).toBe(1)
     expect(result?.toolCalls[0].name).toBe("read")
     expect(result?.toolCalls[0].input).toBe(
-      JSON.stringify({ filePath: "/home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx" }),
+      JSON.stringify({ filePath: "/workspace/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx" }),
     )
   })
 })

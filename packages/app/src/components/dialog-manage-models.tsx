@@ -8,7 +8,12 @@ import { useLocal } from "@/context/local"
 import { popularProviders } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { IconButton } from "@opencode-ai/ui/icon-button"
 import { DialogSelectProvider } from "./dialog-select-provider"
+
+function cn(...classes: (string | undefined | null | false)[]) {
+  return classes.filter(Boolean).join(" ")
+}
 
 export const DialogManageModels: Component = () => {
   const local = useLocal()
@@ -39,7 +44,6 @@ export const DialogManageModels: Component = () => {
       }
     >
       <List
-        search={{ placeholder: language.t("dialog.model.search.placeholder"), autofocus: true }}
         emptyMessage={language.t("dialog.model.empty")}
         key={(x) => `${x?.provider?.id}:${x?.id}`}
         items={local.model.list()}
@@ -55,14 +59,15 @@ export const DialogManageModels: Component = () => {
                 placement="top"
                 value={language.t("dialog.model.manage.provider.toggle", { provider: provider.name })}
               >
-                <Switch
-                  class="-mr-1"
-                  checked={providerVisible(provider.id)}
-                  onChange={(checked) => setProviderVisibility(provider.id, checked)}
-                  hideLabel
-                >
-                  {provider.name}
-                </Switch>
+                <IconButton
+                  icon="eye"
+                  variant="ghost"
+                  class={cn(
+                    "size-6 -mr-1 transition-opacity hover:text-icon-base",
+                    providerVisible(provider.id) ? "text-icon-weak-base" : "text-icon-warning-base opacity-100",
+                  )}
+                  onClick={() => setProviderVisibility(provider.id, !providerVisible(provider.id))}
+                />
               </Tooltip>
             </>
           )
@@ -85,14 +90,20 @@ export const DialogManageModels: Component = () => {
         {(i) => (
           <div class="w-full flex items-center justify-between gap-x-3">
             <span>{i.name}</span>
-            <div onClick={(e) => e.stopPropagation()}>
-              <Switch
-                checked={!!local.model.visible({ modelID: i.id, providerID: i.provider.id })}
-                onChange={(checked) => {
-                  local.model.setVisibility({ modelID: i.id, providerID: i.provider.id }, checked)
-                }}
-              />
-            </div>
+            <IconButton
+              icon="eye"
+              variant="ghost"
+              class={cn(
+                "size-6 transition-opacity hover:text-icon-base",
+                local.model.visible({ modelID: i.id, providerID: i.provider.id })
+                  ? "text-icon-weak-base"
+                  : "text-icon-warning-base opacity-100",
+              )}
+              onClick={() => {
+                const key = { modelID: i.id, providerID: i.provider.id }
+                local.model.setVisibility(key, !local.model.visible(key))
+              }}
+            />
           </div>
         )}
       </List>
