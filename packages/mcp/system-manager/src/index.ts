@@ -139,11 +139,34 @@ async function getCodexUsage(info: any, accountId: string, familyId: string) {
     if (!response.ok) return { error: `HTTP ${response.status}` }
 
     const usage: any = await response.json()
-    const hourlyUsed = usage?.rate_limit?.primary_window?.used_percent ?? 0
-    const weeklyUsed = usage?.rate_limit?.secondary_window?.used_percent ?? 0
+    const primary = usage?.rate_limit?.primary_window
+    const secondary = usage?.rate_limit?.secondary_window
+
+    const primaryUsed = typeof primary?.used_percent === "number" ? primary.used_percent : undefined
+    const secondaryUsed = typeof secondary?.used_percent === "number" ? secondary.used_percent : undefined
+    const primaryWindowSeconds =
+      typeof primary?.limit_window_seconds === "number" ? primary.limit_window_seconds : undefined
+
+    const isWeeklyOnly =
+      secondary == null && typeof primaryWindowSeconds === "number" && primaryWindowSeconds >= 6 * 24 * 60 * 60
+    const hourlyRemaining =
+      secondaryUsed !== undefined
+        ? Math.round(Math.max(0, 100 - (primaryUsed ?? 0)))
+        : isWeeklyOnly
+          ? undefined
+          : primaryUsed !== undefined
+            ? Math.round(Math.max(0, 100 - primaryUsed))
+            : undefined
+    const weeklyRemaining =
+      secondaryUsed !== undefined
+        ? Math.round(Math.max(0, 100 - secondaryUsed))
+        : isWeeklyOnly
+          ? Math.round(Math.max(0, 100 - (primaryUsed ?? 0)))
+          : undefined
+
     return {
-      "5H": `${Math.round(Math.max(0, 100 - hourlyUsed))}%`,
-      WK: `${Math.round(Math.max(0, 100 - weeklyUsed))}%`,
+      "5H": hourlyRemaining === undefined ? "--" : `${hourlyRemaining}%`,
+      WK: weeklyRemaining === undefined ? "--" : `${weeklyRemaining}%`,
     }
   } catch (e) {
     return { error: "Fetch usage failed" }

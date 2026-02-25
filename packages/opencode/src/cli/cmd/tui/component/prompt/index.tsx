@@ -50,7 +50,13 @@ import { checkAccountsQuota, type QuotaGroup } from "@/plugin/antigravity/plugin
 import { loadAccounts, saveAccounts } from "@/plugin/antigravity/plugin/storage"
 import { resolveAntigravityQuotaGroup } from "@/plugin/antigravity/plugin/quota-group"
 import type { PluginClient } from "@/plugin/antigravity/plugin/types"
-import z from "zod"
+import {
+  refreshCodexAccessToken,
+  extractAccountIdFromTokens,
+  parseCodexUsage,
+  computeCodexRemaining,
+  CODEX_USAGE_URL,
+} from "@/account/quota"
 import { createTimerCoordinator } from "../../util/timer-coordinator"
 
 export type PromptProps = {
@@ -123,20 +129,6 @@ export function Prompt(props: PromptProps) {
   const perfProbeMode = process.env.OPENCODE_TUI_PERF_PROBE === "1"
   const disableFooterMeta = perfProbeMode || process.env.OPENCODE_TUI_DISABLE_FOOTER_META === "1"
   const defaultAnimationsEnabled = process.env.TERM_PROGRAM === "vscode" || process.env.VSCODE_PID ? false : true
-  const CODEX_ISSUER = "https://auth.openai.com"
-  const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
-  const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
-  const CodexUsageSchema = z
-    .object({
-      rate_limit: z
-        .object({
-          primary_window: z.object({ used_percent: z.number().optional() }).optional(),
-          secondary_window: z.object({ used_percent: z.number().optional() }).optional(),
-        })
-        .optional(),
-    })
-    .passthrough()
-
   const isRateLimitMessage = (message: string) => {
     const text = message.toLowerCase()
     return text.includes("rate limit") || text.includes("too many requests") || text.includes("429")
@@ -212,74 +204,6 @@ export function Prompt(props: PromptProps) {
     },
   )
 
-  function clampPercentage(value: number): number {
-    if (!Number.isFinite(value)) return 0
-    if (value < 0) return 0
-    if (value > 100) return 100
-    return Math.round(value)
-  }
-
-  type CodexTokenResponse = {
-    id_token?: string
-    access_token: string
-    refresh_token?: string
-    expires_in?: number
-  }
-
-  type CodexIdTokenClaims = {
-    chatgpt_account_id?: string
-    organizations?: Array<{ id: string }>
-    "https://api.openai.com/auth"?: {
-      chatgpt_account_id?: string
-    }
-  }
-
-  function parseCodexJwtClaims(token: string): CodexIdTokenClaims | undefined {
-    const parts = token.split(".")
-    if (parts.length !== 3) return undefined
-    try {
-      return JSON.parse(Buffer.from(parts[1], "base64url").toString())
-    } catch {
-      return undefined
-    }
-  }
-
-  function extractAccountIdFromClaims(claims: CodexIdTokenClaims): string | undefined {
-    return (
-      claims.chatgpt_account_id ||
-      claims["https://api.openai.com/auth"]?.chatgpt_account_id ||
-      claims.organizations?.[0]?.id
-    )
-  }
-
-  function extractAccountIdFromTokens(tokens: CodexTokenResponse): string | undefined {
-    if (tokens.id_token) {
-      const claims = parseCodexJwtClaims(tokens.id_token)
-      if (claims) {
-        const accountId = extractAccountIdFromClaims(claims)
-        if (accountId) return accountId
-      }
-    }
-    const claims = parseCodexJwtClaims(tokens.access_token)
-    return claims ? extractAccountIdFromClaims(claims) : undefined
-  }
-
-  async function refreshCodexAccessToken(refreshToken: string): Promise<CodexTokenResponse> {
-    const response = await fetch(`${CODEX_ISSUER}/oauth/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-        client_id: CODEX_CLIENT_ID,
-      }).toString(),
-    })
-    if (!response.ok) {
-      throw new Error(`Codex token refresh failed: ${response.status}`)
-    }
-    return response.json()
-  }
-
   function resolveQuotaGroup(modelID: string): QuotaGroup | null {
     return resolveAntigravityQuotaGroup(modelID)
   }
@@ -349,12 +273,11 @@ export function Prompt(props: PromptProps) {
 
       const response = await fetch(CODEX_USAGE_URL, { headers })
       if (!response.ok) return null
-      const usage = CodexUsageSchema.safeParse(await response.json())
-      const hourlyUsed = usage.success ? (usage.data.rate_limit?.primary_window?.used_percent ?? 0) : 0
-      const weeklyUsed = usage.success ? (usage.data.rate_limit?.secondary_window?.used_percent ?? 0) : 0
-      const hourlyRemaining = clampPercentage(100 - hourlyUsed)
-      const weeklyRemaining = clampPercentage(100 - weeklyUsed)
-      return { hourlyRemaining, weeklyRemaining }
+      const usage = parseCodexUsage(await response.json())
+      const normalized = computeCodexRemaining(usage)
+      const hourlyRemaining = normalized.hourlyRemaining ?? 100
+      const weeklyRemaining = normalized.weeklyRemaining ?? normalized.hourlyRemaining ?? 100
+      return { hourlyRemaining, weeklyRemaining, hasHourlyWindow: normalized.hasHourlyWindow }
     } catch {
       return null
     }
@@ -1135,7 +1058,8 @@ export function Prompt(props: PromptProps) {
       if (isRateLimited()) return "(5hrs:0% | week:0%)"
       const quota = codexQuota()
       if (!quota) return "(5hrs:-- | week:--)"
-      return `(5hrs:${quota.hourlyRemaining}% | week:${quota.weeklyRemaining}%)`
+      const fiveHour = quota.hasHourlyWindow ? `${quota.hourlyRemaining}%` : "--"
+      return `(5hrs:${fiveHour} | week:${quota.weeklyRemaining}%)`
     }
     if (current.providerId === "antigravity" || Account.parseFamily(current.providerId) === "antigravity") {
       if (isRateLimited()) return "0%"
