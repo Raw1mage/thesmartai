@@ -100,3 +100,10 @@
 | --------------- | ------ | ------------ | ---- |
 | `4ccb82e81ab664f53a9ab0d84ea99c18c50dc5c3` | ported | - | auth login picker now surfaces plugin-provided auth providers not present in models list, with dedupe and enable/disable filtering plus dedicated unit coverage |
 | `693127d382abed14113f3b7a347851b7a44d74cd` | integrated | - | run command already supports --dir and passes directory override when attaching to remote server in current cms implementation |
+
+## 已處理（origin/dev delta 2026-02-25 round15 (rewrite-only) @ 2026-02-25T16:17:43.595Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `9d3c81a68391399e46fab5307b03984511f92b09` | ported | - | added OPENCODE_ENABLE_QUESTION_TOOL flag so ACP and other non-interactive clients can opt in to QuestionTool explicitly when they support interactive prompts |
+| `2bab5e8c39f4ed70dbfe6d971728d8d899b88e4f` | skipped | - | path-derived id migration patch targets json-migration module that is absent in current cms storage layout; defer until migration layer is introduced |
