@@ -413,3 +413,57 @@
 | `8f56ed5b850ce4ad71ced4903a36d822cf91553f` | skipped | - | generated app context change without selected runtime behavior objective |
 | `fbabce1125005bc4a658401fbbc1c04e50d2f5bc` | skipped | - | translations-only app/ui i18n update; no core runtime behavior delta |
 | `e3471526f4c71b2c4ee00117e125e179da01e6e2` | skipped | - | brand assets/page update in console app scope; deferred from runtime-focused stream |
+
+## 已處理（origin/dev delta 2026-02-26 round60 (rewrite-only) @ 2026-02-25T20:10:57.843Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `6b30e0b7528bb467450c20524fdd075b893d9b3c` | skipped | - | docs locale sync workflow update is CI/docs pipeline scope without cms runtime behavior delta |
+| `d723147083ef972e82de5e33765874e35be64079` | skipped | - | pr-management workflow behavior is repository CI policy scope, not runtime |
+| `ed439b20572178ced9cd93ffe07542d50e624598` | skipped | - | signpath policy config is signing pipeline scope, no runtime behavior delta |
+| `df3203d2dd06edd70693ea99312e1ae3e59accd5` | skipped | - | signpath policy move is CI governance housekeeping |
+| `b06afd657d59c2c88394513e3b633060ec6f454b` | skipped | - | signpath policy removal is CI governance housekeeping |
+| `264dd213f9fc0592d19e9c4a6e090820ff74f063` | skipped | - | nix hash bookkeeping only; no runtime behavior delta |
+| `8577eb8ec92b8f2d5f91a043dbd03d0fbc5209ee` | skipped | - | nix hash bookkeeping only; no runtime behavior delta |
+| `9f9f0fb8eb10ab4e90a6f38c222eb40116becb50` | skipped | - | nix hash bookkeeping only; no runtime behavior delta |
+| `445e0d76765d745ee59a16eb13eb3206f6037cce` | skipped | - | nix hash bookkeeping only; no runtime behavior delta |
+| `b8ee88212639ec63f4fe87555b5e87f74643e76b` | skipped | - | nix hash bookkeeping only; no runtime behavior delta |
+| `d0dcffefa7c70ea180fd565a79d42d9db58977e4` | skipped | - | nix hash bookkeeping only; no runtime behavior delta |
+| `8c1af9b445a45128d147f6f818dfd3ed7c4e75ef` | skipped | - | nix hash bookkeeping only; no runtime behavior delta |
+
+## 已處理（origin/dev delta 2026-02-26 round61 (rewrite-only) @ 2026-02-25T20:11:13.799Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `34ebe814ddd130a787455dda089facb23538ca20` | skipped | - | release bookkeeping/version rollup commit; no standalone behavior to rewrite-port |
+| `ffc000de8e446c63d41a2e352d119d9ff43530d0` | skipped | - | release bookkeeping/version rollup commit; no standalone behavior to rewrite-port |
+| `cd775a2862cf9ed1d5aaf26fdee0e814ce28936b` | skipped | - | release bookkeeping/version rollup commit; no standalone behavior to rewrite-port |
+| `62a24c2ddaf56c4234898269b1951ab11483f57a` | skipped | - | release bookkeeping/version rollup commit; no standalone behavior to rewrite-port |
+| `d8c25bfeb44771cc3a3ba17bf8de6ad2add9de2c` | skipped | - | release bookkeeping/version rollup commit; no standalone behavior to rewrite-port |
+
+## 已處理（origin/dev delta 2026-02-26 round62 (rewrite-only) @ 2026-02-25T20:11:51.384Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `ed472d8a6789c882dfbba7facfd987fd8dd6fb2c` | skipped | - | app session-context metrics defensive fixes are app-layer scope outside current cms core runtime stream |
+| `7f95cc64c57b439f58833d0300a1da93b3b893df` | skipped | - | app prompt-input quirks fix is app UI/editor behavior scope, deferred |
+| `c9719dff7223aa1fc19540f3cd627c7f40e4bf36` | skipped | - | app notification navigation behavior is app shell scope, deferred |
+| `dec304a2737b7accb3bf8b199fb58e81d65026e9` | skipped | - | ui avatar emoji handling is presentation-layer scope, deferred |
+| `dd296f703391aa67ef8cf8340e2712574b380cb1` | skipped | - | app reconnect event stream fix is app global-sdk layer scope, deferred |
+| `ebe5a2b74a564dd92677f2cdaa8d21280aedf7fa` | skipped | - | app remount SDK/sync tree behavior is app shell scope, deferred |
+| `e242fe19e48f6aa70e5c3f7d54f34d688181edb2` | skipped | - | app prompt_async endpoint usage fix is app request UX path, deferred |
+| `1c71604e0a2a34786daa99b7002c2f567671051a` | skipped | - | app terminal resize behavior is app component scope, deferred |
+| `460a87f359cef2cdcd4638ba49b1d7d652ddedd5` | skipped | - | app filetree stack-overflow fix is app UI scope, deferred in current stream |
+| `85b5f5b705e8f7852184a4ef147bdc826639d224` | skipped | - | app clear notifications feature is app UX scope, deferred |
+| `985c2a3d15c13512b9bb456882b97ebe863cae5f` | skipped | - | app font option addition is settings/UI scope, deferred |
+| `878ddc6a0a9eff4fe990dfc241a8eb1c72f0659d` | skipped | - | app keybind shift-tab fix is app command layer scope, deferred |
+| `3c85cf4fac596928713685068c6c92f356b848f3` | skipped | - | app prompt history boundary navigation fix is app input scope, deferred |
+| `cf50a289db056657171b73fb5e1f907b0baedd59` | skipped | - | app new-file viewing issue fix is app session page scope, deferred |
+| `3a3aa300bb846ae60391ba96c5f1f4aa9a9a5d74` | skipped | - | ui localized free-usage message/link is ui/i18n feature scope, deferred |
+| `b055f973dfd66965d998216db67df8534957e5e8` | skipped | - | app cleanup refactor is maintenance churn without targeted core runtime delta |
+| `e0f1c3c20efb60f19f36e2c8df87dfd30fd2523e` | skipped | - | desktop loading-page cleanup is desktop shell UI scope, deferred |
+| `3aaa34be1efe2e202312fe1312605c4cdac2e115` | skipped | - | desktop focus-after-update fix is desktop shell behavior scope, deferred |
+| `920255e8c69270942206b60f94e26b545af18050` | skipped | - | desktop process-wrap/job-object architecture update is desktop shell scope, deferred |
+| `60807846a92be5ab75367d8ca14b6b1bc697aebe` | skipped | - | desktop wayland/x11 normalization is platform windowing scope, deferred |
+| `7d468727752646e30a1fcc70a9c1b2849c4da4cf` | skipped | - | desktop OPENCODE_SQLITE env handling depends on desktop/sqlite track not in current stream |
+| `0b9e929f68f07652af85de70fa57f82760bc3331` | skipped | - | desktop rust fix is desktop shell maintenance scope, deferred |
