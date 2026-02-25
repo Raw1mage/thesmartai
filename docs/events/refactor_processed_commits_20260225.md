@@ -65,3 +65,10 @@
 | --------------- | ------ | ------------ | ---- |
 | `86e545a23ecdb2c1840ab01e82eca292117c6bbc` | ported | - | ACP session creation no longer sets synthetic random title so default title pipeline can generate meaningful titles |
 | `67c985ce82b3a0ef3b22bef435f58884a3aab990` | skipped | - | upstream sqlite WAL checkpoint open-hook targets db module not present in cms storage architecture; defer until sqlite db layer is adopted |
+
+## 已處理（origin/dev delta 2026-02-25 round10 (rewrite-only) @ 2026-02-25T15:37:45.152Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `c1b03b728af259a1556dc39db58e162b382527b3` | ported | - | read tool now streams file lines instead of loading full file text into memory, preserving current cms output contract while reducing peak memory usage on large files |
+| `3b9758062b4417b6ff3df2dd9a6c461be24ee0b6` | skipped | - | upstream all-fs/promises cleanup is style-level and overlaps with cms-specific Bun+fs hybrid behavior; defer to dedicated io-standardization round |
