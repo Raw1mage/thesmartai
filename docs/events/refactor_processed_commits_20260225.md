@@ -93,3 +93,10 @@
 | --------------- | ------ | ------------ | ---- |
 | `8631d6c01d8c8f5e8c616e09e85e5a27791d1a56` | ported | - | added comprehensive session list filter tests at server route level (directory/roots/search/start/limit) to lock expected behavior and prevent regression |
 | `b020758446254e6c03b0182247b611ce1e5f2c55` | integrated | - | session listing across project directories is already the default behavior in current cms implementation |
+
+## 已處理（origin/dev delta 2026-02-25 round14 (rewrite-only) @ 2026-02-25T15:59:59.275Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `4ccb82e81ab664f53a9ab0d84ea99c18c50dc5c3` | ported | - | auth login picker now surfaces plugin-provided auth providers not present in models list, with dedupe and enable/disable filtering plus dedicated unit coverage |
+| `693127d382abed14113f3b7a347851b7a44d74cd` | integrated | - | run command already supports --dir and passes directory override when attaching to remote server in current cms implementation |
