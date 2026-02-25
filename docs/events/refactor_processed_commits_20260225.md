@@ -107,3 +107,10 @@
 | --------------- | ------ | ------------ | ---- |
 | `9d3c81a68391399e46fab5307b03984511f92b09` | ported | - | added OPENCODE_ENABLE_QUESTION_TOOL flag so ACP and other non-interactive clients can opt in to QuestionTool explicitly when they support interactive prompts |
 | `2bab5e8c39f4ed70dbfe6d971728d8d899b88e4f` | skipped | - | path-derived id migration patch targets json-migration module that is absent in current cms storage layout; defer until migration layer is introduced |
+
+## 已處理（origin/dev delta 2026-02-25 round16 (rewrite-only) @ 2026-02-25T17:02:49.518Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `088eac9d4eaba040e7e19084fd82cbb2e32ce6ed` | ported | - | run command now handles malformed task tool payloads defensively and surfaces errored tool calls in output instead of crashing |
+| `d2d7a37bca7febac7df4dd0ecdbc5b1a2d55ef65` | integrated | - | tool attachment ownership already materialized centrally with id/sessionID/messageID via session attachment-ownership helper |
