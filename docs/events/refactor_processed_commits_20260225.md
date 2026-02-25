@@ -255,3 +255,23 @@
 | Upstream Commit                            | Status     | Local Commit | Note                                                                                 |
 | ------------------------------------------ | ---------- | ------------ | ------------------------------------------------------------------------------------ |
 | `125727d09c4482f351ee3e0d448db7efc116213d` | integrated | -            | cms already uses @opentui/core and @opentui/solid version 0.1.79 in package manifest |
+
+## 已處理（origin/dev delta 2026-02-26 round40 (rewrite-only) @ 2026-02-26T00:00:00.000Z）
+
+| Upstream Commit                            | Status     | Local Commit | Note                                                                                                     |
+| ------------------------------------------ | ---------- | ------------ | -------------------------------------------------------------------------------------------------------- |
+| `4018c863e3b4b9857fe9378ae54e406a5cf5ab48` | integrated | -            | baseline CPU capability detection and fallback binary resolution behavior already exists in cms launcher |
+
+## 已處理（origin/dev delta 2026-02-26 round41 (rewrite-only) @ 2026-02-26T00:00:00.000Z）
+
+| Upstream Commit                            | Status  | Local Commit | Note                                                                                                        |
+| ------------------------------------------ | ------- | ------------ | ----------------------------------------------------------------------------------------------------------- |
+| `a8f2884521e755cea9b9e4e52406267bcbda15d2` | skipped | -            | windows selection/manual ctrl+c UX patch touches multiple TUI interaction paths; deferred to dedicated pass |
+
+## 已處理（origin/dev delta 2026-02-26 round42 (rewrite-only) @ 2026-02-26T00:00:00.000Z）
+
+| Upstream Commit                            | Status  | Local Commit | Note                                                                                                                  |
+| ------------------------------------------ | ------- | ------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `759ec104b6e537235afd3177acd28b6c9694e496` | skipped | -            | gateway variant/providerOptions remapping sequence is high-risk under cms-diverged provider routing                   |
+| `933a491adeeed875d3ba4cbc88ed301a60456734` | skipped | -            | amazon→bedrock slug remapping for gateway variants deferred with the same provider-sequence hardening batch           |
+| `839c5cda12fa978d4c7ba85c7cf51600ec853bc8` | skipped | -            | openrouter anthropic variant + patch lifecycle update deferred to dedicated provider integration and patch validation |
