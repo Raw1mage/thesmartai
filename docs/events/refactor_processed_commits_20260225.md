@@ -467,3 +467,24 @@
 | `60807846a92be5ab75367d8ca14b6b1bc697aebe` | skipped | - | desktop wayland/x11 normalization is platform windowing scope, deferred |
 | `7d468727752646e30a1fcc70a9c1b2849c4da4cf` | skipped | - | desktop OPENCODE_SQLITE env handling depends on desktop/sqlite track not in current stream |
 | `0b9e929f68f07652af85de70fa57f82760bc3331` | skipped | - | desktop rust fix is desktop shell maintenance scope, deferred |
+
+## 已處理（origin/dev delta 2026-02-26 round63 (rewrite-only) @ 2026-02-25T20:14:52.314Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `9b23130ac47442a216d84eace4032369620e548a` | ported | - | added cljfmt formatter support (.clj/.cljs/.cljc/.edn) in cms formatter registry |
+| `160ba295a88462844457342ca74fa036f19ecede` | ported | - | added dfmt formatter support (.d) in cms formatter registry |
+
+## 已處理（origin/dev delta 2026-02-26 round64 (rewrite-only) @ 2026-02-25T20:15:20.571Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `0d90a22f9057dd69dca65ab52450f17d47a8656e` | skipped | - | provider adaptive reasoning + ai-sdk package update touches high-volatility provider transform path; defer to dedicated provider validation round |
+| `afd0716cbdca5191b6c45dbc8325c6f9e658715f` | skipped | - | venice provider transform option support touches high-volatility provider path; defer for focused provider suite |
+| `f7708efa5b87ae292c973d3fb409d060b5ed8f56` | skipped | - | google-vertex openai-compatible endpoint support is high-risk provider architecture delta; defer |
+| `1d041c8861cdeb72fa2f31020991860a2cde8c28` | skipped | - | google vertex env var priority fix touches provider precedence semantics; defer with provider batch |
+| `5cc1d6097e02e2f157b7ae68de9e5df06531b53d` | skipped | - | tui attach continue/fork flags alter session flow UX; defer to dedicated tui flow validation batch |
+| `16332a858396c23c1bf6fa673964ae306d5414ab` | skipped | - | tui prompt autocomplete server-dir path behavior is high-volatility UX path; defer |
+| `bb30e06855fb979b5fd765796a6b7428b9177b91` | skipped | - | tui tips text fix deferred with tui UX micro-fix batch |
+| `fdad823edc13fbc8fbaf4bf54eae53b1286ee2e9` | skipped | - | db migrate command depends on sqlite migration command surface intentionally deferred in cms stream |
+| `b0afdf6ea4c016c46762b649adc30c0456814a43` | skipped | - | session delete CLI command deferred pending broader session command parity batch |
