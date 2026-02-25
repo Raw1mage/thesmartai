@@ -72,3 +72,10 @@
 | --------------- | ------ | ------------ | ---- |
 | `c1b03b728af259a1556dc39db58e162b382527b3` | ported | - | read tool now streams file lines instead of loading full file text into memory, preserving current cms output contract while reducing peak memory usage on large files |
 | `3b9758062b4417b6ff3df2dd9a6c461be24ee0b6` | skipped | - | upstream all-fs/promises cleanup is style-level and overlaps with cms-specific Bun+fs hybrid behavior; defer to dedicated io-standardization round |
+
+## 已處理（origin/dev delta 2026-02-25 round11 (rewrite-only) @ 2026-02-25T15:44:33.612Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `fb79dd7bf857a95a6045209cc1f3f859563a8081` | ported | - | mcp oauth provider now supports invalidateCredentials(all/client/tokens) so oauth provider-directed credential invalidation can clear stale auth state safely |
+| `991496a753545f2705072d4da537c175dca357e6` | integrated | - | ACP windows hang protections are already present across cms via util/git ACP-safe spawn path and snapshot ACP bypass guards |
