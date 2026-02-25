@@ -289,3 +289,9 @@
 | `3b6b3e6fc8a8a4da5798c9f00027e954263a483e` | skipped | -            | release bookkeeping/version rollup commit; no standalone behavior to rewrite-port |
 | `c190f5f611c1520a553facc362749f8aefaa5005` | skipped | -            | release bookkeeping/version rollup commit; no standalone behavior to rewrite-port |
 | `d1482e148399bfaf808674549199f5f4aa69a22d` | skipped | -            | release bookkeeping/version rollup commit; no standalone behavior to rewrite-port |
+
+## 已處理（origin/dev delta 2026-02-26 round45 (rewrite-only) @ 2026-02-26T00:00:00.000Z）
+
+| Upstream Commit                            | Status  | Local Commit | Note                                                                                                       |
+| ------------------------------------------ | ------- | ------------ | ---------------------------------------------------------------------------------------------------------- |
+| `b5c8bd3421e4b89cf9dabc6ccf019a82eefc64a5` | skipped | -            | json-migration path-id regression test depends on migration/test stack not present in current cms topology |
