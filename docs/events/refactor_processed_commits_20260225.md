@@ -327,3 +327,35 @@
 | Upstream Commit                            | Status  | Local Commit | Note                                                                              |
 | ------------------------------------------ | ------- | ------------ | --------------------------------------------------------------------------------- |
 | `03de51bd3cf9e05bd92c9f51763b74a3cdfbe61a` | skipped | -            | release version-rollup bookkeeping commit; no standalone behavior to rewrite-port |
+
+## 已處理（origin/dev delta 2026-02-26 round51 (rewrite-only) @ 2026-02-25T20:03:25.744Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `1413d77b1ff36ed030c179b3bc59dc6a9b9679b3` | skipped | - | desktop sqlite migration progress UI depends on sqlite migration flow not adopted in current cms stream |
+| `adb0c4d4f94f6260a67bb9a48ef3a7faa6042bf3` | skipped | - | desktop loading-window condition is coupled to sqlite migration detection path deferred with sqlite track |
+
+## 已處理（origin/dev delta 2026-02-26 round52 (rewrite-only) @ 2026-02-25T20:03:34.413Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `81ca2df6ad57085b895caafc386e4ac4ab9098a6` | skipped | - | packages/app browser randomUUID guard fix is outside current cms core runtime refactor scope |
+| `0771e3a8bee1b099468f3c95e19bd78699f62b12` | skipped | - | packages/app prompt paste undo behavior is app-client UX scope, deferred |
+| `ff0abacf4bcc78a1464f54eec2424f234c1723c9` | skipped | - | packages/app project icon unloading fix is app UI scope, deferred |
+| `958320f9c1572841c6c4b7aeba4559a79693002d` | skipped | - | packages/app remote HTTP server connection fix is app client scope, deferred in current stream |
+| `50f208d69f9a3b418290f01f96117308842d9e9d` | skipped | - | packages/app slash suggestion active-state fix is UI behavior scope, deferred |
+| `0303c29e3ff4f45aff4176e496ecb3f5fa5b611a` | skipped | - | packages/app store creation fix is app layer scope, deferred |
+| `ff3b174c423d89b39ee8154863840e48c8aac371` | skipped | - | packages/app oauth error normalization is app surface scope, deferred |
+| `4e0f509e7b7d84395a541bdfa658f6c98f588221` | skipped | - | packages/app sound effects toggle feature is app UI scope, not current core runtime target |
+
+## 已處理（origin/dev delta 2026-02-26 round53 (rewrite-only) @ 2026-02-25T20:03:44.125Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `ff4414bb152acfddb5c0eb073c38bedc1df4ae14` | skipped | - | large packages/app refactor churn is outside current cms core runtime parity stream |
+| `da952135cabba2926698298797cd301e7adaf48c` | skipped | - | solidjs hygiene refactor in packages/app deferred to dedicated app parity initiative |
+| `3696d1ded152d08e8d45fae9cbbdb25c50a189ef` | skipped | - | cleanup-only app churn without core runtime behavior delta |
+| `81c623f26eddf9aa014510b25c4621ed39678de7` | skipped | - | cleanup-only app churn without core runtime behavior delta |
+| `e9b9a62fe4df1fcc92b9d410a1982f26418d87a1` | skipped | - | cleanup-only app churn without core runtime behavior delta |
+| `7ccf223c847564f5f2a032a92493c8c67e6a822d` | skipped | - | cleanup-only app churn without core runtime behavior delta |
+| `70303d0b4272fee94f412c851de133fb3a45464f` | skipped | - | cleanup-only app churn without core runtime behavior delta |
