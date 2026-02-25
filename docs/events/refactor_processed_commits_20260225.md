@@ -187,3 +187,9 @@
 | Upstream Commit | Status | Local Commit | Note |
 | --------------- | ------ | ------------ | ---- |
 | `93eee0daf40668a487bdbda439147ad13c8d13cc` | integrated | - | Provider.defaultModel already checks recent model.json entries first and falls back only after provider/model validity checks |
+
+## 已處理（origin/dev delta 2026-02-26 round29 (rewrite-only) @ 2026-02-25T19:05:34.666Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `45f0050372a1bc035164a5953b1fdb46df106d4a` | skipped | - | upstream sqlite db command depends on storage/db.ts + Database.Path surface not present in cms file-index storage architecture |
