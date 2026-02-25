@@ -33,6 +33,7 @@ export namespace Flag {
   export const OPENCODE_SERVER_USERNAME = process.env["OPENCODE_SERVER_USERNAME"]
   export const OPENCODE_SERVER_HTPASSWD = process.env["OPENCODE_SERVER_HTPASSWD"]
   export const OPENCODE_SERVER_PASSWORD_FILE = process.env["OPENCODE_SERVER_PASSWORD_FILE"]
+  export const OPENCODE_ENABLE_QUESTION_TOOL = truthy("OPENCODE_ENABLE_QUESTION_TOOL")
 
   // Experimental
   export const OPENCODE_EXPERIMENTAL = truthy("OPENCODE_EXPERIMENTAL")
