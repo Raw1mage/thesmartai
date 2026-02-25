@@ -1,6 +1,7 @@
 import z from "zod"
 import * as fs from "fs"
 import * as path from "path"
+import { createInterface } from "readline"
 import { Tool } from "./tool"
 import { LSP } from "../lsp"
 import { FileTime } from "../file/time"
@@ -10,6 +11,7 @@ import { assertExternalDirectory } from "./external-directory"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
+const MAX_LINE_SUFFIX = `... (line truncated to ${MAX_LINE_LENGTH} chars)`
 const MAX_BYTES = 50 * 1024
 
 export const ReadTool = Tool.define("read", {
@@ -137,25 +139,46 @@ export const ReadTool = Tool.define("read", {
       }
     }
 
-    const isBinary = await isBinaryFile(filepath, file)
+    const isBinary = await isBinaryFile(filepath, stat.size)
     if (isBinary) throw new Error(`Cannot read binary file: ${filepath}`)
 
     const limit = params.limit ?? DEFAULT_READ_LIMIT
     const offset = params.offset || 0
-    const lines = await file.text().then((text) => text.split("\n"))
+    const stream = fs.createReadStream(filepath, { encoding: "utf8" })
+    const rl = createInterface({
+      input: stream,
+      crlfDelay: Infinity,
+    })
 
     const raw: string[] = []
     let bytes = 0
+    let totalLines = 0
+    let hasMoreLines = false
     let truncatedByBytes = false
-    for (let i = offset; i < Math.min(lines.length, offset + limit); i++) {
-      const line = lines[i].length > MAX_LINE_LENGTH ? lines[i].substring(0, MAX_LINE_LENGTH) + "..." : lines[i]
-      const size = Buffer.byteLength(line, "utf-8") + (raw.length > 0 ? 1 : 0)
-      if (bytes + size > MAX_BYTES) {
-        truncatedByBytes = true
-        break
+    try {
+      for await (const text of rl) {
+        totalLines += 1
+        if (totalLines <= offset) continue
+
+        if (raw.length >= limit) {
+          hasMoreLines = true
+          continue
+        }
+
+        const line = text.length > MAX_LINE_LENGTH ? text.substring(0, MAX_LINE_LENGTH) + MAX_LINE_SUFFIX : text
+        const size = Buffer.byteLength(line, "utf-8") + (raw.length > 0 ? 1 : 0)
+        if (bytes + size > MAX_BYTES) {
+          truncatedByBytes = true
+          hasMoreLines = true
+          break
+        }
+
+        raw.push(line)
+        bytes += size
       }
-      raw.push(line)
-      bytes += size
+    } finally {
+      rl.close()
+      stream.destroy()
     }
 
     const content = raw.map((line, index) => {
@@ -166,9 +189,8 @@ export const ReadTool = Tool.define("read", {
     let output = "<file>\n"
     output += content.join("\n")
 
-    const totalLines = lines.length
     const lastReadLine = offset + raw.length
-    const hasMoreLines = totalLines > lastReadLine
+    hasMoreLines = hasMoreLines || totalLines > lastReadLine
     const truncated = hasMoreLines || truncatedByBytes
 
     if (truncatedByBytes) {
@@ -195,7 +217,7 @@ export const ReadTool = Tool.define("read", {
   },
 })
 
-async function isBinaryFile(filepath: string, file: Bun.BunFile): Promise<boolean> {
+async function isBinaryFile(filepath: string, fileSize: number): Promise<boolean> {
   const ext = path.extname(filepath).toLowerCase()
   // binary check for common non-text extensions
   switch (ext) {
@@ -232,22 +254,25 @@ async function isBinaryFile(filepath: string, file: Bun.BunFile): Promise<boolea
       break
   }
 
-  const stat = await file.stat()
-  const fileSize = stat.size
   if (fileSize === 0) return false
 
-  const bufferSize = Math.min(4096, fileSize)
-  const buffer = await file.arrayBuffer()
-  if (buffer.byteLength === 0) return false
-  const bytes = new Uint8Array(buffer.slice(0, bufferSize))
+  const fh = await fs.promises.open(filepath, "r")
+  try {
+    const sampleSize = Math.min(4096, fileSize)
+    const bytes = Buffer.alloc(sampleSize)
+    const result = await fh.read(bytes, 0, sampleSize, 0)
+    if (result.bytesRead === 0) return false
 
-  let nonPrintableCount = 0
-  for (let i = 0; i < bytes.length; i++) {
-    if (bytes[i] === 0) return true
-    if (bytes[i] < 9 || (bytes[i] > 13 && bytes[i] < 32)) {
-      nonPrintableCount++
+    let nonPrintableCount = 0
+    for (let i = 0; i < result.bytesRead; i++) {
+      if (bytes[i] === 0) return true
+      if (bytes[i] < 9 || (bytes[i] > 13 && bytes[i] < 32)) {
+        nonPrintableCount++
+      }
     }
+    // If >30% non-printable characters, consider it binary
+    return nonPrintableCount / result.bytesRead > 0.3
+  } finally {
+    await fh.close()
   }
-  // If >30% non-printable characters, consider it binary
-  return nonPrintableCount / bytes.length > 0.3
 }
