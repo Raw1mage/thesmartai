@@ -281,3 +281,11 @@
 | Upstream Commit                            | Status  | Local Commit | Note                                                                                                               |
 | ------------------------------------------ | ------- | ------------ | ------------------------------------------------------------------------------------------------------------------ |
 | `6d95f0d14cbd83fc8b7775f77ba39ab2881008f3` | skipped | -            | large sqlite migration wave is architectural in scope and out-of-bounds for current file/index rewrite-only stream |
+
+## 已處理（origin/dev delta 2026-02-26 round44 (rewrite-only) @ 2026-02-26T00:00:00.000Z）
+
+| Upstream Commit                            | Status  | Local Commit | Note                                                                              |
+| ------------------------------------------ | ------- | ------------ | --------------------------------------------------------------------------------- |
+| `3b6b3e6fc8a8a4da5798c9f00027e954263a483e` | skipped | -            | release bookkeeping/version rollup commit; no standalone behavior to rewrite-port |
+| `c190f5f611c1520a553facc362749f8aefaa5005` | skipped | -            | release bookkeeping/version rollup commit; no standalone behavior to rewrite-port |
+| `d1482e148399bfaf808674549199f5f4aa69a22d` | skipped | -            | release bookkeeping/version rollup commit; no standalone behavior to rewrite-port |
