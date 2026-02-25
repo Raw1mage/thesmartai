@@ -120,3 +120,10 @@
 | Upstream Commit | Status | Local Commit | Note |
 | --------------- | ------ | ------------ | ---- |
 | `ee754c46f992dd4024e56e93246421246d16d13f` | ported | - | normalized permission-boundary path matching for cross-platform behavior by converting backslashes to slash form in external_directory globs and wildcard matching with win32 case-insensitive mode |
+
+## 已處理（origin/dev delta 2026-02-25 round18 (rewrite-only) @ 2026-02-25T17:20:21.876Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `1af3e9e557a6df4f933a01d0dad2e52e418ebd52` | ported | - | config plugin resolution now falls back to createRequire().resolve when import.meta.resolve fails (notably on win32 with freshly created node_modules paths) |
+| `1a0639e5b89265ac89afd7bcfae835a64744768d` | ported | - | normalized backslash paths in config rel() and file ignore matching to keep cross-platform behavior consistent |

@@ -1,6 +1,7 @@
 import { Log } from "../util/log"
 import path from "path"
 import { pathToFileURL } from "url"
+import { createRequire } from "module"
 import os from "os"
 import z from "zod"
 import { Filesystem } from "../util/filesystem"
@@ -415,10 +416,11 @@ export namespace Config {
   }
 
   function rel(item: string, patterns: string[]) {
+    const normalizedItem = item.replaceAll("\\", "/")
     for (const pattern of patterns) {
-      const index = item.indexOf(pattern)
+      const index = normalizedItem.indexOf(pattern)
       if (index === -1) continue
-      return item.slice(index + pattern.length)
+      return normalizedItem.slice(index + pattern.length)
     }
   }
 
@@ -1478,7 +1480,13 @@ export namespace Config {
           try {
             data.plugin[i] = import.meta.resolve!(plugin, configFilepath)
           } catch (err) {
-            log.debug("Failed to resolve plugin", { plugin, configFilepath, err })
+            try {
+              const require = createRequire(configFilepath)
+              const resolvedPath = require.resolve(plugin)
+              data.plugin[i] = pathToFileURL(resolvedPath).href
+            } catch {
+              log.debug("Failed to resolve plugin", { plugin, configFilepath, err })
+            }
           }
         }
       }
