@@ -1112,3 +1112,11 @@
 | `a4ed020a943014d94ff405ff2e7960643e026527` | ported | `170cfa51e` | Rewrite-ported opentui dependency bump to 0.1.81 in packages/opencode with refreshed lockfile. |
 | `ab75ef8140d9a298326dd40b787eec5641ee68ed` | ported | `170cfa51e` | Rewrite-ported nix node_modules hash refresh values. |
 | `ce17f9dd9451feae8b80f7d8054be5b72ce8d1fa` | skipped | - | Deferred to dedicated split batch due script path/layout divergence and larger publish/download routing surface. |
+
+## 已處理（origin/dev delta 2026-02-27 batch10D beta sync @ 2026-02-26T19:29:01.996Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `a487f11a30981f44896ac771f7ade87fba9d6092` | ported | `667651586` | Rewrite-ported beta sync conflict auto-resolve flow with opencode invocation; adapted script path to scripts/beta.ts in cms. |
+| `0b3fb5d46002745b37eb448115014cb814d49921` | ported | `667651586` | Rewrite-ported beta sync model pin step in opencode invocation sequence (intermediate model commit covered by final model switch). |
+| `6af7ddf03bd16b1e1d1cd7250e6b60aca87d437b` | ported | `667651586` | Rewrite-ported final beta sync model selection to opencode/gpt-5.3-codex. |
