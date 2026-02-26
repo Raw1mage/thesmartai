@@ -26,6 +26,15 @@ export namespace Filesystem {
       return p
     }
   }
+
+  export function windowsPath(p: string): string {
+    if (process.platform !== "win32") return p
+    return p
+      .replace(/^\/([a-zA-Z])\//, (_, drive) => `${drive.toUpperCase()}:/`)
+      .replace(/^\/cygdrive\/([a-zA-Z])\//, (_, drive) => `${drive.toUpperCase()}:/`)
+      .replace(/^\/mnt\/([a-zA-Z])\//, (_, drive) => `${drive.toUpperCase()}:/`)
+  }
+
   export function overlaps(a: string, b: string) {
     const relA = relative(a, b)
     const relB = relative(b, a)
