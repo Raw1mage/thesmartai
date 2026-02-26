@@ -468,15 +468,32 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             const exists = modelStore.favorite.some(
               (x) => x.providerId === model.providerId && x.modelID === model.modelID,
             )
+            const isHidden = modelStore.hidden.some(
+              (x) => x.providerId === model.providerId && x.modelID === model.modelID,
+            )
             const next = exists
               ? modelStore.favorite.filter((x) => x.providerId !== model.providerId || x.modelID !== model.modelID)
               : [model, ...modelStore.favorite]
+            const nextHidden =
+              !exists && isHidden
+                ? modelStore.hidden.filter((x) => x.providerId !== model.providerId || x.modelID !== model.modelID)
+                : modelStore.hidden
             setModelStore(
               "favorite",
               next.map((x) => ({ providerId: x.providerId, modelID: x.modelID })),
             )
+            if (!exists && isHidden) {
+              setModelStore(
+                "hidden",
+                nextHidden.map((x) => ({ providerId: x.providerId, modelID: x.modelID })),
+              )
+            }
             save()
-            save()
+            toast.show({
+              message: exists ? `${model.modelID} removed` : `${model.modelID} added`,
+              variant: "info",
+              duration: 2000,
+            })
           })
         },
         toggleHidden(model: { providerId: string; modelID: string }) {
@@ -484,14 +501,32 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             const exists = modelStore.hidden.some(
               (x) => x.providerId === model.providerId && x.modelID === model.modelID,
             )
+            const wasFavorite = modelStore.favorite.some(
+              (x) => x.providerId === model.providerId && x.modelID === model.modelID,
+            )
             const next = exists
               ? modelStore.hidden.filter((x) => x.providerId !== model.providerId || x.modelID !== model.modelID)
               : [model, ...modelStore.hidden]
+            const nextFavorite =
+              !exists && wasFavorite
+                ? modelStore.favorite.filter((x) => x.providerId !== model.providerId || x.modelID !== model.modelID)
+                : modelStore.favorite
             setModelStore(
               "hidden",
               next.map((x) => ({ providerId: x.providerId, modelID: x.modelID })),
             )
+            if (!exists && wasFavorite) {
+              setModelStore(
+                "favorite",
+                nextFavorite.map((x) => ({ providerId: x.providerId, modelID: x.modelID })),
+              )
+            }
             save()
+            toast.show({
+              message: exists ? `${model.modelID} unhidden` : `${model.modelID} hidden`,
+              variant: "info",
+              duration: 2000,
+            })
           })
         },
         toggleHiddenProvider(family: string) {
