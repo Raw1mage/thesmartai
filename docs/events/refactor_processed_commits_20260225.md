@@ -1120,3 +1120,12 @@
 | `a487f11a30981f44896ac771f7ade87fba9d6092` | ported | `667651586` | Rewrite-ported beta sync conflict auto-resolve flow with opencode invocation; adapted script path to scripts/beta.ts in cms. |
 | `0b3fb5d46002745b37eb448115014cb814d49921` | ported | `667651586` | Rewrite-ported beta sync model pin step in opencode invocation sequence (intermediate model commit covered by final model switch). |
 | `6af7ddf03bd16b1e1d1cd7250e6b60aca87d437b` | ported | `667651586` | Rewrite-ported final beta sync model selection to opencode/gpt-5.3-codex. |
+
+## 已處理（origin/dev delta 2026-02-27 batch10E-10F workflows+cache @ 2026-02-26T19:34:37.353Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `e48c1ccf0714a2a78a8bbf27e8ade0b8bcbdcf3b` | ported | `ff004dbf0` | Rewrite-ported vouch workflow governance: label vouched users and restrict vouch manager roles. |
+| `c79f1a72d8f4b1a270c234f967bd9f2bed72a1f0` | integrated | - | Equivalent platform-binary caching behavior already present in cms root-layout files (bin/opencode + script/postinstall.mjs). |
+| `1ffed2fa6ce16392e4f113108c8c76f5440aecc5` | skipped | - | Intermediate revert in upstream add/revert/re-add chain; superseded by final enabled state. |
+| `1d9f05e4f5cdda1d1aa9675444ee83c57ae9951e` | integrated | - | Final upstream intent (cache .opencode in postinstall and run cached binary first) already implemented in cms with root path adaptations. |
