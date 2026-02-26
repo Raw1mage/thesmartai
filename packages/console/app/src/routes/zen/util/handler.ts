@@ -108,10 +108,14 @@ export async function handler(
       const startTimestamp = Date.now()
       const reqUrl = providerInfo.modifyUrl(providerInfo.api, isStream)
       const reqBody = JSON.stringify(
-        providerInfo.modifyBody({
-          ...createBodyConverter(opts.format, providerInfo.format)(body),
-          model: providerInfo.model,
-        }),
+        providerInfo.modifyBody(
+          {
+            ...createBodyConverter(opts.format, providerInfo.format)(body),
+            model: providerInfo.model,
+            ...((providerInfo as any).payloadModifier ?? {}),
+          },
+          authInfo?.workspaceID,
+        ),
       )
       logger.debug("REQUEST URL: " + reqUrl)
       logger.debug("REQUEST: " + reqBody.substring(0, 300) + "...")
