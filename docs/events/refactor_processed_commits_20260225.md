@@ -1018,3 +1018,9 @@
 | `b4d0090e0` | ported | `45f9d3df5` | project-switch now opens latest valid root session with remembered/fetched fallback to reduce flaky navigation |
 | `0a9119691` | ported | `326bcfc23` | playwright defaults moved to IPv4 loopback 127.0.0.1 to avoid intermittent localhost ipv6 failures on win32 |
 | `fce811b52` | skipped | - | deferred as larger release/build/runtime bundle; core parts already aligned in current cms baseline |
+
+## 已處理（origin/dev delta 2026-02-27 round67 (rewrite-only E7A e2e parity) @ 2026-02-26T18:16:39.996Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `6d58d899f` | ported | `19876b779` | align app settings e2e sound behavior with none-selection model and remove obsolete sound-enabled selectors |
