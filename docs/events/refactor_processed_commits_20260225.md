@@ -996,3 +996,25 @@
 | `de796d9a00544001fe196d9a3068ea241165293a` | skipped | - | upstream glob test target path does not exist in current cms opencode test layout |
 | `79254c10201a3978ac72ef2a047bb4070efdc41d` | ported | `ac43a032ae30401689cd9a7746af268564b46872` | normalize excludesFile path in snapshot test fixture for Windows-compatible git config parsing |
 | `ad5f0816a33d323f2a7e6a6228136fa6a6c4b056` | ported | `ac43a032ae30401689cd9a7746af268564b46872` | stabilize typecheck scheduling by adding ^build dependency in turbo task graph |
+
+## 已處理（origin/dev delta 2026-02-27 round65-round66 (rewrite-only E5A-E6D) @ 2026-02-26T18:07:32.288Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `e27d3d5d4` | ported | `e16b7d1bf` | removed filetree tooltip wrappers and tooltip prop plumbing in app file tree |
+| `c6d8e7624` | ported | `e16b7d1bf` | cancel comment now clears selected lines and closes commenting state consistently |
+| `cc02476ea` | ported | `e16b7d1bf` | centralized server error formatting for sync/bootstrap toast errors via shared utility |
+| `0d0d0578e` | integrated | - | generate-only follow-up represented by prior refactor port changes |
+| `b8337cddc` | ported | `e16b7d1bf` | session permission/question lookup now traverses parent-child session tree in cms flow |
+| `286992269` | ported | `e16b7d1bf` | copilot provider note text corrected across selected locale files |
+| `05ac0a73e` | ported | `e16b7d1bf` | simplified review layout by removing file-tree-tab gated review branch on desktop |
+| `7afa48b4e` | ported | `e16b7d1bf` | reasoning inline code subdued in dark mode styles |
+| `a292eddeb` | ported | `65e302277` | preload cleanup uses gc+retry async rm loop to tolerate Windows EBUSY |
+| `06f25c78f` | skipped | - | target discovery test file path not present in current cms tree |
+| `3d379c20c` | ported | `65e302277` | cross-platform assumptions fixed in bash/external-directory tests; missing write.test segment skipped |
+| `32417774c` | ported | `65e302277` | process.env cloning in tests switched from structuredClone to spread |
+| `36197f5ff` | ported | `65e302277` | FileTime stale-read assert allows 50ms mtime tolerance for NTFS fuzziness |
+| `a74fedd23` | ported | `5ac573bab` | windows/cygwin path normalization applied in filesystem, project gitpath, watcher, and bash path handling; app-side follow-up in 390b2aba9 |
+| `b4d0090e0` | ported | `45f9d3df5` | project-switch now opens latest valid root session with remembered/fetched fallback to reduce flaky navigation |
+| `0a9119691` | ported | `326bcfc23` | playwright defaults moved to IPv4 loopback 127.0.0.1 to avoid intermittent localhost ipv6 failures on win32 |
+| `fce811b52` | skipped | - | deferred as larger release/build/runtime bundle; core parts already aligned in current cms baseline |
