@@ -980,3 +980,19 @@
 | `659068942eda0e48f8453d96b03724cfb1f9698d` | ported | `d597d9b1cfc06273a7cfb23d7cc2504c207101d5` | support CRLF frontmatter line splitting and normalize markdown fixture assertion |
 | `392a6d993f5cbb233bc0eeab297919cb21099f2c` | ported | `d597d9b1cfc06273a7cfb23d7cc2504c207101d5` | switch desktop sidecar shell spawn from -il to -l to avoid interactive-shell hang |
 | `bb8a1718a63c2caae9e40c85dd4bdfe34f8012d7` | ported | `d597d9b1cfc06273a7cfb23d7cc2504c207101d5` | restore shell-derived PATH/env for desktop sidecar via shell env probe+merge before spawn |
+
+## 已處理（origin/dev delta 2026-02-27 round64 (rewrite-only E4A/E4B settings+stability) @ 2026-02-26T17:12:08.472Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `ae98be83b3f8eb6b740e785347e1d4365dc202d2` | ported | `1dc5ceec8341425497a5ff1e85d0ede4fb3eb08d` | restore settings header mask by using surface-stronger non-alpha gradient token across settings pages |
+| `63a469d0ce3ac30954ccb96c4b4b0698992162a5` | ported | `1dc5ceec8341425497a5ff1e85d0ede4fb3eb08d` | refine session feed spacing and reasoning markdown styling baseline |
+| `8b99ac65135f9f4f800bd5df41846d3cd879155c` | ported | `1dc5ceec8341425497a5ff1e85d0ede4fb3eb08d` | tone down reasoning emphasis by reducing strong/bold contrast in reasoning blocks |
+| `8d781b08ce7fa2d722a1069c8745d281962483d5` | ported | `1dc5ceec8341425497a5ff1e85d0ede4fb3eb08d` | finalize text-part spacing adjustment for session feed readability |
+| `f07e8772042d9980bf6b6912d20b59709cbccd51` | integrated | - | share button double-border fix already present via conditional border-r-0 class in cms session header |
+| `ce2763720e499ba7e7ca8021f2cbf6d62596a6e8` | integrated | - | sound disabling UX with none option and demo stop/play behavior already integrated in cms settings-general |
+| `eda71373b0f37e56ca07921d13b3faf566824d04` | ported | `ac43a032ae30401689cd9a7746af268564b46872` | open review file waits for loadFile completion before opening tab to avoid race conditions |
+| `a592bd968454f0b8c55733f7a8df85e38a293de5` | ported | `ac43a032ae30401689cd9a7746af268564b46872` | update helper test call order to match async-safe open-review flow |
+| `de796d9a00544001fe196d9a3068ea241165293a` | skipped | - | upstream glob test target path does not exist in current cms opencode test layout |
+| `79254c10201a3978ac72ef2a047bb4070efdc41d` | ported | `ac43a032ae30401689cd9a7746af268564b46872` | normalize excludesFile path in snapshot test fixture for Windows-compatible git config parsing |
+| `ad5f0816a33d323f2a7e6a6228136fa6a6c4b056` | ported | `ac43a032ae30401689cd9a7746af268564b46872` | stabilize typecheck scheduling by adding ^build dependency in turbo task graph |
