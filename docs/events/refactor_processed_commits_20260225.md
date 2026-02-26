@@ -1104,3 +1104,11 @@
 | --------------- | ------ | ------------ | ---- |
 | `13616e345930b6c9e7cca898fcb98a8c4ff896b5` | ported | `d2b704859` | Rewrite-ported VOUCHED list update: add denounced entry -agusbasari29 with note. |
 | `eb64ce08b8a862c27b7dab58c3a8d2ea1981655f` | ported | `d2b704859` | Rewrite-ported VOUCHED list update: add vouched contributor edemaine. |
+
+## 已處理（origin/dev delta 2026-02-27 batch10C opentui+nix @ 2026-02-26T19:26:11.759Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `a4ed020a943014d94ff405ff2e7960643e026527` | ported | `170cfa51e` | Rewrite-ported opentui dependency bump to 0.1.81 in packages/opencode with refreshed lockfile. |
+| `ab75ef8140d9a298326dd40b787eec5641ee68ed` | ported | `170cfa51e` | Rewrite-ported nix node_modules hash refresh values. |
+| `ce17f9dd9451feae8b80f7d8054be5b72ce8d1fa` | skipped | - | Deferred to dedicated split batch due script path/layout divergence and larger publish/download routing surface. |
