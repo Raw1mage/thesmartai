@@ -671,3 +671,69 @@
 | `4a5823562ca2f2ee0255aa815228e9973b6efb28` | skipped | - | desktop isLocal behavior fix in app server context deferred with desktop/app parity track |
 | `f8904e3972fba3d9fc3b08fa2531da8fca378dd1` | skipped | - | desktop sidecar project key behavior fix deferred with desktop/app parity track |
 | `fc1addb8f4830e71c268fb0609fa6489cd55e2b2` | skipped | - | CONTRIBUTING.md tweak only; no runtime behavior delta |
+
+## 已處理（origin/dev delta 2026-02-26 round77 (rewrite-only) @ 2026-02-26T02:30:05.716Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `d447b7694afc0080b78e7052b9de4c5a1a5f9eaf` | ported | - | github command now emits explicit PROMPT_TOO_LARGE diagnostics for ContextOverflowError with prompt-file size details |
+| `de25703e9dd33df4dff6b5b8ae9a722f6ca2aa81` | integrated | - | pty cross-talk protections already covered in cms via stronger socket/token isolation and existing pty-output-isolation regression tests |
+
+## 已處理（origin/dev delta 2026-02-26 round78 (rewrite-only) @ 2026-02-26T02:30:41.756Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `d6331cf792e02c75a96f5f8a39adaedd9a2d1298` | skipped | - | ui colors update is presentation/theme scope, deferred |
+| `12016c8eb451a119c1017b2fc5554b49232399e3` | skipped | - | oc-2 theme init is theme system rollout scope, deferred |
+| `5d69f00282376bdde4133459374593457ab33e83` | skipped | - | button style tweaks are ui visual scope, deferred |
+| `24ce49d9d7c225651eb04db49f4a92f57a0d3412` | skipped | - | smoke color fallback tweak is ui visual scope, deferred |
+| `0888c02379f0dd57a17b42788469d713c71ddb51` | skipped | - | file tree background color tweak is ui visual scope, deferred |
+| `9110e6a2a7bc87ef34187f40803c8eb0b3025569` | skipped | - | share button border tweak is ui visual scope, deferred |
+| `f20c0bffd3e6701ce191ed49dab1fa29400e866f` | skipped | - | titlebar expanded button background tweak is ui visual scope, deferred |
+| `e5d52e4eb528055ffc0d461c451ff4c79fe7e99d` | skipped | - | pill tabs pressed background tweak is ui visual scope, deferred |
+| `4db2d94854500cf939b95fb030e35c29982f1fdf` | skipped | - | filetree tab height tweak is ui visual scope, deferred |
+| `08739080309bb84be71b5dd30ce6541e1bf9c029` | skipped | - | oc-2 theme color updates are theme visual scope, deferred |
+| `1f9be63e962374e2a0c668d8098b4dccb4d0b79a` | skipped | - | secondary button border/icon style tweak is ui visual scope, deferred |
+| `6d69ad557448ffb11194af0e37e3818422cc4bd6` | skipped | - | oc-2 secondary button color tweak is theme visual scope, deferred |
+| `db4ff895793d61e7a99e1c6c86f6d50bf4a854c6` | skipped | - | oc-2 theme update is visual scope, deferred |
+| `1ed4a982333c494590c1798cc01aeb19b72f6aca` | skipped | - | secondary button transition tweak is ui visual scope, deferred |
+| `431f5347af8d67f0ae0d46dae2b388f253b45da4` | skipped | - | search button style tweak is ui visual scope, deferred |
+| `c7a79f1877d0f13f194db5e072f2ee4cef5e174a` | skipped | - | icon-button css update is ui visual scope, deferred |
+| `e42cc8511299ce1a9f311d3446b03747823a23fc` | skipped | - | oc-2 theme update is visual scope, deferred |
+| `d730d8be01366999f4f453db3b7bddaf7970e0c1` | skipped | - | review diff style toggle sizing tweak is ui visual scope, deferred |
+| `1571246ba8f9c0f41889de5516769116aee38692` | skipped | - | segmented control cursor tweak is ui visual scope, deferred |
+| `1b67339e4dd9902b4d59abc444df8d9b52a6b67e` | skipped | - | radio-group css update is ui visual scope, deferred |
+
+## 已處理（origin/dev delta 2026-02-26 round79 (rewrite-only) @ 2026-02-26T02:31:37.359Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `6b29896a35700805750a53caff7d4c6aad7e1f11` | skipped | - | broad Filesystem-module migration foundation touches many core surfaces; defer to dedicated stabilization branch |
+| `37b24f4870dc35f369e4827b89b0159c12daf4df` | skipped | - | index.ts filesystem migration is part of broad refactor wave deferred for focused validation |
+| `3d189b42a3bdd98675a972524389399d229d96a3` | skipped | - | ripgrep/config filesystem migration is part of deferred refactor wave |
+| `a5c15a23e4b352b21c4e0fe8056c302436564107` | skipped | - | filesystem readJson typing refactor deferred with core filesystem migration wave |
+| `472d01fbaf8e5aa46048062d3dd8f7acb1fc2c49` | skipped | - | run/github filesystem migration is part of deferred refactor wave |
+| `a500eaa2d425978ad97b3e034404adcaab171411` | skipped | - | formatter filesystem migration deferred with broad refactor wave |
+| `82a323ef7005206541de7a40e975c63a9977e902` | skipped | - | github command filesystem migration commit in deferred refactor wave |
+| `ef155f3766868d3148efa8925e432b974edf0353` | skipped | - | file/index filesystem migration deferred with broad refactor wave |
+| `8f4a72c57a28009a576f65ee713c1241fc3df35f` | skipped | - | config/markdown/uninstall filesystem migration deferred with broad refactor wave |
+| `e0e8b94384c3df20fd56a8754383a7b52cbd0240` | skipped | - | uninstall filesystem migration deferred with broad refactor wave |
+| `c88ff3c08b508da1c3f473d1a4ffc883df7b65f8` | skipped | - | bun/index filesystem migration deferred with broad refactor wave |
+| `eb3f337695638234c28b06cdaa8515ac48443e56` | skipped | - | tui clipboard filesystem migration touches UX path and is deferred |
+| `5638b782c56e00bceeb029066811a0712c68e2ec` | skipped | - | tui editor filesystem migration touches UX path and is deferred |
+| `8bf06cbcc159a3a3a0711cff67c2e5538793445d` | skipped | - | global index filesystem migration deferred with broad refactor wave |
+| `38572b81753aa56b7d87a9e46cdb04293bbc6956` | skipped | - | julia LSP support is medium-scope feature addition deferred from current runtime parity priorities |
+| `1aa18c6cd64412db89ccfb58c2641ab3e49233e4` | skipped | - | plugin shell.env hook payload expansion touches prompt/tool contract; defer for focused plugin compatibility round |
+| `2d7c9c9692f9232d2977487f13ecddc758a4a250` | skipped | - | generated artifacts tied to deferred plugin shell.env hook payload change |
+| `be2e6f1926176dadb5a5cf12d5790189a6a5bb50` | skipped | - | pasteImage count behavior tweak in tui prompt path deferred with high-volatility UX fixes |
+
+## 已處理（origin/dev delta 2026-02-26 round80 (rewrite-only) @ 2026-02-26T02:31:53.550Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `3aaf29b69344917f3dfee8a9ca35fb24b74f2b9b` | skipped | - | nix hash bookkeeping only; no selected runtime behavior delta |
+| `91a3ee642d72b95367f745134c381c129552fbc9` | skipped | - | nix hash bookkeeping only; no selected runtime behavior delta |
+| `c6bd32000302c0cf607c1e91c536537e43848237` | skipped | - | nix hash bookkeeping only; no selected runtime behavior delta |
+| `83b7d8e04cd4e4d343f2006278ade0caa82173d2` | skipped | - | gitlab provider dependency bump deferred to dependency maintenance track |
+| `24a98413223c8309194e1578f491d92874c9aa9f` | skipped | - | sst version/tooling update across infra/env files deferred from current runtime parity stream |
+| `b714bb21d232d9c9fbb7fb1915c752d7ff4f150d` | skipped | - | setup-bun cache action switch is CI/tooling scope without selected runtime behavior objective |
