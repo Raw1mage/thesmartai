@@ -1077,3 +1077,9 @@
 | --------------- | ------ | ------------ | ---- |
 | `284251ad6615dd37d4f2c0c9b14e0a989dbf3f1e` | ported | `8bfaf0441` | Rewrite-ported BYOK usage labeling and no-balance-deduction behavior with enriched usage metadata. |
 | `5596775c35fbf92b7e83729deed4ec8e286ab3ab` | ported | `8bfaf0441` | Rewrite-ported session display in usage table via enrichment.sessionID (no physical schema column introduced in this batch). |
+
+## 已處理（origin/dev delta 2026-02-27 batch9D safety identifier @ 2026-02-26T18:57:08.080Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `1e48d7fe8228d94ded379e36975b2cce12f4a510` | ported | `bc988d3c8` | Rewrite-ported OpenAI request safety_identifier wiring with workspaceID passed through provider modifyBody contract. |
