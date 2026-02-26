@@ -1143,3 +1143,13 @@
 | `444178e079fb41ba2149a1cdfdd3040593715d70` | ported | `ddcb07242` | Rewrite-ported share docs schema URL corrections across localized docs pages. |
 | `b16f7b426c5be6feea419dca87aad2032f25462b` | ported | `ddcb07242` | Rewrite-ported TUI docs typo fix: /theme -> /themes command example. |
 | `286992269623bcb410f0de89e128ff14361d5e97` | integrated | - | Equivalent Copilot provider i18n wording already present in cms baseline for targeted locales. |
+
+## 已處理（origin/dev delta 2026-02-27 batch10I integrated checks @ 2026-02-26T19:41:09.679Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `45191ad144f6546c051fb3a94f9f3cb1e2c00ed3` | integrated | - | Keyboard previous/next message navigation and sticky-header offset behavior already present in cms session flow. |
+| `8e96447960637c2371fb94ca7ce7b456048a0de6` | integrated | - | Todo dock chevron direction fix already reflected via cms composer layout evolution; target upstream path no longer exists. |
+| `7afa48b4ef2e2039f6f627b7c495f46ce267d267` | integrated | - | Dark-mode reasoning inline code subdued style already exists in packages/ui message-part.css. |
+| `ad5f0816a33d323f2a7e6a6228136fa6a6c4b056` | integrated | - | Turbo typecheck dependency on ^build already configured in cms turbo.json. |
+| `32417774c4baccbcb23820162f0b9c196bbe06de` | integrated | - | IDE test already uses spread clone for process.env in cms baseline. |
