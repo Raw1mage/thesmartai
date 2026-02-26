@@ -2033,6 +2033,11 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                     const next = !showHidden()
                     debugCheckpoint("admin", "toggle show hidden", { enabled: next, step: step() })
                     setShowHidden(next)
+                    toast.show({
+                      message: next ? "Show All enabled" : "Show All disabled",
+                      variant: "info",
+                      duration: 1500,
+                    })
                   },
                 },
                 {
@@ -2326,9 +2331,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
                           model: modelVal.modelID,
                         })
                         if (modelVal.origin === "recent") local.model.removeFromRecent(modelVal)
-                        else if (modelVal.origin === "favorite") {
-                          local.model.toggleFavorite(modelVal, { skipValidation: true })
-                        } else if (step() !== "root") local.model.toggleHidden(modelVal)
+                        else if (step() !== "root") local.model.toggleHidden(modelVal)
                       }
                     }
                   },
@@ -2348,12 +2351,18 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
               const model = asModelSelectionValue(val)
               if (model) {
                 debugCheckpoint("admin", "unhide model", { provider: model.providerId, model: model.modelID })
+                const isHidden = local.model
+                  .hidden()
+                  .some((h) => h.providerId === model.providerId && h.modelID === model.modelID)
+                if (!isHidden) {
+                  toast.show({
+                    message: `Model "${model.modelID}" is already visible`,
+                    variant: "warning",
+                    duration: 2000,
+                  })
+                  return
+                }
                 local.model.toggleHidden(model)
-                toast.show({
-                  message: `Model "${model.modelID}" unhidden`,
-                  variant: "info",
-                  duration: 2000,
-                })
                 return
               }
               toast.show({

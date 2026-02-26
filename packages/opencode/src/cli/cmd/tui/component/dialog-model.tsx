@@ -4,6 +4,7 @@ import { useSync } from "@tui/context/sync"
 import { DialogSelect, type DialogSelectRef } from "@tui/ui/dialog-select"
 import { useDialog } from "@tui/ui/dialog"
 import { useTheme } from "@tui/context/theme"
+import { useToast } from "@tui/ui/toast"
 import { Account } from "@/account"
 import { Keybind } from "@/util/keybind"
 import { debugCheckpoint } from "@/util/debug"
@@ -24,6 +25,7 @@ export function DialogModel(props: { providerId?: string }) {
   const local = useLocal()
   const sync = useSync()
   const dialog = useDialog()
+  const toast = useToast()
   const { theme } = useTheme()
   const [ref, setRef] = createSignal<DialogSelectRef<OptionValue>>()
   const [query, setQuery] = createSignal("")
@@ -298,13 +300,6 @@ export function DialogModel(props: { providerId?: string }) {
             const val = option?.value as OptionValue | undefined
             if (!val || val.kind !== "model") return
             local.model.toggleFavorite({ providerId: val.providerId, modelID: val.modelID }, { skipValidation: true })
-            // Auto-unhide when adding to favorites
-            const isHidden = local.model
-              .hidden()
-              .some((h) => h.providerId === val.providerId && h.modelID === val.modelID)
-            if (isHidden) {
-              local.model.toggleHidden({ providerId: val.providerId, modelID: val.modelID })
-            }
           },
         },
         {
@@ -316,21 +311,16 @@ export function DialogModel(props: { providerId?: string }) {
             const val = option?.value as OptionValue | undefined
             if (!val) return
             if (val.kind === "provider") {
+              const hidden = local.model.isProviderHidden(val.providerId)
               local.model.toggleHiddenProvider(val.providerId)
+              toast.show({
+                message: hidden ? `Provider unhidden: ${val.providerId}` : `Provider hidden: ${val.providerId}`,
+                variant: "info",
+                duration: 2000,
+              })
               return
             }
             if (val.kind !== "model") return
-            if (val.origin === "favorite") {
-              local.model.toggleFavorite({ providerId: val.providerId, modelID: val.modelID }, { skipValidation: true })
-              // Auto-hide when removing from favorites
-              const isHidden = local.model
-                .hidden()
-                .some((h) => h.providerId === val.providerId && h.modelID === val.modelID)
-              if (!isHidden) {
-                local.model.toggleHidden({ providerId: val.providerId, modelID: val.modelID })
-              }
-              return
-            }
             local.model.toggleHidden({ providerId: val.providerId, modelID: val.modelID })
           },
         },
@@ -342,10 +332,22 @@ export function DialogModel(props: { providerId?: string }) {
           onTrigger: (option: any) => {
             const val = option?.value as OptionValue | undefined
             if (val?.kind === "section") {
-              setShowHiddenProviders(!showHiddenProviders())
+              const next = !showHiddenProviders()
+              setShowHiddenProviders(next)
+              toast.show({
+                message: next ? "Show All Providers enabled" : "Show All Providers disabled",
+                variant: "info",
+                duration: 1500,
+              })
               return
             }
-            setShowHiddenModels(!showHiddenModels())
+            const next = !showHiddenModels()
+            setShowHiddenModels(next)
+            toast.show({
+              message: next ? "Show Hidden Models enabled" : "Show Hidden Models disabled",
+              variant: "info",
+              duration: 1500,
+            })
           },
         },
         {
@@ -360,6 +362,11 @@ export function DialogModel(props: { providerId?: string }) {
               if (!showHiddenProviders()) return
               if (local.model.isProviderHidden(val.providerId)) {
                 local.model.toggleHiddenProvider(val.providerId)
+                toast.show({
+                  message: `Provider unhidden: ${val.providerId}`,
+                  variant: "info",
+                  duration: 2000,
+                })
               }
               return
             }
