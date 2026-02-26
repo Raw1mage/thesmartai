@@ -246,10 +246,9 @@ export function DialogModel(props: { providerId?: string }) {
       for (const [index, [mid, meta]] of models.entries()) {
         const favorite = favorites.some((f) => f.providerId === fam && f.modelID === mid)
         const branch = index === models.length - 1 ? "└─" : "├─"
-        const modelIndent = favorite ? "     " : "      "
         list.push({
           value: { kind: "model", providerId: fam, modelID: mid } as ModelOptionValue,
-          title: `${modelIndent}${branch} ${meta.name} ${favorite ? "★" : ""}`,
+          title: `      ${branch} ${meta.name} ${favorite ? "★" : " "}`,
           gutter: undefined,
           description:
             meta.cooldownUntil && meta.cooldownUntil > Date.now()
@@ -399,6 +398,7 @@ export function DialogModel(props: { providerId?: string }) {
       current={currentOption()}
       options={options()}
       keybindLayout="inline"
+      hideCurrentIndicator
     />
   )
 }

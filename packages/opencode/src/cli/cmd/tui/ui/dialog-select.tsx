@@ -68,7 +68,8 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   createEffect(
     on(
       () => props.current,
-      (current) => {
+      (current, previous) => {
+        if (previous && current && isDeepEqual(previous, current)) return
         if (current) {
           const currentIndex = flat().findIndex((opt) => isDeepEqual(opt.value, current))
           if (currentIndex >= 0) {
@@ -144,18 +145,38 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
   const selected = createMemo(() => flat()[store.selected])
 
   createEffect(
-    on([() => store.filter, () => props.current], ([filter, current]) => {
-      setTimeout(() => {
-        if (filter.length > 0) {
-          moveTo(0, true)
-        } else if (current) {
-          const currentIndex = flat().findIndex((opt) => isDeepEqual(opt.value, current))
-          if (currentIndex >= 0) {
-            moveTo(currentIndex, true)
-          }
+    on(flat, (nextFlat, prevFlat) => {
+      if (nextFlat.length === 0) {
+        if (store.selected !== 0) setStore("selected", 0)
+        return
+      }
+
+      const previousSelected = prevFlat?.[store.selected]
+      if (previousSelected) {
+        const nextIndex = nextFlat.findIndex((opt) => isDeepEqual(opt.value, previousSelected.value))
+        if (nextIndex >= 0) {
+          if (nextIndex !== store.selected) setStore("selected", nextIndex)
+          return
         }
-      }, 0)
+      }
+
+      if (store.selected >= nextFlat.length) {
+        setStore("selected", nextFlat.length - 1)
+      }
     }),
+  )
+
+  createEffect(
+    on(
+      () => store.filter,
+      (filter) => {
+        setTimeout(() => {
+          if (filter.length > 0) {
+            moveTo(0, true)
+          }
+        }, 0)
+      },
+    ),
   )
 
   function move(direction: number) {
