@@ -573,3 +573,56 @@
 | `ad3c192837cc740e189034d8f6fc9f6b72db9bda` | skipped | - | tui thread/worker exit lifecycle fix deferred for dedicated tui threading verification |
 | `2a2437bf22cb8f5db5ddb46a004be628ea4a6624` | skipped | - | generated auth command artifact only; deferred with cli generation churn |
 | `cb88fe26aa05dfb865c0f7f2589a35197deb6e24` | skipped | - | missing newline cleanup in export cmd is non-functional micro-change deferred |
+
+## 已處理（origin/dev delta 2026-02-26 round71 (rewrite-only) @ 2026-02-26T02:22:55.142Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `fb7b2f6b4d66d14177b5c0168049863842665925` | skipped | - | app provider-model toggle UI feature deferred with app parity track |
+| `0186a8506340f6f6715262d4986c45740fb488d5` | skipped | - | app prompt-input Escape handling fix is app UX scope outside current core runtime stream |
+| `10985671ad9553e7ac594ede30981166f69ba3c5` | skipped | - | large app session timeline/turn rework is product UI architecture scope, deferred |
+| `277c68d8e5f95b57d44e00ea180c359ada56bd3c` | skipped | - | app polish commit is UI scope, deferred |
+| `e273a31e70741f48dbc316145c568306dfd09624` | skipped | - | titlebar icon spacing tweak is UI polish scope, deferred |
+| `703d6347445e1465cdf5ac5c4381a9d89afa3889` | skipped | - | generated app header artifact only; deferred with app UI batch |
+| `9b1d7047d4f17b37f6b3a3223a2669948424be08` | skipped | - | file tree toggle visibility tweak is app UI scope, deferred |
+| `0cb11c241281b4d21ea6b2034b16aae1027b2884` | skipped | - | titlebar padding tweak is app UI scope, deferred |
+| `d31e9cff6a76af9a4667507b359f713b6fdd1e7d` | skipped | - | titlebar border styling tweak is app UI scope, deferred |
+| `a8669aba8fd37ae7b95b8bcadd44fd37c1b49c84` | skipped | - | titlebar active background tweak is app UI scope, deferred |
+| `8fcfbd697a18477b899ca17454089c05e48366b8` | skipped | - | titlebar search text-size tweak is app UI scope, deferred |
+| `ce0844273241ce842593cf55800b1409c01966cf` | skipped | - | titlebar search/keybind visual tweak is app UI scope, deferred |
+| `98f3ff62734cde32eeaf1d6929ab76d923dd046f` | skipped | - | titlebar search/padding tweak is app UI scope, deferred |
+| `8e243c6500e32af41cae47bba62dbba451f6a79d` | skipped | - | titlebar action padding tweak is app UI scope, deferred |
+| `222b6cda96895fb86cee12b2a692a016bb09d637` | skipped | - | magnifying-glass icon tweak is UI polish scope, deferred |
+| `5a3e0ef13aabd973f48b94fb74b9924a85211de0` | skipped | - | message hover meta display tweak is UI polish scope, deferred |
+| `2cac84882380c8b2a6e3ae27521fedf80407124c` | skipped | - | provider catalog naming tweak in ui message meta is UI/product scope, deferred |
+| `14684d8e75bfc9113657de6678dec7c03aeba7a1` | skipped | - | user message hover meta refinement is UI polish scope, deferred |
+| `57a5d5fd342b6451384d7549b00189b6891116bf` | skipped | - | assistant response hover meta tweak is UI polish scope, deferred |
+| `1d78100f63e81b7c945c8eda2ce0e42a9986fad2` | skipped | - | full-width user message meta tweak is UI scope, deferred |
+| `652a77655461b9ae379d437ae667f6a0b97655eb` | skipped | - | copy-response tooltip text tweak is UI copy scope, deferred |
+| `adfbfe350dac1c78359a38180bba8dafeed9d192` | skipped | - | prompt mode toggle clickability tweak is app UI scope, deferred |
+| `92912219dfa0ef51c88a329e04e0b69446328c2b` | skipped | - | prompt mode icon color/padding tweak is app UI scope, deferred |
+| `d327a2b1cf750a7552d149078658fdc8ad037171` | skipped | - | prompt input radio-group UX refactor is app UI scope, deferred |
+| `26c7b240bac7ae9c4b9d0d4d50ae288479f861c3` | skipped | - | app css cleanup is non-core maintenance churn |
+| `e345b89ce56cf7fbd0c58c5f882eaf9a8ebc8fb0` | skipped | - | tool-call batching display behavior in ui layer deferred with app/ui parity track |
+| `20f43372f6714803246d50c08a60723469418f3a` | skipped | - | terminal disconnect/resync fix in app layer deferred with app parity track |
+| `3a505b2691f956f4d11e167fe30096e346ad28ae` | skipped | - | virtualizer scroll-root fix in ui library scope deferred with app/ui track |
+| `bab3124e8b74343fb93a4ff543fb7f9ed1a6f3c3` | skipped | - | prompt input quirks fix in app layer deferred with app parity track |
+
+## 已處理（origin/dev delta 2026-02-26 round72 (rewrite-only) @ 2026-02-26T02:23:08.630Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `d93cefd47af5cb18f4c5e0a978537e1da9d58658` | skipped | - | console website Safari css fix is web product surface scope, deferred |
+| `d338bd528c010bdab481e0e9ecc637674a2d5246` | skipped | - | desktop windows cli visibility behavior is desktop shell scope, deferred |
+| `4d5e86d8a56f3aca4ef00eead34d33f3c6a41e07` | skipped | - | desktop e2e tests addition is app/desktop verification scope outside current runtime stream |
+| `d055c1cad6b46bee80909d1feffc87be14598e00` | skipped | - | desktop sidecar health-check timeout behavior is desktop shell scope, deferred |
+| `4025b655a403141ef34102daf33fca1a886ae540` | skipped | - | desktop shell replication refactor is desktop runtime scope, deferred |
+| `7379903568552be7dcfe846856f6cdd547bd97f0` | skipped | - | file tree/titlebar visual tweaks are app UI scope, deferred |
+| `a685e7a805454110d92ed4da5a3799a15ea1bcb9` | skipped | - | file icon monochrome behavior tweak is app UI scope, deferred |
+| `df59d1412bd459d0f6cdc6b2c715501eaabf7043` | skipped | - | homepage video layout shift css fix is console website scope, deferred |
+
+## 已處理（origin/dev delta 2026-02-26 round73 (rewrite-only) @ 2026-02-26T02:23:25.488Z）
+
+| Upstream Commit | Status | Local Commit | Note |
+| --------------- | ------ | ------------ | ---- |
+| `3dfbb7059345350fdcb3f45fe9a44697c08a040a` | skipped | - | cross app+server SSE reconnect hardening spans volatile surfaces; defer to dedicated reconnect validation round |
