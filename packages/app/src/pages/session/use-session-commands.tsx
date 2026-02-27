@@ -75,7 +75,7 @@ export const useSessionCommands = (input: SessionCommandContext) => {
       title: input.language.t("command.file.open"),
       description: input.language.t("palette.search.placeholder"),
       slash: "session",
-      onSelect: () => input.dialog.show(() => <DialogSelectFile onOpenFile={input.showAllFiles} />),
+      onSelect: () => input.dialog.show(() => <DialogSelectFile mode="sessions" onOpenFile={input.showAllFiles} />),
     }),
     sessionCommand({
       id: "session.new",
@@ -361,116 +361,6 @@ export const useSessionCommands = (input: SessionCommandContext) => {
     }),
   ])
 
-  const shareCommands = createMemo(() => {
-    if (input.sync.data.config.share === "disabled") return []
-    return [
-      sessionCommand({
-        id: "session.share",
-        title: input.info()?.share?.url
-          ? input.language.t("session.share.copy.copyLink")
-          : input.language.t("command.session.share"),
-        description: input.info()?.share?.url
-          ? input.language.t("toast.session.share.success.description")
-          : input.language.t("command.session.share.description"),
-        slash: "share",
-        disabled: !input.params.id,
-        onSelect: async () => {
-          if (!input.params.id) return
-
-          const write = (value: string) => {
-            const body = typeof document === "undefined" ? undefined : document.body
-            if (body) {
-              const textarea = document.createElement("textarea")
-              textarea.value = value
-              textarea.setAttribute("readonly", "")
-              textarea.style.position = "fixed"
-              textarea.style.opacity = "0"
-              textarea.style.pointerEvents = "none"
-              body.appendChild(textarea)
-              textarea.select()
-              const copied = document.execCommand("copy")
-              body.removeChild(textarea)
-              if (copied) return Promise.resolve(true)
-            }
-
-            const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard
-            if (!clipboard?.writeText) return Promise.resolve(false)
-            return clipboard.writeText(value).then(
-              () => true,
-              () => false,
-            )
-          }
-
-          const copy = async (url: string, existing: boolean) => {
-            const ok = await write(url)
-            if (!ok) {
-              showToast({
-                title: input.language.t("toast.session.share.copyFailed.title"),
-                variant: "error",
-              })
-              return
-            }
-
-            showToast({
-              title: existing
-                ? input.language.t("session.share.copy.copied")
-                : input.language.t("toast.session.share.success.title"),
-              description: input.language.t("toast.session.share.success.description"),
-              variant: "success",
-            })
-          }
-
-          const existing = input.info()?.share?.url
-          if (existing) {
-            await copy(existing, true)
-            return
-          }
-
-          const url = await input.sdk.client.session
-            .share({ sessionID: input.params.id })
-            .then((res) => res.data?.share?.url)
-            .catch(() => undefined)
-          if (!url) {
-            showToast({
-              title: input.language.t("toast.session.share.failed.title"),
-              description: input.language.t("toast.session.share.failed.description"),
-              variant: "error",
-            })
-            return
-          }
-
-          await copy(url, false)
-        },
-      }),
-      sessionCommand({
-        id: "session.unshare",
-        title: input.language.t("command.session.unshare"),
-        description: input.language.t("command.session.unshare.description"),
-        slash: "unshare",
-        disabled: !input.params.id || !input.info()?.share?.url,
-        onSelect: async () => {
-          if (!input.params.id) return
-          await input.sdk.client.session
-            .unshare({ sessionID: input.params.id })
-            .then(() =>
-              showToast({
-                title: input.language.t("toast.session.unshare.success.title"),
-                description: input.language.t("toast.session.unshare.success.description"),
-                variant: "success",
-              }),
-            )
-            .catch(() =>
-              showToast({
-                title: input.language.t("toast.session.unshare.failed.title"),
-                description: input.language.t("toast.session.unshare.failed.description"),
-                variant: "error",
-              }),
-            )
-        },
-      }),
-    ]
-  })
-
   input.command.register("session", () =>
     combineCommandSections([
       sessionCommands(),
@@ -481,7 +371,6 @@ export const useSessionCommands = (input: SessionCommandContext) => {
       agentCommands(),
       permissionCommands(),
       sessionActionCommands(),
-      shareCommands(),
     ]),
   )
 }
