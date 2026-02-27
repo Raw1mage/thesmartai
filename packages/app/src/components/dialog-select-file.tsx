@@ -34,7 +34,7 @@ type Entry = {
   updated?: number
 }
 
-type DialogSelectFileMode = "all" | "files"
+type DialogSelectFileMode = "all" | "files" | "sessions"
 
 const ENTRY_LIMIT = 5
 const COMMON_COMMAND_IDS = [
@@ -97,13 +97,30 @@ const createSessionEntry = (
   updated: input.updated,
 })
 
+const isSameDay = (a: Date, b: Date) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+
+const sessionGroupLabel = (updated?: number) => {
+  if (!updated) return "Earlier"
+  const now = new Date()
+  const date = new Date(updated)
+  if (isSameDay(now, date)) return "Today"
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  })
+}
+
 function createCommandEntries(props: {
   filesOnly: () => boolean
+  sessionsOnly: () => boolean
   command: ReturnType<typeof useCommand>
   language: ReturnType<typeof useLanguage>
 }) {
   const allowed = createMemo(() => {
-    if (props.filesOnly()) return []
+    if (props.filesOnly() || props.sessionsOnly()) return []
     return props.command.options.filter(
       (option) => !option.disabled && !option.id.startsWith("suggested.") && option.id !== "file.open",
     )
@@ -229,7 +246,6 @@ function createSessionEntries(props: {
       .then((results) => {
         if (state.token !== current) return [] as Entry[]
         const seen = new Set<string>()
-        const category = props.language.t("command.category.session")
         const next = results
           .flat()
           .filter((item) => {
@@ -238,7 +254,8 @@ function createSessionEntries(props: {
             seen.add(key)
             return true
           })
-          .map((item) => createSessionEntry(item, category))
+          .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
+          .map((item) => createSessionEntry(item, sessionGroupLabel(item.updated)))
         state.cached = next
         return next
       })
@@ -264,12 +281,13 @@ export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFil
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const filesOnly = () => props.mode === "files"
+  const sessionsOnly = () => props.mode === "sessions"
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey))
   const view = createMemo(() => layout.view(sessionKey))
   const state = { cleanup: undefined as (() => void) | void, committed: false }
   const [grouped, setGrouped] = createSignal(false)
-  const commandEntries = createCommandEntries({ filesOnly, command, language })
+  const commandEntries = createCommandEntries({ filesOnly, sessionsOnly, command, language })
   const fileEntries = createFileEntries({ file, tabs, language })
 
   const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
@@ -305,7 +323,12 @@ export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFil
 
   const items = async (text: string) => {
     const query = text.trim()
-    setGrouped(query.length > 0)
+    setGrouped(sessionsOnly() || query.length > 0)
+
+    if (sessionsOnly()) {
+      const list = await Promise.resolve(sessions(query || "session"))
+      return list
+    }
 
     if (!query && filesOnly()) {
       const loaded = file.tree.state("")?.loaded
@@ -380,11 +403,16 @@ export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFil
 
   return (
     <Dialog class="pt-3 pb-0 !max-h-[480px]" transition>
+      <Show when={sessionsOnly()}>
+        <div class="px-3 pb-2 text-13-medium text-text-strong">Sessions</div>
+      </Show>
       <List
         search={{
           placeholder: filesOnly()
             ? language.t("session.header.searchFiles")
-            : language.t("palette.search.placeholder"),
+            : sessionsOnly()
+              ? language.t("palette.search.placeholder")
+              : language.t("palette.search.placeholder"),
           autofocus: true,
           hideIcon: true,
         }}
