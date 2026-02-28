@@ -34,6 +34,7 @@ import { ErrorPage } from "./pages/error"
 import { AuthGate } from "@/components/auth-gate"
 const Home = lazy(() => import("@/pages/home"))
 const Session = lazy(() => import("@/pages/session"))
+const TerminalPopout = lazy(() => import("@/pages/session/terminal-popout"))
 const Loading = () => <div class="size-full" />
 
 const HomeRoute = () => (
@@ -46,6 +47,14 @@ const SessionRoute = () => (
   <SessionProviders>
     <Suspense fallback={<Loading />}>
       <Session />
+    </Suspense>
+  </SessionProviders>
+)
+
+const TerminalPopoutRoute = () => (
+  <SessionProviders>
+    <Suspense fallback={<Loading />}>
+      <TerminalPopout />
     </Suspense>
   </SessionProviders>
 )
@@ -197,6 +206,7 @@ export function AppInterface(props: { defaultUrl?: string; children?: JSX.Elemen
                   <Route path="/:dir" component={DirectoryLayout}>
                     <Route path="/" component={SessionIndexRoute} />
                     <Route path="/session/:id?" component={SessionRoute} />
+                    <Route path="/session/:id?/terminal-popout" component={TerminalPopoutRoute} />
                   </Route>
                 </Router>
               </GlobalSyncProvider>
