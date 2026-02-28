@@ -31,7 +31,6 @@ import { useLanguage } from "@/context/language"
 import { useModels } from "@/context/models"
 import { Icon } from "@opencode-ai/ui/icon"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
-import { Switch } from "@opencode-ai/ui/switch"
 import { showToast } from "@opencode-ai/ui/toast"
 import { iconNames, type IconName } from "@opencode-ai/ui/icons/provider"
 import {
@@ -40,6 +39,7 @@ import {
   filterModelsForMode,
   normalizeProviderFamily,
 } from "./model-selector-state"
+import "./dialog-select-model.css"
 
 function cn(...classes: (string | undefined | null | false)[]) {
   return classes.filter(Boolean).join(" ")
@@ -47,6 +47,8 @@ function cn(...classes: (string | undefined | null | false)[]) {
 
 const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
+
+const MODEL_MANAGER_LAYOUT_STORAGE_KEY = "opencode.web.modelManager.layout.v1"
 
 const ModelList: Component<{
   provider?: string
@@ -244,8 +246,10 @@ const ProviderItem: Component<{
           icon={props.enabled !== false ? "eye" : "circle-ban-sign"}
           variant="ghost"
           class={cn(
-            "size-6 shrink-0 opacity-100 transition-opacity hover:text-icon-base",
-            props.enabled !== false ? "text-icon-base" : "text-icon-warning-base",
+            "size-6 shrink-0 opacity-100 transition-opacity",
+            props.enabled !== false
+              ? "[&_[data-slot=icon-svg]]:text-icon-success-base hover:[&_[data-slot=icon-svg]]:text-icon-success-base"
+              : "[&_[data-slot=icon-svg]]:text-icon-danger-base hover:[&_[data-slot=icon-svg]]:text-icon-danger-base",
           )}
           onClick={props.onToggleEnabled}
         />
@@ -259,6 +263,7 @@ const ModelItem: Component<{
   selected: boolean
   enabled: boolean
   unavailableReason?: string
+  showUnavailableTag?: boolean
   onToggleEnabled: (e: MouseEvent) => void
 }> = (props) => {
   const language = useLanguage()
@@ -273,7 +278,7 @@ const ModelItem: Component<{
         <Show when={props.item.latest}>
           <Tag>{language.t("model.tag.latest")}</Tag>
         </Show>
-        <Show when={props.unavailableReason}>
+        <Show when={props.showUnavailableTag !== false && props.unavailableReason}>
           <Tag>{language.t("dialog.model.activity.unavailable")}</Tag>
         </Show>
       </div>
@@ -281,8 +286,10 @@ const ModelItem: Component<{
         icon={props.enabled ? "eye" : "circle-ban-sign"}
         variant="ghost"
         class={cn(
-          "size-6 shrink-0 opacity-100 transition-opacity hover:text-icon-base",
-          props.enabled ? "text-icon-base" : "text-icon-warning-base",
+          "size-6 shrink-0 opacity-100 transition-opacity",
+          props.enabled
+            ? "[&_[data-slot=icon-svg]]:text-icon-success-base hover:[&_[data-slot=icon-svg]]:text-icon-success-base"
+            : "[&_[data-slot=icon-svg]]:text-icon-danger-base hover:[&_[data-slot=icon-svg]]:text-icon-danger-base",
         )}
         onClick={props.onToggleEnabled}
       />
@@ -297,13 +304,192 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
   const globalSync = useGlobalSync()
   const sdk = useSDK()
 
-  const [accountInfo] = createResource(async () => {
+  const [accountInfo, { refetch: refetchAccountInfo }] = createResource(async () => {
     return sdk.client.account.listAll().then((x) => x.data)
   })
 
   const [selectedProviderId, setSelectedProviderId] = createSignal<string>(props.provider || "")
   const [selectedAccountId, setSelectedAccountId] = createSignal<string>("")
+  const [switchingAccountId, setSwitchingAccountId] = createSignal<string>("")
   const [mode, setMode] = createSignal<"favorites" | "all">("favorites")
+  const [dialogOffset, setDialogOffset] = createSignal({ x: 0, y: 0 })
+  const initialDialogSize = () => {
+    if (typeof window === "undefined") return { width: 980, height: 760 }
+    return {
+      width: Math.min(window.innerWidth - 16, Math.max(900, Math.floor(window.innerWidth * 0.78))),
+      height: Math.min(window.innerHeight - 16, Math.max(620, Math.floor(window.innerHeight * 0.78))),
+    }
+  }
+  const [dialogSize, setDialogSize] = createSignal(initialDialogSize())
+  let dialogContainerEl: HTMLElement | undefined
+
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+  const resolveDialogContainer = () => {
+    if (dialogContainerEl && document.body.contains(dialogContainerEl)) return dialogContainerEl
+    const content = document.querySelector(".model-manager-dialog") as HTMLElement | null
+    const container = content?.closest('[data-slot="dialog-container"]') as HTMLElement | null
+    dialogContainerEl = container ?? undefined
+    return dialogContainerEl
+  }
+
+  const clampDialogState = (nextSize = dialogSize(), nextOffset = dialogOffset()) => {
+    // Keep a minimum size, but avoid strict viewport max-clamping.
+    // Hard max + offset clamping caused reverse-motion feeling while resizing.
+    const width = Math.max(560, nextSize.width)
+    const height = Math.max(320, nextSize.height)
+    const x = nextOffset.x
+    const y = nextOffset.y
+    return { size: { width, height }, offset: { x, y } }
+  }
+
+  const loadDialogLayout = () => {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(MODEL_MANAGER_LAYOUT_STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as {
+        width?: number
+        height?: number
+        x?: number
+        y?: number
+      }
+      const nextSize = {
+        width: typeof parsed.width === "number" ? parsed.width : dialogSize().width,
+        height: typeof parsed.height === "number" ? parsed.height : dialogSize().height,
+      }
+      const nextOffset = {
+        x: typeof parsed.x === "number" ? parsed.x : dialogOffset().x,
+        y: typeof parsed.y === "number" ? parsed.y : dialogOffset().y,
+      }
+      const clamped = clampDialogState(nextSize, nextOffset)
+      setDialogSize(clamped.size)
+      setDialogOffset(clamped.offset)
+    } catch {
+      // ignore malformed persisted layout
+    }
+  }
+
+  const saveDialogLayout = () => {
+    if (typeof window === "undefined") return
+    try {
+      const size = dialogSize()
+      const offset = dialogOffset()
+      window.localStorage.setItem(
+        MODEL_MANAGER_LAYOUT_STORAGE_KEY,
+        JSON.stringify({ width: size.width, height: size.height, x: offset.x, y: offset.y }),
+      )
+    } catch {
+      // ignore storage quota/security errors
+    }
+  }
+
+  const applyDialogFrame = () => {
+    const container = resolveDialogContainer()
+    if (!container) return
+    const state = clampDialogState()
+    if (
+      state.size.width !== dialogSize().width ||
+      state.size.height !== dialogSize().height ||
+      state.offset.x !== dialogOffset().x ||
+      state.offset.y !== dialogOffset().y
+    ) {
+      setDialogSize(state.size)
+      setDialogOffset(state.offset)
+    }
+    container.style.width = `${state.size.width}px`
+    container.style.height = `${state.size.height}px`
+    container.style.transform = `translate(${state.offset.x}px, ${state.offset.y}px)`
+  }
+
+  createEffect(() => {
+    applyDialogFrame()
+  })
+
+  createEffect(() => {
+    loadDialogLayout()
+  })
+
+  createEffect(() => {
+    dialogSize()
+    dialogOffset()
+    saveDialogLayout()
+  })
+
+  createEffect(() => {
+    const onResize = () => {
+      applyDialogFrame()
+    }
+    window.addEventListener("resize", onResize)
+    onCleanup(() => window.removeEventListener("resize", onResize))
+  })
+
+  const startDrag = (event: MouseEvent) => {
+    const target = event.target as HTMLElement | null
+    if (!target) return
+    if (target.closest("button, [role='switch'], [data-no-drag], input, textarea, a")) return
+
+    event.preventDefault()
+    const start = { x: event.clientX, y: event.clientY }
+    const origin = dialogOffset()
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const nextOffset = {
+        x: origin.x + (moveEvent.clientX - start.x),
+        y: origin.y + (moveEvent.clientY - start.y),
+      }
+      setDialogOffset(clampDialogState(dialogSize(), nextOffset).offset)
+    }
+
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove)
+      window.removeEventListener("mouseup", onUp)
+    }
+
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
+  }
+
+  const startResize = (event: MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const start = { x: event.clientX, y: event.clientY }
+    const origin = dialogSize()
+    const originOffset = dialogOffset()
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const dx = moveEvent.clientX - start.x
+      const dy = moveEvent.clientY - start.y
+      const nextSize = {
+        width: origin.width + dx,
+        height: origin.height + dy,
+      }
+      const nextOffset = {
+        x: originOffset.x + dx / 2,
+        y: originOffset.y + dy / 2,
+      }
+      const clamped = clampDialogState(nextSize, nextOffset)
+      setDialogSize(clamped.size)
+      setDialogOffset(clamped.offset)
+    }
+
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove)
+      window.removeEventListener("mouseup", onUp)
+    }
+
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
+  }
+
+  createEffect(() => {
+    const header = document.querySelector(".model-manager-dialog [data-slot='dialog-header']") as HTMLElement | null
+    if (!header) return
+    header.style.cursor = "move"
+    const onMouseDown = (event: globalThis.MouseEvent) => startDrag(event as unknown as MouseEvent)
+    header.addEventListener("mousedown", onMouseDown)
+    onCleanup(() => header.removeEventListener("mousedown", onMouseDown))
+  })
 
   const providerStatus = createMemo(() => {
     const map = new Map<string, string>()
@@ -456,14 +642,109 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
     })
   }
 
+  const switchActiveAccount = (row: { id: string; unavailable?: string }) => {
+    const providerId = selectedProviderId()
+    if (!providerId) return
+    const family = familyOf(providerId)
+    if (!family) return
+
+    if (row.unavailable) {
+      showToast({
+        variant: "error",
+        title: language.t("dialog.model.activity.selectBlocked"),
+        description: row.unavailable,
+      })
+      return
+    }
+
+    const previous = selectedAccountId()
+    setSelectedAccountId(row.id)
+    setSwitchingAccountId(row.id)
+
+    sdk.client.account
+      .setActive({ family, accountId: row.id })
+      .then(() => refetchAccountInfo())
+      .catch((err) => {
+        setSelectedAccountId(previous)
+        showToast({
+          variant: "error",
+          title: language.t("common.requestFailed"),
+          description: err instanceof Error ? err.message : String(err),
+        })
+      })
+      .finally(() => setSwitchingAccountId(""))
+  }
+
   return (
     <Dialog
       title={language.t("dialog.model.select.title")}
-      class="w-[800px] max-w-[90vw] h-[600px] max-h-[85vh] flex flex-col p-0 overflow-hidden"
+      class="model-manager-dialog relative w-full h-full min-w-[560px] min-h-[320px] flex flex-col p-0 overflow-hidden [&_[data-slot=dialog-header]]:px-3 [&_[data-slot=dialog-header]]:py-2 [&_[data-slot=dialog-title]]:text-14-medium"
     >
-      <div class="flex flex-1 min-h-0 h-full overflow-hidden">
-        <div class="w-64 flex-shrink-0 border-r border-border-base flex flex-col bg-surface-base">
-          <div class="p-2 space-y-1 overflow-y-auto flex-1">
+      <div
+        class="px-3 py-2 border-b border-border-base bg-surface-base flex items-center justify-between gap-2 cursor-move select-none"
+        onMouseDown={startDrag}
+      >
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={mode() === "all"}
+            class="relative h-8 rounded-full border border-border-strong bg-surface-raised px-1 text-11-medium shadow-sm hover:border-border-stronger focus:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+            onClick={() => setMode((current) => (current === "favorites" ? "all" : "favorites"))}
+            title={`${language.t("dialog.model.mode.curated")}/${language.t("dialog.model.mode.all")}`}
+          >
+            <div class="relative grid h-full grid-cols-2 items-center gap-1 px-2 min-w-[128px]">
+              <span
+                class={cn(
+                  "z-10 text-center transition-colors select-none",
+                  mode() === "favorites" ? "text-text-strong" : "text-text-weaker opacity-85",
+                )}
+              >
+                {language.t("dialog.model.mode.curated")}
+              </span>
+              <span
+                class={cn(
+                  "z-10 text-center transition-colors select-none",
+                  mode() === "all" ? "text-text-strong" : "text-text-weaker opacity-85",
+                )}
+              >
+                {language.t("dialog.model.mode.all")}
+              </span>
+              <span
+                class={cn(
+                  "absolute top-0.5 h-7 w-[calc(50%-0.25rem)] rounded-full bg-surface-raised-pressed shadow-sm transition-transform duration-150",
+                  mode() === "all" ? "translate-x-[calc(100%+0.25rem)]" : "translate-x-0",
+                )}
+              />
+            </div>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <Button
+            size="small"
+            variant="ghost"
+            class="h-7 rounded-full px-3 text-text-weak hover:text-text-base border border-border-base"
+            icon="plus-small"
+            onClick={() => dialog.show(() => <DialogSelectProvider />)}
+          >
+            {language.t("command.provider.connect")}
+          </Button>
+          <Button
+            size="small"
+            variant="ghost"
+            class="h-7 rounded-full px-3 text-text-weak hover:text-text-base border border-border-base"
+            icon="sliders"
+            onClick={() => dialog.show(() => <DialogManageModels />)}
+          >
+            {language.t("dialog.model.manage")}
+          </Button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 flex-1 min-h-0 h-full overflow-hidden">
+        <div class="border-r border-border-base flex flex-col bg-surface-base min-w-0 min-h-0">
+          <div class="model-manager-column-scroll p-2 space-y-1 overflow-y-auto flex-1 min-h-0">
             <div class="px-3 py-2 text-11-medium text-text-weak uppercase tracking-wider">
               {language.t("common.providers")}
             </div>
@@ -481,43 +762,13 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
               )}
             </For>
           </div>
-
-          <div class="p-2 border-t border-border-base space-y-1">
-            <div class="flex items-center justify-between gap-2 pb-1 px-1">
-              <span class="text-12-medium text-text-weak">{language.t("dialog.model.mode.curated")}</span>
-              <Switch
-                checked={mode() === "all"}
-                onChange={(checked) => setMode(checked ? "all" : "favorites")}
-                hideLabel
-              >
-                {language.t("dialog.model.mode.all")}
-              </Switch>
-              <span class="text-12-medium text-text-weak">{language.t("dialog.model.mode.all")}</span>
-            </div>
-            <Button
-              variant="ghost"
-              class="w-full justify-start text-text-weak hover:text-text-base h-8"
-              icon="plus-small"
-              onClick={() => dialog.show(() => <DialogSelectProvider />)}
-            >
-              {language.t("command.provider.connect")}
-            </Button>
-            <Button
-              variant="ghost"
-              class="w-full justify-start text-text-weak hover:text-text-base h-8"
-              icon="sliders"
-              onClick={() => dialog.show(() => <DialogManageModels />)}
-            >
-              {language.t("dialog.model.manage")}
-            </Button>
-          </div>
         </div>
 
-        <div class="w-64 flex-shrink-0 border-r border-border-base flex flex-col bg-surface-base">
+        <div class="border-r border-border-base flex flex-col bg-surface-base min-w-0 min-h-0">
           <div class="px-3 py-2 text-11-medium text-text-weak uppercase tracking-wider border-b border-border-base">
             {language.t("settings.accounts.title")}
           </div>
-          <div class="p-2 space-y-1 overflow-y-auto flex-1">
+          <div class="model-manager-column-scroll p-2 space-y-1 overflow-y-auto flex-1 min-h-0">
             <Show
               when={accountsForSelectedProvider().length > 0}
               fallback={<div class="px-3 py-2 text-12-regular text-text-weak">No account data</div>}
@@ -531,7 +782,8 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
                         ? "bg-surface-raised-pressed text-text-strong"
                         : "hover:bg-surface-raised-hover text-text-base",
                     )}
-                    onClick={() => setSelectedAccountId(row.id)}
+                    disabled={switchingAccountId() === row.id}
+                    onClick={() => switchActiveAccount(row)}
                   >
                     <div class="flex items-center gap-2">
                       <span class="truncate flex-1">{row.label}</span>
@@ -552,7 +804,7 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
           </div>
         </div>
 
-        <div class="flex-1 flex flex-col min-w-0 bg-surface-raised-base">
+        <div class="flex flex-col min-w-0 min-h-0 bg-surface-raised-base">
           <div class="flex-1 overflow-hidden relative">
             <List
               class="h-full [&_[data-slot=list-scroll]]:h-full [&_[data-slot=list-scroll]]:p-2"
@@ -624,6 +876,7 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
                   selected={false}
                   enabled={local.model.visible({ modelID: item.id, providerID: item.provider.id })}
                   unavailableReason={modelUnavailableReason(item.provider.id, selectedAccountId())}
+                  showUnavailableTag={mode() !== "all"}
                   onToggleEnabled={(e: MouseEvent) => {
                     e.stopPropagation()
                     e.preventDefault()
@@ -640,6 +893,15 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
           </div>
         </div>
       </div>
+      <button
+        type="button"
+        aria-label="Resize model manager dialog"
+        data-no-drag
+        class="model-manager-resize-handle"
+        onMouseDown={startResize}
+      >
+        <span class="model-manager-resize-corner" />
+      </button>
     </Dialog>
   )
 }

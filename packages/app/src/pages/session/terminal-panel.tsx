@@ -1,4 +1,5 @@
-import { For, Show, createMemo } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { Portal } from "solid-js/web"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -31,6 +32,125 @@ export function TerminalPanel(props: {
   const all = createMemo(() => props.terminal.all())
   const ids = createMemo(() => all().map((pty) => pty.id))
   const byId = createMemo(() => new Map(all().map((pty) => [pty.id, pty])))
+  const [popoutRoot, setPopoutRoot] = createSignal<HTMLElement | undefined>()
+  const [popoutWindow, setPopoutWindow] = createSignal<Window | undefined>()
+  const [skipNextInlineRestore, setSkipNextInlineRestore] = createSignal(false)
+
+  const sessionTitle = () => {
+    if (typeof document === "undefined") return "Session"
+    return (document.title || "Session").trim()
+  }
+
+  const popoutTitle = () => `${sessionTitle()} · ${props.language.t("terminal.title")}`
+
+  const closePopout = () => {
+    const win = popoutWindow()
+    setSkipNextInlineRestore(true)
+    if (win && !win.closed) win.close()
+    setPopoutWindow(undefined)
+    setPopoutRoot(undefined)
+  }
+
+  const togglePopout = () => {
+    const current = popoutWindow()
+    if (current && !current.closed) {
+      closePopout()
+      return
+    }
+
+    const width = Math.max(900, Math.floor(window.innerWidth * 0.55))
+    const height = Math.max(520, Math.floor(window.innerHeight * 0.55))
+    const left = Math.max(20, Math.floor(window.screenX + (window.outerWidth - width) / 2))
+    const top = Math.max(20, Math.floor(window.screenY + (window.outerHeight - height) / 2))
+    const features = `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no`
+    const win = window.open("", "opencode-terminal-popout", features)
+    if (!win) return
+
+    const syncTheme = () => {
+      const srcHtml = document.documentElement
+      const dstHtml = win.document.documentElement
+      dstHtml.className = srcHtml.className
+      dstHtml.setAttribute("data-theme", srcHtml.getAttribute("data-theme") ?? "")
+      dstHtml.setAttribute("style", srcHtml.getAttribute("style") ?? "")
+
+      const srcBody = document.body
+      const dstBody = win.document.body
+      dstBody.className = srcBody.className
+      dstBody.setAttribute("style", srcBody.getAttribute("style") ?? "")
+    }
+
+    win.document.title = popoutTitle()
+    win.document.body.innerHTML = ""
+    syncTheme()
+    win.document.body.style.margin = "0"
+    win.document.body.style.background = "var(--background-base)"
+
+    for (const styleTag of Array.from(document.querySelectorAll("style"))) {
+      win.document.head.appendChild(styleTag.cloneNode(true))
+    }
+    for (const linkTag of Array.from(document.querySelectorAll("link[rel='stylesheet']"))) {
+      win.document.head.appendChild(linkTag.cloneNode(true))
+    }
+
+    const antiSelectStyle = win.document.createElement("style")
+    antiSelectStyle.textContent = `
+      #terminal-popout-root,
+      #terminal-popout-root * {
+        -webkit-user-select: none !important;
+        user-select: none !important;
+      }
+    `
+    win.document.head.appendChild(antiSelectStyle)
+
+    const root = win.document.createElement("div")
+    root.id = "terminal-popout-root"
+    root.style.width = "100vw"
+    root.style.height = "100vh"
+    root.style.overflow = "hidden"
+    root.style.position = "fixed"
+    root.style.inset = "0"
+    win.document.body.appendChild(root)
+
+    const onClosed = () => {
+      setPopoutWindow(undefined)
+      setPopoutRoot(undefined)
+    }
+    win.addEventListener("beforeunload", onClosed)
+
+    const observer = new MutationObserver(() => syncTheme())
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme"] })
+    observer.observe(document.body, { attributes: true, attributeFilter: ["class", "style"] })
+    win.addEventListener("beforeunload", () => observer.disconnect(), { once: true })
+
+    setPopoutWindow(win)
+    setPopoutRoot(root)
+    win.focus()
+  }
+
+  createEffect(() => {
+    const win = popoutWindow()
+    if (!win) return
+    if (win.closed) {
+      setPopoutWindow(undefined)
+      setPopoutRoot(undefined)
+    }
+  })
+
+  createEffect(() => {
+    const win = popoutWindow()
+    if (!win || win.closed) return
+    win.document.title = popoutTitle()
+  })
+
+  createEffect(() => {
+    if (popoutWindow()) return
+    if (!skipNextInlineRestore()) return
+    queueMicrotask(() => setSkipNextInlineRestore(false))
+  })
+
+  onCleanup(() => {
+    closePopout()
+  })
 
   return (
     <Show when={props.open}>
@@ -104,6 +224,15 @@ export function TerminalPanel(props: {
                     </For>
                   </SortableProvider>
                   <div class="h-full flex items-center justify-center">
+                    <TooltipKeybind title="Pop out terminal" keybind="" class="flex items-center">
+                      <IconButton
+                        icon={popoutWindow() ? "layout-bottom-full" : "square-arrow-top-right"}
+                        variant="ghost"
+                        iconSize="large"
+                        onClick={togglePopout}
+                        aria-label="Pop out terminal"
+                      />
+                    </TooltipKeybind>
                     <TooltipKeybind
                       title={props.language.t("command.terminal.new")}
                       keybind={props.command.keybind("terminal.new")}
@@ -121,23 +250,55 @@ export function TerminalPanel(props: {
                 </Tabs.List>
               </Tabs>
               <div class="flex-1 min-h-0 relative">
-                <Show when={props.terminal.active()} keyed>
-                  {(id) => (
-                    <Show when={byId().get(id)}>
-                      {(pty) => (
-                        <div id={`terminal-wrapper-${id}`} class="absolute inset-0">
-                          <Terminal
-                            pty={pty()}
-                            onCleanup={props.terminal.update}
-                            onConnectError={() => props.terminal.clone(id)}
-                          />
-                        </div>
-                      )}
-                    </Show>
-                  )}
+                <Show
+                  when={!popoutWindow()}
+                  fallback={
+                    <div class="h-full flex items-center justify-center text-text-weak">Terminal popped out</div>
+                  }
+                >
+                  <Show when={props.terminal.active()} keyed>
+                    {(id) => (
+                      <Show when={byId().get(id)}>
+                        {(pty) => (
+                          <div id={`terminal-wrapper-${id}`} class="absolute inset-0">
+                            <Terminal
+                              pty={pty()}
+                              skipRestore={skipNextInlineRestore()}
+                              disableMouseSelection={false}
+                              onCleanup={props.terminal.update}
+                              onConnectError={() => props.terminal.clone(id)}
+                            />
+                          </div>
+                        )}
+                      </Show>
+                    )}
+                  </Show>
                 </Show>
               </div>
             </div>
+            <Show when={popoutRoot()} keyed>
+              {(mount) => (
+                <Portal mount={mount}>
+                  <Show when={props.terminal.active()} keyed>
+                    {(id) => (
+                      <Show when={byId().get(id)}>
+                        {(pty) => (
+                          <div class="absolute inset-0">
+                            <Terminal
+                              pty={pty()}
+                              skipRestore
+                              disableMouseSelection
+                              onCleanup={props.terminal.update}
+                              onConnectError={() => props.terminal.clone(id)}
+                            />
+                          </div>
+                        )}
+                      </Show>
+                    )}
+                  </Show>
+                </Portal>
+              )}
+            </Show>
             <DragOverlay>
               <Show when={props.activeTerminalDraggable()}>
                 {(draggedId) => {
