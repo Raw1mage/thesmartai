@@ -34,9 +34,10 @@ const KNOWN_PROVIDER_FAMILIES = [
   "gitlab",
 ] as const
 
-function normalizeProviderFamily(id: string): string {
+function normalizeProviderFamily(id: unknown): string {
+  if (typeof id !== "string") return ""
   const raw = id.trim().toLowerCase()
-  if (!raw) return id
+  if (!raw) return ""
   if (raw.includes(":")) return normalizeProviderFamily(raw.split(":")[0]!)
   if (raw === "google") return "google-api"
 
@@ -52,7 +53,15 @@ function normalizeProviderFamily(id: string): string {
 }
 
 function modelKey(model: ModelKey) {
-  return `${model.providerID}:${model.modelID}`
+  return `${normalizeProviderFamily(model.providerID)}:${model.modelID ?? ""}`
+}
+
+function normalizeModel(model: ModelKey): ModelKey {
+  const providerID = normalizeProviderFamily(model.providerID) || String(model.providerID ?? "")
+  return {
+    providerID,
+    modelID: String(model.modelID ?? ""),
+  }
 }
 
 export const { use: useModels, provider: ModelsProvider } = createSimpleContext({
@@ -145,12 +154,14 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     const find = (key: ModelKey) => list().find((m) => m.id === key.modelID && m.provider.id === key.providerID)
 
     const update = (model: ModelKey, partial: Partial<Omit<User, "providerID" | "modelID">>) => {
-      const index = store.user.findIndex((x) => x.modelID === model.modelID && x.providerID === model.providerID)
+      const normalized = normalizeModel(model)
+      const key = modelKey(normalized)
+      const index = store.user.findIndex((x) => modelKey(x) === key)
       if (index >= 0) {
         setStore("user", index, partial)
         return
       }
-      setStore("user", store.user.length, { ...model, visibility: "show", ...partial })
+      setStore("user", store.user.length, { ...normalized, visibility: "show", ...partial })
     }
 
     const visible = (model: ModelKey) => {
@@ -175,7 +186,8 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     }
 
     const isFavorite = (model: ModelKey) => {
-      const user = store.user.find((x) => x.modelID === model.modelID && x.providerID === model.providerID)
+      const key = modelKey(model)
+      const user = store.user.find((x) => modelKey(x) === key)
       return user?.favorite ?? false
     }
 
@@ -184,7 +196,8 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     )
 
     const isEnabled = (model: ModelKey) => {
-      const user = store.user.find((x) => x.modelID === model.modelID && x.providerID === model.providerID)
+      const key = modelKey(model)
+      const user = store.user.find((x) => modelKey(x) === key)
       return user?.visibility === "show"
     }
 

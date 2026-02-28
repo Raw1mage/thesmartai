@@ -23,6 +23,7 @@ set -e
 
 # Configuration — script lives at the project root
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_OWNER="$(stat -c '%U' "${PROJECT_ROOT}" 2>/dev/null || true)"
 
 # Load .env file if it exists
 ENV_FILE="${PROJECT_ROOT}/.env"
@@ -33,8 +34,15 @@ if [ -f "${ENV_FILE}" ]; then
 fi
 
 WEB_PORT="${OPENCODE_PORT:-1080}"
+FRONTEND_PORT="${OPENCODE_FRONTEND_DEV_PORT:-3000}"
 HTPASSWD_PATH="${OPENCODE_SERVER_HTPASSWD:-${HOME}/.config/opencode/.htpasswd}"
-PID_FILE="/tmp/opencode-web.pid"
+OPENCODE_PROFILE="${OPENCODE_PROFILE:-default}"
+PROFILE_SAFE="$(printf '%s' "${OPENCODE_PROFILE}" | tr -c 'A-Za-z0-9._-' '_')"
+RUNTIME_TMP_BASE="${XDG_RUNTIME_DIR:-/tmp}"
+PID_FILE="${RUNTIME_TMP_BASE}/opencode-web-${PROFILE_SAFE}.pid"
+BACKEND_PID_FILE="${RUNTIME_TMP_BASE}/opencode-web-backend-${PROFILE_SAFE}.pid"
+FRONTEND_PID_FILE="${RUNTIME_TMP_BASE}/opencode-web-frontend-${PROFILE_SAFE}.pid"
+SERVER_LOG_FILE="${RUNTIME_TMP_BASE}/opencode-web-${PROFILE_SAFE}.log"
 FRONTEND_DIST="${PROJECT_ROOT}/packages/app/dist"
 
 # Colors
@@ -49,6 +57,76 @@ log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
 log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
+is_owner_scoped_command() {
+    case "${1:-}" in
+        start|up|stop|down|restart|status|logs|build-frontend|build-binary)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+ensure_repo_owner_identity() {
+    local cmd="${1:-}"
+    shift || true
+
+    if ! is_owner_scoped_command "${cmd}"; then
+        return
+    fi
+
+    local current_user
+    current_user="$(id -un)"
+
+    if [ -z "${REPO_OWNER}" ] || [ "${REPO_OWNER}" = "${current_user}" ]; then
+        return
+    fi
+
+    if [ "${OPENCODE_OWNER_SWITCHED:-0}" = "1" ]; then
+        log_error "Owner switch loop detected (current=${current_user}, expected=${REPO_OWNER})."
+        exit 1
+    fi
+
+    if [ "${OPENCODE_AUTO_SWITCH_OWNER:-1}" != "1" ]; then
+        log_error "Current user (${current_user}) does not match repo owner (${REPO_OWNER})."
+        log_error "Run as repo owner or set OPENCODE_AUTO_SWITCH_OWNER=1 (default) to auto-switch."
+        exit 1
+    fi
+
+    if ! command -v sudo >/dev/null 2>&1; then
+        log_error "sudo not available; cannot auto-switch to repo owner ${REPO_OWNER}."
+        exit 1
+    fi
+
+    log_warn "Auto-switching execution user: ${current_user} -> ${REPO_OWNER}"
+
+    local -a passthrough_env
+    passthrough_env=(
+        "OPENCODE_OWNER_SWITCHED=1"
+        "OPENCODE_PROFILE=${OPENCODE_PROFILE}"
+    )
+
+    if [ -n "${XDG_CONFIG_HOME:-}" ]; then passthrough_env+=("XDG_CONFIG_HOME=${XDG_CONFIG_HOME}"); fi
+    if [ -n "${XDG_STATE_HOME:-}" ]; then passthrough_env+=("XDG_STATE_HOME=${XDG_STATE_HOME}"); fi
+    if [ -n "${XDG_DATA_HOME:-}" ]; then passthrough_env+=("XDG_DATA_HOME=${XDG_DATA_HOME}"); fi
+    if [ -n "${XDG_RUNTIME_DIR:-}" ]; then passthrough_env+=("XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}"); fi
+
+    # Prefer non-interactive direct switch; fall back to root-hop when
+    # policy grants NOPASSWD to root but not directly to target user.
+    if sudo -n -u "${REPO_OWNER}" -H true >/dev/null 2>&1; then
+        exec sudo -n -u "${REPO_OWNER}" -H env "${passthrough_env[@]}" "${PROJECT_ROOT}/webctl.sh" "${cmd}" "$@"
+    fi
+
+    if sudo -n -u root true >/dev/null 2>&1; then
+        exec sudo -n -u root env "${passthrough_env[@]}" sudo -n -u "${REPO_OWNER}" -H "${PROJECT_ROOT}/webctl.sh" "${cmd}" "$@"
+    fi
+
+    log_error "Auto-switch requires sudo rights to ${REPO_OWNER} (directly or via root NOPASSWD)."
+    log_error "Current sudo policy does not allow non-interactive switch in this shell."
+    exit 1
+}
+
 print_auth_mode() {
     if [ -f "${HTPASSWD_PATH}" ]; then
         echo "  Auth: htpasswd (${HTPASSWD_PATH})"
@@ -57,6 +135,17 @@ print_auth_mode() {
     else
         log_warn "No auth configured. Set OPENCODE_SERVER_HTPASSWD or OPENCODE_SERVER_PASSWORD."
     fi
+}
+
+print_runtime_context() {
+    echo "  Profile: ${OPENCODE_PROFILE}"
+    echo "  User: $(id -un)"
+    echo "  Repo owner: ${REPO_OWNER:-unknown}"
+    echo "  HOME: ${HOME}"
+    echo "  XDG_CONFIG_HOME: ${XDG_CONFIG_HOME:-${HOME}/.config}"
+    echo "  XDG_STATE_HOME: ${XDG_STATE_HOME:-${HOME}/.local/state}"
+    echo "  XDG_DATA_HOME: ${XDG_DATA_HOME:-${HOME}/.local/share}"
+    echo "  PID file: ${PID_FILE}"
 }
 
 # Locate bun — may not be in PATH in all environments
@@ -77,23 +166,44 @@ find_bun() {
 
 # Kill whatever is currently occupying WEB_PORT (by PID file or port scan)
 kill_existing() {
-    if [ -f "${PID_FILE}" ]; then
-        local pid
-        pid=$(cat "${PID_FILE}")
-        if kill -0 "${pid}" 2>/dev/null; then
-            log_info "Stopping existing server (pid ${pid})..."
-            kill "${pid}"
+    if [ -f "${BACKEND_PID_FILE}" ]; then
+        local backend_pid
+        backend_pid=$(cat "${BACKEND_PID_FILE}")
+        if kill -0 "${backend_pid}" 2>/dev/null; then
+            log_info "Stopping existing backend (pid ${backend_pid})..."
+            kill "${backend_pid}" 2>/dev/null || true
             sleep 1
         fi
-        rm -f "${PID_FILE}"
+        rm -f "${BACKEND_PID_FILE}"
     fi
 
-    # Fallback: kill by port
-    local port_pid
-    port_pid=$(ss -tlnp 2>/dev/null | grep ":${WEB_PORT} " | grep -oP '(?<=pid=)[0-9]+' | head -1)
-    if [ -n "${port_pid}" ]; then
-        log_warn "Port ${WEB_PORT} still occupied by pid ${port_pid}, killing..."
-        kill "${port_pid}" 2>/dev/null || true
+    rm -f "${PID_FILE}"
+
+    if [ -f "${FRONTEND_PID_FILE}" ]; then
+        local frontend_pid
+        frontend_pid=$(cat "${FRONTEND_PID_FILE}")
+        if kill -0 "${frontend_pid}" 2>/dev/null; then
+            log_info "Stopping existing frontend dev server (pid ${frontend_pid})..."
+            kill "${frontend_pid}" 2>/dev/null || true
+            sleep 1
+        fi
+        rm -f "${FRONTEND_PID_FILE}"
+    fi
+
+    # Fallback: kill by ports
+    local backend_port_pid
+    backend_port_pid=$(ss -tlnp 2>/dev/null | grep ":${WEB_PORT} " | grep -oP '(?<=pid=)[0-9]+' | head -1)
+    if [ -n "${backend_port_pid}" ]; then
+        log_warn "Backend port ${WEB_PORT} still occupied by pid ${backend_port_pid}, killing..."
+        kill "${backend_port_pid}" 2>/dev/null || true
+        sleep 1
+    fi
+
+    local frontend_port_pid
+    frontend_port_pid=$(ss -tlnp 2>/dev/null | grep ":${FRONTEND_PORT} " | grep -oP '(?<=pid=)[0-9]+' | head -1)
+    if [ -n "${frontend_port_pid}" ]; then
+        log_warn "Frontend port ${FRONTEND_PORT} still occupied by pid ${frontend_port_pid}, killing..."
+        kill "${frontend_port_pid}" 2>/dev/null || true
         sleep 1
     fi
 }
@@ -107,7 +217,7 @@ do_start() {
 
     if [ ! -f "${FRONTEND_DIST}/index.html" ]; then
         log_error "Frontend dist not found at ${FRONTEND_DIST}"
-        log_info "Run first: ./docker/webctl.sh build-frontend"
+        log_info "Run first: ./webctl.sh build-frontend"
         exit 1
     fi
 
@@ -115,13 +225,15 @@ do_start() {
 
     log_info "Starting server from source on port ${WEB_PORT}..."
 
-    OPENCODE_FRONTEND_PATH="${FRONTEND_DIST}" \
+    nohup env OPENCODE_FRONTEND_PATH="${FRONTEND_DIST}" \
         "${BUN_BIN}" --conditions=browser \
         "${PROJECT_ROOT}/packages/opencode/src/index.ts" \
-        web --port "${WEB_PORT}" --hostname 0.0.0.0 &
+        web --port "${WEB_PORT}" --hostname 0.0.0.0 \
+        >"${SERVER_LOG_FILE}" 2>&1 < /dev/null &
 
     local pid=$!
     echo "${pid}" > "${PID_FILE}"
+    echo "${pid}" > "${BACKEND_PID_FILE}"
 
     # Wait for health check
     log_info "Waiting for server to be ready..."
@@ -136,7 +248,7 @@ do_start() {
     done
 
     if [ $attempt -eq $max_attempts ]; then
-        log_warn "Server may not be ready yet. Check: ./docker/webctl.sh status"
+        log_warn "Server may not be ready yet. Check: ./webctl.sh status"
     else
         log_success "Server started (pid ${pid})"
     fi
@@ -146,10 +258,12 @@ do_start() {
     echo "  PID:      ${pid}"
     echo "  Source:   ${PROJECT_ROOT}/packages/opencode/src/"
     echo "  Frontend: ${FRONTEND_DIST}"
+    echo "  Server log: ${SERVER_LOG_FILE}"
+    print_runtime_context
     print_auth_mode
     echo ""
-    echo "PTY debug log: ./docker/webctl.sh logs"
-    echo "To stop:       ./docker/webctl.sh stop"
+    echo "PTY debug log: ./webctl.sh logs"
+    echo "To stop:       ./webctl.sh stop"
     echo ""
 }
 
@@ -157,28 +271,56 @@ do_start() {
 # stop
 # ---------------------------------------------------------------------------
 do_stop() {
-    if [ -f "${PID_FILE}" ]; then
-        local pid
-        pid=$(cat "${PID_FILE}")
-        if kill -0 "${pid}" 2>/dev/null; then
-            log_info "Stopping server (pid ${pid})..."
-            kill "${pid}"
-            sleep 1
-            log_success "Server stopped"
+    local stopped_any=0
+
+    if [ -f "${BACKEND_PID_FILE}" ]; then
+        local backend_pid
+        backend_pid=$(cat "${BACKEND_PID_FILE}")
+        if kill -0 "${backend_pid}" 2>/dev/null; then
+            log_info "Stopping backend (pid ${backend_pid})..."
+            kill "${backend_pid}" 2>/dev/null || true
+            stopped_any=1
         else
-            log_warn "PID ${pid} is not running"
+            log_warn "Backend PID ${backend_pid} is not running"
         fi
-        rm -f "${PID_FILE}"
+        rm -f "${BACKEND_PID_FILE}"
+    fi
+
+    if [ -f "${FRONTEND_PID_FILE}" ]; then
+        local frontend_pid
+        frontend_pid=$(cat "${FRONTEND_PID_FILE}")
+        if kill -0 "${frontend_pid}" 2>/dev/null; then
+            log_info "Stopping frontend dev server (pid ${frontend_pid})..."
+            kill "${frontend_pid}" 2>/dev/null || true
+            stopped_any=1
+        else
+            log_warn "Frontend PID ${frontend_pid} is not running"
+        fi
+        rm -f "${FRONTEND_PID_FILE}"
+    fi
+
+    # Fallback by ports
+    local backend_port_pid
+    backend_port_pid=$(ss -tlnp 2>/dev/null | grep ":${WEB_PORT} " | grep -oP '(?<=pid=)[0-9]+' | head -1)
+    if [ -n "${backend_port_pid}" ]; then
+        log_info "Stopping process on backend port ${WEB_PORT} (pid ${backend_port_pid})..."
+        kill "${backend_port_pid}" 2>/dev/null || true
+        stopped_any=1
+    fi
+
+    local frontend_port_pid
+    frontend_port_pid=$(ss -tlnp 2>/dev/null | grep ":${FRONTEND_PORT} " | grep -oP '(?<=pid=)[0-9]+' | head -1)
+    if [ -n "${frontend_port_pid}" ]; then
+        log_info "Stopping process on frontend port ${FRONTEND_PORT} (pid ${frontend_port_pid})..."
+        kill "${frontend_port_pid}" 2>/dev/null || true
+        stopped_any=1
+    fi
+
+    sleep 1
+    if [ "${stopped_any}" -eq 1 ]; then
+        log_success "Server stopped"
     else
-        local port_pid
-        port_pid=$(ss -tlnp 2>/dev/null | grep ":${WEB_PORT} " | grep -oP '(?<=pid=)[0-9]+' | head -1)
-        if [ -n "${port_pid}" ]; then
-            log_info "Stopping process on port ${WEB_PORT} (pid ${port_pid})..."
-            kill "${port_pid}" 2>/dev/null || true
-            log_success "Server stopped"
-        else
-            log_warn "No server found on port ${WEB_PORT}"
-        fi
+        log_warn "No running server found"
     fi
 }
 
@@ -198,24 +340,31 @@ do_status() {
     echo ""
     echo "=== Opencode Web Server Status ==="
     echo ""
+    local pid
+    local running=0
+
     if [ -f "${PID_FILE}" ]; then
-        local pid
         pid=$(cat "${PID_FILE}")
         if kill -0 "${pid}" 2>/dev/null; then
+            running=1
             echo -e "  Status:   ${GREEN}running${NC} (pid ${pid})"
             echo "  URL:      http://localhost:${WEB_PORT}"
             echo "  Source:   ${PROJECT_ROOT}/packages/opencode/src/"
             echo "  Frontend: ${FRONTEND_DIST}"
+            echo "  Server log: ${SERVER_LOG_FILE}"
+            print_runtime_context
             local health
             health=$(curl -s "http://localhost:${WEB_PORT}/api/v2/global/health" 2>/dev/null || echo "(unreachable)")
             echo "  Health:   ${health}"
         else
             echo -e "  Status:   ${RED}stale PID (${pid} not running)${NC}"
-            rm -f "${PID_FILE}"
+            rm -f "${PID_FILE}" "${BACKEND_PID_FILE}"
         fi
-    else
+    fi
+
+    if [ $running -eq 0 ]; then
         echo -e "  Status:   ${RED}stopped${NC}"
-        echo "  Run: ./docker/webctl.sh start"
+        echo "  Run: ./webctl.sh start"
     fi
     echo ""
 }
@@ -224,7 +373,12 @@ do_status() {
 # logs — follow PTY debug log
 # ---------------------------------------------------------------------------
 do_logs() {
-    local logfile="/tmp/pty-debug.log"
+    local logfile="${RUNTIME_TMP_BASE}/pty-debug-${PROFILE_SAFE}.log"
+    local fallback_logfile="/tmp/pty-debug.log"
+    if [ ! -f "${logfile}" ] && [ -f "${fallback_logfile}" ]; then
+        logfile="${fallback_logfile}"
+        log_warn "Using legacy PTY log path: ${logfile}"
+    fi
     if [ ! -f "${logfile}" ]; then
         log_warn "No PTY debug log yet at ${logfile}"
         log_info "Start the server and open a terminal tab to generate logs."
@@ -283,7 +437,7 @@ do_help() {
     echo ""
     echo "Opencode Web Service Control  (source-based, no Docker)"
     echo ""
-    echo "Usage: ./docker/webctl.sh <command>"
+    echo "Usage: ./webctl.sh <command>"
     echo ""
     echo "Commands:"
     echo "  start, up         Start the server from source"
@@ -297,26 +451,31 @@ do_help() {
     echo ""
     echo "Environment Variables:"
     echo "  OPENCODE_PORT              Port to listen on (default: 1080)"
+    echo "  OPENCODE_PROFILE           Runtime profile label (default: default)"
+    echo "  OPENCODE_AUTO_SWITCH_OWNER Auto-switch to repo owner (default: 1)"
     echo "  OPENCODE_SERVER_HTPASSWD   Path to htpasswd file (recommended)"
     echo "  OPENCODE_SERVER_PASSWORD   Password env fallback"
     echo "  OPENCODE_SERVER_USERNAME   Username for password fallback"
+    echo "  HOME / XDG_*               Set these to isolate runtime state per user/profile"
     echo ""
     echo "Typical workflow:"
     echo "  # First time or after frontend source changes:"
-    echo "  ./docker/webctl.sh build-frontend"
+    echo "  ./webctl.sh build-frontend"
     echo ""
-    echo "  # Start / restart after backend source changes:"
-    echo "  ./docker/webctl.sh start"
-    echo "  ./docker/webctl.sh restart"
+    echo "  # Start / restart server:"
+    echo "  ./webctl.sh start"
+    echo "  ./webctl.sh restart"
     echo ""
     echo "  # Debug PTY:"
-    echo "  ./docker/webctl.sh logs"
+    echo "  ./webctl.sh logs"
     echo ""
 }
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+ensure_repo_owner_identity "$@"
+
 case "${1:-}" in
     start|up)       do_start          ;;
     stop|down)      do_stop           ;;

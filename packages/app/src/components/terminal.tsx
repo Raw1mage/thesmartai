@@ -20,6 +20,8 @@ export interface TerminalProps extends ComponentProps<"div"> {
   onCleanup?: (pty: LocalPTY) => void
   onConnect?: () => void
   onConnectError?: (error: unknown) => void
+  skipRestore?: boolean
+  disableMouseSelection?: boolean
 }
 
 let shared: Promise<{ mod: typeof import("ghostty-web"); ghostty: Ghostty }> | undefined
@@ -66,8 +68,9 @@ const useTerminalUiBindings = (input: {
   container: HTMLDivElement
   term: Term
   cleanups: VoidFunction[]
-  handlePointerDown: () => void
+  handlePointerDown: (event: PointerEvent) => void
   handleLinkClick: (event: MouseEvent) => void
+  disableMouseSelection?: boolean
 }) => {
   const handleCopy = (event: ClipboardEvent) => {
     const selection = input.term.getSelection()
@@ -105,6 +108,14 @@ const useTerminalUiBindings = (input: {
 
   input.container.addEventListener("pointerdown", input.handlePointerDown)
   input.cleanups.push(() => input.container.removeEventListener("pointerdown", input.handlePointerDown))
+
+  if (input.disableMouseSelection) {
+    const handleSelectStart = (event: Event) => {
+      event.preventDefault()
+    }
+    input.container.addEventListener("selectstart", handleSelectStart)
+    input.cleanups.push(() => input.container.removeEventListener("selectstart", handleSelectStart))
+  }
 
   input.container.addEventListener("click", input.handleLinkClick, { capture: true })
   input.cleanups.push(() => input.container.removeEventListener("click", input.handleLinkClick, { capture: true }))
@@ -151,6 +162,12 @@ const clearTerminalSurface = (term: Term) => {
   runtime.reset?.()
 }
 
+const resetTerminalContainer = (container: HTMLDivElement) => {
+  // Hard-reset DOM host to avoid previous tab frame bleed when mounting a new PTY.
+  // This protects against renderer remnants surviving quick tab switches/new-tab create.
+  container.replaceChildren()
+}
+
 export const Terminal = (props: TerminalProps) => {
   const platform = usePlatform()
   const sdk = useSDK()
@@ -158,7 +175,15 @@ export const Terminal = (props: TerminalProps) => {
   const theme = useTheme()
   const language = useLanguage()
   let container!: HTMLDivElement
-  const [local, others] = splitProps(props, ["pty", "class", "classList", "onConnect", "onConnectError"])
+  const [local, others] = splitProps(props, [
+    "pty",
+    "class",
+    "classList",
+    "onConnect",
+    "onConnectError",
+    "skipRestore",
+    "disableMouseSelection",
+  ])
   let ws: WebSocket | undefined
   let term: Term | undefined
   let ghostty: Ghostty
@@ -289,7 +314,12 @@ export const Terminal = (props: TerminalProps) => {
     t.textarea?.focus()
     setTimeout(() => t.textarea?.focus(), 0)
   }
-  const handlePointerDown = () => {
+  const handlePointerDown = (event: PointerEvent) => {
+    if (local.disableMouseSelection) {
+      event.preventDefault()
+      const selection = container.ownerDocument.getSelection()
+      selection?.removeAllRanges()
+    }
     const activeElement = document.activeElement
     if (activeElement instanceof HTMLElement && activeElement !== container && !container.contains(activeElement)) {
       activeElement.blur()
@@ -323,15 +353,15 @@ export const Terminal = (props: TerminalProps) => {
 
       const once = { value: false }
 
-      const restore = typeof local.pty.buffer === "string" ? local.pty.buffer : ""
+      const restore = local.skipRestore ? "" : typeof local.pty.buffer === "string" ? local.pty.buffer : ""
       const restoreSize =
         restore &&
-          typeof local.pty.cols === "number" &&
-          Number.isSafeInteger(local.pty.cols) &&
-          local.pty.cols > 0 &&
-          typeof local.pty.rows === "number" &&
-          Number.isSafeInteger(local.pty.rows) &&
-          local.pty.rows > 0
+        typeof local.pty.cols === "number" &&
+        Number.isSafeInteger(local.pty.cols) &&
+        local.pty.cols > 0 &&
+        typeof local.pty.rows === "number" &&
+        Number.isSafeInteger(local.pty.rows) &&
+        local.pty.rows > 0
           ? { cols: local.pty.cols, rows: local.pty.rows }
           : undefined
 
@@ -355,6 +385,7 @@ export const Terminal = (props: TerminalProps) => {
       }
       ghostty = g
       term = t
+      resetTerminalContainer(container)
       output = terminalWriter((data, done) => t.write(data, done))
 
       t.attachCustomKeyEventHandler((event) => {
@@ -381,7 +412,14 @@ export const Terminal = (props: TerminalProps) => {
       serializeAddon = serializer
 
       t.open(container)
-      useTerminalUiBindings({ container, term: t, cleanups, handlePointerDown, handleLinkClick })
+      useTerminalUiBindings({
+        container,
+        term: t,
+        cleanups,
+        handlePointerDown,
+        handleLinkClick,
+        disableMouseSelection: local.disableMouseSelection,
+      })
 
       focusTerminal()
 
@@ -394,7 +432,7 @@ export const Terminal = (props: TerminalProps) => {
       })
       cleanups.push(() => disposeIfDisposable(onResize))
       const onData = t.onData((data) => {
-        console.warn("[PTY CLIENT] Sending input length:", data.length, "content:", JSON.stringify(data));
+        console.warn("[PTY CLIENT] Sending input length:", data.length, "content:", JSON.stringify(data))
         if (ws?.readyState === WebSocket.OPEN) ws.send(data)
       })
       cleanups.push(() => disposeIfDisposable(onData))
@@ -438,7 +476,12 @@ export const Terminal = (props: TerminalProps) => {
 
       const url = new URL(sdk.url + `/pty/${local.pty.id}/connect`)
       url.searchParams.set("directory", sdk.directory)
-      url.searchParams.set("cursor", String(start !== undefined ? start : local.pty.buffer ? -1 : 0))
+      url.searchParams.set(
+        "cursor",
+        // skipRestore means "don't trust local serialized buffer".
+        // Use server replay from 0 to avoid blank popout terminals.
+        String(local.skipRestore ? 0 : start !== undefined ? start : local.pty.buffer ? -1 : 0),
+      )
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
       const socket = new WebSocket(url)
       socket.binaryType = "arraybuffer"
@@ -464,7 +507,7 @@ export const Terminal = (props: TerminalProps) => {
 
       const writeIncoming = (chunk: string) => {
         if (!chunk) return
-        console.warn("[PTY CLIENT] Received output length:", chunk.length, "content:", JSON.stringify(chunk));
+        console.warn("[PTY CLIENT] Received output length:", chunk.length, "content:", JSON.stringify(chunk))
         t.write(chunk)
         cursor += chunk.length
       }
@@ -565,6 +608,7 @@ export const Terminal = (props: TerminalProps) => {
     const finalize = () => {
       persistTerminal({ term, addon: serializeAddon, cursor, pty: local.pty, onCleanup: props.onCleanup })
       cleanup()
+      resetTerminalContainer(container)
     }
 
     if (!output) {
@@ -581,10 +625,14 @@ export const Terminal = (props: TerminalProps) => {
       data-component="terminal"
       data-prevent-autofocus
       tabIndex={-1}
-      style={{ "background-color": terminalColors().background }}
+      style={{
+        "background-color": terminalColors().background,
+        "user-select": "none",
+        "-webkit-user-select": "none",
+      }}
       classList={{
         ...(local.classList ?? {}),
-        "select-text": true,
+        "select-none": true,
         "size-full px-6 py-3 font-mono relative overflow-hidden": true,
         [local.class ?? ""]: !!local.class,
       }}
