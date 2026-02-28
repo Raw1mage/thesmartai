@@ -20,8 +20,9 @@ export interface TerminalProps extends ComponentProps<"div"> {
   onCleanup?: (pty: LocalPTY) => void
   onConnect?: () => void
   onConnectError?: (error: unknown) => void
-  skipRestore?: boolean
-  disableMouseSelection?: boolean
+  autoCopyOnSelect?: boolean
+  contextMenuCopiesSelection?: boolean
+  ignoreStoredViewport?: boolean
 }
 
 let shared: Promise<{ mod: typeof import("ghostty-web"); ghostty: Ghostty }> | undefined
@@ -64,16 +65,55 @@ const debugTerminal = (...values: unknown[]) => {
   console.debug("[terminal]", ...values)
 }
 
+const copyTextToClipboard = async (doc: Document, text: string) => {
+  const normalized = text
+  if (!normalized) return false
+
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(normalized)
+      return true
+    }
+  } catch {
+    // fallback below
+  }
+
+  try {
+    const textarea = doc.createElement("textarea")
+    textarea.value = normalized
+    textarea.setAttribute("readonly", "")
+    textarea.style.position = "fixed"
+    textarea.style.opacity = "0"
+    textarea.style.pointerEvents = "none"
+    doc.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    const ok = doc.execCommand("copy")
+    textarea.remove()
+    return ok
+  } catch {
+    return false
+  }
+}
+
 const useTerminalUiBindings = (input: {
   container: HTMLDivElement
   term: Term
   cleanups: VoidFunction[]
   handlePointerDown: (event: PointerEvent) => void
   handleLinkClick: (event: MouseEvent) => void
-  disableMouseSelection?: boolean
+  autoCopyOnSelect?: boolean
+  contextMenuCopiesSelection?: boolean
 }) => {
+  const pickSelection = () => {
+    const termSelection = input.term.getSelection()?.trim() ?? ""
+    if (termSelection) return termSelection
+    const browserSelection = input.container.ownerDocument.getSelection()?.toString().trim() ?? ""
+    return browserSelection
+  }
+
   const handleCopy = (event: ClipboardEvent) => {
-    const selection = input.term.getSelection()
+    const selection = pickSelection()
     if (!selection) return
 
     const clipboard = event.clipboardData
@@ -102,6 +142,8 @@ const useTerminalUiBindings = (input: {
 
   input.container.addEventListener("copy", handleCopy, true)
   input.cleanups.push(() => input.container.removeEventListener("copy", handleCopy, true))
+  input.container.ownerDocument.addEventListener("copy", handleCopy, true)
+  input.cleanups.push(() => input.container.ownerDocument.removeEventListener("copy", handleCopy, true))
 
   input.container.addEventListener("paste", handlePaste, true)
   input.cleanups.push(() => input.container.removeEventListener("paste", handlePaste, true))
@@ -109,16 +151,42 @@ const useTerminalUiBindings = (input: {
   input.container.addEventListener("pointerdown", input.handlePointerDown)
   input.cleanups.push(() => input.container.removeEventListener("pointerdown", input.handlePointerDown))
 
-  if (input.disableMouseSelection) {
-    const handleSelectStart = (event: Event) => {
-      event.preventDefault()
-    }
-    input.container.addEventListener("selectstart", handleSelectStart)
-    input.cleanups.push(() => input.container.removeEventListener("selectstart", handleSelectStart))
-  }
-
   input.container.addEventListener("click", input.handleLinkClick, { capture: true })
   input.cleanups.push(() => input.container.removeEventListener("click", input.handleLinkClick, { capture: true }))
+
+  const copySelectedNow = () => {
+    const doc = input.container.ownerDocument
+    const selected = pickSelection()
+    if (!selected) return
+
+    // Prefer native copy command in direct user gesture.
+    const ok = doc.execCommand("copy")
+    if (ok) return
+    void copyTextToClipboard(doc, selected)
+  }
+
+  if (input.autoCopyOnSelect) {
+    const handleMouseUp = () => {
+      queueMicrotask(() => {
+        copySelectedNow()
+      })
+    }
+    input.container.ownerDocument.addEventListener("mouseup", handleMouseUp, true)
+    input.cleanups.push(() => input.container.ownerDocument.removeEventListener("mouseup", handleMouseUp, true))
+  }
+
+  if (input.contextMenuCopiesSelection) {
+    const handleContextMenu = (event: MouseEvent) => {
+      const target = event.target as Node | null
+      if (target && !input.container.contains(target)) return
+      const selected = pickSelection()
+      if (!selected) return
+      event.preventDefault()
+      copySelectedNow()
+    }
+    input.container.ownerDocument.addEventListener("contextmenu", handleContextMenu, true)
+    input.cleanups.push(() => input.container.ownerDocument.removeEventListener("contextmenu", handleContextMenu, true))
+  }
 
   input.term.textarea?.addEventListener("focus", handleTextareaFocus)
   input.term.textarea?.addEventListener("blur", handleTextareaBlur)
@@ -181,8 +249,9 @@ export const Terminal = (props: TerminalProps) => {
     "classList",
     "onConnect",
     "onConnectError",
-    "skipRestore",
-    "disableMouseSelection",
+    "autoCopyOnSelect",
+    "contextMenuCopiesSelection",
+    "ignoreStoredViewport",
   ])
   let ws: WebSocket | undefined
   let term: Term | undefined
@@ -314,13 +383,11 @@ export const Terminal = (props: TerminalProps) => {
     t.textarea?.focus()
     setTimeout(() => t.textarea?.focus(), 0)
   }
+
   const handlePointerDown = (event: PointerEvent) => {
-    if (local.disableMouseSelection) {
-      event.preventDefault()
-      const selection = container.ownerDocument.getSelection()
-      selection?.removeAllRanges()
-    }
-    const activeElement = document.activeElement
+    const doc = container.ownerDocument
+
+    const activeElement = doc.activeElement
     if (activeElement instanceof HTMLElement && activeElement !== container && !container.contains(activeElement)) {
       activeElement.blur()
     }
@@ -353,15 +420,16 @@ export const Terminal = (props: TerminalProps) => {
 
       const once = { value: false }
 
-      const restore = local.skipRestore ? "" : typeof local.pty.buffer === "string" ? local.pty.buffer : ""
-      const restoreSize =
-        restore &&
-        typeof local.pty.cols === "number" &&
-        Number.isSafeInteger(local.pty.cols) &&
-        local.pty.cols > 0 &&
-        typeof local.pty.rows === "number" &&
-        Number.isSafeInteger(local.pty.rows) &&
-        local.pty.rows > 0
+      const restore = typeof local.pty.buffer === "string" ? local.pty.buffer : ""
+      const restoreSize = local.ignoreStoredViewport
+        ? undefined
+        : restore &&
+            typeof local.pty.cols === "number" &&
+            Number.isSafeInteger(local.pty.cols) &&
+            local.pty.cols > 0 &&
+            typeof local.pty.rows === "number" &&
+            Number.isSafeInteger(local.pty.rows) &&
+            local.pty.rows > 0
           ? { cols: local.pty.cols, rows: local.pty.rows }
           : undefined
 
@@ -391,6 +459,15 @@ export const Terminal = (props: TerminalProps) => {
       t.attachCustomKeyEventHandler((event) => {
         const key = event.key.toLowerCase()
 
+        const browserSelection = container.ownerDocument.getSelection()?.toString() ?? ""
+        const hasSelection = !!t.getSelection() || browserSelection.length > 0
+
+        // In browser/popout mode, allow familiar copy shortcut when text is selected.
+        if (!event.shiftKey && !event.altKey && !event.metaKey && event.ctrlKey && key === "c" && hasSelection) {
+          document.execCommand("copy")
+          return false
+        }
+
         if (event.ctrlKey && event.shiftKey && !event.metaKey && key === "c") {
           document.execCommand("copy")
           return true
@@ -411,20 +488,31 @@ export const Terminal = (props: TerminalProps) => {
       fitAddon = fit
       serializeAddon = serializer
 
+      const forceFit = () => {
+        fit.fit()
+        scheduleSize(t.cols, t.rows)
+      }
+
       t.open(container)
+      forceFit()
+      requestAnimationFrame(forceFit)
+      setTimeout(forceFit, 0)
+      setTimeout(forceFit, 60)
+      setTimeout(forceFit, 140)
       useTerminalUiBindings({
         container,
         term: t,
         cleanups,
         handlePointerDown,
         handleLinkClick,
-        disableMouseSelection: local.disableMouseSelection,
+        autoCopyOnSelect: local.autoCopyOnSelect,
+        contextMenuCopiesSelection: local.contextMenuCopiesSelection,
       })
 
       focusTerminal()
 
       if (typeof document !== "undefined" && document.fonts) {
-        document.fonts.ready.then(scheduleFit)
+        document.fonts.ready.then(forceFit)
       }
 
       const onResize = t.onResize((size) => {
@@ -445,6 +533,11 @@ export const Terminal = (props: TerminalProps) => {
 
       const startResize = () => {
         fit.observeResize()
+        const observer = new ResizeObserver(() => {
+          forceFit()
+        })
+        observer.observe(container)
+        cleanups.push(() => observer.disconnect())
         handleResize = scheduleFit
         window.addEventListener("resize", handleResize)
         cleanups.push(() => window.removeEventListener("resize", handleResize))
@@ -452,16 +545,14 @@ export const Terminal = (props: TerminalProps) => {
 
       if (restore && restoreSize) {
         t.write(restore, () => {
-          fit.fit()
-          scheduleSize(t.cols, t.rows)
+          forceFit()
           if (typeof local.pty.scrollY === "number") t.scrollToLine(local.pty.scrollY)
           startResize()
         })
       } else {
         // FIX: avoid ghost frame bleed when mounting a fresh terminal tab (@event_20260223_web_architecture_first_plan)
         clearTerminalSurface(t)
-        fit.fit()
-        scheduleSize(t.cols, t.rows)
+        forceFit()
         if (restore) {
           t.write(restore, () => {
             if (typeof local.pty.scrollY === "number") t.scrollToLine(local.pty.scrollY)
@@ -478,9 +569,7 @@ export const Terminal = (props: TerminalProps) => {
       url.searchParams.set("directory", sdk.directory)
       url.searchParams.set(
         "cursor",
-        // skipRestore means "don't trust local serialized buffer".
-        // Use server replay from 0 to avoid blank popout terminals.
-        String(local.skipRestore ? 0 : start !== undefined ? start : local.pty.buffer ? -1 : 0),
+        String(local.ignoreStoredViewport ? 0 : start !== undefined ? start : local.pty.buffer ? -1 : 0),
       )
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
       const socket = new WebSocket(url)
@@ -627,12 +716,10 @@ export const Terminal = (props: TerminalProps) => {
       tabIndex={-1}
       style={{
         "background-color": terminalColors().background,
-        "user-select": "none",
-        "-webkit-user-select": "none",
       }}
       classList={{
         ...(local.classList ?? {}),
-        "select-none": true,
+        "select-text": true,
         "size-full px-6 py-3 font-mono relative overflow-hidden": true,
         [local.class ?? ""]: !!local.class,
       }}
