@@ -58,10 +58,11 @@ export function DialogSessionList() {
     },
     childCount = 0,
     titlePrefix = "",
+    showProject = true,
   ) => {
     const project = projectName(session)
     const childSuffix = childCount > 0 ? ` [${childCount}]` : ""
-    const projectPrefix = project ? `[${project}] ` : ""
+    const projectPrefix = showProject && project ? `[${project}] ` : ""
     return `${projectPrefix}${titlePrefix}${session.title}${childSuffix}`
   }
 
@@ -126,7 +127,7 @@ export function DialogSessionList() {
         const childWorking = childStatus?.type === "busy"
 
         result.push({
-          title: sessionLabel(child, 0, prefix),
+          title: sessionLabel(child, 0, prefix, false),
           value: child.id,
           category, // Same category as parent
           footer: Locale.time(child.time.updated),

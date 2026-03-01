@@ -34,14 +34,46 @@ type PromptAttachmentsInput = {
 export function createPromptAttachments(input: PromptAttachmentsInput) {
   const prompt = usePrompt()
   const language = useLanguage()
+  const pendingImageKeys = new Set<string>()
+  const recentImageKeys = new Map<string, number>()
+  let lastPasteSignature = ""
+  let lastPasteAt = 0
+
+  const imageKey = (file: File) => `${file.name}:${file.type}:${file.size}:${file.lastModified}`
+  const RECENT_TTL = 5000
+
+  const markRecent = (key: string) => {
+    const now = Date.now()
+    recentImageKeys.set(key, now)
+    for (const [k, at] of recentImageKeys) {
+      if (now - at > RECENT_TTL) recentImageKeys.delete(k)
+    }
+  }
+
+  const seenRecently = (key: string) => {
+    const at = recentImageKeys.get(key)
+    return typeof at === "number" && Date.now() - at < RECENT_TTL
+  }
 
   const addImageAttachment = async (file: File) => {
     if (!ACCEPTED_FILE_TYPES.includes(file.type)) return
+    const key = imageKey(file)
+    if (pendingImageKeys.has(key) || seenRecently(key)) return
+    pendingImageKeys.add(key)
 
     const reader = new FileReader()
+    reader.onerror = () => {
+      pendingImageKeys.delete(key)
+    }
+    reader.onabort = () => {
+      pendingImageKeys.delete(key)
+    }
     reader.onload = () => {
       const editor = input.editor()
-      if (!editor) return
+      if (!editor) {
+        pendingImageKeys.delete(key)
+        return
+      }
       const dataUrl = reader.result as string
       const attachment: ImageAttachmentPart = {
         type: "image",
@@ -51,7 +83,16 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
         dataUrl,
       }
       const cursorPosition = prompt.cursor() ?? getCursorPosition(editor)
-      prompt.set([...prompt.current(), attachment], cursorPosition)
+      const current = prompt.current()
+      const duplicated = current.some((part) => part.type === "image" && part.dataUrl === dataUrl)
+      if (duplicated) {
+        markRecent(key)
+        pendingImageKeys.delete(key)
+        return
+      }
+      prompt.set([...current, attachment], cursorPosition)
+      markRecent(key)
+      pendingImageKeys.delete(key)
     }
     reader.readAsDataURL(file)
   }
@@ -71,14 +112,37 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
     event.stopPropagation()
 
     const items = Array.from(clipboardData.items)
+    const signature = items
+      .map((item) => {
+        if (item.kind !== "file") return `${item.kind}:${item.type}`
+        const file = item.getAsFile()
+        if (!file) return `${item.kind}:${item.type}`
+        return `${item.kind}:${item.type}:${file.name}:${file.size}:${file.lastModified}`
+      })
+      .sort()
+      .join("|")
+    const now = Date.now()
+    if (signature && signature === lastPasteSignature && now - lastPasteAt < 1200) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+    lastPasteSignature = signature
+    lastPasteAt = now
     const fileItems = items.filter((item) => item.kind === "file")
     const imageItems = fileItems.filter((item) => ACCEPTED_FILE_TYPES.includes(item.type))
 
     if (imageItems.length > 0) {
-      for (const item of imageItems) {
-        const file = item.getAsFile()
-        if (file) await addImageAttachment(file)
-      }
+      // Some clipboard sources expose the same image in multiple mime variants
+      // (eg. image/png + image/jpeg). We only keep a single best candidate
+      // to avoid duplicated thumbnails and duplicated token usage.
+      const preferred = ["image/png", "image/webp", "image/jpeg", "image/gif", "application/pdf"]
+      const selectedItem =
+        preferred
+          .map((mime) => imageItems.find((item) => item.type === mime))
+          .find((item): item is DataTransferItem => !!item) ?? imageItems[0]
+      const file = selectedItem?.getAsFile()
+      if (file) await addImageAttachment(file)
       return
     }
 

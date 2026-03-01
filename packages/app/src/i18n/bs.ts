@@ -30,7 +30,6 @@ export const dict = {
   "command.session.next": "Sljedeća sesija",
   "command.session.previous.unseen": "Prethodna nepročitana sesija",
   "command.session.next.unseen": "Sljedeća nepročitana sesija",
-  "command.session.archive": "Arhiviraj sesiju",
 
   "command.palette": "Paleta komandi",
 
@@ -558,7 +557,6 @@ export const dict = {
   "common.learnMore": "Saznaj više",
   "common.rename": "Preimenuj",
   "common.reset": "Resetuj",
-  "common.archive": "Arhiviraj",
   "common.delete": "Izbriši",
   "common.close": "Zatvori",
   "common.edit": "Uredi",

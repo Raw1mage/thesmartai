@@ -1,11 +1,12 @@
 import { TextField } from "@opencode-ai/ui/text-field"
 import { Logo } from "@opencode-ai/ui/logo"
 import { Button } from "@opencode-ai/ui/button"
-import { Component, Show } from "solid-js"
+import { Component, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { usePlatform } from "@/context/platform"
 import { useLanguage } from "@/context/language"
 import { Icon } from "@opencode-ai/ui/icon"
+import { checkServerHealth } from "@/utils/server-health"
 
 export type InitError = {
   name: string
@@ -218,10 +219,46 @@ interface ErrorPageProps {
 export const ErrorPage: Component<ErrorPageProps> = (props) => {
   const platform = usePlatform()
   const language = useLanguage()
+  const [reconnecting, setReconnecting] = createSignal(false)
   const [store, setStore] = createStore({
     checking: false,
     version: undefined as string | undefined,
     actionError: undefined as string | undefined,
+  })
+
+  const formattedError = createMemo(() => formatError(props.error, language.t))
+  const isLikelyRestartTransition = createMemo(() => {
+    const text = formattedError()
+    return /<!doctype\s+html/i.test(text) || /<html[\s>]/i.test(text) || /text\/html/i.test(text)
+  })
+
+  createEffect(() => {
+    if (!isLikelyRestartTransition()) {
+      setReconnecting(false)
+      return
+    }
+    setReconnecting(true)
+    let disposed = false
+    const tick = async () => {
+      try {
+        const health = await checkServerHealth(window.location.origin, platform.fetch ?? fetch, {
+          timeoutMs: 1200,
+          retryCount: 0,
+        })
+        if (disposed) return
+        if (health.healthy) window.location.reload()
+      } catch {
+        // keep polling until service is healthy
+      }
+    }
+    void tick()
+    const timer = window.setInterval(() => {
+      void tick()
+    }, 1200)
+    onCleanup(() => {
+      disposed = true
+      clearInterval(timer)
+    })
   })
 
   async function checkForUpdates() {
@@ -257,18 +294,34 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
       <div class="w-2/3 max-w-3xl flex flex-col items-center justify-center gap-8">
         <Logo class="w-58.5 opacity-12 shrink-0" />
         <div class="flex flex-col items-center gap-2 text-center">
-          <h1 class="text-lg font-medium text-text-strong">{language.t("error.page.title")}</h1>
-          <p class="text-sm text-text-weak">{language.t("error.page.description")}</p>
+          <h1 class="text-lg font-medium text-text-strong">
+            {reconnecting() ? "Reconnecting to server…" : language.t("error.page.title")}
+          </h1>
+          <p class="text-sm text-text-weak">
+            {reconnecting()
+              ? "Planned restart in progress. Please wait a moment."
+              : language.t("error.page.description")}
+          </p>
         </div>
-        <TextField
-          value={formatError(props.error, language.t)}
-          readOnly
-          copyable
-          multiline
-          class="max-h-96 w-full font-mono text-xs no-scrollbar"
-          label={language.t("error.page.details.label")}
-          hideLabel
-        />
+        <Show
+          when={!reconnecting()}
+          fallback={
+            <div class="text-12-regular text-text-weak">
+              {language.t("common.loading")}
+              {language.t("common.loading.ellipsis")}
+            </div>
+          }
+        >
+          <TextField
+            value={formattedError()}
+            readOnly
+            copyable
+            multiline
+            class="max-h-96 w-full font-mono text-xs no-scrollbar"
+            label={language.t("error.page.details.label")}
+            hideLabel
+          />
+        </Show>
         <div class="flex items-center gap-3">
           <Button size="large" onClick={platform.restart}>
             {language.t("error.page.action.restart")}

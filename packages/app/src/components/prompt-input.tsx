@@ -1,5 +1,17 @@
 import { useFilteredList } from "@opencode-ai/ui/hooks"
-import { createEffect, on, Component, Show, For, onCleanup, Switch, Match, createMemo, createSignal } from "solid-js"
+import {
+  createEffect,
+  on,
+  Component,
+  Show,
+  For,
+  onCleanup,
+  Switch,
+  Match,
+  createMemo,
+  createSignal,
+  createResource,
+} from "solid-js"
 import { createStore } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
 import { useLocal } from "@/context/local"
@@ -16,6 +28,8 @@ import {
 } from "@/context/prompt"
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { useGlobalSync } from "@/context/global-sync"
 import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { useComments } from "@/context/comments"
@@ -49,6 +63,7 @@ import { PromptImageAttachments } from "./prompt-input/image-attachments"
 import { PromptDragOverlay } from "./prompt-input/drag-overlay"
 import { promptPlaceholder } from "./prompt-input/placeholder"
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
+import { buildAccountRows, normalizeProviderFamily } from "./model-selector-state"
 
 interface PromptInputProps {
   class?: string
@@ -90,6 +105,8 @@ const NON_EMPTY_TEXT = /[^\s\u200B]/
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
   const sdk = useSDK()
+  const globalSDK = useGlobalSDK()
+  const globalSync = useGlobalSync()
   const sync = useSync()
   const local = useLocal()
   const files = useFile()
@@ -201,9 +218,127 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       },
   )
   const working = createMemo(() => status()?.type !== "idle")
+
+  // Webapp watchdog for missed stream terminal events.
+  // Symptom addressed: tool outputs with truncation note can occasionally leave UI spinner stuck
+  // even after backend task has completed. We periodically reconcile session status from server.
+  createEffect(() => {
+    const sessionID = params.id
+    if (!sessionID) return
+    if (!working()) return
+
+    let disposed = false
+    const tick = async () => {
+      try {
+        const result = await sdk.client.session.status()
+        if (disposed) return
+        const next = result.data?.[sessionID] ?? { type: "idle" }
+        sync.set("session_status", sessionID, next)
+      } catch {
+        // best-effort watchdog; ignore polling failures
+      }
+    }
+
+    void tick()
+    const timer = setInterval(() => {
+      void tick()
+    }, 3000)
+
+    onCleanup(() => {
+      disposed = true
+      clearInterval(timer)
+    })
+  })
+
   const imageAttachments = createMemo(() =>
     prompt.current().filter((part): part is ImageAttachmentPart => part.type === "image"),
   )
+  const currentModel = createMemo(() => local.model.current())
+  const activeFamily = createMemo(() => {
+    const providerID = currentModel()?.provider?.id
+    if (!providerID) return
+    return normalizeProviderFamily(providerID) ?? providerID
+  })
+  const activeAccountLabel = createMemo(() => {
+    const family = activeFamily()
+    if (!family) return "--"
+    const rows = buildAccountRows({
+      selectedProviderFamily: family,
+      accountFamilies: globalSync.data.account_families,
+      formatCooldown: (minutes) => language.t("settings.models.recommendations.cooldown", { minutes }),
+    })
+    return rows.find((row) => row.active)?.label ?? rows[0]?.label ?? "--"
+  })
+  const providerLabel = createMemo(() => {
+    const model = currentModel()
+    if (!model) return "--"
+    return model.provider.name ?? model.provider.id
+  })
+  const [quotaHint] = createResource(
+    () => {
+      const model = currentModel()
+      if (!model) return
+      return `${model.provider.id}:${model.id}`
+    },
+    async (value) => {
+      const [providerId, ...rest] = value.split(":")
+      const modelID = rest.join(":")
+      if (!providerId || !modelID) return undefined
+      const response = await globalSDK.fetch(
+        `${globalSDK.url}/api/v2/account/quota?providerId=${encodeURIComponent(providerId)}&modelID=${encodeURIComponent(modelID)}`,
+      )
+      if (!response.ok) return undefined
+      const data = (await response.json()) as { hint?: string }
+      return data.hint
+    },
+  )
+  const formatVariantLabel = (value: string, family?: string) => {
+    const normalized = value.toLowerCase()
+    if (family === "openai" && (normalized === "xhigh" || normalized === "extra")) return "extra"
+    return value
+      .replaceAll("_", " ")
+      .replaceAll("-", " ")
+      .split(" ")
+      .filter(Boolean)
+      .map((token) => token[0]?.toUpperCase() + token.slice(1))
+      .join(" ")
+  }
+  type VariantOption = { value: string; label: string }
+  const variantOptions = createMemo<VariantOption[]>(() => {
+    const family = activeFamily()
+    let values = local.model.variant.list()
+    if (family === "openai") {
+      const preferred = ["low", "medium", "high", "xhigh", "extra"]
+      const set = new Set(values)
+      const narrowed = preferred.filter((value) => set.has(value))
+      if (narrowed.length > 0) values = narrowed
+      values = values.filter((value) => value !== "none" && value !== "minimal")
+    }
+    const used = new Set<string>()
+    const result: VariantOption[] = []
+    for (const value of values) {
+      const label = formatVariantLabel(value, family)
+      if (used.has(label)) continue
+      used.add(label)
+      result.push({ value, label })
+    }
+    return result
+  })
+  const currentVariantOption = createMemo<VariantOption | undefined>(() => {
+    const value = local.model.variant.current()
+    if (!value) return undefined
+    const exact = variantOptions().find((item) => item.value === value)
+    if (exact) return exact
+    const family = activeFamily()
+    const targetLabel = formatVariantLabel(value, family)
+    return variantOptions().find((item) => item.label === targetLabel)
+  })
+  const promptMeta = createMemo(() => {
+    const account = activeAccountLabel()
+    const quota = quotaHint()
+    const base = `${account}`
+    return quota ? `${base} ${quota}` : base
+  })
 
   const [store, setStore] = createStore<{
     popover: "at" | "slash" | null
@@ -1092,10 +1227,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     options={agentNames()}
                     current={local.agent.current()?.name ?? ""}
                     onSelect={local.agent.set}
-                    class={`capitalize ${local.model.variant.list().length > 0 ? "max-w-full" : "max-w-[120px]"}`}
+                    class={`capitalize ${variantOptions().length > 0 ? "max-w-full" : "max-w-[120px]"}`}
                     valueClass="truncate"
                     variant="ghost"
                   />
+                </TooltipKeybind>
+                <TooltipKeybind
+                  placement="top"
+                  gutter={8}
+                  title={language.t("command.model.choose")}
+                  keybind={command.keybind("model.choose")}
+                >
+                  <span class="text-12-regular text-text-weak px-1">{providerLabel()}</span>
                 </TooltipKeybind>
                 <TooltipKeybind
                   placement="top"
@@ -1117,22 +1260,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Icon name="chevron-down" size="small" class="shrink-0" />
                   </Button>
                 </TooltipKeybind>
-                <Show when={local.model.variant.list().length > 0}>
-                  <TooltipKeybind
+                <Show when={variantOptions().length > 0}>
+                  <Tooltip
                     placement="top"
                     gutter={8}
-                    title={language.t("command.model.variant.cycle")}
-                    keybind={command.keybind("model.variant.cycle")}
+                    value={language.t("command.model.variant.cycle") + " (provider-native)"}
                   >
-                    <Button
-                      data-action="model-variant-cycle"
+                    <Select
+                      options={variantOptions()}
+                      current={currentVariantOption()}
+                      value={(item) => item.value}
+                      label={(item) => item.label}
+                      onSelect={(value) => local.model.variant.set(value?.value)}
+                      class="max-w-[150px]"
+                      valueClass="truncate"
                       variant="ghost"
-                      class="text-text-base _hidden group-hover/prompt-input:inline-block capitalize text-12-regular"
-                      onClick={() => local.model.variant.cycle()}
-                    >
-                      {local.model.variant.current() ?? language.t("common.default")}
-                    </Button>
-                  </TooltipKeybind>
+                    />
+                  </Tooltip>
                 </Show>
                 <Show when={permission.permissionsEnabled() && params.id}>
                   <TooltipKeybind
@@ -1166,6 +1310,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
               </Match>
             </Switch>
+            <Show when={store.mode === "normal" && promptMeta()}>
+              <span class="text-12-regular text-text-weak tabular-nums whitespace-nowrap overflow-hidden text-ellipsis min-w-0">
+                {promptMeta()}
+              </span>
+            </Show>
           </div>
           <div class="flex items-center gap-1 shrink-0">
             <input

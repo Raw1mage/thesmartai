@@ -79,6 +79,11 @@ export function applyDirectoryEvent(input: {
   vcsCache?: VcsCache
 }) {
   const event = input.event
+  const debugAttachments = (...args: unknown[]) => {
+    if (typeof localStorage === "undefined") return
+    if (localStorage.getItem("opencode.debug.attachments") !== "1") return
+    console.info("[attachments-debug]", ...args)
+  }
   switch (event.type) {
     case "server.instance.disposed": {
       input.push(input.directory)
@@ -196,13 +201,48 @@ export function applyDirectoryEvent(input: {
       const parts = input.store.part[part.messageID]
       if (!parts) {
         input.setStore("part", part.messageID, [part])
+        if (part.type === "file") {
+          debugAttachments("part.updated:new", {
+            messageID: part.messageID,
+            partID: part.id,
+            mime: part.mime,
+            filename: part.filename,
+            urlHead: part.url.slice(0, 64),
+          })
+        }
         break
       }
       const result = Binary.search(parts, part.id, (p) => p.id)
       if (result.found) {
         input.setStore("part", part.messageID, result.index, reconcile(part))
+        if (part.type === "file") {
+          debugAttachments("part.updated:replace-id", {
+            messageID: part.messageID,
+            partID: part.id,
+          })
+        }
         break
       }
+
+      // De-duplicate optimistic vs server-confirmed image/file parts.
+      // Some providers may emit fresh part IDs for already-optimistic attachments.
+      if (part.type === "file") {
+        const isInlineImage = part.url.startsWith("data:image/")
+        const semanticIndex = parts.findIndex(
+          (existing) =>
+            existing.type === "file" && existing.url === part.url && (isInlineImage || existing.mime === part.mime),
+        )
+        if (semanticIndex !== -1) {
+          input.setStore("part", part.messageID, semanticIndex, reconcile(part))
+          debugAttachments("part.updated:dedup-semantic", {
+            messageID: part.messageID,
+            partID: part.id,
+            replacedIndex: semanticIndex,
+          })
+          break
+        }
+      }
+
       input.setStore(
         "part",
         part.messageID,

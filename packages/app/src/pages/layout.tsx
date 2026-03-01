@@ -38,7 +38,6 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { clearWorkspaceTerminals } from "@/context/terminal"
 import { useNotification } from "@/context/notification"
 import { usePermission } from "@/context/permission"
-import { Binary } from "@opencode-ai/util/binary"
 import { retry } from "@opencode-ai/util/retry"
 import { playSound, soundSrc } from "@/utils/sound"
 import { createAim } from "@/utils/aim"
@@ -80,6 +79,18 @@ import { ProjectDragOverlay, SortableProject, type ProjectSidebarContext } from 
 import { SidebarContent } from "./layout/sidebar-shell"
 
 export default function Layout(props: ParentProps) {
+  if (typeof window !== "undefined") {
+    const path = window.location.pathname
+    if (/\/session(?:\/[^/]+)?\/terminal-popout$/.test(path)) {
+      return (
+        <div class="size-full overflow-hidden bg-background-base">
+          {props.children}
+          <Toast.Region />
+        </div>
+      )
+    }
+  }
+
   const [store, setStore, , ready] = persisted(
     Persist.global("layout.page", ["layout.page.v1"]),
     createStore({
@@ -179,6 +190,14 @@ export default function Layout(props: ParentProps) {
 
   const sidebarHovering = createMemo(() => !layout.sidebar.opened() && state.hoverProject !== undefined)
   const sidebarExpanded = createMemo(() => layout.sidebar.opened() || sidebarHovering())
+  const canResizeOverlayDrawer = createMemo(
+    () => typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches,
+  )
+  const overlayDrawerWidth = createMemo(() => {
+    if (typeof window === "undefined") return Math.max(layout.sidebar.width(), 244)
+    const max = Math.max(280, Math.min(560, window.innerWidth - 56))
+    return Math.max(244, Math.min(layout.sidebar.width(), max))
+  })
   const clearHoverProjectSoon = () => queueMicrotask(() => setState("hoverProject", undefined))
   const setHoverSession = (id: string | undefined) => setState("hoverSession", id)
 
@@ -885,32 +904,6 @@ export default function Layout(props: ParentProps) {
     }
   }
 
-  async function archiveSession(session: Session) {
-    const [store, setStore] = globalSync.child(session.directory)
-    const sessions = store.session ?? []
-    const index = sessions.findIndex((s) => s.id === session.id)
-    const nextSession = sessions[index + 1] ?? sessions[index - 1]
-
-    await globalSDK.client.session.update({
-      directory: session.directory,
-      sessionID: session.id,
-      time: { archived: Date.now() },
-    })
-    setStore(
-      produce((draft) => {
-        const match = Binary.search(draft.session, session.id, (s) => s.id)
-        if (match.found) draft.session.splice(match.index, 1)
-      }),
-    )
-    if (session.id === params.id) {
-      if (nextSession) {
-        navigate(`/${params.dir}/session/${nextSession.id}`)
-      } else {
-        navigate(`/${params.dir}/session`)
-      }
-    }
-  }
-
   command.register("layout", () => {
     const commands: CommandOption[] = [
       {
@@ -973,17 +966,6 @@ export default function Layout(props: ParentProps) {
         category: language.t("command.category.session"),
         keybind: "shift+alt+arrowdown",
         onSelect: () => navigateSessionByUnseen(1),
-      },
-      {
-        id: "session.archive",
-        title: language.t("command.session.archive"),
-        category: language.t("command.category.session"),
-        keybind: "mod+shift+backspace",
-        disabled: !params.dir || !params.id,
-        onSelect: () => {
-          const session = currentSessions().find((s) => s.id === params.id)
-          if (session) archiveSession(session)
-        },
       },
       {
         id: "workspace.new",
@@ -1683,7 +1665,6 @@ export default function Layout(props: ParentProps) {
     setHoverSession,
     clearHoverProjectSoon,
     prefetchSession,
-    archiveSession,
     workspaceName,
     renameWorkspace,
     editorOpen,
@@ -1728,7 +1709,6 @@ export default function Layout(props: ParentProps) {
       setHoverSession,
       clearHoverProjectSoon,
       prefetchSession,
-      archiveSession,
     },
     setHoverSession,
   }
@@ -2038,10 +2018,11 @@ export default function Layout(props: ParentProps) {
             aria-label={language.t("sidebar.nav.projectsAndSessions")}
             data-component="sidebar-nav-mobile"
             classList={{
-              "@container fixed top-10 bottom-0 left-0 z-50 w-72 bg-background-base transition-transform duration-200 ease-out": true,
+              "@container fixed top-10 bottom-0 left-0 z-50 bg-background-base transition-transform duration-200 ease-out": true,
               "translate-x-0": layout.mobileSidebar.opened(),
               "-translate-x-full": !layout.mobileSidebar.opened(),
             }}
+            style={{ width: `${overlayDrawerWidth()}px` }}
             onClick={(e) => e.stopPropagation()}
           >
             <SidebarContent
@@ -2068,6 +2049,15 @@ export default function Layout(props: ParentProps) {
               onOpenHelp={() => platform.openLink("https://opencode.ai/desktop-feedback")}
               renderPanel={() => <SidebarPanel project={currentProject()} mobile />}
             />
+            <Show when={layout.mobileSidebar.opened() && canResizeOverlayDrawer()}>
+              <ResizeHandle
+                direction="horizontal"
+                size={overlayDrawerWidth()}
+                min={244}
+                max={typeof window === "undefined" ? 560 : Math.max(280, Math.min(560, window.innerWidth - 56))}
+                onResize={layout.sidebar.resize}
+              />
+            </Show>
           </nav>
         </div>
 
