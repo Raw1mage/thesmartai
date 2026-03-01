@@ -49,8 +49,9 @@ The `cms` branch is the primary product line for this environment, featuring sig
    - CLI/TUI compatibility path can still use Basic auth where required.
 
 2. **Instance boundary (`Instance.directory`)**
-   - File/tool routes are project-root constrained.
-   - Requests escaping project scope are denied by design.
+   - File/tool routes are project-root constrained by default.
+   - Setting `OPENCODE_ALLOW_GLOBAL_FS_BROWSE=true` bypasses this, allowing full `~` and root `/` filesystem access from the web interface to open external workspaces.
+   - Requests escaping project scope are denied by design unless the global FS flag is set.
 
 3. **PTY boundary (`/pty`)**
    - PTY sessions require explicit create → connect lifecycle.
@@ -484,7 +485,7 @@ In addition to the standard `packages/` directory, these top-level folders serve
 | `patches/`       | **Package Fixes.** Custom patches applied to third-party dependencies via Bun's `patchedDependencies`.    |
 | `refs/`          | **External References.** Upstream repositories or integration prototypes kept for cross-referencing.      |
 | `infra/`         | **Infrastructure Definitions.** SST configurations for Cloudflare/AWS resources.                          |
-| `docker/`        | **Docker Deployment.** Dockerfiles, compose files, and control scripts (`webctl.sh`).                     |
+| `docker/`        | **Docker Deployment.** Dockerfiles and compose files.                                                     |
 | `github/`        | **GitHub Integration.** Definitions for OpenCode GitHub Action (`action.yml`).                            |
 | `templates/`     | **Scaffolding.** Reusable templates for agents, tools, and project structures.                            |
 | `recyclebin/`    | **Temporary Archive.** Deprecated files pending final deletion.                                           |
@@ -506,6 +507,7 @@ The root directory is kept minimal, containing only essential configuration and 
 | `tsconfig.json` | **TypeScript Config.** Global compiler options and path aliases.                              |
 | `README.md`     | **Documentation Entry.** The primary project overview and quickstart guide.                   |
 | `LICENSE`       | **License Information.** MIT License terms for the project.                                   |
+| `webctl.sh`     | **Standalone Web Manager.** Script to manage web deployment natively within the user `$HOME`, completely detached from the git repo context. |
 
 ---
 
@@ -1032,12 +1034,13 @@ This section defines the credential-management baseline for self-hosted Web depl
 
 1. `OPENCODE_SERVER_HTPASSWD` (or `OPENCODE_SERVER_PASSWORD_FILE`) if file exists.
 2. Fallback: `OPENCODE_SERVER_USERNAME + OPENCODE_SERVER_PASSWORD`.
+3. Fallback (Linux only): Native PAM authentication mapped to the OS user, executed via a hidden interactive `su` PTY layer (`bun-pty`).
 
 ### C. File-to-function mapping
 
 | File Path                                              | Function / Responsibility                                                                      | Architectural Impact                                                                  |
 | :----------------------------------------------------- | :--------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------ |
-| `packages/opencode/src/server/web-auth-credentials.ts` | Loads/caches htpasswd-style credential file and verifies hash with `Bun.password.verify()`.    | Decouples credential storage from env plaintext and allows hash-based auth lifecycle. |
+| `packages/opencode/src/server/web-auth-credentials.ts` | Loads/caches htpasswd-style credential file, verifies hash, and falls back to PAM auth via Linux PTY on `su`. | Decouples credential storage from env plaintext and enables true OS-level web login.                  |
 | `packages/opencode/src/server/web-auth.ts`             | Web auth policy layer (session cookie signing, CSRF enforcement helpers, lockout integration). | Central auth gate contract consumed by server middleware and auth routes.             |
 | `packages/opencode/src/server/routes/global.ts`        | Auth endpoints for session probe/login/logout; returns `usernameHint` for login UX.            | Provides explicit auth API contract for browser clients.                              |
 | `packages/opencode/src/flag/flag.ts`                   | Defines new auth-file flags (`OPENCODE_SERVER_HTPASSWD`, `OPENCODE_SERVER_PASSWORD_FILE`).     | Standardizes configuration surface for secure credential-file deployments.            |
