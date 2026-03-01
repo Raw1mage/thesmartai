@@ -39,7 +39,6 @@ export type WorkspaceSidebarContext = {
   setHoverSession: (id: string | undefined) => void
   clearHoverProjectSoon: () => void
   prefetchSession: (session: Session, priority?: "high" | "low") => void
-  archiveSession: (session: Session) => Promise<void>
   workspaceName: (directory: string, projectId?: string, branch?: string) => string | undefined
   renameWorkspace: (directory: string, next: string, projectId?: string, branch?: string) => void
   editorOpen: (id: string) => boolean
@@ -244,59 +243,114 @@ const WorkspaceSessionList = (props: {
   showNew: Accessor<boolean>
   loading: Accessor<boolean>
   sessions: Accessor<Session[]>
+  allSessions: Accessor<Session[]>
   children: Accessor<Map<string, string[]>>
   hasMore: Accessor<boolean>
   loadMore: () => Promise<void>
   language: ReturnType<typeof useLanguage>
-}): JSX.Element => (
-  <nav class="flex flex-col gap-1 px-2">
-    <Show when={props.showNew()}>
-      <NewSessionItem
-        slug={props.slug()}
-        mobile={props.mobile}
-        sidebarExpanded={props.ctx.sidebarExpanded}
-        clearHoverProjectSoon={props.ctx.clearHoverProjectSoon}
-        setHoverSession={props.ctx.setHoverSession}
-      />
-    </Show>
-    <Show when={props.loading()}>
-      <SessionSkeleton />
-    </Show>
-    <For each={props.sessions()}>
-      {(session) => (
-        <SessionItem
-          session={session}
+}): JSX.Element => {
+  const sessionGroups = createMemo(() => {
+    const sessions = props.sessions()
+    const byID = new Map(props.allSessions().map((session) => [session.id, session]))
+    const now = new Date()
+    const today = now.toDateString()
+    const groups: { key: string; label: string; rows: { session: Session; label: string; child: boolean }[] }[] = []
+    for (const root of sessions) {
+      const rootDate = new Date(root.time.updated ?? root.time.created)
+      const key = rootDate.toDateString()
+      const label =
+        key === today
+          ? "Today"
+          : rootDate
+              .toLocaleDateString(undefined, {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })
+              .replace(/,/g, "")
+      const children = (props.children().get(root.id) ?? [])
+        .map((id) => byID.get(id))
+        .filter((session): session is Session => !!session)
+        .sort((a, b) => (a.time.created ?? 0) - (b.time.created ?? 0))
+      const rootLabel = `${root.title}${children.length > 0 ? ` [${children.length}]` : ""}`
+      const rows: { session: Session; label: string; child: boolean }[] = [
+        { session: root, label: rootLabel, child: false },
+      ]
+      for (let index = 0; index < children.length; index++) {
+        const child = children[index]
+        const prefix = index === children.length - 1 ? "└─ " : "├─ "
+        rows.push({ session: child, label: `${prefix}${child.title}`, child: true })
+      }
+      const prev = groups[groups.length - 1]
+      if (prev && prev.key === key) {
+        prev.rows.push(...rows)
+        continue
+      }
+      groups.push({ key, label, rows })
+    }
+    return groups
+  })
+
+  return (
+    <nav class="flex flex-col gap-1 px-2">
+      <Show when={props.showNew()}>
+        <NewSessionItem
           slug={props.slug()}
           mobile={props.mobile}
-          children={props.children()}
           sidebarExpanded={props.ctx.sidebarExpanded}
-          sidebarHovering={props.ctx.sidebarHovering}
-          nav={props.ctx.nav}
-          hoverSession={props.ctx.hoverSession}
-          setHoverSession={props.ctx.setHoverSession}
           clearHoverProjectSoon={props.ctx.clearHoverProjectSoon}
-          prefetchSession={props.ctx.prefetchSession}
-          archiveSession={props.ctx.archiveSession}
+          setHoverSession={props.ctx.setHoverSession}
         />
-      )}
-    </For>
-    <Show when={props.hasMore()}>
-      <div class="relative w-full py-1">
-        <Button
-          variant="ghost"
-          class="flex w-full text-left justify-start text-14-regular text-text-weak pl-9 pr-10"
-          size="large"
-          onClick={(e: MouseEvent) => {
-            props.loadMore()
-            ;(e.currentTarget as HTMLButtonElement).blur()
-          }}
-        >
-          {props.language.t("common.loadMore")}
-        </Button>
-      </div>
-    </Show>
-  </nav>
-)
+      </Show>
+      <Show when={props.loading()}>
+        <SessionSkeleton />
+      </Show>
+      <For each={sessionGroups()}>
+        {(group) => (
+          <div class="flex flex-col gap-0.5">
+            <div class="px-2 pt-1.5 pb-0.5 text-12-medium tracking-wide text-text-weak">{group.label}</div>
+            <For each={group.rows}>
+              {(row) => (
+                <SessionItem
+                  session={row.session}
+                  labelOverride={row.label}
+                  child={row.child}
+                  slug={props.slug()}
+                  mobile={props.mobile}
+                  dense
+                  children={props.children()}
+                  sidebarExpanded={props.ctx.sidebarExpanded}
+                  sidebarHovering={props.ctx.sidebarHovering}
+                  nav={props.ctx.nav}
+                  hoverSession={props.ctx.hoverSession}
+                  setHoverSession={props.ctx.setHoverSession}
+                  clearHoverProjectSoon={props.ctx.clearHoverProjectSoon}
+                  prefetchSession={props.ctx.prefetchSession}
+                />
+              )}
+            </For>
+          </div>
+        )}
+      </For>
+      <Show when={props.hasMore()}>
+        <div class="relative w-full py-1">
+          <Button
+            variant="ghost"
+            class="flex w-full text-left justify-start text-14-regular text-text-weak pl-9 pr-10"
+            size="large"
+            onClick={(e: MouseEvent) => {
+              props.loadMore()
+              ;(e.currentTarget as HTMLButtonElement).blur()
+            }}
+          >
+            {props.language.t("common.loadMore")}
+          </Button>
+        </div>
+      </Show>
+    </nav>
+  )
+}
 
 export const SortableWorkspace = (props: {
   ctx: WorkspaceSidebarContext
@@ -450,6 +504,7 @@ export const SortableWorkspace = (props: {
             showNew={showNew}
             loading={loading}
             sessions={sessions}
+            allSessions={() => workspaceStore.session}
             children={children}
             hasMore={hasMore}
             loadMore={loadMore}
@@ -507,7 +562,6 @@ export const LocalWorkspace = (props: {
               setHoverSession={props.ctx.setHoverSession}
               clearHoverProjectSoon={props.ctx.clearHoverProjectSoon}
               prefetchSession={props.ctx.prefetchSession}
-              archiveSession={props.ctx.archiveSession}
             />
           )}
         </For>

@@ -74,7 +74,6 @@ export function MessageTimeline(props: {
   onTitlePendingRename: (value: boolean) => void
   onNavigateParent: () => void
   sessionID: string
-  onArchiveSession: (sessionID: string) => void
   onDeleteSession: (sessionID: string) => void
   t: (key: string, vars?: Record<string, string | number | boolean>) => string
   setContentRef: (el: HTMLDivElement) => void
@@ -155,8 +154,10 @@ export function MessageTimeline(props: {
           }}
           onScroll={(e) => {
             props.onScheduleScrollState(e.currentTarget)
-            if (!props.hasScrollGesture()) return
-            props.onAutoScrollHandleScroll()
+            const hasGesture = props.hasScrollGesture()
+            const shouldTrackAutoScroll = hasGesture || !props.scroll.bottom
+            if (shouldTrackAutoScroll) props.onAutoScrollHandleScroll()
+            if (!hasGesture) return
             props.onMarkScrollGesture(e.currentTarget)
             if (props.isDesktop) props.onScrollSpyScroll()
           }}
@@ -246,9 +247,6 @@ export function MessageTimeline(props: {
                               }}
                             >
                               <DropdownMenu.ItemLabel>{props.t("common.rename")}</DropdownMenu.ItemLabel>
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item onSelect={() => props.onArchiveSession(id())}>
-                              <DropdownMenu.ItemLabel>{props.t("common.archive")}</DropdownMenu.ItemLabel>
                             </DropdownMenu.Item>
                             <DropdownMenu.Separator />
                             <DropdownMenu.Item onSelect={() => props.onDeleteSession(id())}>

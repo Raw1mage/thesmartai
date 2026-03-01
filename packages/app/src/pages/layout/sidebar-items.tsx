@@ -1,20 +1,23 @@
 import { A, useNavigate, useParams } from "@solidjs/router"
 import { useGlobalSync } from "@/context/global-sync"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useLanguage } from "@/context/language"
 import { useLayout, type LocalProject, getAvatarColors } from "@/context/layout"
 import { useNotification } from "@/context/notification"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { Avatar } from "@opencode-ai/ui/avatar"
-import { DiffChanges } from "@opencode-ai/ui/diff-changes"
+import { DropdownMenu } from "@opencode-ai/ui/dropdown-menu"
 import { HoverCard } from "@opencode-ai/ui/hover-card"
 import { Icon } from "@opencode-ai/ui/icon"
-import { IconButton } from "@opencode-ai/ui/icon-button"
 import { MessageNav } from "@opencode-ai/ui/message-nav"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { showToast } from "@opencode-ai/ui/toast"
+import { Binary } from "@opencode-ai/util/binary"
 import { getFilename } from "@opencode-ai/util/path"
 import { type Message, type Session, type TextPart, type UserMessage } from "@opencode-ai/sdk/v2/client"
 import { For, Match, Show, Switch, createMemo, onCleanup, type Accessor, type JSX } from "solid-js"
+import { produce } from "solid-js/store"
 import { agentColor } from "@/utils/agent"
 
 const OPENCODE_PROJECT_ID = "4b0ea68d7af9a6031a7ffda7ad66e0cb83315750"
@@ -55,6 +58,8 @@ export const ProjectIcon = (props: { project: LocalProject; class?: string; noti
 
 export type SessionItemProps = {
   session: Session
+  labelOverride?: string
+  child?: boolean
   slug: string
   mobile?: boolean
   dense?: boolean
@@ -67,11 +72,12 @@ export type SessionItemProps = {
   setHoverSession: (id: string | undefined) => void
   clearHoverProjectSoon: () => void
   prefetchSession: (session: Session, priority?: "high" | "low") => void
-  archiveSession: (session: Session) => Promise<void>
 }
 
 const SessionRow = (props: {
   session: Session
+  label: Accessor<string>
+  child: Accessor<boolean>
   slug: string
   mobile?: boolean
   dense?: boolean
@@ -86,10 +92,13 @@ const SessionRow = (props: {
   prefetchSession: (session: Session, priority?: "high" | "low") => void
   scheduleHoverPrefetch: () => void
   cancelHoverPrefetch: () => void
+  timeLabel: Accessor<string>
+  showActions: Accessor<boolean>
+  actionMenu?: JSX.Element
 }): JSX.Element => (
   <A
     href={`/${props.slug}/session/${props.session.id}`}
-    class={`flex items-center justify-between gap-3 min-w-0 text-left w-full focus:outline-none transition-[padding] ${props.mobile ? "pr-7" : ""} group-hover/session:pr-7 group-focus-within/session:pr-7 group-active/session:pr-7 ${props.dense ? "py-0.5" : "py-1"}`}
+    class={`flex items-center justify-between gap-2 min-w-0 text-left w-full focus:outline-none ${props.dense ? "py-0.5" : "py-1"}`}
     onPointerEnter={props.scheduleHoverPrefetch}
     onPointerLeave={props.cancelHoverPrefetch}
     onMouseEnter={props.scheduleHoverPrefetch}
@@ -102,11 +111,16 @@ const SessionRow = (props: {
     }}
   >
     <div class="flex items-center gap-1 w-full">
+      <div class="shrink-0 size-6 flex items-center justify-center text-text-weak">
+        <Show when={props.showActions()} fallback={<span class="text-12-regular">-</span>}>
+          {props.actionMenu}
+        </Show>
+      </div>
       <div
-        class="shrink-0 size-6 flex items-center justify-center"
+        class="shrink-0 size-4 flex items-center justify-center"
         style={{ color: props.tint() ?? "var(--icon-interactive-base)" }}
       >
-        <Switch fallback={<Icon name="dash" size="small" class="text-icon-weak" />}>
+        <Switch fallback={<div class="size-1.5 rounded-full bg-transparent" />}>
           <Match when={props.isWorking()}>
             <Spinner class="size-[15px]" />
           </Match>
@@ -121,16 +135,17 @@ const SessionRow = (props: {
           </Match>
         </Switch>
       </div>
-      <span class="text-14-regular text-text-strong grow-1 min-w-0 overflow-hidden text-ellipsis truncate">
-        {props.session.title}
+      <span
+        class="text-13-regular text-text-strong grow min-w-0 overflow-hidden text-ellipsis truncate"
+        classList={{
+          "font-mono text-12-regular": props.child(),
+        }}
+      >
+        {props.label()}
       </span>
-      <Show when={props.session.summary}>
-        {(summary) => (
-          <div class="group-hover/session:hidden group-active/session:hidden group-focus-within/session:hidden">
-            <DiffChanges changes={summary()} />
-          </div>
-        )}
-      </Show>
+      <span class="shrink-0 w-14 text-right text-11-regular text-text-weak tabular-nums pr-0.5">
+        {props.timeLabel()}
+      </span>
     </div>
   </A>
 )
@@ -184,12 +199,13 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
   const params = useParams()
   const navigate = useNavigate()
   const layout = useLayout()
+  const globalSDK = useGlobalSDK()
   const language = useLanguage()
   const notification = useNotification()
   const globalSync = useGlobalSync()
   const unseenCount = createMemo(() => notification.session.unseenCount(props.session.id))
   const hasError = createMemo(() => notification.session.unseenHasError(props.session.id))
-  const [sessionStore] = globalSync.child(props.session.directory)
+  const [sessionStore, setSessionStore] = globalSync.child(props.session.directory)
   const hasPermissions = createMemo(() => {
     const permissions = sessionStore.permission?.[props.session.id] ?? []
     if (permissions.length > 0) return true
@@ -228,7 +244,17 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
   const hoverReady = createMemo(() => sessionStore.message[props.session.id] !== undefined)
   const hoverAllowed = createMemo(() => !props.mobile && props.sidebarExpanded())
   const hoverEnabled = createMemo(() => (props.popover ?? true) && hoverAllowed())
+  const showActions = createMemo(() => !props.dense && props.popover !== false)
   const isActive = createMemo(() => props.session.id === params.id)
+  const isChild = createMemo(() => !!props.child)
+  const rowLabel = createMemo(() => props.labelOverride ?? props.session.title)
+  const sessionTime = createMemo(() => props.session.time.updated ?? props.session.time.created)
+  const timeLabel = createMemo(() =>
+    new Date(sessionTime()).toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    }),
+  )
 
   const hoverPrefetch = { current: undefined as ReturnType<typeof setTimeout> | undefined }
   const cancelHoverPrefetch = () => {
@@ -254,6 +280,8 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
   const item = (
     <SessionRow
       session={props.session}
+      label={rowLabel}
+      child={isChild}
       slug={props.slug}
       mobile={props.mobile}
       dense={props.dense}
@@ -268,8 +296,95 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
       prefetchSession={props.prefetchSession}
       scheduleHoverPrefetch={scheduleHoverPrefetch}
       cancelHoverPrefetch={cancelHoverPrefetch}
+      timeLabel={timeLabel}
+      showActions={showActions}
+      actionMenu={
+        <DropdownMenu placement="bottom-start">
+          <DropdownMenu.Trigger
+            class="size-5 rounded-sm text-12-regular text-text-weak hover:bg-surface-raised-base-hover data-[expanded]:bg-surface-base-active"
+            aria-label={language.t("common.moreOptions")}
+            onClick={(event: MouseEvent) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+          >
+            -
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content>
+            <DropdownMenu.Item
+              onSelect={() => {
+                void renameSession()
+              }}
+            >
+              <DropdownMenu.ItemLabel>{language.t("common.rename")}</DropdownMenu.ItemLabel>
+            </DropdownMenu.Item>
+            <DropdownMenu.Separator />
+            <DropdownMenu.Item
+              onSelect={() => {
+                void deleteSession()
+              }}
+            >
+              <DropdownMenu.ItemLabel>{language.t("common.delete")}</DropdownMenu.ItemLabel>
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu>
+      }
     />
   )
+
+  const renameSession = async () => {
+    const next = window.prompt(language.t("common.rename"), props.session.title)?.trim()
+    if (!next || next === props.session.title) return
+    await globalSDK.client.session
+      .update({
+        directory: props.session.directory,
+        sessionID: props.session.id,
+        title: next,
+      })
+      .then(() => {
+        setSessionStore(
+          "session",
+          produce((draft) => {
+            const match = Binary.search(draft, props.session.id, (s) => s.id)
+            if (!match.found) return
+            draft[match.index].title = next
+          }),
+        )
+      })
+      .catch((err) => {
+        showToast({
+          title: language.t("common.requestFailed"),
+          description: String((err as { message?: string })?.message ?? err),
+        })
+      })
+  }
+
+  const deleteSession = async () => {
+    const confirmed = window.confirm(`${language.t("common.delete")} "${props.session.title}"?`)
+    if (!confirmed) return
+    await globalSDK.client.session
+      .delete({
+        directory: props.session.directory,
+        sessionID: props.session.id,
+      })
+      .then(() => {
+        setSessionStore(
+          "session",
+          produce((draft) => {
+            const match = Binary.search(draft, props.session.id, (s) => s.id)
+            if (!match.found) return
+            draft.splice(match.index, 1)
+          }),
+        )
+        if (isActive()) navigate(`/${props.slug}/session`)
+      })
+      .catch((err) => {
+        showToast({
+          title: language.t("common.requestFailed"),
+          description: String((err as { message?: string })?.message ?? err),
+        })
+      })
+  }
 
   return (
     <div
@@ -280,7 +395,7 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
       <Show
         when={hoverEnabled()}
         fallback={
-          <Tooltip placement={props.mobile ? "bottom" : "right"} value={props.session.title} gutter={10}>
+          <Tooltip placement={props.mobile ? "bottom" : "right"} value={rowLabel()} gutter={10}>
             {item}
           </Tooltip>
         }
@@ -310,29 +425,6 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
           trigger={item}
         />
       </Show>
-      <div
-        class={`absolute ${props.dense ? "top-0.5 right-0.5" : "top-1 right-1"} flex items-center gap-0.5 transition-opacity`}
-        classList={{
-          "opacity-100 pointer-events-auto": !!props.mobile,
-          "opacity-0 pointer-events-none": !props.mobile,
-          "group-hover/session:opacity-100 group-hover/session:pointer-events-auto": true,
-          "group-focus-within/session:opacity-100 group-focus-within/session:pointer-events-auto": true,
-        }}
-      >
-        <Tooltip value={language.t("common.archive")} placement="top">
-          <IconButton
-            icon="archive"
-            variant="ghost"
-            class="size-6 rounded-md"
-            aria-label={language.t("common.archive")}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              void props.archiveSession(props.session)
-            }}
-          />
-        </Tooltip>
-      </div>
     </div>
   )
 }

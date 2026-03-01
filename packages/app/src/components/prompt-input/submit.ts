@@ -64,6 +64,12 @@ export function createPromptSubmit(input: PromptSubmitInput) {
   const language = useLanguage()
   const params = useParams()
 
+  const debugAttachments = (...args: unknown[]) => {
+    if (typeof localStorage === "undefined") return
+    if (localStorage.getItem("opencode.debug.attachments") !== "1") return
+    console.info("[attachments-debug]", ...args)
+  }
+
   const errorMessage = (err: unknown) => {
     return formatApiErrorMessage({
       error: err,
@@ -319,6 +325,19 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         message: optimisticMessage,
         parts: optimisticParts,
       })
+
+    debugAttachments("submit", {
+      sessionID: session.id,
+      messageID,
+      composerImages: images.map((image) => ({
+        filename: image.filename,
+        mime: image.mime,
+        bytes: image.dataUrl.length,
+      })),
+      optimisticFileParts: optimisticParts
+        .filter((part) => part.type === "file")
+        .map((part) => ({ id: part.id, filename: part.filename, mime: part.mime, urlHead: part.url.slice(0, 48) })),
+    })
 
     const removeOptimisticMessage = () =>
       sync.session.optimistic.remove({

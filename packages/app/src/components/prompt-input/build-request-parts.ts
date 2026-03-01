@@ -160,15 +160,23 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
     ]
   })
 
-  const images = input.images.map((attachment) => {
-    return {
-      id: Identifier.ascending("part"),
-      type: "file",
-      mime: attachment.mime,
-      url: attachment.dataUrl,
-      filename: attachment.filename,
-    } satisfies PromptRequestPart
-  })
+  const imageSeen = new Set<string>()
+  const images = input.images
+    .filter((attachment) => {
+      const key = `${attachment.mime}:${attachment.filename}:${attachment.dataUrl}`
+      if (imageSeen.has(key)) return false
+      imageSeen.add(key)
+      return true
+    })
+    .map((attachment) => {
+      return {
+        id: Identifier.ascending("part"),
+        type: "file",
+        mime: attachment.mime,
+        url: attachment.dataUrl,
+        filename: attachment.filename,
+      } satisfies PromptRequestPart
+    })
 
   requestParts.push(...files, ...context, ...agents, ...images)
 

@@ -1118,10 +1118,6 @@ export default function Page() {
                         if (parent) navigate(`/${params.dir}/${parent}`)
                       }}
                       sessionID={params.id!}
-                      onArchiveSession={async (id) => {
-                        await sync.session.archive(id)
-                        navigate(`/${params.dir}`)
-                      }}
                       onDeleteSession={async (id) => {
                         await sdk.client.session.delete({ sessionID: id })
                         navigate(`/${params.dir}`)

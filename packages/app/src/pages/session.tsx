@@ -404,33 +404,6 @@ export default function Page() {
     navigate(`/${params.dir}/session`)
   }
 
-  async function archiveSession(sessionID: string) {
-    const session = sync.session.get(sessionID)
-    if (!session) return
-
-    const sessions = sync.data.session ?? []
-    const index = sessions.findIndex((s) => s.id === sessionID)
-    const nextSession = index === -1 ? undefined : (sessions[index + 1] ?? sessions[index - 1])
-
-    await sdk.client.session
-      .update({ sessionID, time: { archived: Date.now() } })
-      .then(() => {
-        sync.set(
-          produce((draft) => {
-            const index = draft.session.findIndex((s) => s.id === sessionID)
-            if (index !== -1) draft.session.splice(index, 1)
-          }),
-        )
-        navigateAfterSessionRemoval(sessionID, session.parentID, nextSession?.id)
-      })
-      .catch((err) => {
-        showToast({
-          title: language.t("common.requestFailed"),
-          description: errorMessage(err),
-        })
-      })
-  }
-
   async function deleteSession(sessionID: string) {
     const session = sync.session.get(sessionID)
     if (!session) return false
@@ -1605,7 +1578,6 @@ export default function Page() {
                       navigate(`/${params.dir}/session/${info()?.parentID}`)
                     }}
                     sessionID={params.id!}
-                    onArchiveSession={(sessionID: string) => void archiveSession(sessionID)}
                     onDeleteSession={(sessionID: string) =>
                       dialog.show(() => <DialogDeleteSession sessionID={sessionID} />)
                     }

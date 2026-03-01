@@ -6,9 +6,68 @@ import { lazy } from "../../util/lazy"
 import { errors } from "../error"
 import { Config } from "../../config/config"
 import { Plugin } from "../../plugin"
+import { getOpenAIQuotas } from "../../account/quota"
 
 export const AccountRoutes = lazy(() =>
   new Hono()
+    .get(
+      "/quota",
+      describeRoute({
+        summary: "Get quota hint for current model",
+        description: "Returns provider-specific quota hint text for prompt footer metadata.",
+        operationId: "account.quotaHint",
+        responses: {
+          200: {
+            description: "Quota hint",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    providerId: z.string(),
+                    family: z.string(),
+                    accountId: z.string().optional(),
+                    hint: z.string().optional(),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      validator("query", z.object({ providerId: z.string(), modelID: z.string().optional() })),
+      async (c) => {
+        const { providerId } = c.req.valid("query")
+        const family = Account.parseFamily(providerId) ?? providerId
+        const families = await Account.listAll()
+        const accountId = families[family]?.activeAccount
+
+        if (!accountId) {
+          return c.json({
+            providerId,
+            family,
+          })
+        }
+
+        if (family === "openai") {
+          const quotas = await getOpenAIQuotas()
+          const quota = quotas[accountId]
+          const fiveHour = quota ? (quota.hasHourlyWindow ? `${quota.hourlyRemaining}%` : "--") : "--"
+          const week = quota ? `${quota.weeklyRemaining}%` : "--"
+          return c.json({
+            providerId,
+            family,
+            accountId,
+            hint: `(5hrs:${fiveHour} | week:${week})`,
+          })
+        }
+
+        return c.json({
+          providerId,
+          family,
+          accountId,
+        })
+      },
+    )
     .get(
       "/",
       describeRoute({
