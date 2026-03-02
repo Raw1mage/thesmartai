@@ -1,6 +1,8 @@
+import crypto from "crypto"
 import yargs from "yargs"
 import type { CommandModule } from "yargs"
 import { hideBin } from "yargs/helpers"
+
 import { RunCommand } from "./cli/cmd/run"
 import { GenerateCommand } from "./cli/cmd/generate"
 import { Log } from "./util/log"
@@ -81,6 +83,10 @@ const cli = yargs(hideBin(process.argv))
 
     process.env.AGENT = "1"
     process.env.OPENCODE = "1"
+
+    if (!process.env.OPENCODE_CLI_TOKEN) {
+      process.env.OPENCODE_CLI_TOKEN = crypto.randomBytes(32).toString("hex")
+    }
 
     Log.Default.info("opencode", {
       version: Installation.VERSION,

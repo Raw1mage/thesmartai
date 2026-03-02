@@ -10,11 +10,16 @@ import { Shell } from "@/shell/shell"
 import { Plugin } from "@/plugin"
 import { debugCheckpoint } from "@/util/debug"
 import * as fs from "fs"
+import { RequestUser } from "@/runtime/request-user"
+import { LinuxUserExec } from "@/system/linux-user-exec"
 
 const debugLog = (...args: any[]) => {
   try {
-    fs.appendFileSync("/tmp/pty-debug.log", args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ") + "\n")
-  } catch (e) { }
+    fs.appendFileSync(
+      "/tmp/pty-debug.log",
+      args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ") + "\n",
+    )
+  } catch (e) {}
 }
 
 export namespace Pty {
@@ -150,10 +155,17 @@ export namespace Pty {
   interface ActiveSession {
     info: Info
     process: IPty
+    owner?: string
     buffer: string
     bufferCursor: number
     cursor: number
     subscribers: Map<Socket, Subscriber>
+  }
+
+  function canAccess(session: ActiveSession, owner?: string) {
+    if (!session.owner) return true
+    if (!owner) return false
+    return session.owner === owner
   }
 
   const state = Instance.state(
@@ -180,15 +192,20 @@ export namespace Pty {
     },
   )
 
-  export function list() {
-    return Array.from(state().values()).map((s) => s.info)
+  export function list(owner?: string) {
+    return Array.from(state().values())
+      .filter((s) => canAccess(s, owner))
+      .map((s) => s.info)
   }
 
-  export function get(id: string) {
-    return state().get(id)?.info
+  export function get(id: string, owner?: string) {
+    const session = state().get(id)
+    if (!session) return
+    if (!canAccess(session, owner)) return
+    return session.info
   }
 
-  export async function create(input: CreateInput) {
+  export async function create(input: CreateInput, owner = RequestUser.username()) {
     const id = Identifier.create("pty", false)
     const command = input.command || Shell.preferred()
     const args = input.args || []
@@ -198,27 +215,50 @@ export namespace Pty {
 
     const cwd = input.cwd || Instance.directory
     const shellEnv = await Plugin.trigger("shell.env", { cwd }, { env: {} })
-    const env = {
-      ...process.env,
+    const baseEnv = {
       ...input.env,
       ...shellEnv.env,
       TERM: "xterm-256color",
       OPENCODE_TERMINAL: "1",
     } as Record<string, string>
 
+    const env = Object.fromEntries(
+      Object.entries({
+        ...process.env,
+        ...baseEnv,
+      }).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+    ) as Record<string, string>
+
     if (process.platform === "win32") {
       env.LC_ALL = "C.UTF-8"
       env.LC_CTYPE = "C.UTF-8"
       env.LANG = "C.UTF-8"
     }
-    log.info("creating session", { id, cmd: command, args, cwd })
+    const runAsUser = LinuxUserExec.resolveExecutionUser(owner)
+    log.info("creating session", { id, cmd: command, args, cwd, owner, runAsUser })
 
     const spawn = await pty()
-    const ptyProcess = spawn(command, args, {
-      name: "xterm-256color",
-      cwd,
-      env,
-    })
+    const ptyProcess = (() => {
+      if (runAsUser) {
+        const invocation = LinuxUserExec.buildSudoInvocation({
+          user: runAsUser,
+          cwd,
+          executable: command,
+          args,
+          env: baseEnv,
+        })
+        return spawn(invocation.command, invocation.args, {
+          name: "xterm-256color",
+          env,
+        })
+      }
+
+      return spawn(command, args, {
+        name: "xterm-256color",
+        cwd,
+        env,
+      })
+    })()
 
     const info = {
       id,
@@ -232,6 +272,7 @@ export namespace Pty {
     const session: ActiveSession = {
       info,
       process: ptyProcess,
+      owner,
       buffer: "",
       bufferCursor: 0,
       cursor: 0,
@@ -239,7 +280,7 @@ export namespace Pty {
     }
     state().set(id, session)
     ptyProcess.onData((data) => {
-      debugLog("[PTY SERVER] Process outputted length:", data.length);
+      debugLog("[PTY SERVER] Process outputted length:", data.length)
       session.cursor += data.length
 
       for (const [ws, sub] of session.subscribers) {
@@ -248,7 +289,12 @@ export namespace Pty {
           continue
         }
         if (typeof ws === "object" && sockets.get(ws) !== sub.id) {
-          console.log("[PTY SERVER] Deleting subscriber due to socket.id mismatch! current:", sockets.get(ws), "saved:", sub.id);
+          console.log(
+            "[PTY SERVER] Deleting subscriber due to socket.id mismatch! current:",
+            sockets.get(ws),
+            "saved:",
+            sub.id,
+          )
           session.subscribers.delete(ws)
           continue
         }
@@ -283,9 +329,10 @@ export namespace Pty {
     return info
   }
 
-  export async function update(id: string, input: UpdateInput) {
+  export async function update(id: string, input: UpdateInput, owner?: string) {
     const session = state().get(id)
     if (!session) return
+    if (!canAccess(session, owner)) return
     if (input.title) {
       session.info.title = input.title
     }
@@ -296,9 +343,10 @@ export namespace Pty {
     return session.info
   }
 
-  export async function remove(id: string) {
+  export async function remove(id: string, owner?: string) {
     const session = state().get(id)
     if (!session) return
+    if (!canAccess(session, owner)) return
     log.info("removing session", { id })
     try {
       session.process.kill()
@@ -320,25 +368,29 @@ export namespace Pty {
     Bus.publish(Event.Deleted, { id })
   }
 
-  export function resize(id: string, cols: number, rows: number) {
+  export function resize(id: string, cols: number, rows: number, owner?: string) {
     const session = state().get(id)
-    if (session && session.info.status === "running") {
+    if (session && canAccess(session, owner) && session.info.status === "running") {
       session.process.resize(cols, rows)
     }
   }
 
-  export function write(id: string, data: string) {
+  export function write(id: string, data: string, owner?: string) {
     const session = state().get(id)
-    if (session && session.info.status === "running") {
+    if (session && canAccess(session, owner) && session.info.status === "running") {
       session.process.write(data)
     }
   }
 
-  export function connect(id: string, ws: Socket, cursor?: number, identity?: unknown) {
-    debugLog("[PTY SERVER] connect called for id:", id);
+  export function connect(id: string, ws: Socket, cursor?: number, identity?: unknown, owner?: string) {
+    debugLog("[PTY SERVER] connect called for id:", id)
     const session = state().get(id)
     if (!session) {
       ws.close()
+      return
+    }
+    if (!canAccess(session, owner)) {
+      ws.close(1008, "Forbidden")
       return
     }
     log.info("client connected to session", { id })
@@ -398,9 +450,9 @@ export namespace Pty {
 
     return {
       onMessage: async (message: any) => {
-        const payload = message instanceof Blob ? await message.arrayBuffer() : message;
-        const text = typeof payload === "string" ? payload : new TextDecoder().decode(payload);
-        debugLog("[PTY SERVER] Received input from client length:", text.length, "content:", text);
+        const payload = message instanceof Blob ? await message.arrayBuffer() : message
+        const text = typeof payload === "string" ? payload : new TextDecoder().decode(payload)
+        debugLog("[PTY SERVER] Received input from client length:", text.length, "content:", text)
         session.process.write(text)
       },
       onClose: () => {

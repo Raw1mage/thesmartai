@@ -527,12 +527,14 @@ export default function Layout(props: ParentProps) {
         if (value.dir) return
 
         const last = server.projects.last()
+        const serverDefaultDirectory = globalSync.data.path.directory || globalSync.data.path.worktree
 
         if (value.list.length === 0) {
-          if (!last) return
+          const fallback = serverDefaultDirectory || last
+          if (!fallback) return
           setState("autoselect", false)
-          openProject(last, false)
-          navigateToProject(last)
+          openProject(fallback, false)
+          navigateToProject(fallback)
           return
         }
 

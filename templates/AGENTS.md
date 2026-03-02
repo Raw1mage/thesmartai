@@ -33,6 +33,12 @@
 - **THEN**: `skill(name="webapp-testing")`
 - **WHY**: 提供 Playwright 瀏覽器控制，能看見真實渲染畫面與 Console Log，遠勝靜態分析。
 
+### 🛡️ 防衝動程式撰寫 (Rigorous Coding)
+
+- **IF**: 任務涉及複雜邏輯修改、除錯、重構，或需要防止模型產生幻覺、衝動編程時
+- **THEN**: `skill(name="rigorous-coder")`
+- **WHY**: 強制啟動 System 2 (慢思維) 模式，利用 `<thinking>` 標籤強制檢查單一事實來源、評估打擊半徑與設計驗證手段，阻斷未經驗證的直覺式產出。
+
 ### 🟡 容器與環境 (Docker & Infra)
 
 - **IF**: 用戶提到 `docker`, `compose`, `container`, `service`, `redis`, `db connection`

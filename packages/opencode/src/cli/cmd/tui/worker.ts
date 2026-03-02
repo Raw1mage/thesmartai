@@ -68,39 +68,39 @@ const startEventStream = (directory: string) => {
     signal,
   })
 
-  ;(async () => {
-    while (!signal.aborted) {
-      beacon.hit("event_stream.subscribe_attempt")
-      const events = await Promise.resolve(
-        sdk.event.subscribe(
-          {},
-          {
-            signal,
-          },
-        ),
-      ).catch(() => undefined)
+    ; (async () => {
+      while (!signal.aborted) {
+        beacon.hit("event_stream.subscribe_attempt")
+        const events = await Promise.resolve(
+          sdk.event.subscribe(
+            {},
+            {
+              signal,
+            },
+          ),
+        ).catch(() => undefined)
 
-      if (!events) {
-        beacon.hit("event_stream.subscribe_empty")
-        await Bun.sleep(250)
-        continue
-      }
+        if (!events) {
+          beacon.hit("event_stream.subscribe_empty")
+          await Bun.sleep(250)
+          continue
+        }
 
-      for await (const event of events.stream) {
-        beacon.hit("event_stream.event")
-        Rpc.emit("event", event as Event)
-      }
+        for await (const event of events.stream) {
+          beacon.hit("event_stream.event")
+          Rpc.emit("event", event as Event)
+        }
 
-      if (!signal.aborted) {
-        await Bun.sleep(250)
+        if (!signal.aborted) {
+          await Bun.sleep(250)
+        }
       }
-    }
-  })().catch((error) => {
-    beacon.hit("event_stream.error")
-    Log.Default.error("event stream error", {
-      error: error instanceof Error ? error.message : error,
+    })().catch((error) => {
+      beacon.hit("event_stream.error")
+      Log.Default.error("event stream error", {
+        error: error instanceof Error ? error.message : error,
+      })
     })
-  })
 }
 
 startEventStream(process.cwd())
@@ -138,7 +138,7 @@ export const rpc = {
       directory: input.directory,
       init: InstanceBootstrap,
       fn: async () => {
-        await upgrade().catch(() => {})
+        await upgrade().catch(() => { })
       },
     })
   },
@@ -164,6 +164,9 @@ export const rpc = {
 Rpc.listen(rpc)
 
 function getAuthorizationHeader(): string | undefined {
+  const cliToken = process.env.OPENCODE_CLI_TOKEN
+  if (cliToken) return `Bearer ${cliToken}`
+
   const password = Flag.OPENCODE_SERVER_PASSWORD
   if (!password) return undefined
   const username = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
