@@ -55,6 +55,7 @@ import { DialogSelectDirectory } from "@/components/dialog-select-directory"
 import { DialogEditProject } from "@/components/dialog-edit-project"
 import { Titlebar } from "@/components/titlebar"
 import { useServer } from "@/context/server"
+import { useWebAuth } from "@/context/web-auth"
 import { useLanguage, type Locale } from "@/context/language"
 import {
   childMapByParent,
@@ -116,6 +117,7 @@ export default function Layout(props: ParentProps) {
   const platform = usePlatform()
   const settings = useSettings()
   const server = useServer()
+  const webAuth = useWebAuth()
   const notification = useNotification()
   const permission = usePermission()
   const navigate = useNavigate()
@@ -1202,6 +1204,16 @@ export default function Layout(props: ParentProps) {
 
   const showEditProjectDialog = (project: LocalProject) => dialog.show(() => <DialogEditProject project={project} />)
 
+  const logout = async () => {
+    const directories = layout.projects.list().map((project) => project.worktree)
+    await webAuth.logout()
+    for (const directory of directories) {
+      clearWorkspaceTerminals(directory, undefined, platform)
+      layout.projects.close(directory)
+    }
+    navigate("/", { replace: true })
+  }
+
   async function chooseProject() {
     function resolve(result: string | string[] | null) {
       if (Array.isArray(result)) {
@@ -1981,6 +1993,8 @@ export default function Layout(props: ParentProps) {
               settingsLabel={() => language.t("sidebar.settings")}
               settingsKeybind={() => command.keybind("settings.open")}
               onOpenSettings={openSettings}
+              logoutLabel={() => "Logout"}
+              onLogout={logout}
               helpLabel={() => language.t("sidebar.help")}
               onOpenHelp={() => platform.openLink("https://opencode.ai/desktop-feedback")}
               renderPanel={() => <SidebarPanel project={currentProject()} />}
@@ -2047,6 +2061,8 @@ export default function Layout(props: ParentProps) {
               settingsLabel={() => language.t("sidebar.settings")}
               settingsKeybind={() => command.keybind("settings.open")}
               onOpenSettings={openSettings}
+              logoutLabel={() => "Logout"}
+              onLogout={logout}
               helpLabel={() => language.t("sidebar.help")}
               onOpenHelp={() => platform.openLink("https://opencode.ai/desktop-feedback")}
               renderPanel={() => <SidebarPanel project={currentProject()} mobile />}

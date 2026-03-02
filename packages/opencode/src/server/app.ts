@@ -211,13 +211,31 @@ export function createApp(app: Hono): Hono {
           return raw
         }
       })()
+
+      const scoped = (() => {
+        if (!requestUser || !userHome || isInternalWorkerHost) return decoded
+
+        const resolvedHome = path.resolve(userHome)
+        const resolvedRequested = path.isAbsolute(decoded) ? path.resolve(decoded) : path.resolve(resolvedHome, decoded)
+        const insideHome = resolvedRequested === resolvedHome || resolvedRequested.startsWith(resolvedHome + path.sep)
+        if (insideHome) return resolvedRequested
+
+        log.warn("Directory outside authenticated user home was rejected", {
+          requestUser,
+          requested: decoded,
+          resolvedRequested,
+          userHome: resolvedHome,
+        })
+        return resolvedHome
+      })()
+
       const exists = await fs.promises
-        .access(decoded)
+        .access(scoped)
         .then(() => true)
         .catch(() => false)
-      if (exists) return decoded
+      if (exists) return scoped
       log.warn("Directory does not exist, falling back to default directory", {
-        requested: decoded,
+        requested: scoped,
         fallback: defaultDirectory,
         requestUser,
       })

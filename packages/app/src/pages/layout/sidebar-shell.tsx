@@ -29,6 +29,8 @@ export const SidebarContent = (props: {
   settingsLabel: Accessor<string>
   settingsKeybind: Accessor<string | undefined>
   onOpenSettings: () => void
+  logoutLabel: Accessor<string>
+  onLogout: () => void
   helpLabel: Accessor<string>
   onOpenHelp: () => void
   renderPanel: () => JSX.Element
@@ -95,6 +97,15 @@ export const SidebarContent = (props: {
               size="large"
               onClick={props.onOpenHelp}
               aria-label={props.helpLabel()}
+            />
+          </Tooltip>
+          <Tooltip placement={placement()} value={props.logoutLabel()}>
+            <IconButton
+              icon="enter"
+              variant="ghost"
+              size="large"
+              onClick={props.onLogout}
+              aria-label={props.logoutLabel()}
             />
           </Tooltip>
         </div>
