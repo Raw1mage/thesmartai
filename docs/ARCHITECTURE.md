@@ -1276,3 +1276,50 @@ The server's frontend catch-all (`server/app.ts`) resolves the frontend path wit
 ### H. Decision Records
 
 - `docs/events/event_20260301_desktop_sidecar_refactor.md`
+
+---
+
+## 22. System Identity & PAM Authentication Architecture (2026-03-02)
+
+This section details the Systemd-based user isolation, PAM authentication logic, and authorization bypasses (TUI) implemented to securely manage user identity impersonation while preserving single-user and local terminal workflows.
+
+### A. Architectural Goals
+
+1. **Strict User Isolation (Web):** A centralized system daemon (`opencode` service) hosts the web UI but spawns processes (like Bash shells or LLM scripts) under the explicitly authenticated Linux user's identity.
+2. **Native Environment (TUI):** A terminal user launching the TUI must have requests run seamlessly under their *current session identity*, bypassing web auth flows without escalating or switching privileges.
+3. **No Sudo for Opencode Core:** The main server runs as a less-privileged or dedicated `opencode` user and delegates command execution down to the target user via a narrowly-scoped sudoers policy.
+
+### B. Core Components & Responsibilities
+
+| File / Component | Responsibility | Impact |
+| :--- | :--- | :--- |
+| `packages/opencode/src/system/linux-user-exec.ts` | **Execution Bridge:** Intercepts shell creation and command execution. Decides whether to prefix commands with `sudo -u <target_user>`. | Centralizes the decision point for user impersonation logic. |
+| `packages/opencode/src/runtime/request-user.ts` | **Context Manager:** Holds the `username` associated with the *current asynchronous request/call stack*. | Enables deep functions (like PTY spawners) to know who originated the HTTP request without prop drilling. |
+| `packages/opencode/src/server/web-auth.ts` | **PAM Authenticator:** Validates credentials via Node-PAM. On success, issues a signed session cookie containing the `username`. | The sole gatekeeper for browser-to-server trust. Extracts Linux user info and injects it into the request context. |
+| `packages/opencode/src/server/app.ts` | **Auth Middleware:** Rejects unauthenticated requests. Parses session cookies or bypass tokens and populates `RequestUser`. | Secures all backend routes from unauthorized web access. |
+| `scripts/opencode-run-as-user.sh` | **Sudo Target Script:** A restricted script that executes a payload as the target user while loading their `.bashrc` / `.bash_profile`. | Ensures the shell and agents have the correct environment variables (Node, Git, IDE settings) for that user. |
+
+### C. The TUI Auth Bypass (`OPENCODE_CLI_TOKEN`)
+
+Because the TUI acts as a client to the local server, pushing it through the web's PAM authentication would require prompt interruptions or manual password entries on an already-authenticated terminal.
+
+To solve this securely:
+1. **Dynamic Token Generation (`packages/opencode/src/index.ts`)**: When the CLI starts, it dynamically generates an `OPENCODE_CLI_TOKEN` (random crypto bytes) and sets it in the environment variable.
+2. **Worker Injection (`packages/opencode/src/cli/cmd/tui/thread.ts`)**: The TUI worker process inherits this variable.
+3. **Authorized Fetches (`packages/opencode/src/cli/cmd/tui/worker.ts`)**: The TUI worker attaches `Bearer <OPENCODE_CLI_TOKEN>` to its local server requests instead of standard auth credentials.
+4. **Server Bypass (`packages/opencode/src/server/app.ts`)**: The server's middleware intercepts `OPENCODE_CLI_TOKEN`. If it matches the server's running token, the request is permitted **without a `username` context**.
+
+### D. Execution Decision Matrix
+
+When `linux-user-exec.ts` (`resolveExecutionUser`) evaluates how to run a command:
+
+| Auth Method | Origin | `RequestUser` Username | Sudo Execution Action | Reason |
+| :--- | :--- | :--- | :--- | :--- |
+| **PAM Session Cookie** | Browser WebApp | `<logged_in_user>` | `sudo -u <user> /usr/local/libexec/opencode-run-as-user ...` | Explicit login requires isolating execution to the selected identity. |
+| **`OPENCODE_CLI_TOKEN`** | Local TUI | `undefined` | Native Execution (No Sudo) | TUI is already running under the active terminal user's system permissions. |
+| **No Auth (Public Route)** | Any | `undefined` | N/A (Denied by Server) | Unauthenticated endpoints cannot trigger execution. |
+
+### E. Security & Deployment Posture
+
+*   **Sudoers Policy:** For the WebApp impersonation to work, the daemon user (e.g., `opencode`) must be granted passwordless sudo access *only* to the execution bridge script (`/usr/local/libexec/opencode-run-as-user`), not arbitrary commands.
+*   **Token Secrecy:** `OPENCODE_CLI_TOKEN` only lives in volatile memory and the environment variables of child processes spawned by the immediate CLI invocation. It is never written to disk.
