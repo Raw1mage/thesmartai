@@ -189,7 +189,12 @@ chmod +x ./install.sh
 1. 建立專屬 service account（預設 `opencode`，`nologin`）
 2. 初始化該帳號的 `~/.config` / `~/.local/share` / `~/.local/state` / `~/.cache` runtime 目錄
 3. 產生 `/etc/opencode/opencode.env`（可覆蓋服務執行參數）
-4. 安裝並啟用 `systemd` service（預設 `opencode-web.service`）
+4. 安裝 root bridge wrapper：`/usr/local/libexec/opencode-run-as-user`
+5. 安裝最小 sudoers 白名單：`/etc/sudoers.d/opencode-run-as-user`
+6. 安裝並啟用 `systemd` service（預設 `opencode-web.service`）
+
+上述 bridge 讓 web service（`opencode`）可受控地切換到已登入 Linux user 身份執行 shell/pty，
+確保多使用者環境下以各自權限工作（預設 home 與 XDG runtime 會相對應到該 user）。
 
 > 建議：正式環境使用 `--system-init` 將 web control plane 與個人帳號（如 `pkcs12`）脫鉤。
 

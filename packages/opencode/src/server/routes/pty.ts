@@ -6,6 +6,7 @@ import { Pty } from "@/pty"
 import { Storage } from "../../storage/storage"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
+import { RequestUser } from "@/runtime/request-user"
 
 export const PtyRoutes = lazy(() =>
   new Hono()
@@ -27,7 +28,8 @@ export const PtyRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        return c.json(Pty.list())
+        const owner = RequestUser.username()
+        return c.json(Pty.list(owner))
       },
     )
     .post(
@@ -50,7 +52,8 @@ export const PtyRoutes = lazy(() =>
       }),
       validator("json", Pty.CreateInput),
       async (c) => {
-        const info = await Pty.create(c.req.valid("json"))
+        const owner = RequestUser.username()
+        const info = await Pty.create(c.req.valid("json"), owner)
         return c.json(info)
       },
     )
@@ -74,7 +77,8 @@ export const PtyRoutes = lazy(() =>
       }),
       validator("param", z.object({ ptyID: z.string() })),
       async (c) => {
-        const info = Pty.get(c.req.valid("param").ptyID)
+        const owner = RequestUser.username()
+        const info = Pty.get(c.req.valid("param").ptyID, owner)
         if (!info) {
           throw new Storage.NotFoundError({ message: "Session not found" })
         }
@@ -102,7 +106,8 @@ export const PtyRoutes = lazy(() =>
       validator("param", z.object({ ptyID: z.string() })),
       validator("json", Pty.UpdateInput),
       async (c) => {
-        const info = await Pty.update(c.req.valid("param").ptyID, c.req.valid("json"))
+        const owner = RequestUser.username()
+        const info = await Pty.update(c.req.valid("param").ptyID, c.req.valid("json"), owner)
         return c.json(info)
       },
     )
@@ -126,7 +131,8 @@ export const PtyRoutes = lazy(() =>
       }),
       validator("param", z.object({ ptyID: z.string() })),
       async (c) => {
-        await Pty.remove(c.req.valid("param").ptyID)
+        const owner = RequestUser.username()
+        await Pty.remove(c.req.valid("param").ptyID, owner)
         return c.json(true)
       },
     )
@@ -150,6 +156,7 @@ export const PtyRoutes = lazy(() =>
       }),
       validator("param", z.object({ ptyID: z.string() })),
       upgradeWebSocket((c) => {
+        const owner = RequestUser.username()
         const id = c.req.param("ptyID")
         const cursor = (() => {
           const value = c.req.query("cursor")
@@ -159,7 +166,7 @@ export const PtyRoutes = lazy(() =>
           return parsed
         })()
         let handler: ReturnType<typeof Pty.connect>
-        if (!Pty.get(id)) throw new Error("Session not found")
+        if (!Pty.get(id, owner)) throw new Error("Session not found")
 
         type Socket = {
           readyState: number
@@ -178,7 +185,7 @@ export const PtyRoutes = lazy(() =>
         return {
           onOpen(_event, ws) {
             const socket = isSocket(ws.raw) ? ws.raw : ws
-            handler = Pty.connect(id, socket, cursor, ws)
+            handler = Pty.connect(id, socket, cursor, ws, owner)
           },
           onMessage(event) {
             handler?.onMessage(event.data)

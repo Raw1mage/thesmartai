@@ -120,6 +120,29 @@ system_init() {
   run_as_root install -d -m 700 "/home/${SYSTEM_SERVICE_USER}/.cache/opencode"
   run_as_root chown -R "${SYSTEM_SERVICE_USER}:${SYSTEM_SERVICE_USER}" "/home/${SYSTEM_SERVICE_USER}/.config" "/home/${SYSTEM_SERVICE_USER}/.local" "/home/${SYSTEM_SERVICE_USER}/.cache"
 
+  local wrapper_src="${ROOT_DIR}/scripts/opencode-run-as-user.sh"
+  local wrapper_dst="/usr/local/libexec/opencode-run-as-user"
+  if [[ -f "${wrapper_src}" ]]; then
+    run_as_root install -d -m 755 "/usr/local/libexec"
+    run_as_root install -m 755 "${wrapper_src}" "${wrapper_dst}"
+    log_ok "Installed privilege wrapper: ${wrapper_dst}"
+  else
+    log_warn "Wrapper source not found: ${wrapper_src}"
+  fi
+
+  local sudoers_file="/etc/sudoers.d/opencode-run-as-user"
+  local tmp_sudoers="/tmp/opencode-run-as-user.sudoers.$$"
+  cat >"${tmp_sudoers}" <<EOF
+Defaults:${SYSTEM_SERVICE_USER} !requiretty
+${SYSTEM_SERVICE_USER} ALL=(root) NOPASSWD: /usr/local/libexec/opencode-run-as-user
+EOF
+  run_as_root install -m 440 "${tmp_sudoers}" "${sudoers_file}"
+  rm -f "${tmp_sudoers}"
+  if command -v visudo >/dev/null 2>&1; then
+    run_as_root visudo -cf "${sudoers_file}" >/dev/null
+  fi
+  log_ok "Installed sudoers policy: ${sudoers_file}"
+
   local env_dir="/etc/opencode"
   local env_file="${env_dir}/opencode.env"
   local tmp_env="/tmp/opencode.env.$$"
@@ -134,6 +157,8 @@ system_init() {
 
 OPENCODE_PORT=1080
 OPENCODE_HOSTNAME=0.0.0.0
+OPENCODE_RUN_AS_USER_ENABLED=1
+OPENCODE_RUN_AS_USER_WRAPPER=/usr/local/libexec/opencode-run-as-user
 # OPENCODE_PUBLIC_URL=https://your-domain.example
 EOF
     run_as_root install -m 644 "${tmp_env}" "${env_file}"

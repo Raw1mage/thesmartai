@@ -249,9 +249,16 @@ function parseBasicAuthorization(value: string | undefined) {
 }
 
 async function verifyBasicAuth(c: Context) {
+  const user = await verifyBasicAuthUser(c)
+  return !!user
+}
+
+async function verifyBasicAuthUser(c: Context) {
   const parsed = parseBasicAuthorization(c.req.header("authorization"))
-  if (!parsed) return false
-  return WebAuthCredentials.verify(parsed.user, parsed.pass)
+  if (!parsed) return
+  const ok = await WebAuthCredentials.verify(parsed.user, parsed.pass)
+  if (!ok) return
+  return parsed.user
 }
 
 function shouldProtectMutation(method: string, pathname: string) {
@@ -270,6 +277,7 @@ export const WebAuth = {
   clearCookieHeader,
   verifyCredentials,
   verifyBasicAuth,
+  verifyBasicAuthUser,
   issue,
   invalidate,
   lockStatus,

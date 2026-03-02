@@ -44,6 +44,8 @@ import { ModelRoutes } from "./routes/model"
 import { Env } from "@/env"
 import { ActivityBeacon } from "@/util/activity-beacon"
 import { WebAuth } from "./web-auth"
+import { RequestUser } from "@/runtime/request-user"
+import { LinuxUserExec } from "@/system/linux-user-exec"
 
 // Declare external CORS whitelist (set by server.ts)
 declare global {
@@ -101,11 +103,20 @@ export function createApp(app: Hono): Hono {
   )
 
   app.use(async (c, next) => {
-    if (!WebAuth.enabled()) return next()
-    if (WebAuth.routePublic(c)) return next()
+    const proceed = (username?: string) => RequestUser.provide(username, () => next())
 
-    if (await WebAuth.verifyBasicAuth(c)) {
-      return next()
+    const cliToken = process.env.OPENCODE_CLI_TOKEN
+    const authHeader = c.req.header("authorization")
+    if (cliToken && authHeader === `Bearer ${cliToken}`) {
+      return proceed()
+    }
+
+    if (!WebAuth.enabled()) return proceed()
+    if (WebAuth.routePublic(c)) return proceed()
+
+    const basicUser = await WebAuth.verifyBasicAuthUser(c)
+    if (basicUser) {
+      return proceed(basicUser)
     }
 
     const session = WebAuth.readSession(c)
@@ -132,7 +143,7 @@ export function createApp(app: Hono): Hono {
       }
     }
 
-    return next()
+    return proceed(session.username)
   })
 
   app.use(async (c, next) => {
@@ -156,9 +167,7 @@ export function createApp(app: Hono): Hono {
 
   app.use(async (c, next) => {
     if (c.req.path === "/log" || c.req.path.endsWith("/log")) return next()
-    const directoryFromQuery = c.req.query("directory")
-    const directoryFromHeader = c.req.header("x-opencode-directory")
-    const hasDirectoryOverride = Boolean(directoryFromQuery || directoryFromHeader)
+    const requestUser = RequestUser.username()
     const requestHost = (() => {
       try {
         return new URL(c.req.url).hostname
@@ -166,6 +175,12 @@ export function createApp(app: Hono): Hono {
         return ""
       }
     })()
+    const isInternalWorkerHost = requestHost === "opencode.internal"
+    const userHome = LinuxUserExec.resolveLinuxUserHome(requestUser)
+    const defaultDirectory = isInternalWorkerHost ? process.cwd() : (userHome ?? process.cwd())
+    const directoryFromQuery = c.req.query("directory")
+    const directoryFromHeader = c.req.header("x-opencode-directory")
+    const hasDirectoryOverride = Boolean(directoryFromQuery || directoryFromHeader)
     const isLoopbackHost =
       requestHost === "localhost" || requestHost === "127.0.0.1" || requestHost === "::1" || requestHost === "[::1]"
 
@@ -176,8 +191,8 @@ export function createApp(app: Hono): Hono {
 
     const raw =
       hasDirectoryOverride && !allowDirectoryOverride
-        ? process.cwd()
-        : (directoryFromQuery ?? directoryFromHeader ?? process.cwd())
+        ? defaultDirectory
+        : (directoryFromQuery ?? directoryFromHeader ?? defaultDirectory)
 
     if (hasDirectoryOverride && !allowDirectoryOverride) {
       log.warn("Ignoring directory override on unsecured request", {
@@ -185,6 +200,7 @@ export function createApp(app: Hono): Hono {
         host: requestHost,
         secured: requestSecured,
         globalBrowseEnabled,
+        requestUser,
       })
     }
     const directory = await (async () => {
@@ -200,11 +216,12 @@ export function createApp(app: Hono): Hono {
         .then(() => true)
         .catch(() => false)
       if (exists) return decoded
-      log.warn("Directory does not exist, falling back to process.cwd()", {
+      log.warn("Directory does not exist, falling back to default directory", {
         requested: decoded,
-        fallback: process.cwd(),
+        fallback: defaultDirectory,
+        requestUser,
       })
-      return process.cwd()
+      return defaultDirectory
     })()
 
     // Always tell the client the canonical directory that was actually used,

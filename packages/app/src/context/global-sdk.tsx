@@ -35,23 +35,31 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     createEffect(() => {
       const url = server.url
       if (!url) return
+      if (webAuth.enabled() && !webAuth.authenticated()) return
+      const username = webAuth.session()?.username ?? ""
+      void username
 
       void (async () => {
         try {
           const res = await fetchWithAuth(`${url}/api/v2/path`)
           if (!res.ok) return
-          const data = await res.json() as { worktree?: string; directory?: string }
+          const data = (await res.json()) as { worktree?: string; directory?: string }
           const serverWorktree = data?.worktree ?? data?.directory
           if (!serverWorktree) return
 
           const currentProjects = server.projects.list()
-          if (!currentProjects || currentProjects.length === 0) return
+          if (!currentProjects || currentProjects.length === 0) {
+            server.projects.open(serverWorktree)
+            server.projects.touch(serverWorktree)
+            return
+          }
 
           const stale = currentProjects.filter((p: { worktree: string }) => p.worktree !== serverWorktree)
           if (stale.length === 0) return
 
           console.warn(`[global-sdk] Auto-healing ${stale.length} stale project(s). Server worktree: ${serverWorktree}`)
           server.projects.open(serverWorktree)
+          server.projects.touch(serverWorktree)
           for (const p of stale) {
             server.projects.close(p.worktree)
           }
