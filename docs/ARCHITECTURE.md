@@ -2,6 +2,28 @@
 
 This document provides a comprehensive overview of the `opencode` monorepo structure, detailing the various packages, their purposes, and relationships. It is intended to guide developers and AI agents in understanding the system's organization.
 
+## Document Purpose & Maintenance Contract
+
+This file is an **architecture state document**, not an event log.
+
+1. **Primary purpose**
+   - Record the **current architecture baseline** (what is true now).
+   - Provide **high-signal file/module index summaries** for core runtime areas.
+
+2. **What belongs here**
+   - Stable architecture contracts, boundaries, invariants, and component responsibilities.
+   - File-level summary/index updates when architecture-relevant code paths are added/changed.
+
+3. **What does NOT belong here**
+   - Chronological implementation diary, debug timeline, or step-by-step change history.
+   - Temporary migration notes that are no longer part of current runtime truth.
+
+4. **Where change history goes instead**
+   - Use `docs/events/event_<YYYYMMDD>_<topic>.md` for decision trail, RCA, execution logs, and validation records.
+
+5. **Update rule (mandatory)**
+   - If a change affects architecture boundaries/contracts or adds/removes important runtime modules, update this document's relevant architecture section and/or file index summaries in the same task.
+
 ## System Overview
 
 OpenCode is an open-source AI coding agent platform. The repository is a monorepo managed with **Bun** and **TurboRepo**, containing the core CLI, web applications, desktop apps, SDKs, and supporting services.
@@ -220,17 +242,19 @@ This package contains the core application logic, including the CLI, the Agent r
 
 #### A. Core & CLI (`src/index.ts`, `src/cli`)
 
-| File Path                | Description                                                                                             | Key Exports      | Input / Output                                                   |
-| :----------------------- | :------------------------------------------------------------------------------------------------------ | :--------------- | :--------------------------------------------------------------- |
-| `src/index.ts`           | **CLI Entry Point.** Configures `yargs`, sets up global error handling, and registers all CLI commands. | _None_           | **Input:** CLI args<br>**Output:** Command execution             |
-| `src/cli/bootstrap.ts`   | **Initialization Utility.** Wraps command execution to initialize the project context/directory.        | `bootstrap`      | **Input:** Directory, Callback<br>**Output:** Promise result     |
-| `src/cli/cmd/run.ts`     | **Run Command.** Primary interface for running agents. Handles interactive sessions and loops.          | `RunCommand`     | **Input:** Message, files, model<br>**Output:** Streaming output |
-| `src/cli/cmd/serve.ts`   | **Serve Command.** Starts the OpenCode server in headless mode for remote connections or MCP.           | `ServeCommand`   | **Input:** Port, Host<br>**Output:** HTTP Server                 |
-| `src/cli/cmd/agent.ts`   | **Agent Management.** Subcommands to create/list agents.                                                | `AgentCommand`   | **Input:** Name, Tools<br>**Output:** Agent Config               |
-| `src/cli/cmd/session.ts` | **Session Management.** Manages chat sessions (list, step, worker).                                     | `SessionCommand` | **Input:** Session ID<br>**Output:** Session Logs                |
-| `src/cli/cmd/auth.ts`    | **Authentication.** Manages provider credentials (login, logout, list).                                 | `AuthCommand`    | **Input:** Provider, Keys<br>**Output:** Stored Creds            |
-| `src/cli/cmd/admin.ts`   | **Admin Interface.** Launches the Terminal User Interface (TUI).                                        | `AdminCommand`   | **Input:** URL<br>**Output:** TUI Render                         |
-| `src/cli/ui.ts`          | **UI Utilities.** Standardized terminal output, colors, styles, and user prompts.                       | `UI`             | **Input:** Text<br>**Output:** Formatted Stdout                  |
+| File Path                                    | Description                                                                                                                                                             | Key Exports                                                                   | Input / Output                                                                                        |
+| :------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                               | **CLI Entry Point.** Configures `yargs`, sets up global error handling, and registers all CLI commands.                                                                 | _None_                                                                        | **Input:** CLI args<br>**Output:** Command execution                                                  |
+| `src/cli/bootstrap.ts`                       | **Initialization Utility.** Wraps command execution to initialize the project context/directory.                                                                        | `bootstrap`                                                                   | **Input:** Directory, Callback<br>**Output:** Promise result                                          |
+| `src/cli/cmd/run.ts`                         | **Run Command.** Primary interface for running agents. Handles interactive sessions and loops.                                                                          | `RunCommand`                                                                  | **Input:** Message, files, model<br>**Output:** Streaming output                                      |
+| `src/cli/cmd/serve.ts`                       | **Serve Command.** Starts the OpenCode server in headless mode for remote connections or MCP.                                                                           | `ServeCommand`                                                                | **Input:** Port, Host<br>**Output:** HTTP Server                                                      |
+| `src/cli/cmd/agent.ts`                       | **Agent Management.** Subcommands to create/list agents.                                                                                                                | `AgentCommand`                                                                | **Input:** Name, Tools<br>**Output:** Agent Config                                                    |
+| `src/cli/cmd/session.ts`                     | **Session Management.** Manages chat sessions (list, step, worker).                                                                                                     | `SessionCommand`                                                              | **Input:** Session ID<br>**Output:** Session Logs                                                     |
+| `src/cli/cmd/auth.ts`                        | **Authentication.** Manages provider credentials (login, logout, list).                                                                                                 | `AuthCommand`                                                                 | **Input:** Provider, Keys<br>**Output:** Stored Creds                                                 |
+| `src/cli/cmd/admin.ts`                       | **Admin Interface.** Launches the Terminal User Interface (TUI).                                                                                                        | `AdminCommand`                                                                | **Input:** URL<br>**Output:** TUI Render                                                              |
+| `src/cli/cmd/tui/component/prompt/index.tsx` | **TUI Prompt Footer + Variant Trigger.** Renders prompt footer model metadata and opens variant picker (`Thinking effort`) for supported model variants.                | `Prompt`                                                                      | **Input:** Local model/session state<br>**Output:** Prompt UI + variant selection interaction         |
+| `src/cli/cmd/tui/util/model-variant.ts`      | **Variant Normalization Policy.** Canonicalizes provider/model variant options, OpenAI label/order mapping, and effective default value resolution (`medium` fallback). | `buildVariantOptions`, `getEffectiveVariantValue`, `shouldShowVariantControl` | **Input:** Raw variant list + provider family<br>**Output:** Display-ready variant options/visibility |
+| `src/cli/ui.ts`                              | **UI Utilities.** Standardized terminal output, colors, styles, and user prompts.                                                                                       | `UI`                                                                          | **Input:** Text<br>**Output:** Formatted Stdout                                                       |
 
 #### B. Agent Definition (`src/agent`, `src/acp`)
 
