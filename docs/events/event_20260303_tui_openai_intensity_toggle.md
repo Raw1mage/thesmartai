@@ -58,3 +58,4 @@ Status: Done
   - 結論：屬 monorepo 其他 package 的既有問題，與本次 TUI prompt 變更無直接關聯。
 - `bun turbo typecheck --filter=opencode`：通過。
   - 驗證本次修改所在 package（`opencode`）型別檢查正常。
+- 架構文件同步：已更新 `docs/ARCHITECTURE.md`（新增 TUI variant/intensity picker baseline）。
