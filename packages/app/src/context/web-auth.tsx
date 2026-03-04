@@ -1,5 +1,5 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
-import { createMemo, createResource } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal } from "solid-js"
 import { useServer } from "@/context/server"
 
 type SessionStatus = {
@@ -16,12 +16,12 @@ type SessionStatus = {
 
 type LoginResult =
   | {
-    ok: true
-  }
+      ok: true
+    }
   | {
-    ok: false
-    message: string
-  }
+      ok: false
+      message: string
+    }
 
 function isMutation(method: string) {
   const upper = method.toUpperCase()
@@ -51,9 +51,11 @@ export const { use: useWebAuth, provider: WebAuthProvider } = createSimpleContex
         }
       },
     )
+    const [forcedUnauthenticated, setForcedUnauthenticated] = createSignal(false)
 
     const csrfToken = createMemo(() => session.latest?.csrfToken)
     const authenticated = createMemo(() => {
+      if (forcedUnauthenticated()) return false
       const current = session.latest
       if (!current) return false
       if (!current.enabled) return true
@@ -74,6 +76,7 @@ export const { use: useWebAuth, provider: WebAuthProvider } = createSimpleContex
       })
       const response = await fetch(next)
       if (response.status === 401 || response.status === 403) {
+        setForcedUnauthenticated(true)
         void sessionActions.refetch()
         throw new Error("__OPENCODE_SILENT_UNAUTHORIZED__")
       }
@@ -92,12 +95,13 @@ export const { use: useWebAuth, provider: WebAuthProvider } = createSimpleContex
         try {
           const payload = (await response.json()) as { message?: string }
           if (payload?.message) message = payload.message
-        } catch { }
+        } catch {}
         void sessionActions.refetch()
         return { ok: false, message }
       }
 
       await sessionActions.refetch()
+      setForcedUnauthenticated(false)
       return { ok: true }
     }
 
@@ -106,8 +110,15 @@ export const { use: useWebAuth, provider: WebAuthProvider } = createSimpleContex
         method: "POST",
         headers: csrfToken() ? { "x-opencode-csrf": csrfToken()! } : undefined,
       }).catch(() => undefined)
+      setForcedUnauthenticated(true)
       await sessionActions.refetch()
     }
+
+    createEffect(() => {
+      const current = session.latest
+      if (!current) return
+      if (!current.enabled || current.authenticated) setForcedUnauthenticated(false)
+    })
 
     return {
       loading: () => session.loading,
