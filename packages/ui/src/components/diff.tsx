@@ -68,6 +68,7 @@ export function Diff<T>(props: DiffProps<T>) {
   const [local, others] = splitProps(props, [
     "before",
     "after",
+    "useVirtualizer",
     "class",
     "classList",
     "annotations",
@@ -110,6 +111,7 @@ export function Diff<T>(props: DiffProps<T>) {
   const [rendered, setRendered] = createSignal(0)
 
   const getVirtualizer = () => {
+    if (local.useVirtualizer === false) return
     if (sharedVirtualizer) return sharedVirtualizer.virtualizer
 
     const result = acquireVirtualizer(container)

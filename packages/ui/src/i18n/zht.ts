@@ -3,8 +3,8 @@ import { dict as en } from "./en"
 type Keys = keyof typeof en
 
 export const dict = {
-  "ui.sessionReview.title": "累積異動",
-  "ui.sessionReview.title.lastTurn": "最新異動",
+  "ui.sessionReview.title": "異動清單",
+  "ui.sessionReview.title.lastTurn": "異動清單",
   "ui.sessionReview.diffStyle.unified": "整合",
   "ui.sessionReview.diffStyle.split": "拆分",
   "ui.sessionReview.expandAll": "全部展開",

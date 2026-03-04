@@ -39,7 +39,9 @@ function target(container: HTMLElement): Target | undefined {
   if (review instanceof HTMLElement) {
     const content = review.querySelector("[data-slot='session-review-container']")
     return {
-      key: review,
+      // Do not share one virtualizer across all expanded review files.
+      // Shared state can collapse most items to tiny heights and only render the last few.
+      key: container,
       root: review,
       content: content instanceof HTMLElement ? content : undefined,
     }

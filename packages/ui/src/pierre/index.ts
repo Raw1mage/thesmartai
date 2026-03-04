@@ -4,6 +4,7 @@ import { ComponentProps } from "solid-js"
 export type DiffProps<T = {}> = FileDiffOptions<T> & {
   before: FileContents
   after: FileContents
+  useVirtualizer?: boolean
   annotations?: DiffLineAnnotation<T>[]
   selectedLines?: SelectedLineRange | null
   commentedLines?: SelectedLineRange[]

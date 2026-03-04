@@ -139,7 +139,11 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
         restoreScroll()
       }}
       onScroll={handleScroll}
-      onDiffRendered={() => requestAnimationFrame(restoreScroll)}
+      onDiffRendered={() => {
+        // Avoid restoring persisted scroll on each diff render.
+        // This can pull the viewport back to an old position right after expand,
+        // which looks like the item "flashes" and collapses.
+      }}
       open={props.view().review.open()}
       onOpenChange={props.view().review.setOpen}
       classes={{

@@ -16,6 +16,7 @@ export function Diff<T>(props: SSRDiffProps<T>) {
   const [local, others] = splitProps(props, [
     "before",
     "after",
+    "useVirtualizer",
     "class",
     "classList",
     "annotations",
@@ -31,6 +32,7 @@ export function Diff<T>(props: SSRDiffProps<T>) {
   const getRoot = () => fileDiffRef?.shadowRoot ?? undefined
 
   const getVirtualizer = () => {
+    if (local.useVirtualizer === false) return
     if (sharedVirtualizer) return sharedVirtualizer.virtualizer
 
     const result = acquireVirtualizer(container)
