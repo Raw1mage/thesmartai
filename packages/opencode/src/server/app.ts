@@ -5,7 +5,6 @@ import { describeRoute, validator, resolver, openAPIRouteHandler } from "hono-op
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
-import { proxy } from "hono/proxy"
 import path from "path"
 import fs from "fs"
 import z from "zod"
@@ -702,71 +701,94 @@ export function createApp(app: Hono): Hono {
 
   // Frontend catch-all
   app.get("/*", async (c, next) => {
-    // Resolve frontend path: explicit env > XDG data dir > CDN proxy
+    // Resolve frontend path: explicit env > XDG data dir
     const frontendPath = Env.get("OPENCODE_FRONTEND_PATH") ?? (await resolveXdgFrontend())
-    if (frontendPath) {
-      const resolvedFrontendPath = path.resolve(frontendPath)
-      const reqPath = c.req.path === "/" ? "index.html" : c.req.path.replace(/^\/+/, "")
-      const filePath = path.resolve(resolvedFrontendPath, reqPath)
-      const withinFrontendRoot =
-        filePath === resolvedFrontendPath || filePath.startsWith(resolvedFrontendPath + path.sep)
-
-      if (!withinFrontendRoot) {
-        log.warn("Rejected frontend file request outside configured frontend root", {
-          reqPath: c.req.path,
-          frontendPath: resolvedFrontendPath,
-        })
-        return next()
-      }
-
-      const ext = path.extname(filePath).toLowerCase()
-      const file = Bun.file(filePath)
-      if (await file.exists()) {
-        const contentTypes: Record<string, string> = {
-          ".html": "text/html",
-          ".js": "application/javascript",
-          ".css": "text/css",
-          ".json": "application/json",
-          ".png": "image/png",
-          ".jpg": "image/jpeg",
-          ".svg": "image/svg+xml",
-          ".ico": "image/x-icon",
-          ".woff": "font/woff",
-          ".woff2": "font/woff2",
-          ".wasm": "application/wasm",
-        }
-        return new Response(file, {
-          headers: {
-            "Content-Type": contentTypes[ext] || "application/octet-stream",
-            "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000",
-          },
-        })
-      }
-      // For SPA routing, serve index.html for non-file paths
-      if (!ext || ext === "") {
-        const indexPath = path.resolve(resolvedFrontendPath, "index.html")
-        const indexFile = Bun.file(indexPath)
-        if (await indexFile.exists()) {
-          return new Response(indexFile, {
-            headers: { "Content-Type": "text/html", "Cache-Control": "no-cache" },
-          })
-        }
-      }
+    if (!frontendPath) {
+      log.error("Frontend bundle path missing", {
+        path: c.req.path,
+        opencodeFrontendPath: Env.get("OPENCODE_FRONTEND_PATH") ?? null,
+        xdgFrontendPath: Global.Path.frontend,
+      })
+      return c.json(
+        {
+          code: "FRONTEND_BUNDLE_MISSING",
+          message:
+            "Frontend bundle not configured. Set OPENCODE_FRONTEND_PATH to a built frontend directory (contains index.html).",
+        },
+        503,
+      )
     }
 
-    // Fallback to proxy
-    const response = await proxy(`https://app.opencode.ai${c.req.path}`, {
-      ...c.req,
-      headers: {
-        ...c.req.raw.headers,
-        host: "app.opencode.ai",
+    const resolvedFrontendPath = path.resolve(frontendPath)
+    const reqPath = c.req.path === "/" ? "index.html" : c.req.path.replace(/^\/+/, "")
+    const filePath = path.resolve(resolvedFrontendPath, reqPath)
+    const withinFrontendRoot = filePath === resolvedFrontendPath || filePath.startsWith(resolvedFrontendPath + path.sep)
+
+    if (!withinFrontendRoot) {
+      log.warn("Rejected frontend file request outside configured frontend root", {
+        reqPath: c.req.path,
+        frontendPath: resolvedFrontendPath,
+      })
+      return c.json(
+        {
+          code: "FRONTEND_PATH_OUT_OF_ROOT",
+          message: "Rejected request outside configured frontend root",
+        },
+        400,
+      )
+    }
+
+    const ext = path.extname(filePath).toLowerCase()
+    const file = Bun.file(filePath)
+    if (await file.exists()) {
+      const contentTypes: Record<string, string> = {
+        ".html": "text/html",
+        ".js": "application/javascript",
+        ".css": "text/css",
+        ".json": "application/json",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".svg": "image/svg+xml",
+        ".ico": "image/x-icon",
+        ".woff": "font/woff",
+        ".woff2": "font/woff2",
+        ".wasm": "application/wasm",
+      }
+      return new Response(file, {
+        headers: {
+          "Content-Type": contentTypes[ext] || "application/octet-stream",
+          "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000",
+        },
+      })
+    }
+
+    // For SPA routing, serve index.html for non-file paths
+    if (!ext || ext === "") {
+      const indexPath = path.resolve(resolvedFrontendPath, "index.html")
+      const indexFile = Bun.file(indexPath)
+      if (await indexFile.exists()) {
+        return new Response(indexFile, {
+          headers: { "Content-Type": "text/html", "Cache-Control": "no-cache" },
+        })
+      }
+      return c.json(
+        {
+          code: "FRONTEND_INDEX_MISSING",
+          message: "index.html missing under configured frontend path",
+          frontendPath: resolvedFrontendPath,
+        },
+        503,
+      )
+    }
+
+    return c.json(
+      {
+        code: "FRONTEND_ASSET_NOT_FOUND",
+        message: "Requested frontend asset not found",
+        path: c.req.path,
       },
-    })
-    response.headers.set(
-      "Content-Security-Policy",
-      "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data:; connect-src 'self' data:",
+      404,
     )
-    return response
   })
 
   return app

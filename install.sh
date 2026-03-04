@@ -161,21 +161,22 @@ EOF
   log_ok "Installed sudoers policy: ${sudoers_file}"
 
   local env_dir="/etc/opencode"
-  local env_file="${env_dir}/opencode.env"
-  local env_template="${ROOT_DIR}/templates/system/opencode.env"
-  local tmp_env="/tmp/opencode.env.$$"
+  local runtime_cfg_file="${env_dir}/opencode.cfg"
+  local runtime_cfg_template="${ROOT_DIR}/templates/system/opencode.cfg"
+  local tmp_runtime_cfg="/tmp/opencode.cfg.$$"
   run_as_root install -d -m 755 "${env_dir}"
-  if run_as_root test -f "${env_file}"; then
-    log_ok "Keeping existing env file: ${env_file}"
+
+  if run_as_root test -f "${runtime_cfg_file}"; then
+    log_ok "Keeping existing runtime config: ${runtime_cfg_file}"
   else
-    if [[ ! -f "${env_template}" ]]; then
-      log_err "Missing env template: ${env_template}"
+    if [[ ! -f "${runtime_cfg_template}" ]]; then
+      log_err "Missing runtime config template: ${runtime_cfg_template}"
       exit 1
     fi
-    cp "${env_template}" "${tmp_env}"
-    run_as_root install -m 644 "${tmp_env}" "${env_file}"
-    rm -f "${tmp_env}"
-    log_ok "Created env file: ${env_file}"
+    cp "${runtime_cfg_template}" "${tmp_runtime_cfg}"
+    run_as_root install -m 644 "${tmp_runtime_cfg}" "${runtime_cfg_file}"
+    rm -f "${tmp_runtime_cfg}"
+    log_ok "Created runtime config: ${runtime_cfg_file}"
   fi
 
   log_info "Installing binary to /usr/local/bin/opencode..."
@@ -219,12 +220,8 @@ Environment=XDG_CONFIG_HOME=/var/lib/opencode/config
 Environment=XDG_DATA_HOME=/var/lib/opencode/data
 Environment=XDG_STATE_HOME=/var/lib/opencode/state
 Environment=XDG_CACHE_HOME=/var/lib/opencode/cache
-Environment=OPENCODE_WEB_NO_OPEN=1
-Environment=OPENCODE_ALLOW_GLOBAL_FS_BROWSE=1
-Environment=OPENCODE_FRONTEND_PATH=/usr/local/share/opencode/frontend
-Environment=OPENCODE_PORT=1080
-Environment=OPENCODE_HOSTNAME=0.0.0.0
-EnvironmentFile=-/etc/opencode/opencode.env
+Environment=OPENCODE_LAUNCH_MODE=systemd
+EnvironmentFile=-/etc/opencode/opencode.cfg
 ExecStart=/usr/local/bin/opencode web --port \$OPENCODE_PORT --hostname \$OPENCODE_HOSTNAME
 Restart=on-failure
 RestartSec=2

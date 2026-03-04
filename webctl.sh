@@ -56,11 +56,16 @@ if [ -f "${ENV_FILE}" ]; then
     set +a
 fi
 
+OPENCODE_CFG="${OPENCODE_SERVER_CFG:-/etc/opencode/opencode.cfg}"
+
 WEB_PORT="${OPENCODE_PORT:-1080}"
+WEB_HOSTNAME="${OPENCODE_HOSTNAME:-0.0.0.0}"
 FRONTEND_PORT="${OPENCODE_FRONTEND_DEV_PORT:-3000}"
 HTPASSWD_PATH="${OPENCODE_SERVER_HTPASSWD:-${HOME}/.config/opencode/.htpasswd}"
 OPENCODE_PROFILE="${OPENCODE_PROFILE:-default}"
 DISPLAY_URL="${OPENCODE_PUBLIC_URL:-http://localhost:${WEB_PORT}}"
+FRONTEND_DIST="${FRONTEND_DIST}"
+
 PROFILE_SAFE="$(printf '%s' "${OPENCODE_PROFILE}" | tr -c 'A-Za-z0-9._-' '_')"
 RUNTIME_TMP_BASE="${XDG_RUNTIME_DIR:-/tmp}"
 PID_FILE="${RUNTIME_TMP_BASE}/opencode-web-${PROFILE_SAFE}.pid"
@@ -70,6 +75,30 @@ SERVER_LOG_FILE="${RUNTIME_TMP_BASE}/opencode-web-${PROFILE_SAFE}.log"
 RESTART_LOCK_FILE="${RUNTIME_TMP_BASE}/opencode-web-restart-${PROFILE_SAFE}.lock"
 RESTART_EVENT_LOG="${RUNTIME_TMP_BASE}/opencode-web-restart-${PROFILE_SAFE}.jsonl"
 SYSTEM_SERVICE_NAME="${OPENCODE_SYSTEM_SERVICE_NAME:-opencode-web}"
+
+load_server_cfg() {
+    if [ ! -f "${OPENCODE_CFG}" ]; then
+        log_error "Missing server config: ${OPENCODE_CFG}"
+        log_info "Run once: ./webctl.sh install --yes"
+        exit 1
+    fi
+
+    set -a
+    source "${OPENCODE_CFG}"
+    set +a
+
+    WEB_PORT="${OPENCODE_PORT:-1080}"
+    WEB_HOSTNAME="${OPENCODE_HOSTNAME:-0.0.0.0}"
+    FRONTEND_PORT="${OPENCODE_FRONTEND_DEV_PORT:-3000}"
+    HTPASSWD_PATH="${OPENCODE_SERVER_HTPASSWD:-${HOME}/.config/opencode/.htpasswd}"
+    DISPLAY_URL="${OPENCODE_PUBLIC_URL:-http://localhost:${WEB_PORT}}"
+
+    if [ -z "${OPENCODE_FRONTEND_PATH:-}" ]; then
+        log_error "OPENCODE_FRONTEND_PATH is required in ${OPENCODE_CFG}"
+        exit 1
+    fi
+    FRONTEND_DIST="${OPENCODE_FRONTEND_PATH}"
+}
 
 # Colors
 RED='\033[0;31m'
@@ -462,6 +491,8 @@ kill_existing() {
 # dev-start
 # ---------------------------------------------------------------------------
 do_dev_start() {
+    load_server_cfg
+
     if [ ! -f "${FRONTEND_DIST}/index.html" ]; then
         log_error "Frontend dist not found at ${FRONTEND_DIST}"
         if [ "${IS_SOURCE_REPO}" -eq 1 ]; then
@@ -479,10 +510,10 @@ do_dev_start() {
         BUN_BIN="$(find_bun)"
         log_info "Starting server from source on port ${WEB_PORT}..."
 
-        nohup env OPENCODE_ALLOW_GLOBAL_FS_BROWSE="1" OPENCODE_FRONTEND_PATH="${FRONTEND_DIST}" OPENCODE_WEB_NO_OPEN="1" \
+        nohup env OPENCODE_LAUNCH_MODE="webctl" OPENCODE_ALLOW_GLOBAL_FS_BROWSE="${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}" OPENCODE_FRONTEND_PATH="${FRONTEND_DIST}" OPENCODE_WEB_NO_OPEN="${OPENCODE_WEB_NO_OPEN:-1}" OPENCODE_SERVER_HTPASSWD="${HTPASSWD_PATH}" OPENCODE_SERVER_USERNAME="${OPENCODE_SERVER_USERNAME:-opencode}" \
             "${BUN_BIN}" --conditions=browser \
             "${PROJECT_ROOT}/packages/opencode/src/index.ts" \
-            web --port "${WEB_PORT}" --hostname 0.0.0.0 \
+            web --port "${WEB_PORT}" --hostname "${WEB_HOSTNAME}" \
             >"${SERVER_LOG_FILE}" 2>&1 < /dev/null &
     else
         if [ -z "${OPENCODE_BIN}" ] || [ ! -x "${OPENCODE_BIN}" ]; then
@@ -490,9 +521,9 @@ do_dev_start() {
             exit 1
         fi
         log_info "Starting standalone server on port ${WEB_PORT}..."
-        nohup env OPENCODE_ALLOW_GLOBAL_FS_BROWSE="1" OPENCODE_FRONTEND_PATH="${FRONTEND_DIST}" OPENCODE_WEB_NO_OPEN="1" \
+        nohup env OPENCODE_LAUNCH_MODE="webctl" OPENCODE_ALLOW_GLOBAL_FS_BROWSE="${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}" OPENCODE_FRONTEND_PATH="${FRONTEND_DIST}" OPENCODE_WEB_NO_OPEN="${OPENCODE_WEB_NO_OPEN:-1}" OPENCODE_SERVER_HTPASSWD="${HTPASSWD_PATH}" OPENCODE_SERVER_USERNAME="${OPENCODE_SERVER_USERNAME:-opencode}" \
             "${OPENCODE_BIN}" \
-            web --port "${WEB_PORT}" --hostname 0.0.0.0 \
+            web --port "${WEB_PORT}" --hostname "${WEB_HOSTNAME}" \
             >"${SERVER_LOG_FILE}" 2>&1 < /dev/null &
     fi
 
@@ -532,6 +563,8 @@ do_dev_start() {
 # dev-stop
 # ---------------------------------------------------------------------------
 do_dev_stop() {
+    load_server_cfg
+
     local stopped_any=0
 
     if [ -f "${BACKEND_PID_FILE}" ]; then
@@ -781,6 +814,8 @@ do_web_refresh() {
 # status
 # ---------------------------------------------------------------------------
 do_status() {
+    load_server_cfg
+
     echo ""
     echo "=== Opencode Web Server Status ==="
     echo ""
@@ -939,6 +974,7 @@ do_help() {
     echo "  help              Show this help message"
     echo ""
     echo "Environment Variables:"
+    echo "  OPENCODE_SERVER_CFG        Server config path (default: /etc/opencode/opencode.cfg)"
     echo "  OPENCODE_PORT              Port to listen on (default: 1080)"
     echo "  OPENCODE_PUBLIC_URL        Public URL shown in status/start output"
     echo "  OPENCODE_PROFILE           Runtime profile label (default: default)"
