@@ -91,3 +91,13 @@ Status: In Progress
 - 指令：`(cd packages/app && bun run typecheck)`
 - 結果：通過。
 - 目的：確認 Shift+Enter 換行與 Enter 送出條件調整後無型別回歸。
+
+#### Runtime Recovery Note
+
+- 症狀：使用者回報 webapp 停止運作。
+- 排查：
+  - 讀取 `/run/user/1000/opencode-web-default.log` 僅見啟動 banner，未確認持續服務。
+  - `curl http://localhost:1080` 連線失敗（server 未在監聽）。
+- 處置：執行 `./webctl.sh dev-start` 重新啟動開發服務。
+- 驗證：`curl http://localhost:1080` 回應 `HTTP/1.1 200 OK`。
+- 後續操作規範：使用者以 webapp 工作時，改為「先累積修改、待指示後一次重啟」，避免對話中斷。
