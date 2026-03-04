@@ -285,15 +285,15 @@ This package contains the core application logic, including the CLI, the Agent r
 
 #### D. Server & API (`src/server`)
 
-| File Path                       | Description                                                       | Key Exports        | Input / Output                                |
-| :------------------------------ | :---------------------------------------------------------------- | :----------------- | :-------------------------------------------- |
-| `src/server/server.ts`          | **Server Entry.** Configures Hono app and HTTP listener.          | `Server`, `listen` | **In:** Config<br>**Out:** Running Server     |
-| `src/server/routes/session.ts`  | **Session Routes.** API for chat session management.              | `SessionRoutes`    | **In:** HTTP Req<br>**Out:** JSON/Stream      |
-| `src/server/routes/file.ts`     | **File Routes.** API for file reading, searching, and git status; emits review diagnostic headers for web observability. | `FileRoutes`       | **In:** Path/Pattern<br>**Out:** Content/List |
-| `src/server/routes/project.ts`  | **Project Routes.** API for project metadata.                     | `ProjectRoutes`    | **In:** ID<br>**Out:** Project Info           |
-| `src/server/routes/provider.ts` | **Provider Routes.** API for models and auth flows.               | `ProviderRoutes`   | **In:** ID<br>**Out:** Models/Auth            |
-| `src/server/routes/global.ts`   | **Global Routes.** System health and SSE stream.                  | `GlobalRoutes`     | **In:** N/A<br>**Out:** Health/Events         |
-| `src/server/routes/account.ts`  | **Account Routes.** API for multi-account management.             | `AccountRoutes`    | **In:** ID<br>**Out:** Status                 |
+| File Path                           | Description                                                                                                                   | Key Exports          | Input / Output                                |
+| :---------------------------------- | :---------------------------------------------------------------------------------------------------------------------------- | :------------------- | :-------------------------------------------- |
+| `src/server/server.ts`              | **Server Entry.** Configures Hono app and HTTP listener.                                                                      | `Server`, `listen`   | **In:** Config<br>**Out:** Running Server     |
+| `src/server/routes/session.ts`      | **Session Routes.** API for chat session management.                                                                          | `SessionRoutes`      | **In:** HTTP Req<br>**Out:** JSON/Stream      |
+| `src/server/routes/file.ts`         | **File Routes.** API for file reading, searching, and git status; emits review diagnostic headers for web observability.      | `FileRoutes`         | **In:** Path/Pattern<br>**Out:** Content/List |
+| `src/server/routes/project.ts`      | **Project Routes.** API for project metadata.                                                                                 | `ProjectRoutes`      | **In:** ID<br>**Out:** Project Info           |
+| `src/server/routes/provider.ts`     | **Provider Routes.** API for models and auth flows.                                                                           | `ProviderRoutes`     | **In:** ID<br>**Out:** Models/Auth            |
+| `src/server/routes/global.ts`       | **Global Routes.** System health and SSE stream.                                                                              | `GlobalRoutes`       | **In:** N/A<br>**Out:** Health/Events         |
+| `src/server/routes/account.ts`      | **Account Routes.** API for multi-account management.                                                                         | `AccountRoutes`      | **In:** ID<br>**Out:** Status                 |
 | `src/server/routes/experimental.ts` | **Experimental/Diagnostics Routes.** Includes per-user daemon snapshots and debug-gated review data-path checkpoint endpoint. | `ExperimentalRoutes` | **In:** HTTP Req<br>**Out:** JSON diagnostics |
 
 #### E. Tools (`src/tool`)
@@ -356,12 +356,12 @@ The main frontend application built with **SolidJS**. It handles the user interf
 | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------- | :--------------------------------------------------------------------- |
 | `entry.tsx`                                       | **Entry Point**. Bootstraps the application, detects the platform (Web/Desktop), and initializes the root `PlatformProvider`.                                                                 | `(Execution Only)`                  | **In**: DOM Element<br>**Out**: Rendered App                           |
 | `app.tsx`                                         | **App Root**. Sets up global shell providers (theme/i18n/dialog/router) and route boundaries; markdown/diff/code providers are session-scoped lazy modules.                                   | `AppInterface`, `AppBaseProviders`  | **In**: Server URL (optional)<br>**Out**: Routing Context              |
-| `pages/session.tsx`                               | **Session View**. The core chat/coding interface. Manages message timeline, terminal, drag/drop layout, and review panel modes (`cumulative changes` vs `latest changes` diff scopes).         | `Page` (Default Export)             | **In**: URL Params (ID)<br>**Out**: Chat Interface                     |
-| `components/prompt-input.tsx`                     | **Prompt Runtime Guardrails.** Owns submit path + realtime watchdogs (session-status reconcile and forced message snapshot hydration during active runs).                                         | `PromptInput`                       | **In**: Prompt state + SDK sync<br>**Out**: Robust realtime UX         |
+| `pages/session.tsx`                               | **Session View**. The core chat/coding interface. Manages message timeline, terminal, drag/drop layout, and review panel modes (`cumulative changes` vs `latest changes` diff scopes).        | `Page` (Default Export)             | **In**: URL Params (ID)<br>**Out**: Chat Interface                     |
+| `components/prompt-input.tsx`                     | **Prompt Runtime Guardrails.** Owns submit path + realtime watchdogs (session-status reconcile and forced message snapshot hydration during active runs).                                     | `PromptInput`                       | **In**: Prompt state + SDK sync<br>**Out**: Robust realtime UX         |
 | `pages/session/session-rich-content-provider.tsx` | **Session Rich Content Boundary**. Route-scoped lazy provider bundle for markdown rendering, diff view, and code view components.                                                             | `SessionRichContentProvider`        | **In**: Session route children<br>**Out**: Markdown/Diff/Code contexts |
 | `context/server.tsx`                              | **Server Connection**. Manages the connection URL to the backend, health checks, and the list of available projects.                                                                          | `useServer`, `ServerProvider`       | **In**: Default URL<br>**Out**: Connection Status                      |
 | `context/global-sdk.tsx`                          | **SDK & Events**. Initializes the OpenCode SDK client and establishes the global Server-Sent Events (SSE) stream.                                                                             | `useGlobalSDK`, `GlobalSDKProvider` | **In**: Auth Token<br>**Out**: SDK Client, Event Emitter               |
-| `context/sync.tsx`                                | **Session Sync Data Path.** Hydrates review state from git-backed `/file/status` and per-file read patches to produce renderable before/after diffs.                                         | `useSync`, `SyncProvider`           | **In**: Session ID + SDK events<br>**Out**: Reactive session stores    |
+| `context/sync.tsx`                                | **Session Sync Data Path.** Hydrates review state from git-backed `/file/status` and per-file read patches to produce renderable before/after diffs.                                          | `useSync`, `SyncProvider`           | **In**: Session ID + SDK events<br>**Out**: Reactive session stores    |
 | `vite.config.ts`                                  | **Frontend Chunk Policy**. Defines manual chunk strategy for heavy dependencies (`ghostty-web`, markdown/katex, solid/core utils) plus i18n chunk isolation and warning threshold governance. | `manualChunks`                      | **In**: module id graph<br>**Out**: deterministic chunk layout         |
 
 ### 4. Console Backend (`packages/console/core`)
@@ -560,17 +560,17 @@ In addition to the standard `packages/` directory, these top-level folders serve
 
 The root directory is kept minimal, containing only essential configuration and orchestration files.
 
-| File            | Description                                                                                                                                                      |
-| :-------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.env`          | **Runtime Secrets.** Local environment variables for API keys and database URLs.                                                                                 |
-| `package.json`  | **Monorepo Manifest.** Defines project dependencies, workspace structure, and core scripts.                                                                      |
-| `bun.lock`      | **Lockfile.** Ensures consistent dependency versions across environments.                                                                                        |
-| `turbo.json`    | **TurboRepo Config.** Orchestrates build, lint, and test tasks across the monorepo.                                                                              |
-| `sst.config.ts` | **SST Entry.** Main entry point for serverless infrastructure deployment.                                                                                        |
-| `flake.nix`     | **Nix Shell.** Defines a reproducible development environment with all required system tools.                                                                    |
-| `tsconfig.json` | **TypeScript Config.** Global compiler options and path aliases.                                                                                                 |
-| `README.md`     | **Documentation Entry.** The primary project overview and quickstart guide.                                                                                      |
-| `LICENSE`       | **License Information.** MIT License terms for the project.                                                                                                      |
+| File            | Description                                                                                                                                                                                                                                                   |
+| :-------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `.env`          | **Runtime Secrets.** Local environment variables for API keys and database URLs.                                                                                                                                                                              |
+| `package.json`  | **Monorepo Manifest.** Defines project dependencies, workspace structure, and core scripts.                                                                                                                                                                   |
+| `bun.lock`      | **Lockfile.** Ensures consistent dependency versions across environments.                                                                                                                                                                                     |
+| `turbo.json`    | **TurboRepo Config.** Orchestrates build, lint, and test tasks across the monorepo.                                                                                                                                                                           |
+| `sst.config.ts` | **SST Entry.** Main entry point for serverless infrastructure deployment.                                                                                                                                                                                     |
+| `flake.nix`     | **Nix Shell.** Defines a reproducible development environment with all required system tools.                                                                                                                                                                 |
+| `tsconfig.json` | **TypeScript Config.** Global compiler options and path aliases.                                                                                                                                                                                              |
+| `README.md`     | **Documentation Entry.** The primary project overview and quickstart guide.                                                                                                                                                                                   |
+| `LICENSE`       | **License Information.** MIT License terms for the project.                                                                                                                                                                                                   |
 | `webctl.sh`     | **Web Control Entry Point.** Unified command surface for bootstrap install (`install`), development runtime (`dev-*` / `dev-refresh`), and production systemd control (`web-*` / `web-refresh`), with non-interactive sudo preflight for privileged commands. |
 
 ---
@@ -1268,17 +1268,29 @@ Desktop now loads the **same web frontend** (`packages/app/src/entry.tsx`) serve
 - Linux display backend configuration (`main.rs`)
 - macOS traffic light + overlay title bar styling
 
-### C. Frontend Serving & XDG Deployment
+### C. Frontend Serving & Runtime Config (Fail-Fast)
 
-The server's frontend catch-all (`server/app.ts`) resolves the frontend path with this fallback chain:
+The web server frontend path (`server/app.ts`) follows a **fail-fast** contract:
 
-1. **`OPENCODE_FRONTEND_PATH`** env var (explicit override — desktop sets this to its bundled resource dir)
-2. **`Global.Path.frontend`** (`$XDG_DATA_HOME/opencode/frontend/`) — auto-detected if `index.html` exists (cached once per process)
-3. **CDN proxy** to `https://app.opencode.ai` (internet fallback)
+1. Runtime must provide **`OPENCODE_FRONTEND_PATH`** (configured from `/etc/opencode/opencode.cfg` in webctl/systemd flows).
+2. If frontend bundle path is missing/invalid, server returns explicit errors (`503/404/400`) — **no silent CDN fallback**.
+3. For SPA routes, server serves local `index.html` from the configured frontend root.
+
+Canonical runtime source of truth for web/server launch parameters:
+
+- **`/etc/opencode/opencode.cfg`**
+  - Examples: `OPENCODE_PORT`, `OPENCODE_HOSTNAME`, `OPENCODE_PUBLIC_URL`, `OPENCODE_FRONTEND_PATH`, auth-related env.
+
+Canonical launch paths:
+
+- **Dev**: `./webctl.sh dev-start` (reads `/etc/opencode/opencode.cfg`, injects `OPENCODE_LAUNCH_MODE=webctl`)
+- **Prod**: `./webctl.sh web-start` (systemd service with `EnvironmentFile=/etc/opencode/opencode.cfg`, injects `OPENCODE_LAUNCH_MODE=systemd`)
+
+Direct manual `opencode web` launch is guarded by launch-mode checks to prevent configuration drift.
 
 **Desktop (Tauri)**: Bundles `packages/app/dist` as a Tauri resource at `frontend/`, sets `OPENCODE_FRONTEND_PATH` pointing to the resolved resource path at sidecar spawn time.
 
-**Standalone CLI install** (`scripts/install/install`): Downloads `opencode-frontend.tar.gz` from the GitHub release and extracts to `$XDG_DATA_HOME/opencode/frontend/`. This enables `opencode web`/`opencode serve` to work fully offline without Docker.
+**Standalone CLI install** (`scripts/install/install`): Downloads `opencode-frontend.tar.gz` from the GitHub release and extracts to `$XDG_DATA_HOME/opencode/frontend/` for standalone distribution scenarios.
 
 ```
 ~/.local/share/opencode/
@@ -1300,15 +1312,15 @@ The server's frontend catch-all (`server/app.ts`) resolves the frontend path wit
 
 ### E. Cross-Surface Comparison (TUI vs Web vs Desktop)
 
-| Aspect              | TUI                                    | Web (`opencode web`)                 | Desktop (Tauri)                                   |
-| :------------------ | :------------------------------------- | :----------------------------------- | :------------------------------------------------ |
-| Server hosting      | In-process `Server.listen()` in worker | In-process `Server.listen()`         | Separate child process (`opencode serve`)         |
-| Frontend renderer   | Terminal (`@opentui/solid`)            | Browser (same-origin)                | Tauri WebView (External URL to localhost)         |
-| Frontend entry      | TUI-specific renderer                  | `packages/app/src/entry.tsx`         | Same as web (served by child process)             |
-| Auth model          | Env var password → in-process          | Cookie-session + CSRF                | Auto-login via `window.__OPENCODE__` credentials  |
-| Frontend resolution | N/A                                    | `OPENCODE_FRONTEND_PATH` → XDG → CDN | Bundled Tauri resource → `OPENCODE_FRONTEND_PATH` |
-| Process count       | 1 (main + worker thread)               | 1                                    | 2 (Tauri host + child)                            |
-| Readiness detection | In-process (immediate)                 | In-process (immediate)               | stdout line parsing (no HTTP polling)             |
+| Aspect              | TUI                                    | Web (`opencode web`)                                                           | Desktop (Tauri)                                   |
+| :------------------ | :------------------------------------- | :----------------------------------------------------------------------------- | :------------------------------------------------ |
+| Server hosting      | In-process `Server.listen()` in worker | In-process `Server.listen()`                                                   | Separate child process (`opencode serve`)         |
+| Frontend renderer   | Terminal (`@opentui/solid`)            | Browser (same-origin)                                                          | Tauri WebView (External URL to localhost)         |
+| Frontend entry      | TUI-specific renderer                  | `packages/app/src/entry.tsx`                                                   | Same as web (served by child process)             |
+| Auth model          | Env var password → in-process          | Cookie-session + CSRF                                                          | Auto-login via `window.__OPENCODE__` credentials  |
+| Frontend resolution | N/A                                    | `OPENCODE_FRONTEND_PATH` (from `/etc/opencode/opencode.cfg`) → fail-fast error | Bundled Tauri resource → `OPENCODE_FRONTEND_PATH` |
+| Process count       | 1 (main + worker thread)               | 1                                                                              | 2 (Tauri host + child)                            |
+| Readiness detection | In-process (immediate)                 | In-process (immediate)                                                         | stdout line parsing (no HTTP polling)             |
 
 ### F. Platform-Specific Behavior
 
@@ -1337,10 +1349,11 @@ The server's frontend catch-all (`server/app.ts`) resolves the frontend path wit
 | Rust windows    | `src-tauri/src/windows.rs` (MainWindow + LoadingWindow + auto-login injection)                                   |
 | Build           | `scripts/predev.ts`, `vite.config.ts`                                                                            |
 | Config          | `src-tauri/tauri.conf.json` (resources: `../../app/dist → frontend`)                                             |
-| Server frontend | `packages/opencode/src/server/app.ts` (XDG frontend auto-detection + CDN fallback)                               |
+| Server frontend | `packages/opencode/src/server/app.ts` (local frontend serving + explicit fail-fast errors)                       |
 | XDG paths       | `packages/opencode/src/global/index.ts` (`Global.Path.frontend`)                                                 |
 | Install         | `scripts/install/install` (downloads frontend tarball alongside binary)                                          |
 | Release         | `script/build.ts` (produces `opencode-frontend.tar.gz` artifact)                                                 |
+| Runtime config  | `/etc/opencode/opencode.cfg` (single source for web/server runtime parameters)                                   |
 
 ### H. Decision Records
 

@@ -56,6 +56,12 @@
 
 預計安裝到使用者端的設定檔都集中在 `templates/` 目錄，以 XDG 架構部署。
 
+### Web Runtime 單一啟動入口（Fail-Fast）
+
+- 本 repo 的 web runtime **只允許**透過 `./webctl.sh dev-start`（或 `dev-refresh`）啟動。
+- 禁止直接使用 `bun ... opencode ... web` / `opencode web` 手動啟動，避免載入錯誤前端 bundle 或錯誤 env。
+- 所有 server runtime 參數（含 `OPENCODE_FRONTEND_PATH`）必須集中定義於 `/etc/opencode/opencode.cfg`，作為單一事實來源。
+
 ---
 
 ## 開發 opencode 本專案時的 Prompt/Agent 維護邊界
@@ -74,6 +80,7 @@
    - `runtime` 對應檔案（例如 `$XDG_CONFIG_HOME/opencode/skills/**`）
 3. **避免僅改 Global**：`~/.config/opencode/*` 屬本機執行環境，不作為 repo 交付依據。
 4. **變更留痕**：所有重大決策與同步範圍需記錄於 `docs/events/`。
+5. **Session 啟動必讀 Architecture**：每次開啟新 session（Main Agent）處理本專案前，必須先讀取 `docs/ARCHITECTURE.md`，再進行分析與規劃。
 
 ### 跨專案 SOP 基線（Mandatory）
 
@@ -95,12 +102,19 @@
    - 未更新 `docs/events`（含 debug/驗證）不得宣告完成。
    - 未同步 `templates/**` 的規範變更不得進入 release。
 
+5. **Architecture 文件同步門檻**：
+   - `docs/ARCHITECTURE.md` 採**全貌同步**原則，不採累進式變更流水帳。
+   - 每次非瑣碎開發任務收尾前，都必須重新比對程式現況並嚴格同步 `docs/ARCHITECTURE.md`（必要時直接改寫相關章節）。
+   - 即使判定無內容變更，也必須在對應 event 的 Validation 區塊記錄 `Architecture Sync: Verified (No doc changes)` 與比對依據。
+   - 未完成 Architecture 同步檢查與紀錄，不得宣告完成。
+
 ### Release 前檢查清單（Prompt / Agent / Skill）
 
 - [ ] 若調整工作流或規範，已同步更新 `templates/**` 與對應 `runtime`（如 `$XDG_CONFIG_HOME/opencode/skills/**`）。
 - [ ] 若調整初始化行為，已確認 `templates/AGENTS.md` 與 `templates/prompts/SYSTEM.md` 一致。
 - [ ] 若調整執行時技能，已確認 `$XDG_CONFIG_HOME/opencode/skills/**` 與 `templates/skills/**` 無漂移。
 - [ ] 已在 `docs/events/` 記錄：變更目的、範圍、同步面、風險。
+- [ ] 本次任務已完成 `docs/ARCHITECTURE.md` 全貌同步檢查；若無內容變更，已在 event Validation 註記 `Architecture Sync: Verified (No doc changes)` 與依據。
 - [ ] 僅將 `~/.config/opencode/*` 視為本機環境，不作為 release 交付來源。
 
 ### 驗證基準排除（暫行）

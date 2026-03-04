@@ -132,3 +132,14 @@
 
 4. **模板同步門檻（對 opencode 本身開發）**
    - 規範變更需同步 `templates/**` 與對應 runtime 檔案，避免跨專案漂移。
+
+5. **Architecture 文件同步門檻**
+   - `docs/ARCHITECTURE.md` 採**全貌同步**原則，不採累進式變更流水帳。
+   - 每次非瑣碎開發任務收尾前，都必須重新比對程式現況並嚴格同步 `docs/ARCHITECTURE.md`（必要時直接改寫相關章節）。
+   - 即使判定無內容變更，也必須在對應 event 的 Validation 區塊註記 `Architecture Sync: Verified (No doc changes)` 與比對依據。
+   - 未完成 Architecture 同步檢查與紀錄，不得宣告完成。
+
+6. **Web Runtime 單一啟動入口（Fail-Fast）**
+   - 本 repo 的 web runtime **只允許**透過 `./webctl.sh dev-start`（或 `dev-refresh`）啟動。
+   - 禁止直接使用 `bun ... opencode ... web` / `opencode web` 手動啟動，避免載入錯誤前端 bundle 或錯誤 env。
+   - 所有 server runtime 參數（含 `OPENCODE_FRONTEND_PATH`）必須集中定義於 `/etc/opencode/opencode.cfg`，作為單一事實來源。

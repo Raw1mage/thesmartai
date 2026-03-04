@@ -34,6 +34,16 @@ export const WebCommand = cmd({
   builder: (yargs) => withNetworkOptions(yargs),
   describe: "start opencode server and open web interface",
   handler: async (args) => {
+    const launchMode = process.env.OPENCODE_LAUNCH_MODE
+    if (launchMode !== "webctl" && launchMode !== "systemd") {
+      UI.println(
+        UI.Style.TEXT_WARNING_BOLD +
+          "x  " +
+          "Direct `opencode web` launch is disabled in this repo. Use `./webctl.sh dev-start` or `./webctl.sh web-start`.",
+      )
+      process.exit(1)
+    }
+
     const disableBrowserOpen = process.env.OPENCODE_WEB_NO_OPEN === "1" || process.env.OPENCODE_WEB_NO_OPEN === "true"
     if (!WebAuthCredentials.enabled()) {
       UI.println(
