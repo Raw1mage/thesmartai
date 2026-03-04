@@ -5,7 +5,8 @@
   height: 100%;
   overflow-y: auto;
   scrollbar-width: none;
-  contain: strict;
+  /* Avoid strict containment clipping expanded diff content in long review lists */
+  contain: none;
   &::-webkit-scrollbar {
     display: none;
   }
@@ -42,17 +43,28 @@
     padding-right: 1px;
   }
 
-  [data-component="sticky-accordion-header"] {
-    top: 40px;
+  [data-slot="session-review-accordion-item"] {
+    width: 100%;
   }
 
-  [data-component="sticky-accordion-header"][data-expanded]::before,
-  [data-slot="accordion-item"][data-expanded] [data-component="sticky-accordion-header"]::before {
-    top: -40px;
+  [data-slot="session-review-item-header"] {
+    width: 100%;
   }
 
-  [data-slot="accordion-trigger"] {
-    background-color: var(--background-stronger) !important;
+  [data-slot="session-review-trigger-button"] {
+    width: 100%;
+    display: flex;
+    height: 32px;
+    padding: 8px 12px;
+    justify-content: space-between;
+    align-items: center;
+    cursor: default;
+    user-select: none;
+    background-color: var(--background-stronger);
+    border: 1px solid var(--border-weak-base);
+    border-radius: var(--radius-md);
+    overflow: clip;
+    color: var(--text-strong);
   }
 
   [data-slot="session-review-accordion-item"][data-selected] {
@@ -62,26 +74,28 @@
     }
   }
 
-  [data-slot="accordion-item"] {
-    [data-slot="accordion-content"] {
-      display: none;
-    }
-    &[data-expanded] {
-      [data-slot="accordion-content"] {
-        display: block;
-      }
-    }
+  [data-slot="session-review-trigger-button"]:focus-visible {
+    outline: none;
   }
 
-  [data-slot="accordion-content"] {
+  [data-slot="session-review-accordion-content"] {
     -webkit-user-select: text;
     user-select: text;
+    border: 1px solid var(--border-weak-base);
+    border-top: none;
+    border-bottom-left-radius: var(--radius-md);
+    border-bottom-right-radius: var(--radius-md);
+  }
+
+  [data-slot="session-review-accordion-item"][data-expanded] [data-slot="session-review-trigger-button"] {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
   }
 
   [data-slot="session-review-accordion-content"] {
     position: relative;
     z-index: 0;
-    overflow: hidden;
+    overflow: visible;
   }
 
   [data-slot="session-review-trigger-content"] {
@@ -100,52 +114,40 @@
     min-width: 0;
   }
 
-  [data-slot="session-review-file-name-container"] {
-    display: flex;
-    flex-grow: 1;
-    min-width: 0;
+  [data-slot="session-review-file-icon-button"] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
   }
 
-  [data-slot="session-review-directory"] {
-    color: var(--text-base);
-    text-overflow: ellipsis;
+  [data-slot="session-review-file-name-container"] {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
     overflow: hidden;
+    align-items: center;
+  }
+
+  [data-slot="session-review-filepath"] {
+    color: var(--text-strong);
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
     direction: rtl;
     text-align: left;
   }
 
-  [data-slot="session-review-filename"] {
-    color: var(--text-strong);
-    flex-shrink: 0;
-  }
-
-  [data-slot="session-review-view-button"] {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2px;
-    margin-left: 8px;
-    border: none;
-    background: transparent;
-    color: var(--text-base);
-    cursor: pointer;
-    border-radius: 4px;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-
-    &:hover {
-      color: var(--text-strong);
-      background: var(--surface-base);
-    }
-  }
-
-  [data-slot="accordion-trigger"]:hover [data-slot="session-review-view-button"] {
-    opacity: 1;
-  }
-
   [data-slot="session-review-trigger-actions"] {
     flex-shrink: 0;
+    min-width: max-content;
     display: flex;
     gap: 16px;
     align-items: center;
@@ -216,7 +218,7 @@
 
   [data-slot="session-review-diff-wrapper"] {
     position: relative;
-    overflow: hidden;
+    overflow: visible;
     z-index: 0;
     --line-comment-z: 5;
     --line-comment-popover-z: 30;

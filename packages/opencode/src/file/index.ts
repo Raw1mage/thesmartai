@@ -23,6 +23,8 @@ export namespace File {
       added: z.number().int(),
       removed: z.number().int(),
       status: z.enum(["added", "deleted", "modified"]),
+      before: z.string().optional(),
+      after: z.string().optional(),
     })
     .meta({
       ref: "File",
@@ -658,7 +660,51 @@ export namespace File {
       })
     }
 
-    return normalized
+    const hydrated = await Promise.all(
+      normalized.map(async (item) => {
+        const full = path.join(Instance.directory, item.path)
+
+        const readHeadText = async () => {
+          const original = await $`git -c safe.directory=* -c core.quotepath=false show HEAD:${item.path}`
+            .cwd(Instance.directory)
+            .quiet()
+            .nothrow()
+            .text()
+          return original
+        }
+
+        const readWorkingText = async () => {
+          const bunFile = Bun.file(full)
+          if (!(await bunFile.exists())) return ""
+          if (await shouldEncode(bunFile)) return ""
+          return await bunFile.text().catch(() => "")
+        }
+
+        if (item.status === "added") {
+          return {
+            ...item,
+            before: "",
+            after: await readWorkingText(),
+          }
+        }
+
+        if (item.status === "deleted") {
+          return {
+            ...item,
+            before: await readHeadText(),
+            after: "",
+          }
+        }
+
+        return {
+          ...item,
+          before: await readHeadText(),
+          after: await readWorkingText(),
+        }
+      }),
+    )
+
+    return hydrated
   }
 
   export async function read(file: string): Promise<Content> {

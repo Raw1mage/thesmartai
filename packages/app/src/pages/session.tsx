@@ -1,4 +1,4 @@
-import { For, onCleanup, Show, Match, Switch, createMemo, createEffect, on } from "solid-js"
+import { For, onCleanup, Show, Match, Switch, createMemo, createEffect, createSignal, on } from "solid-js"
 import { createMediaQuery } from "@solid-primitives/media"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Dynamic } from "solid-js/web"
@@ -12,7 +12,6 @@ import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Tabs } from "@opencode-ai/ui/tabs"
-import { Select } from "@opencode-ai/ui/select"
 import { useCodeComponent } from "@opencode-ai/ui/context/code"
 import { createAutoScroll } from "@opencode-ai/ui/hooks"
 import { Mark } from "@opencode-ai/ui/logo"
@@ -298,9 +297,6 @@ export default function Page() {
   })
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const diffs = createMemo(() => (params.id ? (sync.data.session_diff[params.id] ?? []) : []))
-  const reviewCount = createMemo(() => diffs().length)
-  const hasReview = createMemo(() => reviewCount() > 0)
   const revertMessageID = createMemo(() => info()?.revert?.messageID)
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
   const messagesReady = createMemo(() => {
@@ -530,13 +526,36 @@ export default function Page() {
     messageId: undefined as string | undefined,
     turnStart: 0,
     mobileTab: "session" as "session" | "changes",
-    changes: "session" as "session" | "turn",
     newSessionWorktree: "main",
     promptHeight: 0,
   })
 
-  const turnDiffs = createMemo(() => lastUserMessage()?.summary?.diffs ?? [])
-  const reviewDiffs = createMemo(() => (store.changes === "session" ? diffs() : turnDiffs()))
+  const selectedTurnMessageID = createMemo(() => {
+    if (!store.messageId) return lastUserMessage()?.id
+    const found = visibleUserMessages()?.find((m) => m.id === store.messageId)
+    return (found ?? lastUserMessage())?.id
+  })
+
+  const reviewDiffKey = createMemo(() => {
+    const id = params.id
+    if (!id) return undefined
+    const messageID = selectedTurnMessageID()
+    return messageID ? `${id}:msg:${messageID}` : undefined
+  })
+
+  const [stableReviewDiffKey, setStableReviewDiffKey] = createSignal<string | undefined>()
+  createEffect(() => {
+    const key = reviewDiffKey()
+    if (key) setStableReviewDiffKey(key)
+  })
+
+  const reviewDiffs = createMemo(() => {
+    const key = reviewDiffKey() ?? stableReviewDiffKey()
+    if (!key) return []
+    return sync.data.session_diff[key] ?? []
+  })
+  const reviewCount = createMemo(() => reviewDiffs().length)
+  const hasReview = createMemo(() => reviewCount() > 0)
 
   const renderedUserMessages = createMemo(
     () => {
@@ -597,7 +616,7 @@ export default function Page() {
     const normalize = (p: string) => p.replaceAll("\\\\", "/").replace(/\/+$/, "")
 
     const out = new Map<string, "add" | "del" | "mix">()
-    for (const diff of diffs()) {
+    for (const diff of reviewDiffs()) {
       const file = normalize(diff.file)
       const beforeText = typeof diff.before === "string" ? diff.before : ""
       const afterText = typeof diff.after === "string" ? diff.after : ""
@@ -615,19 +634,13 @@ export default function Page() {
     return out
   })
   const emptyDiffFiles: string[] = []
-  const diffFiles = createMemo(() => diffs().map((d) => d.file), emptyDiffFiles, { equals: same })
+  const diffFiles = createMemo(() => reviewDiffs().map((d) => d.file), emptyDiffFiles, { equals: same })
   const diffsReady = createMemo(() => {
-    const id = params.id
-    if (!id) return true
+    const key = reviewDiffKey() ?? stableReviewDiffKey()
+    if (!key) return true
     if (!hasReview()) return true
-    return sync.data.session_diff[id] !== undefined
+    return sync.data.session_diff[key] !== undefined
   })
-  const reviewEmptyKey = createMemo(() => {
-    const project = sync.project
-    if (!project || project.vcs) return "session.review.empty"
-    return "session.review.noVcs"
-  })
-
   const idle = { type: "idle" as const }
   let inputRef!: HTMLDivElement
   let promptDock: HTMLDivElement | undefined
@@ -713,7 +726,6 @@ export default function Page() {
       () => {
         setStore("messageId", undefined)
         setStore("expanded", {})
-        setStore("changes", "session")
         setUi("autoCreated", false)
       },
       { defer: true },
@@ -905,23 +917,6 @@ export default function Page() {
     loadFile: file.load,
   })
 
-  const changesOptions = ["session", "turn"] as const
-  const changesOptionsList = [...changesOptions]
-
-  const changesTitle = () => (
-    <Select
-      options={changesOptionsList}
-      current={store.changes}
-      label={(option) =>
-        option === "session" ? language.t("ui.sessionReview.title") : language.t("ui.sessionReview.title.lastTurn")
-      }
-      onSelect={(option) => option && setStore("changes", option)}
-      variant="ghost"
-      size="large"
-      triggerStyle={{ "font-size": "var(--font-size-large)" }}
-    />
-  )
-
   const emptyTurn = () => (
     <div class="h-full pb-30 flex flex-col items-center justify-center text-center gap-6">
       <Mark class="w-14 opacity-10" />
@@ -937,29 +932,12 @@ export default function Page() {
     emptyClass: string
   }) => (
     <Switch>
-      <Match when={store.changes === "turn" && !!params.id}>
-        <SessionReviewTab
-          title={changesTitle()}
-          empty={emptyTurn()}
-          diffs={reviewDiffs}
-          view={view}
-          diffStyle={input.diffStyle}
-          onDiffStyleChange={input.onDiffStyleChange}
-          onLineComment={(comment) => addCommentToContext({ ...comment, origin: "review" })}
-          comments={comments.all()}
-          focusedComment={comments.focus()}
-          onFocusedCommentChange={comments.setFocus}
-          onViewFile={openReviewFile}
-          classes={input.classes}
-        />
-      </Match>
       <Match when={hasReview()}>
         <Show
           when={diffsReady()}
           fallback={<div class={input.loadingClass}>{language.t("session.review.loadingChanges")}</div>}
         >
           <SessionReviewTab
-            title={changesTitle()}
             diffs={reviewDiffs}
             view={view}
             diffStyle={input.diffStyle}
@@ -975,17 +953,7 @@ export default function Page() {
       </Match>
       <Match when={true}>
         <SessionReviewTab
-          title={changesTitle()}
-          empty={
-            store.changes === "turn" ? (
-              emptyTurn()
-            ) : (
-              <div class={input.emptyClass}>
-                <Mark class="w-14 opacity-10" />
-                <div class="text-14-regular text-text-weak max-w-56">{language.t(reviewEmptyKey())}</div>
-              </div>
-            )
-          }
+          empty={emptyTurn()}
           diffs={reviewDiffs}
           view={view}
           diffStyle={input.diffStyle}
@@ -1047,15 +1015,16 @@ export default function Page() {
     const id = params.id
     if (!id) return
 
-    const statusType = sync.data.session_status[id]?.type ?? "idle"
-
     const wants = isDesktop()
       ? desktopFileTreeOpen() || (desktopReviewOpen() && activeTab() === "review")
       : store.mobileTab === "changes"
     if (!wants) return
     if (sync.status === "loading") return
 
-    void sync.session.diff(id, { force: statusType === "idle" })
+    const messageID = selectedTurnMessageID()
+    if (!messageID) return
+
+    void sync.session.diff(id, { messageID })
   })
 
   let treeDir: string | undefined

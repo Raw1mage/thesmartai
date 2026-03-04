@@ -213,7 +213,32 @@ export default function Page() {
   })
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const diffs = createMemo(() => (params.id ? (sync.data.session_diff[params.id] ?? []) : []))
+  const selectedTurnMessageID = createMemo(() => {
+    const list = visibleUserMessages()
+    const latest = list.at(-1)
+    if (!store.messageId) return latest?.id
+    const found = list.find((m) => m.id === store.messageId)
+    return (found ?? latest)?.id
+  })
+
+  const reviewDiffKey = createMemo(() => {
+    const id = params.id
+    if (!id) return undefined
+    const messageID = selectedTurnMessageID()
+    return messageID ? `${id}:msg:${messageID}` : undefined
+  })
+
+  const [stableReviewDiffKey, setStableReviewDiffKey] = createSignal<string | undefined>()
+  createEffect(() => {
+    const key = reviewDiffKey()
+    if (key) setStableReviewDiffKey(key)
+  })
+
+  const diffs = createMemo(() => {
+    const key = reviewDiffKey() ?? stableReviewDiffKey()
+    if (!key) return []
+    return sync.data.session_diff[key] ?? []
+  })
   const reviewCount = createMemo(() => diffs().length)
   const hasReview = createMemo(() => reviewCount() > 0)
   const revertMessageID = createMemo(() => info()?.revert?.messageID)
@@ -353,10 +378,10 @@ export default function Page() {
   const emptyDiffFiles: string[] = []
   const diffFiles = createMemo(() => diffs().map((d) => d.file), emptyDiffFiles, { equals: same })
   const diffsReady = createMemo(() => {
-    const id = params.id
-    if (!id) return true
+    const key = reviewDiffKey() ?? stableReviewDiffKey()
+    if (!key) return true
     if (!hasReview()) return true
-    return sync.data.session_diff[id] !== undefined
+    return sync.data.session_diff[key] !== undefined
   })
 
   const idle = { type: "idle" as const }
@@ -815,13 +840,14 @@ export default function Page() {
   createEffect(() => {
     const id = params.id
     if (!id) return
-    const statusType = sync.data.session_status[id]?.type ?? "idle"
 
     const wants = isDesktop() ? layout.fileTree.opened() && fileTreeTab() === "changes" : store.mobileTab === "changes"
     if (!wants) return
     if (sync.status === "loading") return
 
-    void sync.session.diff(id, { force: statusType === "idle" })
+    const messageID = selectedTurnMessageID()
+    if (!messageID) return
+    void sync.session.diff(id, { messageID })
   })
 
   createEffect(() => {
