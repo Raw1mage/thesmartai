@@ -61,6 +61,8 @@ Status: Done
   - `webctl.sh` 改為預設 `OPENCODE_AUTH_MODE=pam`，移除 htpasswd 隱式預設注入。
   - `scripts/tools/start-opencode-web.sh` 改為 PAM 預設。
   - `templates/system/opencode.cfg` 改為 PAM 預設，htpasswd/legacy 改為註解備選。
+  - 依使用者需求補強 `templates/system/opencode.cfg`：提供完整分區說明、各 auth mode 對應必填參數與安全註解，作為可直接落地的配置範本。
+  - 依跨平台需求補上 auth 模式建議矩陣（Linux -> pam、Windows -> htpasswd、mixed -> auto/暫時）。
   - PAM 登入穩定性修補：`verifyPam` 先嘗試 `authenticate-pam`，失敗時再 fallback 到既有 `su` PTY 驗證。
   - PAM mode 的 `usernameHint` 改為 `SUDO_USER -> LOGNAME -> USER` 優先序，避免服務帳號提示誤導登入。
   - 嘗試直接修改 `/etc/opencode/opencode.cfg` 時因權限不足失敗（EACCES），改由使用者在主機 shell 套用。
@@ -73,3 +75,5 @@ Status: Done
 - 已知噪音豁免：本次未觸及 `packages/opencode/src/plugin/antigravity/plugin/storage.legacy.ts`，不受該 typecheck 噪音影響。
 - Architecture Sync: Verified (Doc updated)
   - 依據：`docs/ARCHITECTURE.md` 第 19 節已同步為 mode-based auth baseline（含 `OPENCODE_AUTH_MODE` 與 PAM-first 描述）。
+  - Template Sync: Verified (Doc-comment level update)
+    - 依據：`templates/system/opencode.cfg` 已改為完整註解化範本，涵蓋 network/frontend/runtime/auth 全區段。
