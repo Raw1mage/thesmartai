@@ -11,7 +11,6 @@ import {
 } from "@opencode-ai/app"
 import { open, save } from "@tauri-apps/plugin-dialog"
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link"
-import { openPath as openerOpenPath } from "@tauri-apps/plugin-opener"
 import { open as shellOpen } from "@tauri-apps/plugin-shell"
 import { type as ostype } from "@tauri-apps/plugin-os"
 import { check, Update } from "@tauri-apps/plugin-updater"
@@ -121,29 +120,7 @@ const createPlatform = (password: Accessor<string | null>): Platform => {
       void shellOpen(url).catch(() => undefined)
     },
     async openPath(path: string, app?: string) {
-      const os = ostype()
-      if (os === "windows") {
-        const resolvedPath = await (async () => {
-          if (window.__OPENCODE__?.wsl) {
-            const converted = await (commands as any).wslPath(path, "windows").catch(() => null)
-            if (converted) return converted
-          }
-
-          return path
-        })()
-        const resolvedApp = (app && (await commands.resolveAppPath(app))) || app
-        const isPowershell = (value?: string) => {
-          if (!value) return false
-          const name = value.toLowerCase().replaceAll("/", "\\").split("\\").pop()
-          return name === "powershell" || name === "powershell.exe"
-        }
-        if (isPowershell(resolvedApp)) {
-          await commands.openInPowershell(resolvedPath)
-          return
-        }
-        return openerOpenPath(resolvedPath, resolvedApp)
-      }
-      return openerOpenPath(path, app)
+      await commands.openPath(path, app ?? null)
     },
 
     back() {
