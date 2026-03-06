@@ -101,8 +101,6 @@ function installFindShortcuts() {
   window.addEventListener(
     "keydown",
     (event) => {
-      if (event.defaultPrevented) return
-
       const mod = event.metaKey || event.ctrlKey
       if (!mod) return
 

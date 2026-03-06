@@ -229,7 +229,6 @@
 
         .tab-fileicon-mono {
           display: block;
-          filter: grayscale(1);
         }
 
         &[data-selected],

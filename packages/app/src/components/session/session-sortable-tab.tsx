@@ -19,7 +19,7 @@ export function FileVisual(props: { path: string; active?: boolean }): JSX.Eleme
       >
         <span class="relative inline-flex size-4 shrink-0">
           <FileIcon node={{ path: props.path, type: "file" }} class="absolute inset-0 size-4 tab-fileicon-color" />
-          <FileIcon node={{ path: props.path, type: "file" }} class="absolute inset-0 size-4 tab-fileicon-mono" />
+          <FileIcon node={{ path: props.path, type: "file" }} mono class="absolute inset-0 size-4 tab-fileicon-mono" />
         </span>
       </Show>
       <span class="text-14-medium truncate">{getFilename(props.path)}</span>

@@ -1,4 +1,5 @@
-import { createEffect, createMemo, createResource, For, Show } from "solid-js"
+import { createEffect, createMemo, For, onCleanup, Show } from "solid-js"
+import { createStore } from "solid-js/store"
 import { useNavigate, useParams, useSearchParams } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
 import FileTree from "@/components/file-tree"
@@ -54,18 +55,75 @@ export default function SessionToolPageRoute() {
     if (tool() === "status" && sync.data.todo[id] === undefined) void sync.session.todo(id)
   })
 
-  const [monitorRaw] = createResource(
-    () => (tool() === "status" ? params.id : undefined),
-    async (id) => {
-      if (!id) return [] as SessionMonitorInfo[]
-      const result = await sdk.client.session.top({ sessionID: id, includeDescendants: true, maxMessages: 400 })
-      return result.data ?? []
-    },
-  )
+  createEffect(() => {
+    if (tool() !== "status") return
+    const id = params.id
+    if (!id) return
+
+    let cancelled = false
+    const refresh = async () => {
+      await Promise.allSettled([sync.session.sync(id, { force: true }), sync.session.todo(id, { force: true })])
+      if (cancelled) return
+    }
+
+    void refresh()
+    const timer = setInterval(() => {
+      void refresh()
+    }, 2000)
+
+    onCleanup(() => {
+      cancelled = true
+      clearInterval(timer)
+    })
+  })
+
+  const [monitor, setMonitor] = createStore({
+    items: [] as SessionMonitorInfo[],
+    loading: false,
+    initialized: false,
+    error: undefined as string | undefined,
+  })
+
+  createEffect(() => {
+    if (tool() !== "status") return
+    const id = params.id
+    if (!id) {
+      setMonitor({ items: [], loading: false, initialized: false, error: undefined })
+      return
+    }
+
+    let cancelled = false
+    const load = async () => {
+      setMonitor("loading", true)
+      try {
+        const result = await sdk.client.session.top({ sessionID: id, includeDescendants: true, maxMessages: 400 })
+        if (cancelled) return
+        setMonitor({ items: result.data ?? [], loading: false, initialized: true, error: undefined })
+      } catch (error) {
+        if (cancelled) return
+        setMonitor({
+          items: [],
+          loading: false,
+          initialized: true,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    void load()
+    const timer = setInterval(() => {
+      void load()
+    }, 2000)
+
+    onCleanup(() => {
+      cancelled = true
+      clearInterval(timer)
+    })
+  })
 
   const monitorEntries = createMemo(() =>
     buildMonitorEntries({
-      raw: monitorRaw() ?? [],
+      raw: monitor.items,
       session: info(),
       messages: messages(),
       status: params.id ? sync.data.session_status[params.id] : undefined,
@@ -175,94 +233,84 @@ export default function SessionToolPageRoute() {
 
         <Show when={tool() === "status"}>
           <SessionStatusSections
-            todoSection={
-              <section class="flex flex-col gap-2 rounded-md border border-border-weak-base bg-surface-panel px-3 py-3">
-                <div class="text-12-medium text-text-weak uppercase tracking-wide">
-                  {language.t("session.tools.todo")}
-                </div>
-                <Show when={params.id} fallback={<div class="text-12-regular text-text-weak">No active session.</div>}>
+            todoContent={
+              <Show when={params.id} fallback={<div class="text-12-regular text-text-weak">No active session.</div>}>
+                <Show
+                  when={todos() !== undefined}
+                  fallback={<div class="text-12-regular text-text-weak">Loading to-dos…</div>}
+                >
                   <Show
-                    when={todos() !== undefined}
-                    fallback={<div class="text-12-regular text-text-weak">Loading to-dos…</div>}
+                    when={(todos()?.length ?? 0) > 0}
+                    fallback={<div class="text-12-regular text-text-weak">No to-dos yet.</div>}
+                  >
+                    <For each={todos() as Todo[]}>
+                      {(todo) => (
+                        <div class="flex items-start gap-2 rounded-md border border-border-weak-base bg-background-base px-3 py-2">
+                          <div
+                            class="mt-1 size-2 rounded-full shrink-0"
+                            classList={{
+                              "bg-text-warning": todo.status === "in_progress",
+                              "bg-text-interactive-base": todo.status === "pending",
+                              "bg-text-success": todo.status === "completed",
+                              "bg-text-weak": todo.status === "cancelled",
+                            }}
+                          />
+                          <div class="min-w-0 flex-1">
+                            <div class="text-12-medium text-text-strong break-words">{todo.content}</div>
+                            <div class="text-11-regular text-text-weak uppercase mt-1">
+                              {todo.status.replaceAll("_", " ")}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </For>
+                  </Show>
+                </Show>
+              </Show>
+            }
+            monitorContent={
+              <Show when={params.id} fallback={<div class="text-12-regular text-text-weak">No active session.</div>}>
+                <Show
+                  when={monitor.initialized || !monitor.loading}
+                  fallback={<div class="text-12-regular text-text-weak">Loading monitor…</div>}
+                >
+                  <Show
+                    when={!monitor.error}
+                    fallback={<div class="text-12-regular text-text-danger">{monitor.error}</div>}
                   >
                     <Show
-                      when={(todos()?.length ?? 0) > 0}
-                      fallback={<div class="text-12-regular text-text-weak">No to-dos yet.</div>}
+                      when={monitorEntries().length > 0}
+                      fallback={<div class="text-12-regular text-text-weak">No active tasks.</div>}
                     >
-                      <For each={todos() as Todo[]}>
-                        {(todo) => (
-                          <div class="flex items-start gap-2 rounded-md border border-border-weak-base bg-background-base px-3 py-2">
-                            <div
-                              class="mt-1 size-2 rounded-full shrink-0"
-                              classList={{
-                                "bg-text-warning": todo.status === "in_progress",
-                                "bg-text-interactive-base": todo.status === "pending",
-                                "bg-text-success": todo.status === "completed",
-                                "bg-text-weak": todo.status === "cancelled",
-                              }}
-                            />
-                            <div class="min-w-0 flex-1">
-                              <div class="text-12-medium text-text-strong break-words">{todo.content}</div>
-                              <div class="text-11-regular text-text-weak uppercase mt-1">
-                                {todo.status.replaceAll("_", " ")}
-                              </div>
+                      <For each={monitorEntries()}>
+                        {(item) => (
+                          <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-1">
+                            <div class="flex items-center gap-2 min-w-0">
+                              <span class="text-11-medium text-text-weak shrink-0">
+                                [{MONITOR_LEVEL_LABELS[item.level] ?? item.level}]
+                              </span>
+                              <span class="text-12-medium text-text-strong truncate">
+                                {item.title || "Untitled session"}
+                              </span>
                             </div>
+                            <div class="text-11-regular text-text-weak break-words">
+                              {MONITOR_STATUS_LABELS[item.status.type] ?? item.status.type}
+                              {item.model ? ` · ${item.model.providerId}/${item.model.modelID}` : ""}
+                              {` · ${item.requests} reqs · ${item.totalTokens.toLocaleString()} tok`}
+                            </div>
+                            <Show when={item.activeTool}>
+                              <div class="text-11-regular text-text-weak break-words">
+                                Tool: {item.activeTool}
+                                <Show when={item.activeToolStatus}> · {item.activeToolStatus}</Show>
+                              </div>
+                            </Show>
                           </div>
                         )}
                       </For>
                     </Show>
                   </Show>
                 </Show>
-              </section>
-            }
-            monitorSection={
-              <section class="flex flex-col gap-2 rounded-md border border-border-weak-base bg-surface-panel px-3 py-3">
-                <div class="text-12-medium text-text-weak uppercase tracking-wide">
-                  {language.t("session.tools.monitor")}
-                </div>
-                <Show when={params.id} fallback={<div class="text-12-regular text-text-weak">No active session.</div>}>
-                  <Show
-                    when={monitorRaw.state !== "pending"}
-                    fallback={<div class="text-12-regular text-text-weak">Loading monitor…</div>}
-                  >
-                    <Show
-                      when={monitorRaw.error === undefined}
-                      fallback={<div class="text-12-regular text-text-danger">{String(monitorRaw.error)}</div>}
-                    >
-                      <Show
-                        when={monitorEntries().length > 0}
-                        fallback={<div class="text-12-regular text-text-weak">No active tasks.</div>}
-                      >
-                        <For each={monitorEntries()}>
-                          {(item) => (
-                            <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-1">
-                              <div class="flex items-center gap-2 min-w-0">
-                                <span class="text-11-medium text-text-weak shrink-0">
-                                  [{MONITOR_LEVEL_LABELS[item.level] ?? item.level}]
-                                </span>
-                                <span class="text-12-medium text-text-strong truncate">
-                                  {item.title || "Untitled session"}
-                                </span>
-                              </div>
-                              <div class="text-11-regular text-text-weak break-words">
-                                {MONITOR_STATUS_LABELS[item.status.type] ?? item.status.type}
-                                {item.model ? ` · ${item.model.providerId}/${item.model.modelID}` : ""}
-                                {` · ${item.requests} reqs · ${item.totalTokens.toLocaleString()} tok`}
-                              </div>
-                              <Show when={item.activeTool}>
-                                <div class="text-11-regular text-text-weak break-words">
-                                  Tool: {item.activeTool}
-                                  <Show when={item.activeToolStatus}> · {item.activeToolStatus}</Show>
-                                </div>
-                              </Show>
-                            </div>
-                          )}
-                        </For>
-                      </Show>
-                    </Show>
-                  </Show>
-                </Show>
-              </section>
+              </Show>
             }
           />
         </Show>

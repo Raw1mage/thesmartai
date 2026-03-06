@@ -161,16 +161,7 @@ const useMcpToggle = (input: {
   return { loading, toggle }
 }
 
-function Section(props: { title: string; children: JSX.Element }) {
-  return (
-    <section class="flex flex-col gap-2 rounded-md border border-border-weak-base bg-surface-panel px-3 py-3">
-      <div class="text-12-medium text-text-weak uppercase tracking-wide">{props.title}</div>
-      {props.children}
-    </section>
-  )
-}
-
-export function SessionStatusSections(props: { todoSection?: JSX.Element; monitorSection?: JSX.Element }) {
+export function SessionStatusSections(props: { todoContent?: JSX.Element; monitorContent?: JSX.Element }) {
   const sync = useSync()
   const sdk = useSDK()
   const server = useServer()
@@ -196,10 +187,42 @@ export function SessionStatusSections(props: { todoSection?: JSX.Element; monito
   const lspItems = createMemo(() => sync.data.lsp ?? [])
   const plugins = createMemo(() => sync.data.config.plugin ?? [])
   const pluginEmpty = createMemo(() => pluginEmptyMessage(language.t("dialog.plugins.empty"), "opencode.json"))
+  const [expanded, setExpanded] = createStore({
+    servers: true,
+    monitor: true,
+    todo: true,
+    mcp: true,
+    lsp: true,
+    plugins: true,
+  })
+
+  const renderSection = (
+    key: keyof typeof expanded,
+    title: string,
+    children: JSX.Element,
+    options?: { hidden?: boolean },
+  ) => {
+    if (options?.hidden) return null
+    return (
+      <section class="flex flex-col gap-2 rounded-md border border-border-weak-base bg-surface-panel px-3 py-3">
+        <button
+          type="button"
+          class="flex items-center gap-2 text-left"
+          onClick={() => setExpanded(key, (value) => !value)}
+        >
+          <span class="text-12-medium text-text-base">{expanded[key] ? "▼" : "▶"}</span>
+          <span class="text-12-medium text-text-weak uppercase tracking-wide">{title}</span>
+        </button>
+        <Show when={expanded[key]}>{children}</Show>
+      </section>
+    )
+  }
 
   return (
     <div class="bg-background-base px-3 py-3 h-full overflow-auto flex flex-col gap-3">
-      <Section title={language.t("status.popover.tab.servers")}>
+      {renderSection(
+        "servers",
+        language.t("status.popover.tab.servers"),
         <Show
           when={sortedServers().length > 0}
           fallback={<div class="text-12-regular text-text-weak">{language.t("dialog.server.empty")}</div>}
@@ -254,10 +277,20 @@ export function SessionStatusSections(props: { todoSection?: JSX.Element; monito
           >
             {language.t("status.popover.action.manageServers")}
           </Button>
-        </Show>
-      </Section>
+        </Show>,
+      )}
 
-      <Section title={language.t("status.popover.tab.mcp")}>
+      {renderSection("monitor", language.t("session.tools.monitor"), props.monitorContent!, {
+        hidden: !props.monitorContent,
+      })}
+
+      {renderSection("todo", language.t("session.tools.todo"), props.todoContent!, {
+        hidden: !props.todoContent,
+      })}
+
+      {renderSection(
+        "mcp",
+        language.t("status.popover.tab.mcp"),
         <Show
           when={mcpNames().length > 0}
           fallback={<div class="text-12-regular text-text-weak">{language.t("dialog.mcp.empty")}</div>}
@@ -290,17 +323,25 @@ export function SessionStatusSections(props: { todoSection?: JSX.Element; monito
               )
             }}
           </For>
-        </Show>
-      </Section>
+        </Show>,
+      )}
 
-      <Section title={language.t("status.popover.tab.lsp")}>
+      {renderSection(
+        "lsp",
+        language.t("status.popover.tab.lsp"),
         <Show
           when={lspItems().length > 0}
-          fallback={<div class="text-12-regular text-text-weak">{language.t("dialog.lsp.empty")}</div>}
+          fallback={
+            <div class="text-12-regular text-text-weak">
+              {sync.data.config.lsp === false
+                ? "LSPs have been disabled in settings"
+                : "LSPs will activate as files are read"}
+            </div>
+          }
         >
           <For each={lspItems()}>
             {(item) => (
-              <div class="flex items-center gap-2 w-full px-2 py-1">
+              <div class="flex items-start gap-2 w-full px-2 py-1">
                 <div
                   classList={{
                     "size-1.5 rounded-full shrink-0": true,
@@ -308,14 +349,19 @@ export function SessionStatusSections(props: { todoSection?: JSX.Element; monito
                     "bg-icon-critical-base": item.status === "error",
                   }}
                 />
-                <span class="text-14-regular text-text-base truncate">{item.name || item.id}</span>
+                <div class="min-w-0 flex-1">
+                  <div class="text-14-regular text-text-base break-all">{item.id}</div>
+                  <div class="text-12-regular text-text-weak break-all">{item.root}</div>
+                </div>
               </div>
             )}
           </For>
-        </Show>
-      </Section>
+        </Show>,
+      )}
 
-      <Section title={language.t("status.popover.tab.plugins")}>
+      {renderSection(
+        "plugins",
+        language.t("status.popover.tab.plugins"),
         <Show when={plugins().length > 0} fallback={<div class="text-12-regular text-text-weak">{pluginEmpty()}</div>}>
           <For each={plugins()}>
             {(plugin) => (
@@ -325,11 +371,8 @@ export function SessionStatusSections(props: { todoSection?: JSX.Element; monito
               </div>
             )}
           </For>
-        </Show>
-      </Section>
-
-      <Show when={props.todoSection}>{props.todoSection}</Show>
-      <Show when={props.monitorSection}>{props.monitorSection}</Show>
+        </Show>,
+      )}
     </div>
   )
 }

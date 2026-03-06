@@ -232,6 +232,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const client = sdk.client
           const [store, setStore] = globalSync.child(directory)
           const key = keyFor(directory, sessionID)
+          const force = !!options?.force
           const hasSession = (() => {
             const match = Binary.search(store.session, sessionID, (s) => s.id)
             return match.found
@@ -239,31 +240,32 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           const hasMessages = store.message[sessionID] !== undefined
           const hydrated = meta.limit[key] !== undefined
-          if (!options?.force && hasSession && hasMessages && hydrated) return
+          if (!force && hasSession && hasMessages && hydrated) return
 
           const count = store.message[sessionID]?.length ?? 0
           const limit = hydrated ? (meta.limit[key] ?? messagePageSize) : limitFor(count)
 
-          const sessionReq = hasSession
-            ? Promise.resolve()
-            : retry(() => client.session.get({ sessionID })).then((session) => {
-                const data = session.data
-                if (!data) return
-                setStore(
-                  "session",
-                  produce((draft) => {
-                    const match = Binary.search(draft, sessionID, (s) => s.id)
-                    if (match.found) {
-                      draft[match.index] = data
-                      return
-                    }
-                    draft.splice(match.index, 0, data)
-                  }),
-                )
-              })
+          const sessionReq =
+            hasSession && !force
+              ? Promise.resolve()
+              : retry(() => client.session.get({ sessionID })).then((session) => {
+                  const data = session.data
+                  if (!data) return
+                  setStore(
+                    "session",
+                    produce((draft) => {
+                      const match = Binary.search(draft, sessionID, (s) => s.id)
+                      if (match.found) {
+                        draft[match.index] = data
+                        return
+                      }
+                      draft.splice(match.index, 0, data)
+                    }),
+                  )
+                })
 
           const messagesReq =
-            hasMessages && hydrated
+            hasMessages && hydrated && !force
               ? Promise.resolve()
               : loadMessages({
                   directory,
@@ -303,11 +305,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             })
           })
         },
-        async todo(sessionID: string) {
+        async todo(sessionID: string, options?: { force?: boolean }) {
           const directory = sdk.directory
           const client = sdk.client
           const [store, setStore] = globalSync.child(directory)
-          if (store.todo[sessionID] !== undefined) return
+          if (!options?.force && store.todo[sessionID] !== undefined) return
 
           const key = keyFor(directory, sessionID)
           return runInflight(inflightTodo, key, () =>
