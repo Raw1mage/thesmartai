@@ -199,11 +199,11 @@ export function TerminalPanel(props: {
                 >
                   <Show when={props.terminal.active()} keyed>
                     {(id) => (
-                      <Show when={byId().get(id)}>
+                      <Show when={byId().get(id)} keyed>
                         {(pty) => (
                           <div id={`terminal-wrapper-${id}`} class="absolute inset-0">
                             <Terminal
-                              pty={pty()}
+                              pty={pty}
                               onCleanup={props.terminal.update}
                               onConnectError={() => props.terminal.clone(id)}
                             />
@@ -216,15 +216,15 @@ export function TerminalPanel(props: {
               </div>
             </div>
             <DragOverlay>
-              <Show when={props.activeTerminalDraggable()}>
+              <Show when={props.activeTerminalDraggable()} keyed>
                 {(draggedId) => {
                   return (
-                    <Show when={byId().get(draggedId())}>
+                    <Show when={byId().get(draggedId)} keyed>
                       {(t) => (
                         <div class="relative p-1 h-10 flex items-center bg-background-stronger text-14-regular">
                           {terminalTabLabel({
-                            title: t().title,
-                            titleNumber: t().titleNumber,
+                            title: t.title,
+                            titleNumber: t.titleNumber,
                             t: props.language.t as (
                               key: string,
                               vars?: Record<string, string | number | boolean>,

@@ -1,4 +1,4 @@
-import { createMemo, onCleanup } from "solid-js"
+import { createEffect, createMemo, onCleanup } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import type { PermissionRequest } from "@opencode-ai/sdk/v2/client"
@@ -6,8 +6,13 @@ import { Persist, persisted } from "@/utils/persist"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "./global-sync"
 import { useParams } from "@solidjs/router"
-import { base64Encode } from "@opencode-ai/util/encode"
 import { decode64 } from "@/utils/base64"
+import {
+  acceptKey,
+  directoryAcceptKey,
+  isDirectoryAutoAccepting,
+  autoRespondsPermission,
+} from "./permission-auto-respond"
 
 type PermissionRespondFn = (input: {
   sessionID: string
@@ -67,6 +72,24 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       }),
     )
 
+    createEffect(() => {
+      if (!ready()) return
+      const directory = decode64(params.dir)
+      if (!directory) return
+      const [childStore] = globalSync.child(directory)
+      const perm = childStore.config.permission
+      if (typeof perm !== "string" || perm !== "allow") return
+
+      const key = directoryAcceptKey(directory)
+      if (store.autoAcceptEdits[key] !== undefined) return
+
+      setStore(
+        produce((draft) => {
+          draft.autoAcceptEdits[key] = true
+        }),
+      )
+    })
+
     const MAX_RESPONDED = 1000
     const RESPONDED_TTL_MS = 60 * 60 * 1000
     const responded = new Map<string, number>()
@@ -105,14 +128,18 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       })
     }
 
-    function acceptKey(sessionID: string, directory?: string) {
-      if (!directory) return sessionID
-      return `${base64Encode(directory)}/${sessionID}`
+    function isAutoAccepting(sessionID: string, directory?: string) {
+      const session = directory ? globalSync.child(directory, { bootstrap: false })[0].session : []
+      return autoRespondsPermission(store.autoAcceptEdits, session, { sessionID }, directory)
     }
 
-    function isAutoAccepting(sessionID: string, directory?: string) {
-      const key = acceptKey(sessionID, directory)
-      return store.autoAcceptEdits[key] ?? store.autoAcceptEdits[sessionID] ?? false
+    function isAutoAcceptingDirectory(directory: string) {
+      return isDirectoryAutoAccepting(store.autoAcceptEdits, directory)
+    }
+
+    function shouldAutoRespond(permission: PermissionRequest, directory?: string) {
+      const session = directory ? globalSync.child(directory, { bootstrap: false })[0].session : []
+      return autoRespondsPermission(store.autoAcceptEdits, session, permission, directory)
     }
 
     function bumpEnableVersion(sessionID: string, directory?: string) {
@@ -127,12 +154,43 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       if (event?.type !== "permission.asked") return
 
       const perm = event.properties
-      if (!isAutoAccepting(perm.sessionID, e.name)) return
+      if (!shouldAutoRespond(perm, e.name)) return
       if (!shouldAutoAccept(perm)) return
 
       respondOnce(perm, e.name)
     })
     onCleanup(unsubscribe)
+
+    function enableDirectory(directory: string) {
+      const key = directoryAcceptKey(directory)
+      setStore(
+        produce((draft) => {
+          draft.autoAcceptEdits[key] = true
+        }),
+      )
+
+      globalSDK.client.permission
+        .list({ directory })
+        .then((x) => {
+          if (!isAutoAcceptingDirectory(directory)) return
+          for (const perm of x.data ?? []) {
+            if (!perm?.id) continue
+            if (!shouldAutoRespond(perm, directory)) continue
+            if (!shouldAutoAccept(perm)) continue
+            respondOnce(perm, directory)
+          }
+        })
+        .catch(() => undefined)
+    }
+
+    function disableDirectory(directory: string) {
+      const key = directoryAcceptKey(directory)
+      setStore(
+        produce((draft) => {
+          draft.autoAcceptEdits[key] = false
+        }),
+      )
+    }
 
     function enable(sessionID: string, directory: string) {
       const key = acceptKey(sessionID, directory)
@@ -151,7 +209,7 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
           if (!isAutoAccepting(sessionID, directory)) return
           for (const perm of x.data ?? []) {
             if (!perm?.id) continue
-            if (perm.sessionID !== sessionID) continue
+            if (!shouldAutoRespond(perm, directory)) continue
             if (!shouldAutoAccept(perm)) continue
             respondOnce(perm, directory)
           }
@@ -161,10 +219,11 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
 
     function disable(sessionID: string, directory?: string) {
       bumpEnableVersion(sessionID, directory)
-      const key = directory ? acceptKey(sessionID, directory) : undefined
+      const key = directory ? acceptKey(sessionID, directory) : sessionID
       setStore(
         produce((draft) => {
-          if (key) delete draft.autoAcceptEdits[key]
+          draft.autoAcceptEdits[key] = false
+          if (!directory) return
           delete draft.autoAcceptEdits[sessionID]
         }),
       )
@@ -174,9 +233,10 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       ready,
       respond,
       autoResponds(permission: PermissionRequest, directory?: string) {
-        return isAutoAccepting(permission.sessionID, directory) && shouldAutoAccept(permission)
+        return shouldAutoRespond(permission, directory) && shouldAutoAccept(permission)
       },
       isAutoAccepting,
+      isAutoAcceptingDirectory,
       toggleAutoAccept(sessionID: string, directory: string) {
         if (isAutoAccepting(sessionID, directory)) {
           disable(sessionID, directory)
@@ -184,6 +244,14 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
         }
 
         enable(sessionID, directory)
+      },
+      toggleAutoAcceptDirectory(directory: string) {
+        if (isAutoAcceptingDirectory(directory)) {
+          disableDirectory(directory)
+          return
+        }
+
+        enableDirectory(directory)
       },
       enableAutoAccept(sessionID: string, directory: string) {
         if (isAutoAccepting(sessionID, directory)) return
@@ -193,6 +261,11 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
         disable(sessionID, directory)
       },
       permissionsEnabled,
+      isPermissionAllowAll(directory: string) {
+        const [childStore] = globalSync.child(directory)
+        const perm = childStore.config.permission
+        return typeof perm === "string" && perm === "allow"
+      },
     }
   },
 })

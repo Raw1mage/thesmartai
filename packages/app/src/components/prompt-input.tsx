@@ -1020,10 +1020,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     readClipboardImage: platform.readClipboardImage,
   })
 
+  const accepting = createMemo(() => {
+    const id = params.id
+    if (!id) return permission.isAutoAcceptingDirectory(sdk.directory)
+    return permission.isAutoAccepting(id, sdk.directory)
+  })
+
   const { abort, handleSubmit } = createPromptSubmit({
     info,
     imageAttachments,
     commentCount,
+    autoAccept: () => {
+      const id = params.id
+      if (!id) return permission.isAutoAcceptingDirectory(sdk.directory)
+      return permission.isAutoAccepting(id, sdk.directory)
+    },
     mode: () => store.mode,
     working,
     editor: () => editorRef,
@@ -1338,36 +1349,44 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     />
                   </Tooltip>
                 </Show>
-                <Show when={permission.permissionsEnabled() && params.id}>
-                  <TooltipKeybind
-                    placement="top"
-                    gutter={8}
-                    title={language.t("command.permissions.autoaccept.enable")}
-                    keybind={command.keybind("permissions.autoaccept")}
-                  >
-                    <Button
-                      variant="ghost"
-                      onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
-                      classList={{
-                        "_hidden group-hover/prompt-input:flex size-6 items-center justify-center": true,
-                        "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
-                        "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
-                      }}
-                      aria-label={
-                        permission.isAutoAccepting(params.id!, sdk.directory)
-                          ? language.t("command.permissions.autoaccept.disable")
-                          : language.t("command.permissions.autoaccept.enable")
+                <TooltipKeybind
+                  placement="top"
+                  gutter={8}
+                  title={language.t(
+                    accepting() ? "command.permissions.autoaccept.disable" : "command.permissions.autoaccept.enable",
+                  )}
+                  keybind={command.keybind("permissions.autoaccept")}
+                >
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      if (!params.id) {
+                        permission.toggleAutoAcceptDirectory(sdk.directory)
+                        return
                       }
-                      aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
-                    >
-                      <Icon
-                        name="chevron-double-right"
-                        size="small"
-                        classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
-                      />
-                    </Button>
-                  </TooltipKeybind>
-                </Show>
+                      permission.toggleAutoAccept(params.id, sdk.directory)
+                    }}
+                    classList={{
+                      "_hidden group-hover/prompt-input:flex size-6 items-center justify-center": true,
+                      "text-text-base": !accepting(),
+                      "hover:bg-surface-success-base": accepting(),
+                    }}
+                    aria-label={
+                      accepting()
+                        ? language.t("command.permissions.autoaccept.disable")
+                        : language.t("command.permissions.autoaccept.enable")
+                    }
+                    aria-pressed={accepting()}
+                  >
+                    <Icon
+                      name="chevron-double-right"
+                      size="small"
+                      classList={{
+                        "text-icon-success-base": accepting(),
+                      }}
+                    />
+                  </Button>
+                </TooltipKeybind>
               </Match>
             </Switch>
             <Show when={store.mode === "normal" && promptMeta()}>

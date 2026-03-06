@@ -255,21 +255,31 @@ export const useSessionCommands = (input: SessionCommandContext) => {
   const permissionCommands = createMemo(() => [
     permissionsCommand({
       id: "permissions.autoaccept",
-      title:
-        input.params.id && input.permission.isAutoAccepting(input.params.id, input.sdk.directory)
-          ? input.language.t("command.permissions.autoaccept.disable")
-          : input.language.t("command.permissions.autoaccept.enable"),
+      title: (
+        input.params.id
+          ? input.permission.isAutoAccepting(input.params.id, input.sdk.directory)
+          : input.permission.isAutoAcceptingDirectory(input.sdk.directory)
+      )
+        ? input.language.t("command.permissions.autoaccept.disable")
+        : input.language.t("command.permissions.autoaccept.enable"),
       keybind: "mod+shift+a",
-      disabled: !input.params.id || !input.permission.permissionsEnabled(),
+      disabled: false,
       onSelect: () => {
         const sessionID = input.params.id
-        if (!sessionID) return
-        input.permission.toggleAutoAccept(sessionID, input.sdk.directory)
+        if (sessionID) {
+          input.permission.toggleAutoAccept(sessionID, input.sdk.directory)
+        } else {
+          input.permission.toggleAutoAcceptDirectory(input.sdk.directory)
+        }
+
+        const active = sessionID
+          ? input.permission.isAutoAccepting(sessionID, input.sdk.directory)
+          : input.permission.isAutoAcceptingDirectory(input.sdk.directory)
         showToast({
-          title: input.permission.isAutoAccepting(sessionID, input.sdk.directory)
+          title: active
             ? input.language.t("toast.permissions.autoaccept.on.title")
             : input.language.t("toast.permissions.autoaccept.off.title"),
-          description: input.permission.isAutoAccepting(sessionID, input.sdk.directory)
+          description: active
             ? input.language.t("toast.permissions.autoaccept.on.description")
             : input.language.t("toast.permissions.autoaccept.off.description"),
         })

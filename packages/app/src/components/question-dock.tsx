@@ -1,4 +1,4 @@
-import { For, Show, createMemo, type Component } from "solid-js"
+import { For, Show, createMemo, onCleanup, type Component } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
@@ -7,20 +7,24 @@ import type { QuestionAnswer, QuestionRequest } from "@opencode-ai/sdk/v2"
 import { useLanguage } from "@/context/language"
 import { useSDK } from "@/context/sdk"
 
+const cache = new Map<string, { tab: number; answers: QuestionAnswer[]; custom: string[] }>()
+
 export const QuestionDock: Component<{ request: QuestionRequest }> = (props) => {
   const sdk = useSDK()
   const language = useLanguage()
 
   const questions = createMemo(() => props.request.questions)
   const single = createMemo(() => questions().length === 1 && questions()[0]?.multiple !== true)
+  const cached = cache.get(props.request.id)
 
   const [store, setStore] = createStore({
-    tab: 0,
-    answers: [] as QuestionAnswer[],
-    custom: [] as string[],
+    tab: cached?.tab ?? 0,
+    answers: cached?.answers ?? ([] as QuestionAnswer[]),
+    custom: cached?.custom ?? ([] as string[]),
     editing: false,
     sending: false,
   })
+  let replied = false
 
   const question = createMemo(() => questions()[store.tab])
   const confirm = createMemo(() => !single() && store.tab === questions().length)
@@ -38,12 +42,23 @@ export const QuestionDock: Component<{ request: QuestionRequest }> = (props) => 
     showToast({ title: language.t("common.requestFailed"), description: message })
   }
 
+  onCleanup(() => {
+    if (replied) return
+    cache.set(props.request.id, {
+      tab: store.tab,
+      answers: store.answers.map((a) => (a ? [...a] : [])),
+      custom: store.custom.map((s) => s ?? ""),
+    })
+  })
+
   const reply = async (answers: QuestionAnswer[]) => {
     if (store.sending) return
 
     setStore("sending", true)
     try {
       await sdk.client.question.reply({ requestID: props.request.id, answers })
+      replied = true
+      cache.delete(props.request.id)
     } catch (err) {
       fail(err)
     } finally {
@@ -57,6 +72,8 @@ export const QuestionDock: Component<{ request: QuestionRequest }> = (props) => 
     setStore("sending", true)
     try {
       await sdk.client.question.reject({ requestID: props.request.id })
+      replied = true
+      cache.delete(props.request.id)
     } catch (err) {
       fail(err)
     } finally {

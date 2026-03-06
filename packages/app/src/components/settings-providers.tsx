@@ -293,6 +293,9 @@ export const SettingsProviders: Component = () => {
                       <Show when={item.id === "opencode"}>
                         <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
                       </Show>
+                      <Show when={item.id === "opencode-go"}>
+                        <Tag>{language.t("dialog.provider.tag.recommended")}</Tag>
+                      </Show>
                     </div>
                     <Show when={note(item.id)}>
                       {(key) => <span class="text-12-regular text-text-weak pl-8">{language.t(key())}</span>}

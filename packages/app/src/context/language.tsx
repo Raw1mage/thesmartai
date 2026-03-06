@@ -76,6 +76,25 @@ const LOCALES: readonly Locale[] = [
   "th",
 ]
 
+const INTL: Record<Locale, string> = {
+  en: "en",
+  zh: "zh-Hans",
+  zht: "zh-Hant",
+  ko: "ko",
+  de: "de",
+  es: "es",
+  fr: "fr",
+  da: "da",
+  ja: "ja",
+  pl: "pl",
+  ru: "ru",
+  bs: "bs",
+  ar: "ar",
+  no: "nb-NO",
+  br: "pt-BR",
+  th: "th",
+}
+
 const LABEL_KEY: Record<Locale, keyof Dictionary> = {
   en: "language.en",
   zh: "language.zh",
@@ -189,6 +208,7 @@ export const { use: useLanguage, provider: LanguageProvider } = createSimpleCont
     const locale = createMemo<Locale>(() =>
       LOCALES.includes(store.locale as Locale) ? (store.locale as Locale) : "en",
     )
+    const intl = createMemo(() => INTL[locale()])
 
     createEffect(() => {
       const current = locale()
@@ -210,6 +230,7 @@ export const { use: useLanguage, provider: LanguageProvider } = createSimpleCont
     return {
       ready,
       locale,
+      intl,
       locales: LOCALES,
       label,
       t,

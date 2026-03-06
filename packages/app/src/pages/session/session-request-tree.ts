@@ -4,6 +4,7 @@ function sessionTreeRequest<T>(
   sessions: Session[],
   requestBySession: Record<string, T[] | undefined>,
   sessionID?: string,
+  include: (item: T) => boolean = () => true,
 ) {
   if (!sessionID) return
 
@@ -28,23 +29,25 @@ function sessionTreeRequest<T>(
     }
   }
 
-  const match = queue.find((id) => !!requestBySession[id]?.[0])
+  const match = queue.find((id) => requestBySession[id]?.some(include))
   if (!match) return
-  return requestBySession[match]?.[0]
+  return requestBySession[match]?.find(include)
 }
 
 export function sessionPermissionRequest(
   sessions: Session[],
   requestBySession: Record<string, PermissionRequest[] | undefined>,
   sessionID?: string,
+  include?: (item: PermissionRequest) => boolean,
 ) {
-  return sessionTreeRequest(sessions, requestBySession, sessionID)
+  return sessionTreeRequest(sessions, requestBySession, sessionID, include)
 }
 
 export function sessionQuestionRequest(
   sessions: Session[],
   requestBySession: Record<string, QuestionRequest[] | undefined>,
   sessionID?: string,
+  include?: (item: QuestionRequest) => boolean,
 ) {
-  return sessionTreeRequest(sessions, requestBySession, sessionID)
+  return sessionTreeRequest(sessions, requestBySession, sessionID, include)
 }
