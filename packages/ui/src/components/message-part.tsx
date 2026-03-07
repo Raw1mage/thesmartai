@@ -1257,7 +1257,13 @@ ToolRegistry.register({
           subtitle: props.input.description,
         }}
       >
-        <div data-component="tool-output" data-bash-output="true" data-scrollable>
+        <div
+          data-component="tool-output"
+          data-bash-output="true"
+          data-scrollable
+          aria-live="off"
+          style={{ "overflow-anchor": "none" }}
+        >
           <Markdown
             text={`\`\`\`command\n$ ${props.input.command ?? props.metadata.command ?? ""}${props.output || props.metadata.output ? "\n\n" + stripAnsi(props.output || props.metadata.output) : ""}\n\`\`\``}
           />

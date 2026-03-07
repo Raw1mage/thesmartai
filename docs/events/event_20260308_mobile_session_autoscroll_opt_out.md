@@ -54,6 +54,13 @@ Status: In Progress
 - Ownership fix landed:
   - removed `SessionTurn` local auto-scroll entirely
   - only the page-level session scroller now owns viewport movement
+- New follow-up finding from live reading:
+  - the remaining viewport jump source appears to be streaming shell tool output (`bash`) inside `message-part.tsx`
+  - while command output grows, the shell tool output region can still pull the reading viewport toward itself even after page/session-level auto-follow was disabled
+- Shell-output mitigation landed:
+  - marked bash tool output container with `aria-live="off"`
+  - added `overflow-anchor: none` on the shell tool output region so browser scroll anchoring does not keep re-anchoring the main reading viewport to a growing shell output block
+  - ownership intent remains: shell tool output may grow internally, but it must not claim main session viewport position
 
 ### Validation
 
@@ -62,3 +69,4 @@ Status: In Progress
   - 依據：本輪僅調整 web session auto-scroll 啟用條件，不改動 session persistence、runtime、或 API architecture 邊界。
 - Follow-up validation after disabling the hash-scroll layer's implicit `forceScrollToBottom()` path also passed via `bun run typecheck` (`Tasks: 16 successful, 16 total`).
 - Scroll-ownership validation after removing `SessionTurn` local auto-scroll also passed via `bun run typecheck` (`Tasks: 16 successful, 16 total`).
+- Follow-up shell-output mitigation also passed via `bun run typecheck` (`Tasks: 16 successful, 16 total`).
