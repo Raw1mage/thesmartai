@@ -101,6 +101,7 @@ export const dict = {
   "ui.message.collapse": "Nachricht reduzieren",
   "ui.message.copy": "Kopieren",
   "ui.message.copied": "Kopiert!",
+  "ui.message.queued": "In Warteschlange",
   "ui.message.attachment.alt": "Anhang",
 
   "ui.patch.action.deleted": "Gelöscht",

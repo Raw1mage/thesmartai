@@ -97,6 +97,7 @@ export const dict = {
   "ui.message.collapse": "Свернуть сообщение",
   "ui.message.copy": "Копировать",
   "ui.message.copied": "Скопировано!",
+  "ui.message.queued": "В очереди",
   "ui.message.attachment.alt": "вложение",
 
   "ui.patch.action.deleted": "Удалено",

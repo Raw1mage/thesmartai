@@ -98,6 +98,7 @@ export const dict = {
   "ui.message.collapse": "ย่อข้อความ",
   "ui.message.copy": "คัดลอก",
   "ui.message.copied": "คัดลอกแล้ว!",
+  "ui.message.queued": "อยู่ในคิว",
   "ui.message.attachment.alt": "ไฟล์แนบ",
 
   "ui.patch.action.deleted": "ลบ",

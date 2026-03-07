@@ -97,6 +97,7 @@ export const dict = {
   "ui.message.collapse": "Skjul besked",
   "ui.message.copy": "Kopier",
   "ui.message.copied": "Kopieret!",
+  "ui.message.queued": "I kø",
   "ui.message.attachment.alt": "vedhæftning",
 
   "ui.patch.action.deleted": "Slettet",
