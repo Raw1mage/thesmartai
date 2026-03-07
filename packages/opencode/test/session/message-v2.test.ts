@@ -909,6 +909,60 @@ describe("session.message-v2.fromError", () => {
     expect(MessageV2.APIError.isInstance(result)).toBe(true)
   })
 
+  test("normalizes HTML gateway error pages into human-readable messages", () => {
+    const unauthorized = MessageV2.fromError(
+      new APICallError({
+        message: "Unauthorized",
+        url: "https://example.com",
+        requestBodyValues: {},
+        statusCode: 401,
+        responseHeaders: { "content-type": "text/html" },
+        responseBody: "<!doctype html><html><body>login required</body></html>",
+        isRetryable: false,
+      }),
+      { providerId: "test" },
+    )
+
+    const forbidden = MessageV2.fromError(
+      new APICallError({
+        message: "Forbidden",
+        url: "https://example.com",
+        requestBodyValues: {},
+        statusCode: 403,
+        responseHeaders: { "content-type": "text/html" },
+        responseBody: "<html><body>blocked</body></html>",
+        isRetryable: false,
+      }),
+      { providerId: "test" },
+    )
+
+    expect(unauthorized).toStrictEqual({
+      name: "APIError",
+      data: {
+        message:
+          "Unauthorized: request was blocked by a gateway or proxy. Your authentication token may be missing or expired — try running `opencode auth login <your provider URL>` to re-authenticate.",
+        statusCode: 401,
+        isRetryable: false,
+        responseHeaders: { "content-type": "text/html" },
+        responseBody: "<!doctype html><html><body>login required</body></html>",
+        metadata: { url: "https://example.com" },
+      },
+    })
+
+    expect(forbidden).toStrictEqual({
+      name: "APIError",
+      data: {
+        message:
+          "Forbidden: request was blocked by a gateway or proxy. You may not have permission to access this resource — check your account and provider settings.",
+        statusCode: 403,
+        isRetryable: false,
+        responseHeaders: { "content-type": "text/html" },
+        responseBody: "<html><body>blocked</body></html>",
+        metadata: { url: "https://example.com" },
+      },
+    })
+  })
+
   test("serializes unknown inputs", () => {
     const result = MessageV2.fromError(123, { providerId: "test" })
 
