@@ -4,7 +4,6 @@ import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { useLocal } from "@/context/local"
 import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
-import { SessionContextUsage } from "@/components/session-context-usage"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
@@ -162,9 +161,19 @@ export default function Page() {
   const isDesktop = createMediaQuery("(min-width: 768px)")
   const largeScreen = createMediaQuery("(min-width: 1024px)")
   const fileTreeMode = () => layout.fileTree.mode()
-  const centered = createMemo(
-    () => isDesktop() && (!layout.fileTree.opened() || (fileTreeMode() === "files" && fileTreeTab() === "all")),
-  )
+  const centered = createMemo(() => isDesktop() && !activeFileTab())
+
+  createEffect(() => {
+    console.debug("[sidebar-debug][page] shell", {
+      isDesktop: isDesktop(),
+      largeScreen: largeScreen(),
+      activeFileTab: activeFileTab(),
+      fileTreeOpened: layout.fileTree.opened(),
+      fileTreeMode: layout.fileTree.mode(),
+      fileOpen: largeScreen() && !!activeFileTab(),
+      toolOpen: largeScreen() && layout.fileTree.opened(),
+    })
+  })
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -620,7 +629,6 @@ export default function Page() {
     }, 0)
   }
 
-  const contextOpen = createMemo(() => tabs().active() === "context" || tabs().all().includes("context"))
   const openedTabs = createMemo(() =>
     tabs()
       .all()
@@ -838,19 +846,17 @@ export default function Page() {
 
   const activeTab = createMemo(() => {
     const active = tabs().active()
-    if (active === "context") return "context"
     if (active && file.pathFromTab(active)) return normalizeTab(active)
 
     const first = openedTabs()[0]
     if (first) return first
-    if (contextOpen()) return "context"
     return "empty"
   })
 
   createEffect(() => {
     if (!layout.ready()) return
     if (tabs().active()) return
-    if (openedTabs().length === 0 && !contextOpen()) return
+    if (openedTabs().length === 0) return
 
     const next = activeTab()
     if (next === "empty") return
@@ -861,7 +867,9 @@ export default function Page() {
     const id = params.id
     if (!id) return
 
-    const wants = isDesktop() ? layout.fileTree.opened() && fileTreeTab() === "changes" : view().reviewPanel.opened()
+    const wants = isDesktop()
+      ? layout.fileTree.opened() && layout.fileTree.mode() === "changes"
+      : view().reviewPanel.opened()
     if (!wants) return
     if (sync.status === "loading") return
 
@@ -873,10 +881,18 @@ export default function Page() {
   createEffect(() => {
     if (!isDesktop()) return
     if (!layout.fileTree.opened()) return
+    if (layout.fileTree.mode() !== "files") return
     if (sync.status === "loading") return
 
     fileTreeTab()
     void file.tree.list("")
+  })
+
+  const activeFileTab = createMemo(() => {
+    const active = tabs().active()
+    if (!active) return undefined
+    if (active === "context" || active === "review" || active === "empty") return undefined
+    return active
   })
 
   const autoScroll = createAutoScroll({
@@ -1027,13 +1043,13 @@ export default function Page() {
         {/* Session panel */}
         <div
           classList={{
-            "@container relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
-            "flex-1 md:pt-3": true,
+            "@container relative flex flex-col min-h-0 h-full bg-background-stronger": true,
+            "flex-1 min-w-0 md:pt-3": true,
             "pt-6": !mobileChanges(),
-            "md:flex-none": layout.fileTree.opened(),
+            "shrink-0 md:flex-none": isDesktop() && !!activeFileTab(),
           }}
           style={{
-            width: isDesktop() && layout.fileTree.opened() ? `${layout.session.width()}px` : "100%",
+            width: isDesktop() && activeFileTab() ? `${layout.session.width()}px` : "100%",
             "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
           }}
         >
@@ -1221,11 +1237,11 @@ export default function Page() {
             setPromptDockRef={(el: HTMLDivElement) => (promptDock = el)}
           />
 
-          <Show when={isDesktop() && layout.fileTree.opened()}>
+          <Show when={isDesktop() && activeFileTab()}>
             <ResizeHandle
               direction="horizontal"
               size={layout.session.width()}
-              min={450}
+              min={280}
               max={window.innerWidth * 0.45}
               onResize={layout.session.resize}
             />
@@ -1233,26 +1249,17 @@ export default function Page() {
         </div>
 
         <SessionSidePanel
-          open={largeScreen() && layout.fileTree.opened()}
-          reviewOpen={hasReview()}
+          fileOpen={largeScreen() && !!activeFileTab()}
+          toolOpen={largeScreen() && layout.fileTree.opened()}
           language={language}
           layout={layout}
           command={command}
           dialog={dialog}
           file={file}
           comments={comments}
-          hasReview={hasReview()}
-          reviewCount={reviewCount()}
-          reviewTab={true}
-          contextOpen={contextOpen}
           openedTabs={openedTabs}
           activeTab={activeTab}
-          activeFileTab={() => {
-            const active = tabs().active()
-            if (!active) return undefined
-            if (active === "context" || active === "review" || active === "empty") return undefined
-            return active
-          }}
+          activeFileTab={activeFileTab}
           tabs={tabs}
           openTab={openTab}
           showAllFiles={showAllFiles}

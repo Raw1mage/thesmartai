@@ -12,6 +12,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
 import { useLanguage } from "@/context/language"
 import { usePermission } from "@/context/permission"
+import { useCommand } from "@/context/command"
 import { Identifier } from "@/utils/id"
 import { Worktree as WorktreeState } from "@/utils/worktree"
 import type { FileSelection } from "@/context/file"
@@ -62,6 +63,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
   const platform = usePlatform()
   const local = useLocal()
   const permission = usePermission()
+  const command = useCommand()
   const prompt = usePrompt()
   const layout = useLayout()
   const language = useLanguage()
@@ -130,6 +132,19 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     if (text.trim().length === 0 && images.length === 0 && input.commentCount() === 0) {
       if (input.working()) abort()
       return
+    }
+
+    if (mode === "normal" && images.length === 0 && input.commentCount() === 0 && text.startsWith("/")) {
+      const [cmdName] = text.trim().split(/\s+/)
+      const commandName = cmdName.slice(1)
+      const builtin = command.options.find((opt) => !opt.disabled && opt.slash === commandName)
+      if (builtin) {
+        prompt.reset()
+        input.setMode("normal")
+        input.setPopover(null)
+        command.trigger(builtin.id, "slash")
+        return
+      }
     }
 
     const currentModel = local.model.current()

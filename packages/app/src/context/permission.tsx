@@ -76,9 +76,6 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
       if (!ready()) return
       const directory = decode64(params.dir)
       if (!directory) return
-      const [childStore] = globalSync.child(directory)
-      const perm = childStore.config.permission
-      if (typeof perm !== "string" || perm !== "allow") return
 
       const key = directoryAcceptKey(directory)
       if (store.autoAcceptEdits[key] !== undefined) return
@@ -252,6 +249,14 @@ export const { use: usePermission, provider: PermissionProvider } = createSimple
         }
 
         enableDirectory(directory)
+      },
+      enableAutoAcceptDirectory(directory: string) {
+        if (isAutoAcceptingDirectory(directory)) return
+        enableDirectory(directory)
+      },
+      disableAutoAcceptDirectory(directory: string) {
+        if (!isAutoAcceptingDirectory(directory)) return
+        disableDirectory(directory)
       },
       enableAutoAccept(sessionID: string, directory: string) {
         if (isAutoAccepting(sessionID, directory)) return

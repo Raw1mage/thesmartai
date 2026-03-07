@@ -3,12 +3,7 @@ import type { JSX } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { useLayout } from "@/context/layout"
-import { checksum } from "@opencode-ai/util/encode"
 import { findLast } from "@opencode-ai/util/array"
-import { Icon } from "@opencode-ai/ui/icon"
-import { Accordion } from "@opencode-ai/ui/accordion"
-import { StickyAccordionHeader } from "@opencode-ai/ui/sticky-accordion-header"
-import { Code } from "@opencode-ai/ui/code"
 import { Markdown } from "@opencode-ai/ui/markdown"
 import type { Message, Part, UserMessage } from "@opencode-ai/sdk/v2/client"
 import { useLanguage } from "@/context/language"
@@ -37,57 +32,6 @@ function Stat(props: { label: string; value: JSX.Element }) {
       <div class="text-12-regular text-text-weak">{props.label}</div>
       <div class="text-12-medium text-text-strong">{props.value}</div>
     </div>
-  )
-}
-
-function RawMessageContent(props: { message: Message; getParts: (id: string) => Part[]; onRendered: () => void }) {
-  const file = createMemo(() => {
-    const parts = props.getParts(props.message.id)
-    const contents = JSON.stringify({ message: props.message, parts }, null, 2)
-    return {
-      name: `${props.message.role}-${props.message.id}.json`,
-      contents,
-      cacheKey: checksum(contents),
-    }
-  })
-
-  return (
-    <Code
-      file={file()}
-      overflow="wrap"
-      class="select-text"
-      onRendered={() => requestAnimationFrame(props.onRendered)}
-    />
-  )
-}
-
-function RawMessage(props: {
-  message: Message
-  getParts: (id: string) => Part[]
-  onRendered: () => void
-  time: (value: number | undefined) => string
-}) {
-  return (
-    <Accordion.Item value={props.message.id}>
-      <StickyAccordionHeader>
-        <Accordion.Trigger>
-          <div class="flex items-center justify-between gap-2 w-full">
-            <div class="min-w-0 truncate">
-              {props.message.role} <span class="text-text-base">• {props.message.id}</span>
-            </div>
-            <div class="flex items-center gap-3">
-              <div class="shrink-0 text-12-regular text-text-weak">{props.time(props.message.time.created)}</div>
-              <Icon name="chevron-grabber-vertical" size="small" class="shrink-0 text-text-weak" />
-            </div>
-          </div>
-        </Accordion.Trigger>
-      </StickyAccordionHeader>
-      <Accordion.Content class="bg-background-base">
-        <div class="p-3">
-          <RawMessageContent message={props.message} getParts={props.getParts} onRendered={props.onRendered} />
-        </div>
-      </Accordion.Content>
-    </Accordion.Item>
   )
 }
 
@@ -193,8 +137,6 @@ export function SessionContextTab(props: SessionContextTabProps) {
   let scroll: HTMLDivElement | undefined
   let frame: number | undefined
   let pending: { x: number; y: number } | undefined
-  const getParts = (id: string) => (sync.data.part[id] ?? []) as Part[]
-
   const restoreScroll = () => {
     const el = scroll
     if (!el) return
@@ -296,17 +238,6 @@ export function SessionContextTab(props: SessionContextTabProps) {
             </div>
           )}
         </Show>
-
-        <div class="flex flex-col gap-2">
-          <div class="text-12-regular text-text-weak">{language.t("context.rawMessages.title")}</div>
-          <Accordion multiple>
-            <For each={props.messages()}>
-              {(message) => (
-                <RawMessage message={message} getParts={getParts} onRendered={restoreScroll} time={formatter().time} />
-              )}
-            </For>
-          </Accordion>
-        </div>
       </div>
     </div>
   )

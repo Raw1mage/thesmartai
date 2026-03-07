@@ -1,14 +1,12 @@
-import { For, Show, createEffect, createMemo, onCleanup, type JSX, type ValidComponent } from "solid-js"
+import { type ValidComponent, createEffect, createMemo, For, Show } from "solid-js"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Mark } from "@opencode-ai/ui/logo"
 import FileTree from "@/components/file-tree"
-import { SessionContextUsage } from "@/components/session-context-usage"
 import { SessionContextTab, SortableTab, FileVisual } from "@/components/session"
 import { DialogSelectFile } from "@/components/dialog-select-file"
-import { createFileTabListSync } from "@/pages/session/file-tab-scroll"
 import { FileTabContent } from "@/pages/session/file-tabs"
 import { StickyAddButton } from "@/pages/session/review-tab"
 import { DragDropProvider, DragDropSensors, DragOverlay, SortableProvider, closestCenter } from "@thisbeyond/solid-dnd"
@@ -43,25 +41,21 @@ type SessionSidePanelViewModel = {
 }
 
 export function SessionSidePanel(props: {
-  open: boolean
-  reviewOpen: boolean
+  fileOpen: boolean
+  toolOpen: boolean
   language: ReturnType<typeof useLanguage>
   layout: ReturnType<typeof useLayout>
   command: ReturnType<typeof useCommand>
   dialog: ReturnType<typeof useDialog>
   file: ReturnType<typeof useFile>
   comments: ReturnType<typeof useComments>
-  hasReview: boolean
-  reviewCount: number
-  reviewTab: boolean
-  contextOpen: () => boolean
-  openedTabs: () => string[]
   activeTab: () => string
   activeFileTab: () => string | undefined
+  openedTabs: () => string[]
   tabs: () => ReturnType<ReturnType<typeof useLayout>["tabs"]>
   openTab: (value: string) => void
   showAllFiles: () => void
-  reviewPanel: () => JSX.Element
+  reviewPanel: () => any
   vm: SessionSidePanelViewModel
   handoffFiles: () => Record<string, SelectedLineRange | null> | undefined
   codeComponent: NonNullable<ValidComponent>
@@ -81,18 +75,8 @@ export function SessionSidePanel(props: {
 }) {
   const sync = useSync()
   const sdk = useSDK()
-  const openedTabs = createMemo(() => props.openedTabs())
   const sideMode = createMemo(() => props.layout.fileTree.mode())
   const activeSessionID = createMemo(() => props.vm.info()?.id)
-  const panelTitle = createMemo(() => {
-    if (sideMode() === "status") return props.language.t("status.popover.trigger")
-    return undefined
-  })
-  const panelSubtitle = createMemo(() => {
-    if (sideMode() !== "files") return undefined
-    return props.vm.info()?.directory ?? sdk.directory ?? sync.data.path.directory
-  })
-
   const todos = createMemo(() => {
     const sessionID = activeSessionID()
     if (!sessionID) return undefined
@@ -122,139 +106,29 @@ export function SessionSidePanel(props: {
     }),
   )
 
-  const secondaryPanel = () => (
-    <div
-      id="session-side-panel-secondary"
-      class="relative shrink-0 h-full"
-      style={{ width: `${props.layout.fileTree.width()}px` }}
-    >
-      <div
-        class="h-full flex flex-col overflow-hidden group/filetree"
-        classList={{ "border-l border-border-weak-base": props.reviewOpen }}
-      >
-        <div class="min-h-10 px-3 py-2 flex items-center justify-between gap-3 text-12-medium text-text-weak border-b border-border-weak-base">
-          <div class="min-w-0 flex flex-col">
-            <Show when={sideMode() === "status"}>
-              <span>{panelTitle()}</span>
-            </Show>
-            <Show when={panelSubtitle() ?? (sideMode() === "status" ? undefined : sdk.directory)}>
-              {(subtitle) => <span class="text-11-regular text-text-weak truncate">{subtitle()}</span>}
-            </Show>
-          </div>
-        </div>
+  const closeFilePane = () => {
+    props.vm.view().reviewPanel.close()
+  }
 
-        <Show when={sideMode() === "files"}>
-          <div class="bg-background-base px-3 py-0 h-full overflow-auto">
-            <FileTree
-              path=""
-              modified={props.diffFiles}
-              kinds={props.kinds}
-              onFileClick={(node) => props.openTab(props.file.tab(node.path))}
-            />
-          </div>
-        </Show>
-
-        <Show when={sideMode() === "status"}>
-          <SessionStatusSections
-            todoContent={
-              <Show
-                when={activeSessionID()}
-                fallback={<div class="text-12-regular text-text-weak">No active session.</div>}
-              >
-                <Show
-                  when={todos() !== undefined}
-                  fallback={<div class="text-12-regular text-text-weak">Loading to-dos…</div>}
-                >
-                  <Show
-                    when={(todos()?.length ?? 0) > 0}
-                    fallback={<div class="text-12-regular text-text-weak">No to-dos yet.</div>}
-                  >
-                    <StatusTodoList todos={todos() as Todo[]} />
-                  </Show>
-                </Show>
-              </Show>
-            }
-            monitorContent={
-              <Show
-                when={activeSessionID()}
-                fallback={<div class="text-12-regular text-text-weak">No active session.</div>}
-              >
-                <Show
-                  when={monitor.initialized || !monitor.loading}
-                  fallback={<div class="text-12-regular text-text-weak">Loading monitor…</div>}
-                >
-                  <Show
-                    when={!monitor.error}
-                    fallback={<div class="text-12-regular text-text-danger">{monitor.error}</div>}
-                  >
-                    <Show
-                      when={monitorEntries().length > 0}
-                      fallback={<div class="text-12-regular text-text-weak">No active tasks.</div>}
-                    >
-                      <For each={monitorEntries()}>
-                        {(item) => (
-                          <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-1">
-                            <div class="flex items-center gap-2 min-w-0">
-                              <span class="text-11-medium text-text-weak shrink-0">
-                                [{MONITOR_LEVEL_LABELS[item.level] ?? item.level}]
-                              </span>
-                              <span class="text-12-medium text-text-strong truncate">{monitorTitle(item)}</span>
-                            </div>
-                            <div class="text-11-regular text-text-weak break-words">
-                              {MONITOR_STATUS_LABELS[item.status.type] ?? item.status.type}
-                              {item.model ? ` · ${item.model.providerId}/${item.model.modelID}` : ""}
-                              {` · ${item.requests} reqs · ${item.totalTokens.toLocaleString()} tok`}
-                            </div>
-                            <Show when={item.activeTool}>
-                              <div class="text-11-regular text-text-weak break-words">
-                                Tool: {item.activeTool}
-                                <Show
-                                  when={monitorToolStatus({
-                                    statusType: item.status.type,
-                                    activeToolStatus: item.activeToolStatus,
-                                  })}
-                                >
-                                  {(toolStatus) => <> · {toolStatus()}</>}
-                                </Show>
-                              </div>
-                            </Show>
-                          </div>
-                        )}
-                      </For>
-                    </Show>
-                  </Show>
-                </Show>
-              </Show>
-            }
-          />
-        </Show>
-      </div>
-      <ResizeHandle
-        direction="horizontal"
-        edge="start"
-        size={props.layout.fileTree.width()}
-        min={200}
-        max={480}
-        collapseThreshold={160}
-        onResize={props.layout.fileTree.resize}
-        onCollapse={props.layout.fileTree.close}
-      />
-    </div>
-  )
+  createEffect(() => {
+    console.debug("[sidebar-debug][panel] render", {
+      fileOpen: props.fileOpen,
+      toolOpen: props.toolOpen,
+      sideMode: sideMode(),
+      width: props.layout.fileTree.width(),
+      activeFileTab: props.activeFileTab(),
+      openedTabs: props.openedTabs(),
+    })
+  })
 
   return (
-    <Show when={props.open}>
-      <aside
-        id="review-panel"
-        aria-label={props.language.t("session.panel.reviewAndFiles")}
-        class="relative min-w-0 h-full border-l border-border-weak-base flex"
-        classList={{
-          "flex-1": props.reviewOpen,
-          "shrink-0": !props.reviewOpen,
-        }}
-        style={{ width: props.reviewOpen ? undefined : `${props.layout.fileTree.width()}px` }}
-      >
-        <Show when={props.reviewOpen}>
+    <>
+      <Show when={props.fileOpen}>
+        <aside
+          id="session-file-pane"
+          aria-label={props.language.t("session.tools.files")}
+          class="relative flex-1 min-w-0 h-full border-l border-border-weak-base flex"
+        >
           <div class="flex-1 min-w-0 h-full">
             <DragDropProvider
               onDragStart={props.onDragStart}
@@ -266,83 +140,41 @@ export function SessionSidePanel(props: {
               <ConstrainDragYAxis />
               <Tabs value={props.activeTab()} onChange={props.openTab}>
                 <div class="sticky top-0 shrink-0 flex">
-                  <Tabs.List
-                    ref={(el: HTMLDivElement) => {
-                      const stop = createFileTabListSync({ el, contextOpen: props.contextOpen })
-                      onCleanup(stop)
-                    }}
-                  >
-                    <Show when={props.reviewTab}>
-                      <Tabs.Trigger value="review" classes={{ button: "!pl-6" }}>
-                        <div class="flex items-center gap-1.5">
-                          <div>{props.language.t("session.tab.review")}</div>
-                          <Show when={props.hasReview}>
-                            <div class="text-12-medium text-text-strong h-4 px-2 flex flex-col items-center justify-center rounded-full bg-surface-base">
-                              {props.reviewCount}
-                            </div>
-                          </Show>
-                        </div>
-                      </Tabs.Trigger>
-                    </Show>
-                    <Show when={props.contextOpen()}>
-                      <Tabs.Trigger
-                        value="context"
-                        closeButton={
-                          <TooltipKeybind
-                            title={props.language.t("common.closeTab")}
-                            keybind={props.command.keybind("tab.close")}
-                            placement="bottom"
-                            gutter={10}
-                          >
-                            <IconButton
-                              icon="close-small"
-                              variant="ghost"
-                              class="h-5 w-5"
-                              onClick={() => props.tabs().close("context")}
-                              aria-label={props.language.t("common.closeTab")}
-                            />
-                          </TooltipKeybind>
-                        }
-                        hideCloseButton
-                        onMiddleClick={() => props.tabs().close("context")}
-                      >
-                        <div class="flex items-center gap-2">
-                          <SessionContextUsage variant="indicator" />
-                          <div>{props.language.t("session.tab.context")}</div>
-                        </div>
-                      </Tabs.Trigger>
-                    </Show>
-                    <SortableProvider ids={openedTabs()}>
-                      <For each={openedTabs()}>
+                  <Tabs.List>
+                    <SortableProvider ids={props.openedTabs()}>
+                      <For each={props.openedTabs()}>
                         {(tab) => <SortableTab tab={tab} onTabClose={props.tabs().close} />}
                       </For>
                     </SortableProvider>
                     <StickyAddButton>
-                      <TooltipKeybind
-                        title={props.language.t("command.file.open")}
-                        keybind={props.command.keybind("file.open")}
-                        class="flex items-center"
-                      >
+                      <div class="flex items-center gap-1">
+                        <TooltipKeybind
+                          title={props.language.t("command.file.open")}
+                          keybind={props.command.keybind("file.open")}
+                          class="flex items-center"
+                        >
+                          <IconButton
+                            icon="plus-small"
+                            variant="ghost"
+                            iconSize="large"
+                            class="!rounded-md"
+                            onClick={() =>
+                              props.dialog.show(() => <DialogSelectFile mode="files" onOpenFile={props.showAllFiles} />)
+                            }
+                            aria-label={props.language.t("command.file.open")}
+                          />
+                        </TooltipKeybind>
                         <IconButton
-                          icon="plus-small"
+                          icon="close-small"
                           variant="ghost"
-                          iconSize="large"
-                          class="!rounded-md"
-                          onClick={() =>
-                            props.dialog.show(() => <DialogSelectFile mode="files" onOpenFile={props.showAllFiles} />)
-                          }
-                          aria-label={props.language.t("command.file.open")}
+                          class="h-6 w-6"
+                          onClick={closeFilePane}
+                          aria-label={props.language.t("common.close")}
                         />
-                      </TooltipKeybind>
+                      </div>
                     </StickyAddButton>
                   </Tabs.List>
                 </div>
-
-                <Show when={props.reviewTab}>
-                  <Tabs.Content value="review" class="flex flex-col h-full overflow-hidden contain-strict">
-                    <Show when={props.activeTab() === "review"}>{props.reviewPanel()}</Show>
-                  </Tabs.Content>
-                </Show>
 
                 <Tabs.Content value="empty" class="flex flex-col h-full overflow-hidden contain-strict">
                   <Show when={props.activeTab() === "empty"}>
@@ -356,21 +188,6 @@ export function SessionSidePanel(props: {
                     </div>
                   </Show>
                 </Tabs.Content>
-
-                <Show when={props.contextOpen()}>
-                  <Tabs.Content value="context" class="flex flex-col h-full overflow-hidden contain-strict">
-                    <Show when={props.activeTab() === "context"}>
-                      <div class="relative pt-2 flex-1 min-h-0 overflow-hidden">
-                        <SessionContextTab
-                          messages={props.vm.messages}
-                          visibleUserMessages={props.vm.visibleUserMessages}
-                          view={props.vm.view}
-                          info={props.vm.info}
-                        />
-                      </div>
-                    </Show>
-                  </Tabs.Content>
-                </Show>
 
                 <Show when={props.activeFileTab()} keyed>
                   {(tab) => (
@@ -405,10 +222,131 @@ export function SessionSidePanel(props: {
               </DragOverlay>
             </DragDropProvider>
           </div>
-        </Show>
+        </aside>
+      </Show>
 
-        <Show when={props.layout.fileTree.opened()}>{secondaryPanel()}</Show>
-      </aside>
-    </Show>
+      <Show when={props.toolOpen}>
+        <aside
+          id="session-tool-sidebar"
+          aria-label={props.language.t("session.panel.reviewAndFiles")}
+          class="relative shrink-0 h-full border-l border-border-weak-base"
+          style={{ width: `${props.layout.fileTree.width()}px` }}
+        >
+          <div class="h-full flex flex-col overflow-hidden group/filetree">
+            <Show when={sideMode() === "files"}>
+              <div class="bg-background-base px-3 py-0 h-full overflow-auto">
+                <FileTree
+                  path=""
+                  modified={props.diffFiles}
+                  kinds={props.kinds}
+                  onFileClick={(node) => props.openTab(props.file.tab(node.path))}
+                />
+              </div>
+            </Show>
+
+            <Show when={sideMode() === "status"}>
+              <SessionStatusSections
+                todoContent={
+                  <Show
+                    when={activeSessionID()}
+                    fallback={<div class="text-12-regular text-text-weak">No active session.</div>}
+                  >
+                    <Show
+                      when={todos() !== undefined}
+                      fallback={<div class="text-12-regular text-text-weak">Loading to-dos…</div>}
+                    >
+                      <Show
+                        when={(todos()?.length ?? 0) > 0}
+                        fallback={<div class="text-12-regular text-text-weak">No to-dos yet.</div>}
+                      >
+                        <StatusTodoList todos={todos() as Todo[]} />
+                      </Show>
+                    </Show>
+                  </Show>
+                }
+                monitorContent={
+                  <Show
+                    when={activeSessionID()}
+                    fallback={<div class="text-12-regular text-text-weak">No active session.</div>}
+                  >
+                    <Show
+                      when={monitor.initialized || !monitor.loading}
+                      fallback={<div class="text-12-regular text-text-weak">Loading monitor…</div>}
+                    >
+                      <Show
+                        when={!monitor.error}
+                        fallback={<div class="text-12-regular text-text-danger">{monitor.error}</div>}
+                      >
+                        <Show
+                          when={monitorEntries().length > 0}
+                          fallback={<div class="text-12-regular text-text-weak">No active tasks.</div>}
+                        >
+                          <For each={monitorEntries()}>
+                            {(item) => (
+                              <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-1">
+                                <div class="flex items-center gap-2 min-w-0">
+                                  <span class="text-11-medium text-text-weak shrink-0">
+                                    [{MONITOR_LEVEL_LABELS[item.level] ?? item.level}]
+                                  </span>
+                                  <span class="text-12-medium text-text-strong truncate">{monitorTitle(item)}</span>
+                                </div>
+                                <div class="text-11-regular text-text-weak break-words">
+                                  {MONITOR_STATUS_LABELS[item.status.type] ?? item.status.type}
+                                  {item.model ? ` · ${item.model.providerId}/${item.model.modelID}` : ""}
+                                  {` · ${item.requests} reqs · ${item.totalTokens.toLocaleString()} tok`}
+                                </div>
+                                <Show when={item.activeTool}>
+                                  <div class="text-11-regular text-text-weak break-words">
+                                    Tool: {item.activeTool}
+                                    <Show
+                                      when={monitorToolStatus({
+                                        statusType: item.status.type,
+                                        activeToolStatus: item.activeToolStatus,
+                                      })}
+                                    >
+                                      {(toolStatus) => <> · {toolStatus()}</>}
+                                    </Show>
+                                  </div>
+                                </Show>
+                              </div>
+                            )}
+                          </For>
+                        </Show>
+                      </Show>
+                    </Show>
+                  </Show>
+                }
+              />
+            </Show>
+
+            <Show when={sideMode() === "changes"}>
+              <div class="relative flex-1 min-h-0 overflow-hidden">{props.reviewPanel()}</div>
+            </Show>
+
+            <Show when={sideMode() === "context"}>
+              <div class="relative flex-1 min-h-0 overflow-hidden">
+                <SessionContextTab
+                  messages={props.vm.messages}
+                  visibleUserMessages={props.vm.visibleUserMessages}
+                  view={props.vm.view}
+                  info={props.vm.info}
+                />
+              </div>
+            </Show>
+          </div>
+
+          <ResizeHandle
+            direction="horizontal"
+            edge="start"
+            size={props.layout.fileTree.width()}
+            min={200}
+            max={480}
+            collapseThreshold={160}
+            onResize={props.layout.fileTree.resize}
+            onCollapse={props.layout.fileTree.close}
+          />
+        </aside>
+      </Show>
+    </>
   )
 }

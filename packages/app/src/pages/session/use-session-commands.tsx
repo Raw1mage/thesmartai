@@ -151,7 +151,13 @@ export const useSessionCommands = (input: SessionCommandContext) => {
       id: "review.toggle",
       title: input.language.t("command.review.toggle"),
       keybind: "mod+shift+r",
-      onSelect: () => input.view().reviewPanel.toggle(),
+      onSelect: () => {
+        if (input.layout.fileTree.opened() && input.layout.fileTree.mode() === "changes") {
+          input.layout.fileTree.close()
+          return
+        }
+        input.layout.fileTree.show("changes")
+      },
     }),
     viewCommand({
       id: "fileTree.toggle",
@@ -254,34 +260,38 @@ export const useSessionCommands = (input: SessionCommandContext) => {
 
   const permissionCommands = createMemo(() => [
     permissionsCommand({
-      id: "permissions.autoaccept",
-      title: (
-        input.params.id
-          ? input.permission.isAutoAccepting(input.params.id, input.sdk.directory)
-          : input.permission.isAutoAcceptingDirectory(input.sdk.directory)
-      )
-        ? input.language.t("command.permissions.autoaccept.disable")
-        : input.language.t("command.permissions.autoaccept.enable"),
-      keybind: "mod+shift+a",
-      disabled: false,
+      id: "permissions.autoaccept.enable",
+      title: input.language.t("command.permissions.autoaccept.enable"),
+      slash: "auto-yes-enabled",
       onSelect: () => {
         const sessionID = input.params.id
         if (sessionID) {
-          input.permission.toggleAutoAccept(sessionID, input.sdk.directory)
+          input.permission.enableAutoAccept(sessionID, input.sdk.directory)
         } else {
-          input.permission.toggleAutoAcceptDirectory(input.sdk.directory)
+          input.permission.enableAutoAcceptDirectory(input.sdk.directory)
         }
 
-        const active = sessionID
-          ? input.permission.isAutoAccepting(sessionID, input.sdk.directory)
-          : input.permission.isAutoAcceptingDirectory(input.sdk.directory)
         showToast({
-          title: active
-            ? input.language.t("toast.permissions.autoaccept.on.title")
-            : input.language.t("toast.permissions.autoaccept.off.title"),
-          description: active
-            ? input.language.t("toast.permissions.autoaccept.on.description")
-            : input.language.t("toast.permissions.autoaccept.off.description"),
+          title: input.language.t("toast.permissions.autoaccept.on.title"),
+          description: input.language.t("toast.permissions.autoaccept.on.description"),
+        })
+      },
+    }),
+    permissionsCommand({
+      id: "permissions.autoaccept.disable",
+      title: input.language.t("command.permissions.autoaccept.disable"),
+      slash: "auto-yes-disabled",
+      onSelect: () => {
+        const sessionID = input.params.id
+        if (sessionID) {
+          input.permission.disableAutoAccept(sessionID, input.sdk.directory)
+        } else {
+          input.permission.disableAutoAcceptDirectory(input.sdk.directory)
+        }
+
+        showToast({
+          title: input.language.t("toast.permissions.autoaccept.off.title"),
+          description: input.language.t("toast.permissions.autoaccept.off.description"),
         })
       },
     }),

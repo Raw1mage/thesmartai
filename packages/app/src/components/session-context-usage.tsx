@@ -13,15 +13,12 @@ interface SessionContextUsageProps {
   variant?: "button" | "indicator"
 }
 
-function openSessionContext(args: {
-  view: ReturnType<ReturnType<typeof useLayout>["view"]>
-  layout: ReturnType<typeof useLayout>
-  tabs: ReturnType<ReturnType<typeof useLayout>["tabs"]>
-}) {
-  if (!args.view.reviewPanel.opened()) args.view.reviewPanel.open()
-  if (args.layout.fileTree.opened() && args.layout.fileTree.tab() !== "all") args.layout.fileTree.setTab("all")
-  args.tabs.open("context")
-  args.tabs.setActive("context")
+function openSessionContext(args: { layout: ReturnType<typeof useLayout> }) {
+  if (args.layout.fileTree.opened() && args.layout.fileTree.mode() === "context") {
+    args.layout.fileTree.close()
+    return
+  }
+  args.layout.fileTree.show("context")
 }
 
 export function SessionContextUsage(props: SessionContextUsageProps) {
@@ -31,9 +28,6 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
   const language = useLanguage()
 
   const variant = createMemo(() => props.variant ?? "button")
-  const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
-  const tabs = createMemo(() => layout.tabs(sessionKey))
-  const view = createMemo(() => layout.view(sessionKey))
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
 
   const usd = createMemo(
@@ -53,9 +47,7 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
   const openContext = () => {
     if (!params.id) return
     openSessionContext({
-      view: view(),
       layout,
-      tabs: tabs(),
     })
   }
 
@@ -100,6 +92,7 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
               class="size-6"
               onClick={openContext}
               aria-label={language.t("context.usage.view")}
+              aria-pressed={layout.fileTree.opened() && layout.fileTree.mode() === "context"}
             >
               {circle()}
             </Button>

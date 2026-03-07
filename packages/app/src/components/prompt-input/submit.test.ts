@@ -6,12 +6,14 @@ let createPromptSubmit: typeof import("./submit").createPromptSubmit
 const createdClients: string[] = []
 const createdSessions: string[] = []
 const enabledAutoAccept: Array<{ sessionID: string; directory: string }> = []
+const disabledAutoAccept: Array<{ sessionID: string; directory?: string }> = []
 const sentShell: string[] = []
 const syncedDirectories: string[] = []
+const triggeredCommands: Array<{ id: string; source?: string }> = []
 
 let selected = "/repo/worktree-a"
 
-const promptValue: Prompt = [{ type: "text", content: "ls", start: 0, end: 2 }]
+let promptValue: Prompt = [{ type: "text", content: "ls", start: 0, end: 2 }]
 
 const clientFor = (directory: string) => ({
   session: {
@@ -120,8 +122,31 @@ beforeAll(async () => {
 
   mock.module("@/context/permission", () => ({
     usePermission: () => ({
+      enableAutoAcceptDirectory: () => undefined,
+      disableAutoAcceptDirectory: () => undefined,
       enableAutoAccept(sessionID: string, directory: string) {
         enabledAutoAccept.push({ sessionID, directory })
+      },
+      disableAutoAccept(sessionID: string, directory?: string) {
+        disabledAutoAccept.push({ sessionID, directory })
+      },
+    }),
+  }))
+
+  mock.module("@/context/command", () => ({
+    useCommand: () => ({
+      options: [
+        {
+          id: "permissions.autoaccept.enable",
+          slash: "auto-yes-enabled",
+        },
+        {
+          id: "permissions.autoaccept.disable",
+          slash: "auto-yes-disabled",
+        },
+      ],
+      trigger: (id: string, source?: string) => {
+        triggeredCommands.push({ id, source })
       },
     }),
   }))
@@ -146,9 +171,12 @@ beforeEach(() => {
   createdClients.length = 0
   createdSessions.length = 0
   enabledAutoAccept.length = 0
+  disabledAutoAccept.length = 0
   sentShell.length = 0
   syncedDirectories.length = 0
+  triggeredCommands.length = 0
   selected = "/repo/worktree-a"
+  promptValue = [{ type: "text", content: "ls", start: 0, end: 2 }]
 })
 
 describe("prompt submit worktree selection", () => {
@@ -209,5 +237,35 @@ describe("prompt submit worktree selection", () => {
     await submit.handleSubmit(event)
 
     expect(enabledAutoAccept).toEqual([{ sessionID: "session-1", directory: "/repo/worktree-a" }])
+  })
+
+  test("runs builtin slash commands without creating a session", async () => {
+    promptValue = [{ type: "text", content: "/auto-yes-enabled", start: 0, end: 17 }]
+
+    const submit = createPromptSubmit({
+      info: () => undefined,
+      imageAttachments: () => [],
+      commentCount: () => 0,
+      autoAccept: () => true,
+      mode: () => "normal",
+      working: () => false,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
+      addToHistory: () => undefined,
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+      newSessionWorktree: () => selected,
+      onNewSessionWorktreeReset: () => undefined,
+      onSubmit: () => undefined,
+    })
+
+    const event = { preventDefault: () => undefined } as unknown as Event
+
+    await submit.handleSubmit(event)
+
+    expect(triggeredCommands).toEqual([{ id: "permissions.autoaccept.enable", source: "slash" }])
+    expect(createdSessions).toEqual([])
   })
 })

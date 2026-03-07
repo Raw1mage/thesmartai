@@ -126,11 +126,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const migratedFileTree = (() => {
         if (!isRecord(fileTree)) return fileTree
         const mode =
-          fileTree.mode === "files" || fileTree.mode === "status"
+          fileTree.mode === "files" ||
+          fileTree.mode === "status" ||
+          fileTree.mode === "changes" ||
+          fileTree.mode === "context"
             ? fileTree.mode
             : fileTree.mode === "monitor" || fileTree.mode === "todo" || fileTree.mode === "accounts"
               ? "status"
-              : "files"
+              : fileTree.tab === "all"
+                ? "files"
+                : "changes"
         if (fileTree.tab === "changes" || fileTree.tab === "all") return { ...fileTree, mode }
 
         const width = typeof fileTree.width === "number" ? fileTree.width : DEFAULT_PANEL_WIDTH
@@ -185,7 +190,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           opened: true,
           width: DEFAULT_PANEL_WIDTH,
           tab: "changes" as "changes" | "all",
-          mode: "files" as "files" | "status",
+          mode: "changes" as "files" | "status" | "changes" | "context",
         },
         session: {
           width: DEFAULT_SESSION_WIDTH,
@@ -570,57 +575,71 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         opened: createMemo(() => store.fileTree?.opened ?? true),
         width: createMemo(() => store.fileTree?.width ?? DEFAULT_PANEL_WIDTH),
         tab: createMemo(() => store.fileTree?.tab ?? "changes"),
-        mode: createMemo(() => store.fileTree?.mode ?? "files"),
+        mode: createMemo(() => store.fileTree?.mode ?? "changes"),
         setTab(tab: "changes" | "all") {
           if (!store.fileTree) {
-            setStore("fileTree", { opened: true, width: DEFAULT_PANEL_WIDTH, tab, mode: "files" })
+            setStore("fileTree", {
+              opened: true,
+              width: DEFAULT_PANEL_WIDTH,
+              tab,
+              mode: tab === "all" ? "files" : "changes",
+            })
             return
           }
           setStore("fileTree", "opened", true)
-          setStore("fileTree", "mode", "files")
+          setStore("fileTree", "mode", tab === "all" ? "files" : "changes")
           setStore("fileTree", "tab", tab)
         },
-        show(mode: "files" | "status") {
+        show(mode: "files" | "status" | "changes" | "context") {
           if (!store.fileTree) {
-            setStore("fileTree", { opened: true, width: DEFAULT_PANEL_WIDTH, tab: "changes", mode })
+            setStore("fileTree", {
+              opened: true,
+              width: DEFAULT_PANEL_WIDTH,
+              tab: mode === "files" ? "all" : "changes",
+              mode,
+            })
             return
           }
           setStore("fileTree", "opened", true)
           setStore("fileTree", "mode", mode)
+          if (mode === "files") setStore("fileTree", "tab", "all")
+          if (mode === "changes") setStore("fileTree", "tab", "changes")
         },
         open() {
           if (!store.fileTree) {
-            setStore("fileTree", { opened: true, width: DEFAULT_PANEL_WIDTH, tab: "changes", mode: "files" })
+            setStore("fileTree", { opened: true, width: DEFAULT_PANEL_WIDTH, tab: "changes", mode: "changes" })
             return
           }
           setStore("fileTree", "opened", true)
         },
         close() {
           if (!store.fileTree) {
-            setStore("fileTree", { opened: false, width: DEFAULT_PANEL_WIDTH, tab: "changes", mode: "files" })
+            setStore("fileTree", { opened: false, width: DEFAULT_PANEL_WIDTH, tab: "changes", mode: "changes" })
             return
           }
           setStore("fileTree", "opened", false)
         },
         toggle() {
           if (!store.fileTree) {
-            setStore("fileTree", { opened: true, width: DEFAULT_PANEL_WIDTH, tab: "changes", mode: "files" })
+            setStore("fileTree", { opened: true, width: DEFAULT_PANEL_WIDTH, tab: "all", mode: "files" })
             return
           }
           if (!store.fileTree.opened) {
             setStore("fileTree", "opened", true)
             setStore("fileTree", "mode", "files")
+            setStore("fileTree", "tab", "all")
             return
           }
           if ((store.fileTree.mode ?? "files") !== "files") {
             setStore("fileTree", "mode", "files")
+            setStore("fileTree", "tab", "all")
             return
           }
           setStore("fileTree", "opened", false)
         },
         resize(width: number) {
           if (!store.fileTree) {
-            setStore("fileTree", { opened: true, width, tab: "changes", mode: "files" })
+            setStore("fileTree", { opened: true, width, tab: "changes", mode: "changes" })
             return
           }
           setStore("fileTree", "width", width)

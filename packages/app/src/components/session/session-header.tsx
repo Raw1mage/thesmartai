@@ -9,6 +9,7 @@ import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useServer } from "@/context/server"
 import { useTerminal } from "@/context/terminal"
+import { SessionContextUsage } from "@/components/session-context-usage"
 import { getFilename } from "@opencode-ai/util/path"
 import { decode64 } from "@/utils/base64"
 import { Persist, persisted } from "@/utils/persist"
@@ -238,12 +239,27 @@ export function SessionHeader() {
     navigate(`${sessionBasePath()}/tool/${tool}`)
   }
 
-  const toggleDesktopPanel = (mode: "files" | "status") => {
+  const toggleDesktopPanel = (mode: "files" | "status" | "changes" | "context") => {
+    console.debug("[sidebar-debug][header] before toggleDesktopPanel", {
+      mode,
+      opened: layout.fileTree.opened(),
+      currentMode: layout.fileTree.mode(),
+    })
     if (layout.fileTree.opened() && layout.fileTree.mode() === mode) {
       layout.fileTree.close()
+      console.debug("[sidebar-debug][header] after close", {
+        mode,
+        opened: layout.fileTree.opened(),
+        currentMode: layout.fileTree.mode(),
+      })
       return
     }
     layout.fileTree.show(mode)
+    console.debug("[sidebar-debug][header] after show", {
+      mode,
+      opened: layout.fileTree.opened(),
+      currentMode: layout.fileTree.mode(),
+    })
   }
 
   const toggleDesktopTerminal = () => {
@@ -276,10 +292,12 @@ export function SessionHeader() {
     openToolPage(tool)
   }
 
-  const desktopActiveTool = createMemo<"status" | "files" | "terminal" | undefined>(() => {
+  const desktopActiveTool = createMemo<"changes" | "context" | "status" | "files" | "terminal" | undefined>(() => {
     if (view().terminal.opened()) return "terminal"
     if (!layout.fileTree.opened()) return undefined
-    return layout.fileTree.mode()
+    const mode = layout.fileTree.mode()
+    if (mode === "changes" || mode === "context" || mode === "status" || mode === "files") return mode
+    return undefined
   })
 
   const mobileActiveTool = createMemo<"changes" | "files" | "status" | "terminal" | undefined>(() => {
@@ -503,11 +521,11 @@ export function SessionHeader() {
                       <Button
                         type="button"
                         variant="ghost"
-                        class={`${desktopNavButtonClass(view().reviewPanel.opened())} group/review-toggle`}
-                        onClick={() => view().reviewPanel.toggle()}
+                        class={`${desktopNavButtonClass(desktopActiveTool() === "changes")} group/review-toggle`}
+                        onClick={() => toggleDesktopPanel("changes")}
                         aria-label={language.t("command.review.toggle")}
-                        aria-expanded={view().reviewPanel.opened()}
-                        aria-controls="review-panel"
+                        aria-expanded={layout.fileTree.opened() && layout.fileTree.mode() === "changes"}
+                        aria-controls="session-side-panel-secondary"
                       >
                         <div class="relative flex items-center justify-center size-4 shrink-0 [&>*]:absolute [&>*]:inset-0">
                           <Icon
@@ -529,6 +547,7 @@ export function SessionHeader() {
                       </Button>
                     </TooltipKeybind>
                   </div>
+                  <SessionContextUsage />
                   <Tooltip value={language.t("status.popover.trigger")}>
                     <Button
                       type="button"

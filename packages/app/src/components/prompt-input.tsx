@@ -45,7 +45,6 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogSelectModel } from "@/components/dialog-select-model"
 import { useCommand } from "@/context/command"
 import { Persist, persisted } from "@/utils/persist"
-import { SessionContextUsage } from "@/components/session-context-usage"
 import { usePermission } from "@/context/permission"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
@@ -1020,12 +1019,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     readClipboardImage: platform.readClipboardImage,
   })
 
-  const accepting = createMemo(() => {
-    const id = params.id
-    if (!id) return permission.isAutoAcceptingDirectory(sdk.directory)
-    return permission.isAutoAccepting(id, sdk.directory)
-  })
-
   const { abort, handleSubmit } = createPromptSubmit({
     info,
     imageAttachments,
@@ -1349,44 +1342,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     />
                   </Tooltip>
                 </Show>
-                <TooltipKeybind
-                  placement="top"
-                  gutter={8}
-                  title={language.t(
-                    accepting() ? "command.permissions.autoaccept.disable" : "command.permissions.autoaccept.enable",
-                  )}
-                  keybind={command.keybind("permissions.autoaccept")}
-                >
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      if (!params.id) {
-                        permission.toggleAutoAcceptDirectory(sdk.directory)
-                        return
-                      }
-                      permission.toggleAutoAccept(params.id, sdk.directory)
-                    }}
-                    classList={{
-                      "_hidden group-hover/prompt-input:flex size-6 items-center justify-center": true,
-                      "text-text-base": !accepting(),
-                      "hover:bg-surface-success-base": accepting(),
-                    }}
-                    aria-label={
-                      accepting()
-                        ? language.t("command.permissions.autoaccept.disable")
-                        : language.t("command.permissions.autoaccept.enable")
-                    }
-                    aria-pressed={accepting()}
-                  >
-                    <Icon
-                      name="chevron-double-right"
-                      size="small"
-                      classList={{
-                        "text-icon-success-base": accepting(),
-                      }}
-                    />
-                  </Button>
-                </TooltipKeybind>
               </Match>
             </Switch>
             <Show when={store.mode === "normal" && promptMeta()}>
@@ -1408,7 +1363,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               }}
             />
             <div class="flex items-center gap-1 mr-1">
-              <SessionContextUsage />
               <Show when={store.mode === "normal"}>
                 <Tooltip placement="top" value={language.t("prompt.action.attachFile")}>
                   <Button

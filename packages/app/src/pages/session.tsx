@@ -229,15 +229,6 @@ export default function Page() {
   }
 
   const isDesktop = createMediaQuery("(min-width: 1024px)")
-  const desktopReviewOpen = createMemo(() => isDesktop() && view().reviewPanel.opened())
-  const desktopFileTreeOpen = createMemo(() => isDesktop() && layout.fileTree.opened())
-  const desktopSidePanelOpen = createMemo(() => desktopReviewOpen() || desktopFileTreeOpen())
-  const sessionPanelWidth = createMemo(() => {
-    if (!desktopSidePanelOpen()) return "100%"
-    if (desktopReviewOpen()) return `${layout.session.width()}px`
-    return `calc(100% - ${layout.fileTree.width()}px)`
-  })
-  const centered = createMemo(() => isDesktop() && !desktopSidePanelOpen())
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -1002,6 +993,16 @@ export default function Page() {
     return active
   })
 
+  const desktopReviewOpen = createMemo(() => isDesktop() && view().reviewPanel.opened())
+  const desktopFileTreeOpen = createMemo(() => isDesktop() && layout.fileTree.opened())
+  const desktopSidePanelOpen = createMemo(() => desktopReviewOpen() || desktopFileTreeOpen())
+  const sessionPanelWidth = createMemo(() => {
+    if (!desktopReviewOpen()) return "100%"
+    if (desktopReviewOpen()) return `${layout.session.width()}px`
+    return "100%"
+  })
+  const centered = createMemo(() => isDesktop() && !desktopReviewOpen())
+
   createEffect(() => {
     if (!layout.ready()) return
     if (tabs().active()) return
@@ -1017,7 +1018,8 @@ export default function Page() {
     if (!id) return
 
     const wants = isDesktop()
-      ? desktopFileTreeOpen() || (desktopReviewOpen() && activeTab() === "review")
+      ? (desktopFileTreeOpen() && layout.fileTree.mode() === "changes") ||
+        (desktopReviewOpen() && activeTab() === "review")
       : view().reviewPanel.opened()
     if (!wants) return
     if (sync.status === "loading") return
@@ -1033,6 +1035,7 @@ export default function Page() {
     const dir = sdk.directory
     if (!isDesktop()) return
     if (!layout.fileTree.opened()) return
+    if (layout.fileTree.mode() !== "files") return
     if (sync.status === "loading") return
 
     const refresh = treeDir !== dir
@@ -1344,7 +1347,7 @@ export default function Page() {
           classList={{
             "@container relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
             "flex-1 pt-2 md:pt-3": true,
-            "md:flex-none": desktopSidePanelOpen(),
+            "md:flex-none": desktopReviewOpen(),
           }}
           style={{
             width: sessionPanelWidth(),
@@ -1488,18 +1491,14 @@ export default function Page() {
         </div>
 
         <SessionSidePanel
-          open={desktopSidePanelOpen()}
-          reviewOpen={desktopReviewOpen()}
+          fileOpen={desktopReviewOpen()}
+          toolOpen={desktopFileTreeOpen()}
           language={language}
           layout={layout}
           command={command}
           dialog={dialog}
           file={file}
           comments={comments}
-          hasReview={hasReview()}
-          reviewCount={reviewCount()}
-          reviewTab={reviewTab()}
-          contextOpen={contextOpen}
           openedTabs={openedTabs}
           activeTab={activeTab}
           activeFileTab={activeFileTab}
