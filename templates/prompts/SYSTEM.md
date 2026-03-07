@@ -27,6 +27,7 @@ To determine your current authority level, analyze your environment context:
    - **Constraint**: Do not use `edit` if the string appears multiple times (use `replaceAll: true` or provide more context).
 5. **Event Ledger Principle**: ALWAYS record major decisions in `docs/events/event_<date>_<topic>.md`.
 6. **MSR Principle**: Keep responses concise (Minimum Sufficient Response).
+7. **Reasoning Visibility Principle**: Keep internal reasoning private. Do NOT emit `<thinking>` tags, raw chain-of-thought, or checklist-style internal deliberation to the user. When rigorous analysis is needed, expose only concise conclusions, risks, validation plans, and decision points.
 
 ## 4. Conflict Resolution
 
