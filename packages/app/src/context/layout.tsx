@@ -714,7 +714,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const key = createSessionKeyReader(sessionKey, ensureKey)
         const s = createMemo(() => store.sessionView[key()] ?? { scroll: {} })
         const terminalOpened = createMemo(() => store.terminal?.opened ?? false)
-        const reviewPanelOpened = createMemo(() => store.review?.panelOpened ?? true)
+        const filePaneOpened = createMemo(() => store.review?.panelOpened ?? true)
 
         function setTerminalOpened(next: boolean) {
           const current = store.terminal
@@ -728,7 +728,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setStore("terminal", "opened", next)
         }
 
-        function setReviewPanelOpened(next: boolean) {
+        function setFilePaneOpened(next: boolean) {
           const current = store.review
           if (!current) {
             setStore("review", { diffStyle: "split" as ReviewDiffStyle, panelOpened: next })
@@ -759,16 +759,28 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
               setTerminalOpened(!terminalOpened())
             },
           },
-          reviewPanel: {
-            opened: reviewPanelOpened,
+          filePane: {
+            opened: filePaneOpened,
             open() {
-              setReviewPanelOpened(true)
+              setFilePaneOpened(true)
             },
             close() {
-              setReviewPanelOpened(false)
+              setFilePaneOpened(false)
             },
             toggle() {
-              setReviewPanelOpened(!reviewPanelOpened())
+              setFilePaneOpened(!filePaneOpened())
+            },
+          },
+          reviewPanel: {
+            opened: filePaneOpened,
+            open() {
+              setFilePaneOpened(true)
+            },
+            close() {
+              setFilePaneOpened(false)
+            },
+            toggle() {
+              setFilePaneOpened(!filePaneOpened())
             },
           },
           review: {

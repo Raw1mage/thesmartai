@@ -57,7 +57,7 @@ export function SessionSidePanel(props: {
   tabs: () => ReturnType<ReturnType<typeof useLayout>["tabs"]>
   openTab: (value: string) => void
   showAllFiles: () => void
-  reviewPanel: () => any
+  changesPanel: () => any
   vm: SessionSidePanelViewModel
   handoffFiles: () => Record<string, SelectedLineRange | null> | undefined
   codeComponent: NonNullable<ValidComponent>
@@ -109,7 +109,7 @@ export function SessionSidePanel(props: {
   )
 
   const closeFilePane = () => {
-    props.vm.view().reviewPanel.close()
+    props.vm.view().filePane.close()
   }
 
   createEffect(() => {
@@ -341,7 +341,7 @@ export function SessionSidePanel(props: {
             </Show>
 
             <Show when={sideMode() === "changes"}>
-              <div class="relative flex-1 min-h-0 overflow-hidden">{props.reviewPanel()}</div>
+              <div class="relative flex-1 min-h-0 overflow-hidden">{props.changesPanel()}</div>
             </Show>
 
             <Show when={sideMode() === "context"}>

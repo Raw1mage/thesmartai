@@ -272,11 +272,11 @@ export function SessionHeader() {
 
   const toggleMobileReview = () => {
     if (subpage()) {
-      view().reviewPanel.open()
+      view().filePane.open()
       navigate(sessionBasePath())
       return
     }
-    view().reviewPanel.toggle()
+    view().filePane.toggle()
   }
 
   const toggleMobileTool = (tool: "files" | "status" | "terminal") => {
@@ -284,7 +284,7 @@ export function SessionHeader() {
       navigate(sessionBasePath())
       return
     }
-    view().reviewPanel.close()
+    view().filePane.close()
     if (tool === "terminal") {
       openTerminalPage()
       return
@@ -302,7 +302,7 @@ export function SessionHeader() {
 
   const mobileActiveTool = createMemo<"changes" | "files" | "status" | "terminal" | undefined>(() => {
     if (subpage()) return subpage()
-    if (view().reviewPanel.opened()) return "changes"
+    if (view().filePane.opened()) return "changes"
     return undefined
   })
   const desktopNavButtonClass = (active: boolean) =>
@@ -530,7 +530,7 @@ export function SessionHeader() {
                         <div class="relative flex items-center justify-center size-4 shrink-0 [&>*]:absolute [&>*]:inset-0">
                           <Icon
                             size="small"
-                            name={view().reviewPanel.opened() ? "layout-right-full" : "layout-right"}
+                            name={view().filePane.opened() ? "layout-right-full" : "layout-right"}
                             class="group-hover/review-toggle:hidden"
                           />
                           <Icon
@@ -540,7 +540,7 @@ export function SessionHeader() {
                           />
                           <Icon
                             size="small"
-                            name={view().reviewPanel.opened() ? "layout-right" : "layout-right-full"}
+                            name={view().filePane.opened() ? "layout-right" : "layout-right-full"}
                             class="hidden group-active/review-toggle:inline-block"
                           />
                         </div>

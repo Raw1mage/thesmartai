@@ -357,13 +357,38 @@ The main frontend application built with **SolidJS**. It handles the user interf
 | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------- | :--------------------------------------------------------------------- |
 | `entry.tsx`                                       | **Entry Point**. Bootstraps the application, detects the platform (Web/Desktop), and initializes the root `PlatformProvider`.                                                                 | `(Execution Only)`                  | **In**: DOM Element<br>**Out**: Rendered App                           |
 | `app.tsx`                                         | **App Root**. Sets up global shell providers (theme/i18n/dialog/router) and route boundaries; markdown/diff/code providers are session-scoped lazy modules.                                   | `AppInterface`, `AppBaseProviders`  | **In**: Server URL (optional)<br>**Out**: Routing Context              |
-| `pages/session.tsx`                               | **Session View**. The core chat/coding interface. Manages message timeline, terminal, drag/drop layout, and review panel modes (`cumulative changes` vs `latest changes` diff scopes).        | `Page` (Default Export)             | **In**: URL Params (ID)<br>**Out**: Chat Interface                     |
+| `pages/session.tsx`                               | **Canonical Session View**. The single source-of-truth session route implementation. Manages message timeline, terminal, drag/drop layout, file pane, and tool sidebar modes.                 | `Page` (Default Export)             | **In**: URL Params (ID)<br>**Out**: Chat Interface                     |
+| `pages/session/index.tsx`                         | **Session Route Forwarder**. Thin forwarding module that re-exports `pages/session.tsx` to avoid duplicate page implementations.                                                              | default re-export                   | **In**: N/A<br>**Out**: Route compatibility                            |
 | `components/prompt-input.tsx`                     | **Prompt Runtime Guardrails.** Owns submit path + realtime watchdogs (session-status reconcile and forced message snapshot hydration during active runs).                                     | `PromptInput`                       | **In**: Prompt state + SDK sync<br>**Out**: Robust realtime UX         |
 | `pages/session/session-rich-content-provider.tsx` | **Session Rich Content Boundary**. Route-scoped lazy provider bundle for markdown rendering, diff view, and code view components.                                                             | `SessionRichContentProvider`        | **In**: Session route children<br>**Out**: Markdown/Diff/Code contexts |
 | `context/server.tsx`                              | **Server Connection**. Manages the connection URL to the backend, health checks, and the list of available projects.                                                                          | `useServer`, `ServerProvider`       | **In**: Default URL<br>**Out**: Connection Status                      |
 | `context/global-sdk.tsx`                          | **SDK & Events**. Initializes the OpenCode SDK client and establishes the global Server-Sent Events (SSE) stream.                                                                             | `useGlobalSDK`, `GlobalSDKProvider` | **In**: Auth Token<br>**Out**: SDK Client, Event Emitter               |
 | `context/sync.tsx`                                | **Session Sync Data Path.** Hydrates review state from git-backed `/file/status` and per-file read patches to produce renderable before/after diffs.                                          | `useSync`, `SyncProvider`           | **In**: Session ID + SDK events<br>**Out**: Reactive session stores    |
 | `vite.config.ts`                                  | **Frontend Chunk Policy**. Defines manual chunk strategy for heavy dependencies (`ghostty-web`, markdown/katex, solid/core utils) plus i18n chunk isolation and warning threshold governance. | `manualChunks`                      | **In**: module id graph<br>**Out**: deterministic chunk layout         |
+
+#### Session page shell contract (`packages/app`)
+
+The web session UI now uses a single canonical page shell centered on `packages/app/src/pages/session.tsx`.
+
+1. **Single page implementation**
+   - `pages/session.tsx` is the only authoritative session page implementation.
+   - `pages/session/index.tsx` exists only as a forwarding compatibility module and must not carry its own page logic.
+
+2. **Pane topology**
+   - **Main conversation pane**: message timeline + prompt dock.
+   - **File pane**: dedicated file-view surface for opened file tabs.
+   - **Tool sidebar**: right-side tool surface for `changes`, `context`, `files`, and `status` modes.
+   - **Terminal panel**: separate bottom panel; not merged into the right sidebar system.
+
+3. **Canonical shell API**
+   - `layout.view(sessionKey).filePane` is the canonical open/close/toggle API for the file-view pane.
+   - `layout.view(sessionKey).reviewPanel` remains as a temporary compatibility alias only; new work should use `filePane`.
+
+4. **Naming boundary**
+   - Shell-layer naming distinguishes:
+     - `filePane` = opened file viewer container
+     - `changesPanel` = diff/review content rendered inside the tool sidebar
+   - Domain-level review concepts such as `SessionReviewTab` and `commentOrigin: "review"` remain valid and were not renamed as part of shell cleanup.
 
 ### 4. Console Backend (`packages/console/core`)
 

@@ -247,8 +247,8 @@ export default function Page() {
     return next
   }
 
-  const openReviewPanel = () => {
-    if (!view().reviewPanel.opened()) view().reviewPanel.open()
+  const openFilePane = () => {
+    if (!view().filePane.opened()) view().filePane.open()
   }
 
   const openTab = (value: string) => {
@@ -258,7 +258,7 @@ export default function Page() {
     const path = file.pathFromTab(next)
     if (!path) return
     file.load(path)
-    openReviewPanel()
+    openFilePane()
   }
 
   createEffect(() => {
@@ -863,7 +863,7 @@ export default function Page() {
       .filter((tab) => tab !== "context" && tab !== "review"),
   )
 
-  const mobileChanges = createMemo(() => !isDesktop() && view().reviewPanel.opened())
+  const mobileChanges = createMemo(() => !isDesktop() && view().filePane.opened())
   const reviewTab = createMemo(() => isDesktop())
 
   const showAllFiles = () => {
@@ -961,7 +961,7 @@ export default function Page() {
     </Switch>
   )
 
-  const reviewPanel = () => (
+  const changesPanel = () => (
     <div class="flex flex-col h-full overflow-hidden bg-background-stronger contain-strict">
       <div class="relative flex-1 min-h-0 overflow-hidden">
         {reviewContent({
@@ -993,15 +993,15 @@ export default function Page() {
     return active
   })
 
-  const desktopReviewOpen = createMemo(() => isDesktop() && view().reviewPanel.opened())
-  const desktopFileTreeOpen = createMemo(() => isDesktop() && layout.fileTree.opened())
-  const desktopSidePanelOpen = createMemo(() => desktopReviewOpen() || desktopFileTreeOpen())
+  const desktopFilePaneOpen = createMemo(() => isDesktop() && view().filePane.opened())
+  const desktopToolSidebarOpen = createMemo(() => isDesktop() && layout.fileTree.opened())
+  const desktopSidePanelOpen = createMemo(() => desktopFilePaneOpen() || desktopToolSidebarOpen())
   const sessionPanelWidth = createMemo(() => {
-    if (!desktopReviewOpen()) return "100%"
-    if (desktopReviewOpen()) return `${layout.session.width()}px`
+    if (!desktopFilePaneOpen()) return "100%"
+    if (desktopFilePaneOpen()) return `${layout.session.width()}px`
     return "100%"
   })
-  const centered = createMemo(() => isDesktop() && !desktopReviewOpen())
+  const centered = createMemo(() => isDesktop() && !desktopFilePaneOpen())
 
   createEffect(() => {
     if (!layout.ready()) return
@@ -1018,9 +1018,9 @@ export default function Page() {
     if (!id) return
 
     const wants = isDesktop()
-      ? (desktopFileTreeOpen() && layout.fileTree.mode() === "changes") ||
-        (desktopReviewOpen() && activeTab() === "review")
-      : view().reviewPanel.opened()
+      ? (desktopToolSidebarOpen() && layout.fileTree.mode() === "changes") ||
+        (desktopFilePaneOpen() && activeTab() === "review")
+      : view().filePane.opened()
     if (!wants) return
     if (sync.status === "loading") return
 
@@ -1347,7 +1347,7 @@ export default function Page() {
           classList={{
             "@container relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger": true,
             "flex-1 pt-2 md:pt-3": true,
-            "md:flex-none": desktopReviewOpen(),
+            "md:flex-none": desktopFilePaneOpen(),
           }}
           style={{
             width: sessionPanelWidth(),
@@ -1479,7 +1479,7 @@ export default function Page() {
             setPromptDockRef={(el: HTMLDivElement) => (promptDock = el)}
           />
 
-          <Show when={desktopReviewOpen()}>
+          <Show when={desktopFilePaneOpen()}>
             <ResizeHandle
               direction="horizontal"
               size={layout.session.width()}
@@ -1491,8 +1491,8 @@ export default function Page() {
         </div>
 
         <SessionSidePanel
-          fileOpen={desktopReviewOpen()}
-          toolOpen={desktopFileTreeOpen()}
+          fileOpen={desktopFilePaneOpen()}
+          toolOpen={desktopToolSidebarOpen()}
           language={language}
           layout={layout}
           command={command}
@@ -1505,7 +1505,7 @@ export default function Page() {
           tabs={tabs}
           openTab={openTab}
           showAllFiles={showAllFiles}
-          reviewPanel={reviewPanel}
+          changesPanel={changesPanel}
           vm={{
             messages,
             visibleUserMessages,
