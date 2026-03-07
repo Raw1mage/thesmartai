@@ -143,3 +143,10 @@
    - 本 repo 的 web runtime **只允許**透過 `./webctl.sh dev-start`（或 `dev-refresh`）啟動。
    - 禁止直接使用 `bun ... opencode ... web` / `opencode web` 手動啟動，避免載入錯誤前端 bundle 或錯誤 env。
    - 所有 server runtime 參數（含 `OPENCODE_FRONTEND_PATH`）必須集中定義於 `/etc/opencode/opencode.cfg`，作為單一事實來源。
+
+## 10. 說明型輸出的主動閱讀節奏控制（read-mode）
+
+- 當回覆的主要目的，是**回答使用者提問並幫助其理解**（例如架構解釋、設計權衡、教學、長篇分析、文件導讀），且預期內容偏長時，應主動載入 `skill(name="read-mode")`。
+- 啟用後，應將內容拆成自然段落，**一次只輸出一段**，每段後使用 `question` 提供互動選項（例如：`繼續下一段`、`這段有問題`、`先給摘要`、`直接看結論`）。
+- **不要**把 `read-mode` 用於 tool call、build/test/git/runtime 狀態回報、錯誤摘要、驗證結果、commit 結果等操作型輸出。
+- 若使用者明確要求「一次講完 / 直接完整答案」，則退出 `read-mode`，改用一般回覆模式。
