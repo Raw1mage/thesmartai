@@ -45,6 +45,10 @@ Status: In Progress
 - Added footer-level elapsed rendering in the prompt hint row, next to the existing command hint, derived from the latest assistant message timing and refreshed via the existing footer tick cadence.
 - Removed the extra prompt metadata strip that rendered `□ Build` / `□ Shell` above the input box.
 - Removed the decorative one-line spacer between the prompt hint row and the global footer so the bottom area uses terminal space more tightly.
+- Corrected scope after visual verification:
+  - restore the prompt box's own footer/height structure
+  - remove the stray assistant meta row above the input area instead
+  - hide the session-route global footer row (`directory`, `LSP`, `/status`) entirely
 
 ### Validation
 
@@ -52,3 +56,4 @@ Status: In Progress
 - Architecture Sync: Verified (No doc changes)
   - 依據：本輪僅調整 TUI message meta 與 prompt/footer 呈現位置，不改動 runtime architecture 邊界。
 - Follow-up validation after removing the extra `□ Build` strip and spacer line also passed via `bun run typecheck` (`Tasks: 16 successful, 16 total`).
+- Redo validation after restoring prompt box structure and instead hiding the actual stray top meta row plus the global session footer also passed via `bun run typecheck` (`Tasks: 16 successful, 16 total`).

@@ -20,6 +20,8 @@ export function Footer() {
   const directory = useDirectory()
   const connected = useConnected()
 
+  const hiddenForSession = createMemo(() => route.data.type === "session" && connected())
+
   const [store, setStore] = createStore({
     welcome: false,
   })
@@ -50,42 +52,44 @@ export function Footer() {
   })
 
   return (
-    <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0}>
-      <text fg={theme.textMuted}>{directory()}</text>
-      <box gap={2} flexDirection="row" flexShrink={0}>
-        <Switch>
-          <Match when={store.welcome}>
-            <text fg={theme.text}>
-              Get started <span style={{ fg: theme.textMuted }}>/connect</span>
-            </text>
-          </Match>
-          <Match when={connected()}>
-            <Show when={permissions().length > 0}>
-              <text fg={theme.warning}>
-                <span style={{ fg: theme.warning }}>△</span> {permissions().length} Permission
-                {permissions().length > 1 ? "s" : ""}
-              </text>
-            </Show>
-            <text fg={theme.text}>
-              <span style={{ fg: lsp().length > 0 ? theme.success : theme.textMuted }}>•</span> {lsp().length} LSP
-            </text>
-            <Show when={mcp()}>
+    <Show when={!hiddenForSession()} fallback={<box flexShrink={0} />}>
+      <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0}>
+        <text fg={theme.textMuted}>{directory()}</text>
+        <box gap={2} flexDirection="row" flexShrink={0}>
+          <Switch>
+            <Match when={store.welcome}>
               <text fg={theme.text}>
-                <Switch>
-                  <Match when={mcpError()}>
-                    <span style={{ fg: theme.error }}>⊙ </span>
-                  </Match>
-                  <Match when={true}>
-                    <span style={{ fg: theme.success }}>⊙ </span>
-                  </Match>
-                </Switch>
-                {mcp()} MCP
+                Get started <span style={{ fg: theme.textMuted }}>/connect</span>
               </text>
-            </Show>
-            <text fg={theme.textMuted}>/status</text>
-          </Match>
-        </Switch>
+            </Match>
+            <Match when={connected()}>
+              <Show when={permissions().length > 0}>
+                <text fg={theme.warning}>
+                  <span style={{ fg: theme.warning }}>△</span> {permissions().length} Permission
+                  {permissions().length > 1 ? "s" : ""}
+                </text>
+              </Show>
+              <text fg={theme.text}>
+                <span style={{ fg: lsp().length > 0 ? theme.success : theme.textMuted }}>•</span> {lsp().length} LSP
+              </text>
+              <Show when={mcp()}>
+                <text fg={theme.text}>
+                  <Switch>
+                    <Match when={mcpError()}>
+                      <span style={{ fg: theme.error }}>⊙ </span>
+                    </Match>
+                    <Match when={true}>
+                      <span style={{ fg: theme.success }}>⊙ </span>
+                    </Match>
+                  </Switch>
+                  {mcp()} MCP
+                </text>
+              </Show>
+              <text fg={theme.textMuted}>/status</text>
+            </Match>
+          </Switch>
+        </box>
       </box>
-    </box>
+    </Show>
   )
 }
