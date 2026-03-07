@@ -95,6 +95,7 @@ export interface MessageProps {
   shellToolDefaultOpen?: boolean
   editToolDefaultOpen?: boolean
   showReasoningSummaries?: boolean
+  queued?: boolean
 }
 
 export interface MessagePartProps {
@@ -316,7 +317,9 @@ export function Message(props: MessageProps) {
   return (
     <Switch>
       <Match when={props.message.role === "user" && props.message}>
-        {(userMessage) => <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} />}
+        {(userMessage) => (
+          <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} queued={props.queued} />
+        )}
       </Match>
       <Match when={props.message.role === "assistant" && props.message}>
         {(assistantMessage) => (
@@ -457,7 +460,7 @@ export function AssistantMessageDisplay(props: {
   )
 }
 
-export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[] }) {
+export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[]; queued?: boolean }) {
   const dialog = useDialog()
   const i18n = useI18n()
   const [copied, setCopied] = createSignal(false)
@@ -534,6 +537,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
               <div
                 data-slot="user-message-attachment"
                 data-type={file.mime.startsWith("image/") ? "image" : "file"}
+                data-queued={props.queued ? "" : undefined}
                 onClick={() => {
                   if (file.mime.startsWith("image/") && file.url) {
                     openImagePreview(file.url, file.filename)
@@ -560,8 +564,16 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
         </div>
       </Show>
       <Show when={text()}>
-        <div data-slot="user-message-text" ref={(el) => (textRef = el)} onClick={toggleExpanded}>
+        <div
+          data-slot="user-message-text"
+          data-queued={props.queued ? "" : undefined}
+          ref={(el) => (textRef = el)}
+          onClick={toggleExpanded}
+        >
           <HighlightedText text={text()} references={inlineFiles()} agents={agents()} />
+          <Show when={props.queued}>
+            <div data-slot="user-message-queued-indicator">{i18n.t("ui.message.queued")}</div>
+          </Show>
           <button
             data-slot="user-message-expand"
             type="button"

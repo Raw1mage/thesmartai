@@ -102,6 +102,7 @@ export const dict = {
   "ui.message.collapse": "收合訊息",
   "ui.message.copy": "複製",
   "ui.message.copied": "已複製！",
+  "ui.message.queued": "排隊中",
   "ui.message.attachment.alt": "附件",
 
   "ui.patch.action.deleted": "已刪除",

@@ -250,6 +250,22 @@ export function SessionTurn(
 
   const lastAssistantMessage = createMemo(() => assistantMessages().at(-1))
 
+  const pending = createMemo(() => {
+    return assistantMessages().findLast(
+      (item): item is AssistantMessage => item.role === "assistant" && typeof item.time.completed !== "number",
+    )
+  })
+
+  const pendingUser = createMemo(() => {
+    const item = pending()
+    if (!item?.parentID) return
+    const messages = allMessages() ?? emptyMessages
+    const result = Binary.search(messages, item.parentID, (m) => m.id)
+    const msg = result.found ? messages[result.index] : messages.find((m) => m.id === item.parentID)
+    if (!msg || msg.role !== "user") return
+    return msg
+  })
+
   const error = createMemo(() => assistantMessages().find((m) => m.error)?.error)
   const errorText = createMemo(() => {
     const msg = error()?.data?.message
@@ -386,6 +402,20 @@ export function SessionTurn(
 
   const status = createMemo(() => data.store.session_status[props.sessionID] ?? idle)
   const working = createMemo(() => status().type !== "idle" && isLastUserMessage())
+  const active = createMemo(() => {
+    const msg = message()
+    const parent = pendingUser()
+    if (!msg || !parent) return false
+    return parent.id === msg.id
+  })
+  const queued = createMemo(() => {
+    const id = message()?.id
+    if (!id) return false
+    if (!pendingUser()) return false
+    const item = pending()
+    if (!item) return false
+    return id > item.id
+  })
   const retry = createMemo(() => {
     // session_status is session-scoped; only show retry on the active (last) turn
     if (!isLastUserMessage()) return
@@ -590,13 +620,13 @@ export function SessionTurn(
                   <Match when={true}>
                     <Show when={attachmentParts().length > 0}>
                       <div data-slot="session-turn-attachments" aria-live="off">
-                        <Message message={msg()} parts={attachmentParts()} />
+                        <Message message={msg()} parts={attachmentParts()} queued={queued()} />
                       </div>
                     </Show>
                     <div data-slot="session-turn-sticky" ref={setStickyRef}>
                       {/* User Message */}
                       <div data-slot="session-turn-message-content" aria-live="off">
-                        <Message message={msg()} parts={stickyParts()} />
+                        <Message message={msg()} parts={stickyParts()} queued={queued()} />
                       </div>
 
                       {/* Trigger (sticky) */}
@@ -611,7 +641,7 @@ export function SessionTurn(
                             aria-expanded={props.stepsExpanded}
                           >
                             <Switch>
-                              <Match when={working()}>
+                              <Match when={working() && active()}>
                                 <Spinner />
                               </Match>
                               <Match when={!props.stepsExpanded}>
@@ -667,7 +697,7 @@ export function SessionTurn(
                                 </span>
                                 <span data-slot="session-turn-retry-attempt">(#{retry()?.attempt})</span>
                               </Match>
-                              <Match when={working()}>
+                              <Match when={working() && active()}>
                                 <span data-slot="session-turn-status-text">
                                   {store.status ?? i18n.t("ui.sessionTurn.status.consideringNextSteps")}
                                 </span>
