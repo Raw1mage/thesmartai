@@ -19,6 +19,7 @@ import { SessionStatusSections } from "./session-status-sections"
 import { StatusTodoList } from "./status-todo-list"
 import { useStatusMonitor } from "./use-status-monitor"
 import { useStatusTodoSync } from "./use-status-todo-sync"
+import { useSessionResumeSync } from "./use-session-resume-sync"
 import { decode64 } from "@/utils/base64"
 
 export default function SessionToolPageRoute() {
@@ -52,6 +53,7 @@ export default function SessionToolPageRoute() {
     if (!id) return
     void sync.session.sync(id)
   })
+  useSessionResumeSync({ enabled: () => true, sessionID: () => params.id, sync })
 
   useStatusTodoSync({
     enabled: () => tool() === "status",

@@ -40,6 +40,7 @@ import { SessionHeader, SessionContextTab, SortableTab, FileVisual, NewSessionVi
 import { navMark, navParams } from "@/utils/perf"
 import { same } from "@/utils/same"
 import { createOpenReviewFile, focusTerminalById, getTabReorderIndex } from "@/pages/session/helpers"
+import { useSessionResumeSync } from "@/pages/session/use-session-resume-sync"
 import { createScrollSpy } from "@/pages/session/scroll-spy"
 import { createFileTabListSync } from "@/pages/session/file-tab-scroll"
 import { FileTabContent } from "@/pages/session/file-tabs"
@@ -666,6 +667,7 @@ export default function Page() {
     if (!id) return
     sync.session.sync(id)
   })
+  useSessionResumeSync({ enabled: () => true, sessionID: () => params.id, sync })
 
   createEffect(() => {
     if (!view().terminal.opened()) {

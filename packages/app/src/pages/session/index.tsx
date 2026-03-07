@@ -39,6 +39,7 @@ import { handoff } from "./utils/handoff"
 
 import { StickyAddButton, SessionReviewTab } from "./review-tab"
 import { useSessionCommands } from "./use-session-commands"
+import { useSessionResumeSync } from "./use-session-resume-sync"
 import { MessageTimeline } from "./message-timeline"
 import { FileTabContent } from "./file-tabs"
 import { TerminalPanel } from "./terminal-panel"
@@ -406,6 +407,7 @@ export default function Page() {
     if (!params.id) return
     sync.session.sync(params.id)
   })
+  useSessionResumeSync({ enabled: () => true, sessionID: () => params.id, sync })
 
   createEffect(() => {
     if (!view().terminal.opened()) {

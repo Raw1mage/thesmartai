@@ -1,7 +1,7 @@
 import { createOpencodeClient, type Event } from "@opencode-ai/sdk/v2/client"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
-import { batch, createEffect, onCleanup } from "solid-js"
+import { batch, createEffect, createSignal, onCleanup } from "solid-js"
 import { usePlatform } from "./platform"
 import { useServer } from "./server"
 import { useWebAuth } from "./web-auth"
@@ -72,14 +72,10 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     const streamFetch = eventFetch ?? fetchWithAuth
 
-    const eventSdk = createOpencodeClient({
-      baseUrl: server.url,
-      signal: abort.signal,
-      fetch: streamFetch,
-    })
     const emitter = createGlobalEmitter<{
       [key: string]: Event
     }>()
+    const [reconnectVersion, setReconnectVersion] = createSignal(0)
 
     type Queued = { directory: string; payload: Event }
     const FLUSH_FRAME_MS = 16
@@ -151,78 +147,115 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       return message.includes("401") || message.toLowerCase().includes("unauthorized")
     }
 
-    void (async () => {
-      let backoff = RECONNECT_DELAY_MS
+    const reconnect = (reason: string) => {
+      if (abort.signal.aborted) return
+      streamErrorLogged = false
+      console.info("[global-sdk] reconnecting event stream", { reason, url: server.url })
+      setReconnectVersion((value) => value + 1)
+    }
 
-      while (!abort.signal.aborted) {
-        if (!shouldConnectEventStream()) {
-          streamErrorLogged = false
-          await wait(RECONNECT_DELAY_MS)
-          continue
-        }
+    createEffect(() => {
+      reconnectVersion()
+      const streamAbort = new AbortController()
+      const signal = AbortSignal.any([abort.signal, streamAbort.signal])
+      const loopSdk = createOpencodeClient({
+        baseUrl: server.url,
+        signal,
+        fetch: streamFetch,
+      })
 
-        try {
-          const events = await eventSdk.global.event({
-            onSseError: (error) => {
-              if (isUnauthorized(error) && webAuth.enabled() && !webAuth.authenticated()) return
-              if (streamErrorLogged) return
+      void (async () => {
+        let backoff = RECONNECT_DELAY_MS
+
+        while (!signal.aborted) {
+          if (!shouldConnectEventStream()) {
+            streamErrorLogged = false
+            await wait(RECONNECT_DELAY_MS)
+            continue
+          }
+
+          try {
+            const events = await loopSdk.global.event({
+              onSseError: (error) => {
+                if (isUnauthorized(error) && webAuth.enabled() && !webAuth.authenticated()) return
+                if (streamErrorLogged) return
+                streamErrorLogged = true
+                console.error("[global-sdk] event stream error", {
+                  url: server.url,
+                  fetch: eventFetch ? "platform" : "webview",
+                  error,
+                })
+              },
+            })
+            let yielded = Date.now()
+            for await (const event of events.stream) {
+              backoff = RECONNECT_DELAY_MS
+              streamErrorLogged = false
+              const directory = normalizeDirectoryKey(event.directory ?? "global")
+              const payload = event.payload
+              const k = key(directory, payload)
+              if (k) {
+                const i = coalesced.get(k)
+                if (i !== undefined) {
+                  queue[i] = { directory, payload }
+                  if (payload.type === "message.part.updated") {
+                    const part = payload.properties.part
+                    staleDeltas.add(deltaKey(directory, part.messageID, part.id))
+                  }
+                  continue
+                }
+                coalesced.set(k, queue.length)
+              }
+              queue.push({ directory, payload })
+              schedule()
+
+              if (Date.now() - yielded < STREAM_YIELD_MS) continue
+              yielded = Date.now()
+              await wait(0)
+            }
+          } catch (error) {
+            if (signal.aborted) return
+            if (isUnauthorized(error) && webAuth.enabled() && !webAuth.authenticated()) {
+              await wait(RECONNECT_DELAY_MS)
+              continue
+            }
+            if (!streamErrorLogged) {
               streamErrorLogged = true
-              console.error("[global-sdk] event stream error", {
+              console.error("[global-sdk] event stream failed", {
                 url: server.url,
                 fetch: eventFetch ? "platform" : "webview",
                 error,
               })
-            },
-          })
-          let yielded = Date.now()
-          for await (const event of events.stream) {
-            backoff = RECONNECT_DELAY_MS
-            streamErrorLogged = false
-            const directory = normalizeDirectoryKey(event.directory ?? "global")
-            const payload = event.payload
-            const k = key(directory, payload)
-            if (k) {
-              const i = coalesced.get(k)
-              if (i !== undefined) {
-                queue[i] = { directory, payload }
-                if (payload.type === "message.part.updated") {
-                  const part = payload.properties.part
-                  staleDeltas.add(deltaKey(directory, part.messageID, part.id))
-                }
-                continue
-              }
-              coalesced.set(k, queue.length)
             }
-            queue.push({ directory, payload })
-            schedule()
+          }
 
-            if (Date.now() - yielded < STREAM_YIELD_MS) continue
-            yielded = Date.now()
-            await wait(0)
-          }
-        } catch (error) {
-          if (isUnauthorized(error) && webAuth.enabled() && !webAuth.authenticated()) {
-            await wait(RECONNECT_DELAY_MS)
-            continue
-          }
-          if (!streamErrorLogged) {
-            streamErrorLogged = true
-            console.error("[global-sdk] event stream failed", {
-              url: server.url,
-              fetch: eventFetch ? "platform" : "webview",
-              error,
-            })
-          }
+          if (signal.aborted) return
+          await wait(backoff)
+          backoff = Math.min(backoff * 2, 10000)
         }
+      })().finally(flush)
 
-        if (abort.signal.aborted) return
-        await wait(backoff)
-        backoff = Math.min(backoff * 2, 10000)
-      }
-    })().finally(flush)
+      onCleanup(() => {
+        streamAbort.abort()
+      })
+    })
+
+    const onVisibility = () => {
+      if (document.hidden) return
+      reconnect("visibilitychange")
+    }
+    const onPageShow = () => reconnect("pageshow")
+    const onOnline = () => reconnect("online")
+
+    document.addEventListener("visibilitychange", onVisibility)
+    window.addEventListener("pageshow", onPageShow)
+    window.addEventListener("online", onOnline)
 
     onCleanup(() => {
       abort.abort()
+      document.removeEventListener("visibilitychange", onVisibility)
+      window.removeEventListener("pageshow", onPageShow)
+      window.removeEventListener("online", onOnline)
       flush()
     })
 

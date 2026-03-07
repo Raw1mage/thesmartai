@@ -381,8 +381,55 @@ function createGlobalSync() {
     })
   }
 
+  let hiddenAt = 0
+
+  const refreshVisibleState = async (reason: "resume" | "pageshow" | "online") => {
+    if (reason === "online") {
+      await bootstrap().catch(() => {})
+      queue.refresh()
+      return
+    }
+
+    if (reason === "pageshow") {
+      queue.refresh()
+      await Promise.all(Object.keys(children.children).map((directory) => bootstrapInstance(directory).catch(() => {})))
+      return
+    }
+
+    if (hiddenAt !== 0 && Date.now() - hiddenAt < 1500) {
+      queue.refresh()
+      return
+    }
+
+    queue.refresh()
+    await Promise.all(Object.keys(children.children).map((directory) => bootstrapInstance(directory).catch(() => {})))
+  }
+
   onMount(() => {
     void bootstrap()
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        hiddenAt = Date.now()
+        return
+      }
+      void refreshVisibleState("resume")
+    }
+    const onPageShow = () => {
+      void refreshVisibleState("pageshow")
+    }
+    const onOnline = () => {
+      void refreshVisibleState("online")
+    }
+
+    document.addEventListener("visibilitychange", onVisibility)
+    window.addEventListener("pageshow", onPageShow)
+    window.addEventListener("online", onOnline)
+    onCleanup(() => {
+      document.removeEventListener("visibilitychange", onVisibility)
+      window.removeEventListener("pageshow", onPageShow)
+      window.removeEventListener("online", onOnline)
+    })
   })
 
   const projectApi = {
