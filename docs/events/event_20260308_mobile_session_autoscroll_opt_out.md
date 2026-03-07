@@ -8,12 +8,14 @@ Status: In Progress
 - 在 web session 閱讀 AI 文字輸出時，不要再強制貼底
 - 使用者往上閱讀後，新訊息應保留位置，讓使用者自行決定何時回到底部
 - mobile / desktop web session 一併停用自動跟隨新訊息
+- 收斂 scroll ownership，避免多層元件各自搶奪 viewport 位置
 
 ## 範圍
 
 ### IN
 
 - `packages/app/src/pages/session/index.tsx`
+- `packages/ui/src/components/session-turn.tsx`
 - web session auto-scroll 啟用條件
 
 ### OUT
@@ -46,6 +48,12 @@ Status: In Progress
 - Mitigation landed:
   - web session now disables that implicit hash-scroll bottom jump path as well
   - only explicit user action (the jump-to-latest button / direct navigation intent) should move the viewport to bottom
+- Ownership issue identified:
+  - `SessionTurn` itself also owned a nested `createAutoScroll(...)` instance
+  - step expand/collapse and streaming updates inside one turn could re-lock the viewport to that turn's local position
+- Ownership fix landed:
+  - removed `SessionTurn` local auto-scroll entirely
+  - only the page-level session scroller now owns viewport movement
 
 ### Validation
 
@@ -53,3 +61,4 @@ Status: In Progress
 - Architecture Sync: Verified (No doc changes)
   - 依據：本輪僅調整 web session auto-scroll 啟用條件，不改動 session persistence、runtime、或 API architecture 邊界。
 - Follow-up validation after disabling the hash-scroll layer's implicit `forceScrollToBottom()` path also passed via `bun run typecheck` (`Tasks: 16 successful, 16 total`).
+- Scroll-ownership validation after removing `SessionTurn` local auto-scroll also passed via `bun run typecheck` (`Tasks: 16 successful, 16 total`).

@@ -23,7 +23,6 @@ import { SessionRetry } from "./session-retry"
 import { Tooltip } from "./tooltip"
 import { createStore } from "solid-js/store"
 import { DateTime, DurationUnit, Interval } from "luxon"
-import { createAutoScroll } from "../hooks"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 
 type Translator = (key: UiI18nKey, params?: UiI18nParams) => string
@@ -475,12 +474,6 @@ export function SessionTurn(
     return locale.startsWith("zh") ? human.replaceAll("、", "") : human
   }
 
-  const autoScroll = createAutoScroll({
-    working,
-    onUserInteracted: props.onUserInteracted,
-    overflowAnchor: "auto",
-  })
-
   createResizeObserver(
     () => stickyRef(),
     ({ height }) => {
@@ -598,21 +591,11 @@ export function SessionTurn(
 
   return (
     <div data-component="session-turn" class={props.classes?.root} ref={setRootRef}>
-      <div
-        ref={autoScroll.scrollRef}
-        onScroll={autoScroll.handleScroll}
-        data-slot="session-turn-content"
-        class={props.classes?.content}
-      >
-        <div onClick={autoScroll.handleInteraction}>
+      <div data-slot="session-turn-content" class={props.classes?.content}>
+        <div>
           <Show when={message()}>
             {(msg) => (
-              <div
-                ref={autoScroll.contentRef}
-                data-message={msg().id}
-                data-slot="session-turn-message-container"
-                class={props.classes?.container}
-              >
+              <div data-message={msg().id} data-slot="session-turn-message-container" class={props.classes?.container}>
                 <Switch>
                   <Match when={isShellMode()}>
                     <Part part={shellModePart()!} message={msg()} defaultOpen />
