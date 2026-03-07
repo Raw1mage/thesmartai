@@ -70,6 +70,12 @@ Status: In Progress
   - `/home/pkcs12/projects/opencode/packages/app/src/pages/session.tsx`
   - `/home/pkcs12/projects/opencode/packages/app/src/pages/session/index.tsx`
   - `/home/pkcs12/projects/opencode/packages/app/src/pages/session/tool-page.tsx`
+  - `/home/pkcs12/projects/opencode/packages/app/src/pages/session/use-session-resume-sync.ts`
   - `/home/pkcs12/projects/opencode/docs/events/event_20260307_mobile_browser_resume_sync.md`
+- Browser validation attempt:
+  - 透過 Playwright 成功到達 web login page，確認 app 仍受 web auth gate 保護。
+  - 以 `.env` 中 legacy server credentials（`opencode` / `Ne20240Wsl!`）測試 `POST /global/auth/login`，收到 `401 AUTH_INVALID`。
+  - `GET /global/auth/session` 回傳 `usernameHint: "pkcs12"`，表示目前 web auth runtime 已不是單純使用 `.env` 內 legacy username/password，而是走到不同 auth source（可能為 PAM / htpasswd / runtime override）。
+  - 因缺少可登入 web auth 的有效前端帳密，無法在 session page 內完成真實 foreground-resume E2E 驗證；目前僅完成 code-path/typecheck 驗證與 login-gate 探勘。
 - Architecture Sync: Verified (No doc changes)
   - 依據：本輪僅補強 web foreground resume 時的 reconnect / rehydrate 策略，未變更 backend API contract、ownership model、provider/session/runtime 架構邊界。
