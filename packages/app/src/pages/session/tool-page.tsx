@@ -3,11 +3,13 @@ import { useNavigate, useParams, useSearchParams } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
 import FileTree from "@/components/file-tree"
 import { SessionHeader } from "@/components/session"
+import { SessionContextTab } from "@/components/session"
 import { useFile } from "@/context/file"
 import { useLanguage } from "@/context/language"
+import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
-import type { Todo } from "@opencode-ai/sdk/v2/client"
+import type { Todo, UserMessage } from "@opencode-ai/sdk/v2/client"
 import {
   buildMonitorEntries,
   MONITOR_LEVEL_LABELS,
@@ -24,6 +26,7 @@ import { decode64 } from "@/utils/base64"
 
 export default function SessionToolPageRoute() {
   const language = useLanguage()
+  const layout = useLayout()
   const navigate = useNavigate()
   const params = useParams<{ dir?: string; id?: string; tool?: string }>()
   const [searchParams, setSearchParams] = useSearchParams<{ file?: string }>()
@@ -37,11 +40,15 @@ export default function SessionToolPageRoute() {
   const tool = createMemo(() => {
     if (params.tool === "files") return "files" as const
     if (params.tool === "status" || params.tool === "monitor" || params.tool === "todo") return "status" as const
+    if (params.tool === "context") return "context" as const
     return "status" as const
   })
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
+  const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
+  const view = createMemo(() => layout.view(sessionKey))
+  const visibleUserMessages = createMemo(() => messages().filter((msg) => msg.role === "user") as UserMessage[])
   const todos = createMemo(() => {
     const id = params.id
     if (!id) return undefined
@@ -246,6 +253,10 @@ export default function SessionToolPageRoute() {
               </Show>
             }
           />
+        </Show>
+
+        <Show when={tool() === "context"}>
+          <SessionContextTab messages={messages} visibleUserMessages={visibleUserMessages} view={view} info={info} />
         </Show>
       </div>
     </div>

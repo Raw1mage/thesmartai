@@ -2,7 +2,7 @@ import { Match, Show, Switch, createMemo } from "solid-js"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { ProgressCircle } from "@opencode-ai/ui/progress-circle"
 import { Button } from "@opencode-ai/ui/button"
-import { useParams } from "@solidjs/router"
+import { useNavigate, useParams } from "@solidjs/router"
 
 import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
@@ -11,6 +11,8 @@ import { getSessionContextMetrics } from "@/components/session/session-context-m
 
 interface SessionContextUsageProps {
   variant?: "button" | "indicator"
+  mobileToolPage?: boolean
+  buttonClass?: string
 }
 
 function openSessionContext(args: { layout: ReturnType<typeof useLayout> }) {
@@ -24,10 +26,12 @@ function openSessionContext(args: { layout: ReturnType<typeof useLayout> }) {
 export function SessionContextUsage(props: SessionContextUsageProps) {
   const sync = useSync()
   const params = useParams()
+  const navigate = useNavigate()
   const layout = useLayout()
   const language = useLanguage()
 
   const variant = createMemo(() => props.variant ?? "button")
+  const mobileToolPage = createMemo(() => props.mobileToolPage ?? false)
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
 
   const usd = createMemo(
@@ -46,6 +50,10 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
 
   const openContext = () => {
     if (!params.id) return
+    if (mobileToolPage()) {
+      navigate(`/${params.dir}/session/${params.id}/tool/context`)
+      return
+    }
     openSessionContext({
       layout,
     })
@@ -89,7 +97,7 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
             <Button
               type="button"
               variant="ghost"
-              class="size-6"
+              class={props.buttonClass ?? "size-6"}
               onClick={openContext}
               aria-label={language.t("context.usage.view")}
               aria-pressed={layout.fileTree.opened() && layout.fileTree.mode() === "context"}

@@ -128,17 +128,19 @@ export function SessionHeader() {
   const sessionBasePath = createMemo(() =>
     params.id ? `/${params.dir}/session/${params.id}` : `/${params.dir}/session`,
   )
-  const subpage = createMemo<"files" | "status" | "terminal" | undefined>(() => {
+  const subpage = createMemo<"files" | "status" | "context" | "terminal" | undefined>(() => {
     const path = location.pathname
     const tool = path.match(/\/tool\/([^/]+)$/)?.[1]
     if (tool === "files") return "files"
     if (tool === "status" || tool === "todo" || tool === "monitor") return "status"
+    if (tool === "context") return "context"
     if (path.endsWith("/terminal-popout")) return "terminal"
     return undefined
   })
   const subpageTitle = createMemo(() => {
     if (subpage() === "files") return language.t("session.tools.files")
     if (subpage() === "status") return language.t("status.popover.trigger")
+    if (subpage() === "context") return language.t("session.tab.context")
     if (subpage() === "terminal") return language.t("session.tools.terminal")
     return undefined
   })
@@ -235,7 +237,7 @@ export function SessionHeader() {
     navigate(`${next.pathname}${next.search}`)
   }
 
-  const openToolPage = (tool: "files" | "status") => {
+  const openToolPage = (tool: "files" | "status" | "context") => {
     navigate(`${sessionBasePath()}/tool/${tool}`)
   }
 
@@ -279,7 +281,7 @@ export function SessionHeader() {
     view().filePane.toggle()
   }
 
-  const toggleMobileTool = (tool: "files" | "status" | "terminal") => {
+  const toggleMobileTool = (tool: "files" | "status" | "context" | "terminal") => {
     if (subpage() === tool) {
       navigate(sessionBasePath())
       return
@@ -300,7 +302,7 @@ export function SessionHeader() {
     return undefined
   })
 
-  const mobileActiveTool = createMemo<"changes" | "files" | "status" | "terminal" | undefined>(() => {
+  const mobileActiveTool = createMemo<"changes" | "files" | "status" | "context" | "terminal" | undefined>(() => {
     if (subpage()) return subpage()
     if (view().filePane.opened()) return "changes"
     return undefined
@@ -471,6 +473,10 @@ export function SessionHeader() {
                         />
                       </div>
                     </Button>
+                    <SessionContextUsage
+                      mobileToolPage
+                      buttonClass={mobileNavButtonClass(mobileActiveTool() === "context")}
+                    />
                     <Button
                       type="button"
                       variant="ghost"
