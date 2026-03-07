@@ -40,9 +40,16 @@ Status: In Progress
 - Resulting behavior:
   - web session no longer auto-follows new content by default on either mobile or desktop
   - the existing "scroll to latest" floating button remains the explicit way to jump back down
+- Follow-up issue found after visual use:
+  - even with auto-follow disabled, `useSessionHashScroll` still called `forceScrollToBottom()` during initial ready / no-hash flows
+  - this caused the viewport to bounce between the preserved reading position and the bottom
+- Mitigation landed:
+  - web session now disables that implicit hash-scroll bottom jump path as well
+  - only explicit user action (the jump-to-latest button / direct navigation intent) should move the viewport to bottom
 
 ### Validation
 
 - `bun run typecheck` passed in `/home/pkcs12/projects/opencode` after broadening the opt-out to all web sessions (`Tasks: 16 successful, 16 total`).
 - Architecture Sync: Verified (No doc changes)
   - 依據：本輪僅調整 web session auto-scroll 啟用條件，不改動 session persistence、runtime、或 API architecture 邊界。
+- Follow-up validation after disabling the hash-scroll layer's implicit `forceScrollToBottom()` path also passed via `bun run typecheck` (`Tasks: 16 successful, 16 total`).

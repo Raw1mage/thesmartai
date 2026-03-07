@@ -881,6 +881,7 @@ export default function Page() {
     working: () => false,
     overflowAnchor: "dynamic",
   })
+  const allowImplicitBottomJump = () => false
 
   const { scrollToMessage, applyHash, clearMessageHash } = useSessionHashScroll({
     scroller: () => scroller,
@@ -889,7 +890,9 @@ export default function Page() {
     activeMessageId: () => store.messageId,
     onActiveChange: (id) => setStore("messageId", id),
     onPauseAutoScroll: () => autoScroll.pause(),
-    onForceScrollToBottom: () => autoScroll.forceScrollToBottom(),
+    onForceScrollToBottom: () => {
+      if (allowImplicitBottomJump()) autoScroll.forceScrollToBottom()
+    },
     turnStart: () => store.turnStart,
     onBackfill: (index) => {
       setStore("turnStart", index)
