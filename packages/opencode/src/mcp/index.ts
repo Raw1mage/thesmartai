@@ -486,6 +486,7 @@ export namespace MCP {
         cwd,
         env: {
           ...Env.all(),
+          OPENCODE_PID: process.env.OPENCODE_PID ?? String(process.pid),
           ...(cmd === "opencode" ? { BUN_BE_BUN: "1" } : {}),
           ...mcp.environment,
         },

@@ -83,6 +83,7 @@ const cli = yargs(hideBin(process.argv))
 
     process.env.AGENT = "1"
     process.env.OPENCODE = "1"
+    process.env.OPENCODE_PID = String(process.pid)
 
     if (!process.env.OPENCODE_CLI_TOKEN) {
       process.env.OPENCODE_CLI_TOKEN = crypto.randomBytes(32).toString("hex")
