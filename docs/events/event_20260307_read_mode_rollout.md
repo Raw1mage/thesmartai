@@ -1,13 +1,13 @@
 # Event: read-mode rollout
 
 Date: 2026-03-07
-Status: Done
+Status: Cancelled
 
 ## 需求
 
-- 將 `read-mode` 作為 cms 主線立即可用的 skill 與互動規範
-- 讓 agent 能主動判斷何時進入 read-mode
-- 限定 read-mode 只用在面向人類的長篇說明性輸出，不干擾 tool/build/test/git/runtime 回報
+- 原先嘗試將 `read-mode` 作為 cms 主線立即可用的 skill 與互動規範
+- 後續決定撤回 cms branch 的 `read-mode` 導入
+- 原因：目前互動節奏需求與 mobile/web 閱讀行為問題混雜，尚不適合作為 repo 預設規範
 
 ## 範圍
 
@@ -29,11 +29,11 @@ Status: Done
 ## 任務清單
 
 - [x] 建立 read-mode rollout event
-- [x] 定義主動觸發條件與排除條件
-- [x] 新增 runtime/template skill
-- [x] 更新 AGENTS / templates/AGENTS 使用規範
-- [x] 更新 enablement registry
-- [x] 驗證並 commit
+- [x] 定義主動觸發條件與排除條件（已撤回）
+- [x] 新增 runtime/template skill（已撤回）
+- [x] 更新 AGENTS / templates/AGENTS 使用規範（已撤回）
+- [x] 更新 enablement registry（已撤回）
+- [x] 記錄 cms branch 撤回決策
 
 ## Debug Checkpoints
 
@@ -45,14 +45,15 @@ Status: Done
 
 ### Execution
 
-- Added repo-delivered runtime/template skill files for `read-mode`.
-- Updated project/template AGENTS guidance so the orchestrator proactively enters `read-mode` for long explanatory answers, but explicitly excludes tool/build/test/git/runtime result reporting.
-- Updated runtime/template enablement registries so `read-mode` becomes discoverable as a first-class skill and routing hint for long-form explanatory response pacing.
-- Refined `read-mode` behavior from "long explanatory answers" to "any human-reading explanatory output", with a default pause cadence of roughly every 20 lines and a minimal `question` prompt of `是 / 否 / custom feedback`.
+- Initial rollout was completed, but later user feedback showed the policy was not suitable as a repo-default cms behavior.
+- The concrete issues mixed two different concerns:
+  - explanatory text pacing
+  - mobile/web reading behavior and bottom-stick UX
+- Decision: remove `read-mode` from cms branch entirely and revisit later only if reintroduced as a better-scoped skill/policy.
 
 ### Validation
 
-- `bun -e 'JSON.parse(...)'` 驗證 `packages/opencode/src/session/prompt/enablement.json` 與 `templates/prompts/enablement.json` 均為有效 JSON。
-- `read-mode` runtime skill file 已建立於 `.opencode/skills/read-mode/SKILL.md`，template skill 已同步至 `templates/skills/read-mode/SKILL.md`。
+- `bun -e 'JSON.parse(...)'` 驗證 rollback 後的 `packages/opencode/src/session/prompt/enablement.json` 與 `templates/prompts/enablement.json` 均為有效 JSON。
+- `templates/skills/read-mode/SKILL.md` 已自 repo 移除；cms branch 不再交付 `read-mode`。
 - Architecture Sync: Verified (No doc changes)
-  - 依據：本輪僅新增互動式說明輸出規範與 skill / enablement 登錄，未改動 runtime 架構邊界或模組責任分層。
+  - 依據：本輪為技能/規範 rollback，不涉及 runtime architecture 邊界變更。
