@@ -1389,9 +1389,9 @@ export function Prompt(props: PromptProps) {
               syntaxStyle={syntax()}
             />
             <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1}>
-              <text fg={highlight()}>
-                {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current()?.name || "Agent")}{" "}
-              </text>
+              <Show when={store.mode === "shell"}>
+                <text fg={highlight()}>Shell </text>
+              </Show>
               <Show when={store.mode === "normal"}>
                 <box flexDirection="row" gap={1}>
                   <text

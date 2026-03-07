@@ -2,7 +2,7 @@ import { Match, Show, Switch, createMemo } from "solid-js"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { ProgressCircle } from "@opencode-ai/ui/progress-circle"
 import { Button } from "@opencode-ai/ui/button"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useLocation, useNavigate, useParams } from "@solidjs/router"
 
 import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
@@ -26,12 +26,20 @@ function openSessionContext(args: { layout: ReturnType<typeof useLayout> }) {
 export function SessionContextUsage(props: SessionContextUsageProps) {
   const sync = useSync()
   const params = useParams()
+  const location = useLocation()
   const navigate = useNavigate()
   const layout = useLayout()
   const language = useLanguage()
 
   const variant = createMemo(() => props.variant ?? "button")
   const mobileToolPage = createMemo(() => props.mobileToolPage ?? false)
+  const sessionBasePath = createMemo(() =>
+    params.id ? `/${params.dir}/session/${params.id}` : `/${params.dir}/session`,
+  )
+  const isMobileContextPage = createMemo(() => location.pathname === `${sessionBasePath()}/tool/context`)
+  const isContextActive = createMemo(() =>
+    mobileToolPage() ? isMobileContextPage() : layout.fileTree.opened() && layout.fileTree.mode() === "context",
+  )
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
 
   const usd = createMemo(
@@ -51,7 +59,11 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
   const openContext = () => {
     if (!params.id) return
     if (mobileToolPage()) {
-      navigate(`/${params.dir}/session/${params.id}/tool/context`)
+      if (isMobileContextPage()) {
+        navigate(sessionBasePath())
+        return
+      }
+      navigate(`${sessionBasePath()}/tool/context`)
       return
     }
     openSessionContext({
@@ -100,7 +112,7 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
               class={props.buttonClass ?? "size-6"}
               onClick={openContext}
               aria-label={language.t("context.usage.view")}
-              aria-pressed={layout.fileTree.opened() && layout.fileTree.mode() === "context"}
+              aria-pressed={isContextActive()}
             >
               {circle()}
             </Button>

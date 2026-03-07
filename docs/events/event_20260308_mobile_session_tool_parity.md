@@ -41,6 +41,7 @@ OUT:
 ### Execution
 
 - `SessionContextUsage` 新增 `mobileToolPage` 路徑；在 mobile 上點擊 context button 時改導向 `/tool/context`，不再走 desktop sidebar state。
+- mobile context button 補齊 second-tap close 行為：若目前已在 `/tool/context`，再按一次即返回主 session 頁。
 - `SessionHeader` 的 mobile subpage 解析 / active state / title / tool navigation 擴充支援 `context`。
 - `SessionToolPageRoute` 新增 `context` tool mode，使用 `SessionContextTab` 以全頁方式呈現 context 資訊。
 - 重新檢查 repo 內 auto yes 相關 UI：目前僅保留 `/auto-yes-enabled` 與 `/auto-yes-disabled` slash commands；未發現獨立 toggle component，故不做額外 UI 刪除改動。

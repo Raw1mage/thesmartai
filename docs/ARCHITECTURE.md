@@ -113,6 +113,8 @@ The `cms` branch is the primary product line for this environment, featuring sig
 5. **Web realtime behavior**
    - Primary path: SSE global events (`/global/event`) drive incremental UI updates.
    - Reliability fallback: while `session.status !== idle`, web periodically forces message snapshot hydration (`session.sync(..., { force: true })`) so assistant replies remain visible without page refresh if SSE propagation is delayed/dropped.
+   - Prompt footer quota metadata is **not** driven by raw SSE deltas alone. For OpenAI usage, web uses a conditional refresh gate in `packages/app/src/components/prompt-input.tsx`: it refetches quota only when a new assistant turn completes **and** the previous quota refresh is older than 60 seconds **and** the effective provider family is `openai`.
+   - This keeps footer usage reasonably fresh after real AI interaction while avoiding constant polling for idle pages or non-OpenAI providers.
 
 6. **Runtime ownership target**
    - Runtime memory/history/config/state are owned by authenticated user home (`~/.config`, `~/.local/share`, `~/.local/state`).
@@ -154,6 +156,42 @@ No runtime decision should depend on "guessing" family from an arbitrary dashed 
 | Add Google API account          | `DialogGoogleApiAdd`                                                          | Adds `google-api` account with explicit family key                    |
 | OAuth account connect           | `DialogProvider` → `/provider/:id/oauth/*`                                    | Stores auth via `Auth.set(...)` / account module                      |
 | Active account switch           | `/account/:family/active`                                                     | Rotation and model availability read new active account               |
+
+#### B.1) Prompt footer quota/runtime metadata pipeline (TUI + Web)
+
+This subsection documents how prompt footer usage/account metadata stays fresh without high CPU polling.
+
+1. **TUI prompt footer orchestration**
+   - Entry point: `packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx`
+   - TUI computes footer metadata from current provider/model/account state and provider-specific quota hints.
+   - OpenAI quota is loaded through a Solid `createResource(quotaRefresh, ...)` path (`codexQuota`).
+   - Refresh is triggered by two low-cost signals:
+     - **turn completion signal**: when `lastCompletedAssistant` changes, TUI increments `quotaRefresh`
+     - **low-frequency timer**: footer tick refresh (default 15s via `OPENCODE_TUI_FOOTER_REFRESH_MS`)
+   - Result: footer usage looks near-realtime after real assistant work, but avoids aggressive background polling.
+
+2. **Web prompt footer orchestration**
+   - Entry point: `packages/app/src/components/prompt-input.tsx`
+   - Web prompt footer also derives metadata from current provider/account state, but OpenAI quota refresh is stricter than TUI for browser efficiency.
+   - The web quota resource key is gated by `quotaRefresh` and only becomes active for `openai`.
+   - Refresh policy is event-driven, not interval-driven:
+     - wait for a **new completed assistant turn**
+     - require **more than 60 seconds** since the previous quota refresh
+     - require effective provider family = `openai`
+   - Non-OpenAI providers do not participate in this refresh path.
+
+3. **Shared OpenAI quota source-of-truth**
+   - Canonical implementation: `packages/opencode/src/account/quota/openai.ts`
+   - Responsibilities:
+     - refresh expired Codex/OpenAI OAuth access tokens
+     - call `https://chatgpt.com/backend-api/wham/usage`
+     - normalize usage windows into footer-friendly remaining percentages (`hourlyRemaining`, `weeklyRemaining`, `hasHourlyWindow`)
+   - Backend route `packages/opencode/src/server/routes/account.ts` exposes `/account/quota` for web consumption.
+
+4. **Caching / load-shedding contract**
+   - OpenAI quota fetching uses in-process cache (`quotaCache`) with 5-minute TTL and stale-while-revalidate behavior.
+   - This means UI-triggered refresh does **not** imply a guaranteed remote usage API call every time; cached quota may be served immediately while refresh happens only when stale.
+   - Architectural goal: preserve operator-visible freshness after actual AI usage while keeping CPU/network cost bounded.
 
 #### C) Backend provider graph assembly (canonical order)
 

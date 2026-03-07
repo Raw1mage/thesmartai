@@ -62,6 +62,7 @@ import { PromptContextItems } from "./prompt-input/context-items"
 import { PromptImageAttachments } from "./prompt-input/image-attachments"
 import { PromptDragOverlay } from "./prompt-input/drag-overlay"
 import { promptPlaceholder } from "./prompt-input/placeholder"
+import { shouldRefreshOpenAIQuota } from "./prompt-input/quota-refresh"
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
 import { buildAccountRows, normalizeProviderFamily } from "./model-selector-state"
 
@@ -219,6 +220,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       },
   )
   const working = createMemo(() => status()?.type !== "idle")
+  const [quotaRefresh, setQuotaRefresh] = createSignal(0)
+  const [lastQuotaRefreshMarker, setLastQuotaRefreshMarker] = createSignal("")
+  const [lastQuotaRefreshAt, setLastQuotaRefreshAt] = createSignal(0)
 
   // Webapp watchdog for missed stream terminal events.
   // Symptom addressed: tool outputs with truncation note can occasionally leave UI spinner stuck
@@ -251,6 +255,28 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       disposed = true
       clearInterval(timer)
     })
+  })
+
+  const lastCompletedAssistant = createMemo(() => {
+    const sessionID = params.id
+    if (!sessionID) return undefined
+    const messages = sync.data.message[sessionID] ?? []
+    return messages.findLast((message) => message.role === "assistant" && message.time?.completed)
+  })
+
+  createEffect(() => {
+    const model = currentModel()
+    const providerFamily = model ? (effectiveProviderFamily() ?? model.provider.id) : undefined
+    const last = lastCompletedAssistant()
+    const completed =
+      last && "completed" in last.time && typeof last.time.completed === "number" ? last.time.completed : undefined
+    if (!last || completed === undefined) return
+    const marker = `${last.id}:${completed}`
+    if (marker === lastQuotaRefreshMarker()) return
+    if (!shouldRefreshOpenAIQuota({ providerFamily, lastRefreshAt: lastQuotaRefreshAt() })) return
+    setLastQuotaRefreshMarker(marker)
+    setLastQuotaRefreshAt(Date.now())
+    setQuotaRefresh((value) => value + 1)
   })
 
   const imageAttachments = createMemo(() =>
@@ -336,11 +362,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       const model = currentModel()
       if (!model) return
       const providerFamily = effectiveProviderFamily() ?? model.provider.id
-      return `${providerFamily}:${model.id}`
+      if (providerFamily !== "openai") return undefined
+      return `${providerFamily}:${model.id}:${quotaRefresh()}`
     },
     async (value) => {
       const [providerId, ...rest] = value.split(":")
-      const modelID = rest.join(":")
+      const modelID = rest.slice(0, -1).join(":")
       if (!providerId || !modelID) return undefined
       const response = await globalSDK.fetch(
         `${globalSDK.url}/api/v2/account/quota?providerId=${encodeURIComponent(providerId)}&modelID=${encodeURIComponent(modelID)}`,
@@ -542,8 +569,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       .filter((agent) => !agent.hidden && agent.mode !== "primary")
       .map((agent): AtOption => ({ type: "agent", name: agent.name, display: agent.name })),
   )
-  const agentNames = createMemo(() => local.agent.list().map((agent) => agent.name))
-
   const handleAtSelect = (option: AtOption | undefined) => {
     if (!option) return
     if (option.type === "agent") {
@@ -1281,21 +1306,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
-                <TooltipKeybind
-                  placement="top"
-                  gutter={8}
-                  title={language.t("command.agent.cycle")}
-                  keybind={command.keybind("agent.cycle")}
-                >
-                  <Select
-                    options={agentNames()}
-                    current={local.agent.current()?.name ?? ""}
-                    onSelect={local.agent.set}
-                    class={`capitalize ${variantOptions().length > 0 ? "max-w-full" : "max-w-[120px]"}`}
-                    valueClass="truncate"
-                    variant="ghost"
-                  />
-                </TooltipKeybind>
                 <TooltipKeybind
                   placement="top"
                   gutter={8}
