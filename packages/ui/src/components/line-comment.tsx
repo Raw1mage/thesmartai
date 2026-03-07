@@ -136,6 +136,7 @@ export const LineCommentEditor = (props: LineCommentEditorProps) => {
           value={split.value}
           onInput={(e) => split.onInput(e.currentTarget.value)}
           onKeyDown={(e) => {
+            if (e.isComposing || e.keyCode === 229) return
             if (e.key === "Escape") {
               e.preventDefault()
               e.stopPropagation()

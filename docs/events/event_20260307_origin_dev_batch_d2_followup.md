@@ -15,9 +15,12 @@ Status: In Progress
 - `packages/app/src/pages/session/message-timeline.tsx`
 - `packages/app/src/pages/session/terminal-panel.tsx`
 - `packages/app/src/pages/session/index.tsx`
+- `packages/ui/src/components/line-comment.tsx`
+- `packages/app/src/pages/session/message-timeline.tsx`（title rename IME guard）
 - 載入 session 時的初始滾動位置修正
 - terminal tab close 穩定性補強
 - split-route regression 修補（tab reorder guard / autoCreated reset）
+- line comment IME/composition guard
 - event / validation / architecture sync 紀錄
 
 ### OUT
@@ -58,6 +61,12 @@ Status: In Progress
 - 補上 split-route 遺漏的低風險回歸修正：
   - `/packages/app/src/pages/session/index.tsx` 的 file tab drag reorder 改回使用已存在且有測試的 `getTabReorderIndex(...)` helper，避免未知 droppable 導致 `move(..., -1)`。
   - 同檔補回 session 切換時的 `setUi("autoCreated", false)` reset，避免新 session 繼承上一個 session 的 terminal auto-create 狀態。
+- 補上 line comment editor 的 IME guard：
+  - `/packages/ui/src/components/line-comment.tsx` 在 `onKeyDown` 中加入 `e.isComposing || e.keyCode === 229` 早退。
+  - 避免中文/日文輸入法組字期間按 Enter 被誤判成 submit。
+- 補上 session title inline rename 的 IME guard：
+  - `/packages/app/src/pages/session/message-timeline.tsx` 的 title `InlineInput` 同樣加入 `event.isComposing || event.keyCode === 229` 早退。
+  - 避免標題重新命名時，輸入法組字按 Enter 直接觸發儲存。
 
 ### Validation
 
@@ -66,6 +75,7 @@ Status: In Progress
   - `packages/app/src/pages/session/message-timeline.tsx`
   - `packages/app/src/pages/session/terminal-panel.tsx`
   - `packages/app/src/pages/session/index.tsx`
+  - `packages/ui/src/components/line-comment.tsx`
   - `docs/events/event_20260307_origin_dev_batch_d2_followup.md`
 - Architecture Sync: Verified (No doc changes)
   - 依據：本輪僅修正 app session timeline 的量測/ref 掛載範圍，未改動 provider/account/session/runtime 架構邊界。

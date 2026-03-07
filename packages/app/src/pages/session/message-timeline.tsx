@@ -208,6 +208,7 @@ export function MessageTimeline(props: {
                           class="text-16-medium text-text-strong grow-1 min-w-0"
                           onInput={(event) => props.onTitleDraft(event.currentTarget.value)}
                           onKeyDown={(event) => {
+                            if (event.isComposing || event.keyCode === 229) return
                             event.stopPropagation()
                             if (event.key === "Enter") {
                               event.preventDefault()
