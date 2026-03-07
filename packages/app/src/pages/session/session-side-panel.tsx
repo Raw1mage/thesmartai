@@ -1,5 +1,4 @@
 import { For, Show, createEffect, createMemo, onCleanup, type JSX, type ValidComponent } from "solid-js"
-import { createStore } from "solid-js/store"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { TooltipKeybind } from "@opencode-ai/ui/tooltip"
@@ -23,16 +22,18 @@ import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
-import type { Message, SessionMonitorInfo, Todo, UserMessage } from "@opencode-ai/sdk/v2/client"
-import { buildMonitorEntries, MONITOR_LEVEL_LABELS, MONITOR_STATUS_LABELS } from "./monitor-helper"
+import type { Message, Todo, UserMessage } from "@opencode-ai/sdk/v2/client"
+import {
+  buildMonitorEntries,
+  MONITOR_LEVEL_LABELS,
+  MONITOR_STATUS_LABELS,
+  monitorTitle,
+  monitorToolStatus,
+} from "./monitor-helper"
 import { SessionStatusSections } from "./session-status-sections"
-
-const TODO_ORDER: Record<string, number> = {
-  in_progress: 0,
-  pending: 1,
-  completed: 2,
-  cancelled: 3,
-}
+import { StatusTodoList } from "./status-todo-list"
+import { useStatusMonitor } from "./use-status-monitor"
+import { useStatusTodoSync } from "./use-status-todo-sync"
 
 type SessionSidePanelViewModel = {
   messages: () => Message[]
@@ -85,7 +86,7 @@ export function SessionSidePanel(props: {
   const activeSessionID = createMemo(() => props.vm.info()?.id)
   const panelTitle = createMemo(() => {
     if (sideMode() === "status") return props.language.t("status.popover.trigger")
-    return props.language.t("session.tools.files")
+    return undefined
   })
   const panelSubtitle = createMemo(() => {
     if (sideMode() !== "files") return undefined
@@ -95,86 +96,21 @@ export function SessionSidePanel(props: {
   const todos = createMemo(() => {
     const sessionID = activeSessionID()
     if (!sessionID) return undefined
-    const list = sync.data.todo[sessionID]
-    if (!list) return undefined
-    return [...list].sort((a, b) => (TODO_ORDER[a.status] ?? 99) - (TODO_ORDER[b.status] ?? 99))
+    return sync.data.todo[sessionID]
   })
 
-  createEffect(() => {
-    if (sideMode() !== "status") return
-    const sessionID = activeSessionID()
-    if (!sessionID) return
-    if (sync.data.todo[sessionID] !== undefined) return
-    void sync.session.todo(sessionID)
+  useStatusTodoSync({
+    enabled: () => sideMode() === "status",
+    sessionID: activeSessionID,
+    sdk,
+    sync,
   })
 
-  createEffect(() => {
-    if (sideMode() !== "status") return
-    const sessionID = activeSessionID()
-    if (!sessionID) return
-
-    let cancelled = false
-    const refresh = async () => {
-      await Promise.allSettled([
-        sync.session.sync(sessionID, { force: true }),
-        sync.session.todo(sessionID, { force: true }),
-      ])
-      if (cancelled) return
-    }
-
-    void refresh()
-    const timer = setInterval(() => {
-      void refresh()
-    }, 2000)
-
-    onCleanup(() => {
-      cancelled = true
-      clearInterval(timer)
-    })
-  })
-
-  const [monitor, setMonitor] = createStore({
-    items: [] as SessionMonitorInfo[],
-    loading: false,
-    initialized: false,
-    error: undefined as string | undefined,
-  })
-
-  createEffect(() => {
-    if (sideMode() !== "status") return
-    const sessionID = activeSessionID()
-    if (!sessionID) {
-      setMonitor({ items: [], loading: false, initialized: false, error: undefined })
-      return
-    }
-
-    let cancelled = false
-    const load = async () => {
-      setMonitor("loading", true)
-      try {
-        const result = await sdk.client.session.top({ sessionID, includeDescendants: true, maxMessages: 400 })
-        if (cancelled) return
-        setMonitor({ items: result.data ?? [], loading: false, initialized: true, error: undefined })
-      } catch (error) {
-        if (cancelled) return
-        setMonitor({
-          items: [],
-          loading: false,
-          initialized: true,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-
-    void load()
-    const timer = setInterval(() => {
-      void load()
-    }, 2000)
-
-    onCleanup(() => {
-      cancelled = true
-      clearInterval(timer)
-    })
+  const monitor = useStatusMonitor({
+    enabled: () => sideMode() === "status",
+    sessionID: activeSessionID,
+    sdk,
+    sync,
   })
 
   const monitorEntries = createMemo(() =>
@@ -233,27 +169,7 @@ export function SessionSidePanel(props: {
                     when={(todos()?.length ?? 0) > 0}
                     fallback={<div class="text-12-regular text-text-weak">No to-dos yet.</div>}
                   >
-                    <For each={todos() as Todo[]}>
-                      {(todo) => (
-                        <div class="flex items-start gap-2 rounded-md border border-border-weak-base bg-background-base px-3 py-2">
-                          <div
-                            class="mt-1 size-2 rounded-full shrink-0"
-                            classList={{
-                              "bg-text-warning": todo.status === "in_progress",
-                              "bg-text-interactive-base": todo.status === "pending",
-                              "bg-text-success": todo.status === "completed",
-                              "bg-text-weak": todo.status === "cancelled",
-                            }}
-                          />
-                          <div class="min-w-0 flex-1">
-                            <div class="text-12-medium text-text-strong break-words">{todo.content}</div>
-                            <div class="text-11-regular text-text-weak uppercase mt-1">
-                              {todo.status.replaceAll("_", " ")}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </For>
+                    <StatusTodoList todos={todos() as Todo[]} />
                   </Show>
                 </Show>
               </Show>
@@ -282,9 +198,7 @@ export function SessionSidePanel(props: {
                               <span class="text-11-medium text-text-weak shrink-0">
                                 [{MONITOR_LEVEL_LABELS[item.level] ?? item.level}]
                               </span>
-                              <span class="text-12-medium text-text-strong truncate">
-                                {item.title || "Untitled session"}
-                              </span>
+                              <span class="text-12-medium text-text-strong truncate">{monitorTitle(item)}</span>
                             </div>
                             <div class="text-11-regular text-text-weak break-words">
                               {MONITOR_STATUS_LABELS[item.status.type] ?? item.status.type}
@@ -294,7 +208,14 @@ export function SessionSidePanel(props: {
                             <Show when={item.activeTool}>
                               <div class="text-11-regular text-text-weak break-words">
                                 Tool: {item.activeTool}
-                                <Show when={item.activeToolStatus}> · {item.activeToolStatus}</Show>
+                                <Show
+                                  when={monitorToolStatus({
+                                    statusType: item.status.type,
+                                    activeToolStatus: item.activeToolStatus,
+                                  })}
+                                >
+                                  {(toolStatus) => <> · {toolStatus()}</>}
+                                </Show>
                               </div>
                             </Show>
                           </div>

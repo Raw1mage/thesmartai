@@ -167,174 +167,183 @@ export function MessageTimeline(props: {
           class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
           style={{ "--session-title-height": props.showHeader ? "40px" : "0px" }}
         >
-          <Show when={props.showHeader}>
-            <div
-              data-session-title
-              classList={{
-                "sticky top-0 z-30 bg-background-stronger": true,
-                "w-full": true,
-                "px-4 md:px-6": true,
-                "md:max-w-200 md:mx-auto 2xl:max-w-[1000px]": props.centered,
-              }}
-            >
-              <div class="h-10 w-full flex items-center justify-between gap-2">
-                <div class="flex items-center gap-1 min-w-0 flex-1">
-                  <Show when={props.parentID}>
-                    <IconButton
-                      tabIndex={-1}
-                      icon="arrow-left"
-                      variant="ghost"
-                      onClick={props.onNavigateParent}
-                      aria-label={props.t("common.goBack")}
-                    />
-                  </Show>
-                  <Show when={props.title || props.titleState.editing}>
-                    <Show
-                      when={props.titleState.editing}
-                      fallback={
-                        <h1 class="text-16-medium text-text-strong truncate min-w-0" onDblClick={props.openTitleEditor}>
-                          {props.title}
-                        </h1>
-                      }
-                    >
-                      <InlineInput
-                        ref={props.titleRef}
-                        value={props.titleState.draft}
-                        disabled={props.titleState.saving}
-                        class="text-16-medium text-text-strong grow-1 min-w-0"
-                        onInput={(event) => props.onTitleDraft(event.currentTarget.value)}
-                        onKeyDown={(event) => {
-                          event.stopPropagation()
-                          if (event.key === "Enter") {
-                            event.preventDefault()
-                            void props.saveTitleEditor()
-                            return
-                          }
-                          if (event.key === "Escape") {
-                            event.preventDefault()
-                            props.closeTitleEditor()
-                          }
-                        }}
-                        onBlur={props.closeTitleEditor}
+          <div ref={props.setContentRef} class="min-w-0 w-full">
+            <Show when={props.showHeader}>
+              <div
+                data-session-title
+                classList={{
+                  "sticky top-0 z-30 bg-background-stronger": true,
+                  "w-full": true,
+                  "px-4 md:px-6": true,
+                  "md:max-w-200 md:mx-auto 2xl:max-w-[1000px]": props.centered,
+                }}
+              >
+                <div class="h-10 w-full flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-1 min-w-0 flex-1">
+                    <Show when={props.parentID}>
+                      <IconButton
+                        tabIndex={-1}
+                        icon="arrow-left"
+                        variant="ghost"
+                        onClick={props.onNavigateParent}
+                        aria-label={props.t("common.goBack")}
                       />
                     </Show>
-                  </Show>
-                </div>
-                <Show when={props.sessionID}>
-                  {(id) => (
-                    <div class="shrink-0 flex items-center">
-                      <DropdownMenu open={props.titleState.menuOpen} onOpenChange={props.onTitleMenuOpen}>
-                        <Tooltip value={props.t("common.moreOptions")} placement="top">
-                          <DropdownMenu.Trigger
-                            as={IconButton}
-                            icon="dot-grid"
-                            variant="ghost"
-                            class="size-6 rounded-md data-[expanded]:bg-surface-base-active"
-                            aria-label={props.t("common.moreOptions")}
-                          />
-                        </Tooltip>
-                        <DropdownMenu.Portal>
-                          <DropdownMenu.Content
-                            onCloseAutoFocus={(event) => {
-                              if (!props.titleState.pendingRename) return
-                              event.preventDefault()
-                              props.onTitlePendingRename(false)
-                              props.openTitleEditor()
-                            }}
+                    <Show when={props.title || props.titleState.editing}>
+                      <Show
+                        when={props.titleState.editing}
+                        fallback={
+                          <h1
+                            class="text-16-medium text-text-strong truncate min-w-0"
+                            onDblClick={props.openTitleEditor}
                           >
-                            <DropdownMenu.Item
-                              onSelect={() => {
-                                props.onTitlePendingRename(true)
-                                props.onTitleMenuOpen(false)
+                            {props.title}
+                          </h1>
+                        }
+                      >
+                        <InlineInput
+                          ref={props.titleRef}
+                          value={props.titleState.draft}
+                          disabled={props.titleState.saving}
+                          class="text-16-medium text-text-strong grow-1 min-w-0"
+                          onInput={(event) => props.onTitleDraft(event.currentTarget.value)}
+                          onKeyDown={(event) => {
+                            event.stopPropagation()
+                            if (event.key === "Enter") {
+                              event.preventDefault()
+                              void props.saveTitleEditor()
+                              return
+                            }
+                            if (event.key === "Escape") {
+                              event.preventDefault()
+                              props.closeTitleEditor()
+                            }
+                          }}
+                          onBlur={props.closeTitleEditor}
+                        />
+                      </Show>
+                    </Show>
+                  </div>
+                  <Show when={props.sessionID}>
+                    {(id) => (
+                      <div class="shrink-0 flex items-center">
+                        <DropdownMenu open={props.titleState.menuOpen} onOpenChange={props.onTitleMenuOpen}>
+                          <Tooltip value={props.t("common.moreOptions")} placement="top">
+                            <DropdownMenu.Trigger
+                              as={IconButton}
+                              icon="dot-grid"
+                              variant="ghost"
+                              class="size-6 rounded-md data-[expanded]:bg-surface-base-active"
+                              aria-label={props.t("common.moreOptions")}
+                            />
+                          </Tooltip>
+                          <DropdownMenu.Portal>
+                            <DropdownMenu.Content
+                              onCloseAutoFocus={(event) => {
+                                if (!props.titleState.pendingRename) return
+                                event.preventDefault()
+                                props.onTitlePendingRename(false)
+                                props.openTitleEditor()
                               }}
                             >
-                              <DropdownMenu.ItemLabel>{props.t("common.rename")}</DropdownMenu.ItemLabel>
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Separator />
-                            <DropdownMenu.Item onSelect={() => props.onDeleteSession(id())}>
-                              <DropdownMenu.ItemLabel>{props.t("common.delete")}</DropdownMenu.ItemLabel>
-                            </DropdownMenu.Item>
-                          </DropdownMenu.Content>
-                        </DropdownMenu.Portal>
-                      </DropdownMenu>
-                    </div>
-                  )}
-                </Show>
-              </div>
-            </div>
-          </Show>
-
-          <div
-            ref={props.setContentRef}
-            role="log"
-            class="flex flex-col gap-12 items-start justify-start pb-[calc(var(--prompt-height,8rem)+64px)] md:pb-[calc(var(--prompt-height,10rem)+64px)] transition-[margin]"
-            classList={{
-              "w-full": true,
-              "md:max-w-200 md:mx-auto 2xl:max-w-[1000px]": props.centered,
-              "mt-0.5": props.centered,
-              "mt-0": !props.centered,
-            }}
-          >
-            <Show when={props.turnStart > 0}>
-              <div class="w-full flex justify-center">
-                <Button variant="ghost" size="large" class="text-12-medium opacity-50" onClick={props.onRenderEarlier}>
-                  {props.t("session.messages.renderEarlier")}
-                </Button>
+                              <DropdownMenu.Item
+                                onSelect={() => {
+                                  props.onTitlePendingRename(true)
+                                  props.onTitleMenuOpen(false)
+                                }}
+                              >
+                                <DropdownMenu.ItemLabel>{props.t("common.rename")}</DropdownMenu.ItemLabel>
+                              </DropdownMenu.Item>
+                              <DropdownMenu.Separator />
+                              <DropdownMenu.Item onSelect={() => props.onDeleteSession(id())}>
+                                <DropdownMenu.ItemLabel>{props.t("common.delete")}</DropdownMenu.ItemLabel>
+                              </DropdownMenu.Item>
+                            </DropdownMenu.Content>
+                          </DropdownMenu.Portal>
+                        </DropdownMenu>
+                      </div>
+                    )}
+                  </Show>
+                </div>
               </div>
             </Show>
-            <Show when={props.historyMore}>
-              <div class="w-full flex justify-center">
-                <Button
-                  variant="ghost"
-                  size="large"
-                  class="text-12-medium opacity-50"
-                  disabled={props.historyLoading}
-                  onClick={props.onLoadEarlier}
-                >
-                  {props.historyLoading
-                    ? props.t("session.messages.loadingEarlier")
-                    : props.t("session.messages.loadEarlier")}
-                </Button>
-              </div>
-            </Show>
-            <For each={props.renderedUserMessages}>
-              {(message) => {
-                if (import.meta.env.DEV && props.onFirstTurnMount) {
-                  onMount(() => props.onFirstTurnMount?.())
-                }
 
-                return (
-                  <div
-                    id={props.anchor(message.id)}
-                    data-message-id={message.id}
-                    ref={(el) => {
-                      props.onRegisterMessage(el, message.id)
-                      onCleanup(() => props.onUnregisterMessage(message.id))
-                    }}
-                    classList={{
-                      "min-w-0 w-full max-w-full": true,
-                      "md:max-w-200 2xl:max-w-[1000px]": props.centered,
-                    }}
-                  >
-                    <SessionTurn
-                      sessionID={props.sessionID}
-                      messageID={message.id}
-                      lastUserMessageID={props.lastUserMessageID}
-                      shellToolDefaultOpen={settings.general.shellToolPartsExpanded()}
-                      editToolDefaultOpen={settings.general.editToolPartsExpanded()}
-                      showReasoningSummaries={settings.general.showReasoningSummaries()}
-                      stepsExpanded={props.expanded[message.id] ?? false}
-                      onStepsExpandedToggle={() => props.onToggleExpanded(message.id)}
-                      classes={{
-                        root: "min-w-0 w-full relative",
-                        content: "flex flex-col justify-between !overflow-visible",
-                        container: "w-full px-4 md:px-6",
-                      }}
-                    />
-                  </div>
-                )
+            <div
+              role="log"
+              class="flex flex-col gap-12 items-start justify-start pb-[calc(var(--prompt-height,8rem)+64px)] md:pb-[calc(var(--prompt-height,10rem)+64px)] transition-[margin]"
+              classList={{
+                "w-full": true,
+                "md:max-w-200 md:mx-auto 2xl:max-w-[1000px]": props.centered,
+                "mt-0.5": props.centered,
+                "mt-0": !props.centered,
               }}
-            </For>
+            >
+              <Show when={props.turnStart > 0}>
+                <div class="w-full flex justify-center">
+                  <Button
+                    variant="ghost"
+                    size="large"
+                    class="text-12-medium opacity-50"
+                    onClick={props.onRenderEarlier}
+                  >
+                    {props.t("session.messages.renderEarlier")}
+                  </Button>
+                </div>
+              </Show>
+              <Show when={props.historyMore}>
+                <div class="w-full flex justify-center">
+                  <Button
+                    variant="ghost"
+                    size="large"
+                    class="text-12-medium opacity-50"
+                    disabled={props.historyLoading}
+                    onClick={props.onLoadEarlier}
+                  >
+                    {props.historyLoading
+                      ? props.t("session.messages.loadingEarlier")
+                      : props.t("session.messages.loadEarlier")}
+                  </Button>
+                </div>
+              </Show>
+              <For each={props.renderedUserMessages}>
+                {(message) => {
+                  if (import.meta.env.DEV && props.onFirstTurnMount) {
+                    onMount(() => props.onFirstTurnMount?.())
+                  }
+
+                  return (
+                    <div
+                      id={props.anchor(message.id)}
+                      data-message-id={message.id}
+                      ref={(el) => {
+                        props.onRegisterMessage(el, message.id)
+                        onCleanup(() => props.onUnregisterMessage(message.id))
+                      }}
+                      classList={{
+                        "min-w-0 w-full max-w-full": true,
+                        "md:max-w-200 2xl:max-w-[1000px]": props.centered,
+                      }}
+                    >
+                      <SessionTurn
+                        sessionID={props.sessionID}
+                        messageID={message.id}
+                        lastUserMessageID={props.lastUserMessageID}
+                        shellToolDefaultOpen={settings.general.shellToolPartsExpanded()}
+                        editToolDefaultOpen={settings.general.editToolPartsExpanded()}
+                        showReasoningSummaries={settings.general.showReasoningSummaries()}
+                        stepsExpanded={props.expanded[message.id] ?? false}
+                        onStepsExpandedToggle={() => props.onToggleExpanded(message.id)}
+                        classes={{
+                          root: "min-w-0 w-full relative",
+                          content: "flex flex-col justify-between !overflow-visible",
+                          container: "w-full px-4 md:px-6",
+                        }}
+                      />
+                    </div>
+                  )
+                }}
+              </For>
+            </div>
           </div>
         </div>
       </div>

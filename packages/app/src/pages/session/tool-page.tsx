@@ -1,5 +1,4 @@
-import { createEffect, createMemo, For, onCleanup, Show } from "solid-js"
-import { createStore } from "solid-js/store"
+import { createEffect, createMemo, For, Show } from "solid-js"
 import { useNavigate, useParams, useSearchParams } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
 import FileTree from "@/components/file-tree"
@@ -8,17 +7,19 @@ import { useFile } from "@/context/file"
 import { useLanguage } from "@/context/language"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
-import type { SessionMonitorInfo, Todo } from "@opencode-ai/sdk/v2/client"
-import { buildMonitorEntries, MONITOR_LEVEL_LABELS, MONITOR_STATUS_LABELS } from "./monitor-helper"
+import type { Todo } from "@opencode-ai/sdk/v2/client"
+import {
+  buildMonitorEntries,
+  MONITOR_LEVEL_LABELS,
+  MONITOR_STATUS_LABELS,
+  monitorTitle,
+  monitorToolStatus,
+} from "./monitor-helper"
 import { SessionStatusSections } from "./session-status-sections"
+import { StatusTodoList } from "./status-todo-list"
+import { useStatusMonitor } from "./use-status-monitor"
+import { useStatusTodoSync } from "./use-status-todo-sync"
 import { decode64 } from "@/utils/base64"
-
-const TODO_ORDER: Record<string, number> = {
-  in_progress: 0,
-  pending: 1,
-  completed: 2,
-  cancelled: 3,
-}
 
 export default function SessionToolPageRoute() {
   const language = useLanguage()
@@ -43,82 +44,27 @@ export default function SessionToolPageRoute() {
   const todos = createMemo(() => {
     const id = params.id
     if (!id) return undefined
-    const list = sync.data.todo[id]
-    if (!list) return undefined
-    return [...list].sort((a, b) => (TODO_ORDER[a.status] ?? 99) - (TODO_ORDER[b.status] ?? 99))
+    return sync.data.todo[id]
   })
 
   createEffect(() => {
     const id = params.id
     if (!id) return
     void sync.session.sync(id)
-    if (tool() === "status" && sync.data.todo[id] === undefined) void sync.session.todo(id)
   })
 
-  createEffect(() => {
-    if (tool() !== "status") return
-    const id = params.id
-    if (!id) return
-
-    let cancelled = false
-    const refresh = async () => {
-      await Promise.allSettled([sync.session.sync(id, { force: true }), sync.session.todo(id, { force: true })])
-      if (cancelled) return
-    }
-
-    void refresh()
-    const timer = setInterval(() => {
-      void refresh()
-    }, 2000)
-
-    onCleanup(() => {
-      cancelled = true
-      clearInterval(timer)
-    })
+  useStatusTodoSync({
+    enabled: () => tool() === "status",
+    sessionID: () => params.id,
+    sdk,
+    sync,
   })
 
-  const [monitor, setMonitor] = createStore({
-    items: [] as SessionMonitorInfo[],
-    loading: false,
-    initialized: false,
-    error: undefined as string | undefined,
-  })
-
-  createEffect(() => {
-    if (tool() !== "status") return
-    const id = params.id
-    if (!id) {
-      setMonitor({ items: [], loading: false, initialized: false, error: undefined })
-      return
-    }
-
-    let cancelled = false
-    const load = async () => {
-      setMonitor("loading", true)
-      try {
-        const result = await sdk.client.session.top({ sessionID: id, includeDescendants: true, maxMessages: 400 })
-        if (cancelled) return
-        setMonitor({ items: result.data ?? [], loading: false, initialized: true, error: undefined })
-      } catch (error) {
-        if (cancelled) return
-        setMonitor({
-          items: [],
-          loading: false,
-          initialized: true,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-
-    void load()
-    const timer = setInterval(() => {
-      void load()
-    }, 2000)
-
-    onCleanup(() => {
-      cancelled = true
-      clearInterval(timer)
-    })
+  const monitor = useStatusMonitor({
+    enabled: () => tool() === "status",
+    sessionID: () => params.id,
+    sdk,
+    sync,
   })
 
   const monitorEntries = createMemo(() =>
@@ -243,27 +189,7 @@ export default function SessionToolPageRoute() {
                     when={(todos()?.length ?? 0) > 0}
                     fallback={<div class="text-12-regular text-text-weak">No to-dos yet.</div>}
                   >
-                    <For each={todos() as Todo[]}>
-                      {(todo) => (
-                        <div class="flex items-start gap-2 rounded-md border border-border-weak-base bg-background-base px-3 py-2">
-                          <div
-                            class="mt-1 size-2 rounded-full shrink-0"
-                            classList={{
-                              "bg-text-warning": todo.status === "in_progress",
-                              "bg-text-interactive-base": todo.status === "pending",
-                              "bg-text-success": todo.status === "completed",
-                              "bg-text-weak": todo.status === "cancelled",
-                            }}
-                          />
-                          <div class="min-w-0 flex-1">
-                            <div class="text-12-medium text-text-strong break-words">{todo.content}</div>
-                            <div class="text-11-regular text-text-weak uppercase mt-1">
-                              {todo.status.replaceAll("_", " ")}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </For>
+                    <StatusTodoList todos={todos() as Todo[]} />
                   </Show>
                 </Show>
               </Show>
@@ -289,9 +215,7 @@ export default function SessionToolPageRoute() {
                               <span class="text-11-medium text-text-weak shrink-0">
                                 [{MONITOR_LEVEL_LABELS[item.level] ?? item.level}]
                               </span>
-                              <span class="text-12-medium text-text-strong truncate">
-                                {item.title || "Untitled session"}
-                              </span>
+                              <span class="text-12-medium text-text-strong truncate">{monitorTitle(item)}</span>
                             </div>
                             <div class="text-11-regular text-text-weak break-words">
                               {MONITOR_STATUS_LABELS[item.status.type] ?? item.status.type}
@@ -301,7 +225,14 @@ export default function SessionToolPageRoute() {
                             <Show when={item.activeTool}>
                               <div class="text-11-regular text-text-weak break-words">
                                 Tool: {item.activeTool}
-                                <Show when={item.activeToolStatus}> · {item.activeToolStatus}</Show>
+                                <Show
+                                  when={monitorToolStatus({
+                                    statusType: item.status.type,
+                                    activeToolStatus: item.activeToolStatus,
+                                  })}
+                                >
+                                  {(toolStatus) => <> · {toolStatus()}</>}
+                                </Show>
                               </div>
                             </Show>
                           </div>

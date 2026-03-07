@@ -49,6 +49,7 @@ import { useSessionHashScroll, anchor, scrollToElement } from "./use-session-has
 import { useSessionBackfill } from "./use-session-backfill"
 import { useSessionHandoff } from "./use-session-handoff"
 import { SessionSidePanel } from "./session-side-panel"
+import { getTabReorderIndex } from "./helpers"
 
 export default function Page() {
   const layout = useLayout()
@@ -418,6 +419,18 @@ export default function Page() {
 
   createEffect(
     on(
+      sessionKey,
+      () => {
+        setStore("messageId", undefined)
+        setStore("expanded", {})
+        setUi("autoCreated", false)
+      },
+      { defer: true },
+    ),
+  )
+
+  createEffect(
+    on(
       () => terminal.all().length,
       (count, prevCount) => {
         if (prevCount !== undefined && prevCount > 0 && count === 0) {
@@ -568,11 +581,9 @@ export default function Page() {
     const { draggable, droppable } = event
     if (draggable && droppable) {
       const currentTabs = tabs().all()
-      const fromIndex = currentTabs?.indexOf(draggable.id.toString())
-      const toIndex = currentTabs?.indexOf(droppable.id.toString())
-      if (fromIndex !== toIndex && toIndex !== undefined) {
-        tabs().move(draggable.id.toString(), toIndex)
-      }
+      const toIndex = getTabReorderIndex(currentTabs, draggable.id.toString(), droppable.id.toString())
+      if (toIndex === undefined) return
+      tabs().move(draggable.id.toString(), toIndex)
     }
   }
 

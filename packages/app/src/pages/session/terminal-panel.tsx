@@ -31,7 +31,7 @@ export function TerminalPanel(props: {
 }) {
   const all = createMemo(() => props.terminal.all())
   const ids = createMemo(() => all().map((pty) => pty.id))
-  const byId = createMemo(() => new Map(all().map((pty) => [pty.id, pty])))
+  const byId = createMemo(() => new Map(all().map((pty) => [pty.id, { ...pty }])))
   const [popoutWindow, setPopoutWindow] = createSignal<Window | undefined>()
   const params = useParams()
 
@@ -152,15 +152,19 @@ export function TerminalPanel(props: {
               >
                 <Tabs.List class="h-10">
                   <SortableProvider ids={ids()}>
-                    <For each={all()}>
-                      {(pty) => (
-                        <SortableTerminalTab
-                          terminal={pty}
-                          onClose={() => {
-                            props.close()
-                            props.onCloseTab()
-                          }}
-                        />
+                    <For each={ids()}>
+                      {(id) => (
+                        <Show when={byId().get(id)}>
+                          {(pty) => (
+                            <SortableTerminalTab
+                              terminal={pty()}
+                              onClose={() => {
+                                props.close()
+                                props.onCloseTab()
+                              }}
+                            />
+                          )}
+                        </Show>
                       )}
                     </For>
                   </SortableProvider>

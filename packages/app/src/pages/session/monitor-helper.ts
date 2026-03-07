@@ -3,11 +3,24 @@ import type { Message, Session, SessionMonitorInfo, SessionStatus } from "@openc
 export const MONITOR_STATUS_LABELS: Record<string, string> = {
   busy: "Running",
   working: "Working",
-  idle: "Idle",
+  idle: "",
   error: "Error",
   retry: "Retrying",
   compacting: "Compacting",
   pending: "Pending",
+}
+
+export function monitorTitle(value: { title?: string; agent?: string }) {
+  const title = value.title || "Untitled session"
+  return value.agent ? `${title} (${value.agent})` : title
+}
+
+export function monitorToolStatus(value: { statusType: string; activeToolStatus?: string }) {
+  const status = value.activeToolStatus
+  if (!status) return undefined
+  if ((value.statusType === "busy" || value.statusType === "working") && status === "running") return undefined
+  if (value.statusType === "pending" && status === "pending") return undefined
+  return status
 }
 
 export const MONITOR_LEVEL_LABELS: Record<string, string> = {
