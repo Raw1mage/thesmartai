@@ -17,6 +17,7 @@ Status: In Progress
 - `packages/app/src/pages/session/index.tsx`
 - `packages/ui/src/components/line-comment.tsx`
 - `packages/app/src/pages/session/message-timeline.tsx`（title rename IME guard）
+- `packages/app/src/components/session/session-sortable-terminal-tab.tsx`
 - 載入 session 時的初始滾動位置修正
 - terminal tab close 穩定性補強
 - split-route regression 修補（tab reorder guard / autoCreated reset）
@@ -67,6 +68,9 @@ Status: In Progress
 - 補上 session title inline rename 的 IME guard：
   - `/packages/app/src/pages/session/message-timeline.tsx` 的 title `InlineInput` 同樣加入 `event.isComposing || event.keyCode === 229` 早退。
   - 避免標題重新命名時，輸入法組字按 Enter 直接觸發儲存。
+- 補上 terminal tab rename 的 IME guard：
+  - `/packages/app/src/components/session/session-sortable-terminal-tab.tsx` 的 rename input `keydown` 同樣加入 `e.isComposing || e.keyCode === 229` 早退。
+  - 避免終端機標籤重新命名時，輸入法組字按 Enter 直接觸發儲存。
 
 ### Validation
 
