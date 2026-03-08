@@ -89,6 +89,10 @@ The `cms` branch is the primary product line for this environment, featuring sig
 
 - Docker web profile (`docker-compose.production.yml` + `Dockerfile.production`) follows the same `/opt/opencode` runtime contract as native environments.
 - MCP runtime services are canonicalized under `packages/mcp/*`; `scripts/*` keeps compatibility shims only.
+- Beta dev helper `testbeta.sh` launches the beta repo as Linux user `betaman` and intentionally uses betaman's own home/XDG runtime state (`~betaman/.config/opencode`, etc.). This gives betaman a dedicated runtime identity while still avoiding writes into the pkcs12 cms checkout.
+- Dev config sync scripts use non-owner/non-group-preserving rsync semantics for template/runtime mirroring, preventing permission failures when runtime user and repo owner differ.
+- For dev safety, template/runtime skill mirroring is skipped when the effective runtime `skills` path resolves outside the current user's home (for example a shared symlink such as `~betaman/.config/opencode/skills -> /home/pkcs12/projects/skills`). This prevents beta launches from mutating shared/cms-adjacent skill trees.
+- `script/runtime-init-check.ts` is a **dev-only preflight** wired into `bun run dev` variants. Its job is to ensure baseline XDG runtime dirs/files exist from `templates/manifest.json` before local development startup. Production/runtime install responsibility remains with `install.sh` + `script/install.ts`, not with this dev helper.
 
 #### Web multi-user runtime architecture
 
