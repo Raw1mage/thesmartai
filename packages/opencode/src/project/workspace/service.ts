@@ -4,6 +4,7 @@ import { Session } from "@/session"
 import { TaskWorkerEvent } from "@/tool/task"
 import type { Project } from "../project"
 import { summarizeWorkspaceAttachments, type WorkspaceAttachmentDescriptor } from "./attachments"
+import { WorkspaceEvent } from "./events"
 import { buildRootWorkspace, buildSandboxWorkspace } from "./resolver"
 import {
   markWorkspaceActive,
@@ -52,6 +53,16 @@ export function createWorkspaceService(
   const workerDirectoryById = new Map<string, string>()
   let subscriptionsInitialized = false
 
+  async function upsertAndPublish(next: WorkspaceAggregate) {
+    const previous = await registry.getById(next.workspaceId)
+    const workspace = await registry.upsert(next)
+    if (!previous) {
+      await Bus.publish(WorkspaceEvent.Created, { workspace })
+    }
+    await Bus.publish(WorkspaceEvent.Updated, { workspace, previous })
+    return workspace
+  }
+
   async function updateAttachments(
     directory: string,
     updater: (descriptors: WorkspaceAttachmentDescriptor[]) => WorkspaceAttachmentDescriptor[],
@@ -96,16 +107,51 @@ export function createWorkspaceService(
       })),
     ]
 
-    return registry.upsert({
+    const nextDescriptors = updater(descriptors)
+    const nextWorkspace = {
       ...workspace,
-      attachments: summarizeWorkspaceAttachments(updater(descriptors)),
-    })
+      attachments: summarizeWorkspaceAttachments(nextDescriptors),
+    }
+    const updated = await upsertAndPublish(nextWorkspace)
+
+    const keyOf = (item: WorkspaceAttachmentDescriptor) => `${item.type}:${item.key}`
+    const previousMap = new Map(descriptors.map((item) => [keyOf(item), item]))
+    const nextMap = new Map(nextDescriptors.map((item) => [keyOf(item), item]))
+
+    for (const [key, item] of nextMap) {
+      if (!previousMap.has(key)) {
+        await Bus.publish(WorkspaceEvent.AttachmentAdded, {
+          workspace: updated,
+          attachment: item,
+        })
+      }
+    }
+
+    for (const [key, item] of previousMap) {
+      if (!nextMap.has(key)) {
+        await Bus.publish(WorkspaceEvent.AttachmentRemoved, {
+          workspace: updated,
+          attachment: item,
+        })
+      }
+    }
+
+    return updated
   }
 
   async function updateLifecycle(workspaceID: string, updater: (workspace: WorkspaceAggregate) => WorkspaceAggregate) {
     const workspace = await registry.getById(workspaceID)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceID}`)
-    return registry.upsert(updater(workspace))
+    const updated = await upsertAndPublish(updater(workspace))
+    if (updated.lifecycleState !== workspace.lifecycleState) {
+      await Bus.publish(WorkspaceEvent.LifecycleChanged, {
+        workspace: updated,
+        previous: workspace,
+        previousState: workspace.lifecycleState,
+        nextState: updated.lifecycleState,
+      })
+    }
+    return updated
   }
 
   return {
@@ -117,7 +163,7 @@ export function createWorkspaceService(
       })
     },
     register(workspace) {
-      return registry.upsert(workspace)
+      return upsertAndPublish(workspace)
     },
     getByDirectory(directory) {
       return registry.getByDirectory(normalizeWorkspaceDirectory(directory))

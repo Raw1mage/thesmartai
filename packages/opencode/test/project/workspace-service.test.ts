@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { Bus } from "../../src/bus"
 import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/project/instance"
 import { Session } from "../../src/session"
@@ -8,6 +9,7 @@ import {
   createInMemoryWorkspaceRegistry,
   normalizeWorkspaceDirectory,
   resolveWorkspaceViaService,
+  WorkspaceEvent,
 } from "../../src/project/workspace"
 
 describe("project.workspace.service", () => {
@@ -147,5 +149,81 @@ describe("project.workspace.service", () => {
         await Session.remove(session.id)
       },
     })
+  })
+
+  test("register emits workspace created and updated events", async () => {
+    const service = createWorkspaceService(createInMemoryWorkspaceRegistry())
+    const workspace = buildDerivedWorkspace({
+      projectId: "project-1",
+      directory: "/tmp/workspace-events",
+    })
+    const created: string[] = []
+    const updated: string[] = []
+    const unsubCreated = Bus.subscribe(WorkspaceEvent.Created, (evt) => {
+      created.push(evt.properties.workspace.workspaceId)
+    })
+    const unsubUpdated = Bus.subscribe(WorkspaceEvent.Updated, (evt) => {
+      updated.push(evt.properties.workspace.workspaceId)
+    })
+
+    try {
+      await service.register(workspace)
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    } finally {
+      unsubCreated()
+      unsubUpdated()
+    }
+
+    expect(created).toEqual([workspace.workspaceId])
+    expect(updated).toEqual([workspace.workspaceId])
+  })
+
+  test("attachment mutations emit added and removed events", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const service = createWorkspaceService(createInMemoryWorkspaceRegistry())
+    const added: string[] = []
+    const removed: string[] = []
+    const unsubAdded = Bus.subscribe(WorkspaceEvent.AttachmentAdded, (evt) => {
+      added.push(`${evt.properties.attachment.type}:${evt.properties.attachment.key}`)
+    })
+    const unsubRemoved = Bus.subscribe(WorkspaceEvent.AttachmentRemoved, (evt) => {
+      removed.push(`${evt.properties.attachment.type}:${evt.properties.attachment.key}`)
+    })
+
+    try {
+      await service.attachSession({ id: "session-1", directory: tmp.path, active: true })
+      await service.detachSession({ sessionID: "session-1", directory: tmp.path })
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    } finally {
+      unsubAdded()
+      unsubRemoved()
+    }
+
+    expect(added).toContain("session:session-1")
+    expect(removed).toContain("session:session-1")
+  })
+
+  test("lifecycle mutations emit lifecycle changed events", async () => {
+    const service = createWorkspaceService(createInMemoryWorkspaceRegistry())
+    const workspace = await service.register(
+      buildDerivedWorkspace({
+        projectId: "project-1",
+        directory: "/tmp/workspace-lifecycle-events",
+      }),
+    )
+    const transitions: string[] = []
+    const unsub = Bus.subscribe(WorkspaceEvent.LifecycleChanged, (evt) => {
+      transitions.push(`${evt.properties.previousState}->${evt.properties.nextState}`)
+    })
+
+    try {
+      await service.markResetting({ workspaceID: workspace.workspaceId })
+      await service.markActive({ workspaceID: workspace.workspaceId })
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    } finally {
+      unsub()
+    }
+
+    expect(transitions).toEqual(["active->resetting", "resetting->active"])
   })
 })

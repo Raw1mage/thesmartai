@@ -1,5 +1,6 @@
 export * from "./types"
 export * from "./attachments"
+export * from "./events"
 export * from "./identity"
 export * from "./lifecycle"
 export * from "./resolver"
