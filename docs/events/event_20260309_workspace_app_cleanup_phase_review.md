@@ -45,6 +45,7 @@ Status: Done
   - `global-sync/child-store.ts`
   - `global-sync/bootstrap.ts`
   - `global-sync/event-reducer.test.ts`
+- 進一步移除 app-side 已無 consumer 的 `fetchWorkspaceStatus()` helper 與對應單元測試，避免殘留假性 API 依賴。
 - 新增 `docs/specs/workspace-phase-completion-checklist.md`，整理 Phase 1–3 與 preview deferred track 的完成度。
 
 ### Validation

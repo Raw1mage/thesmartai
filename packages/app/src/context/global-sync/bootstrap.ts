@@ -38,13 +38,6 @@ export type WorkspaceSnapshot = {
   }
 }
 
-export type WorkspaceStatus = {
-  projectId: string
-  total: number
-  kinds: { root: number; sandbox: number; derived: number }
-  attachments: { sessions: number; ptys: number; previews: number; workers: number }
-}
-
 async function getWorkspaceJson<T>(input: {
   baseUrl?: string
   fetch?: typeof fetch
@@ -58,10 +51,6 @@ async function getWorkspaceJson<T>(input: {
 
 export function fetchWorkspaceCurrent(input: { baseUrl?: string; fetch?: typeof fetch }) {
   return getWorkspaceJson<WorkspaceSnapshot>({ ...input, path: "/current" })
-}
-
-export function fetchWorkspaceStatus(input: { baseUrl?: string; fetch?: typeof fetch }) {
-  return getWorkspaceJson<WorkspaceStatus>({ ...input, path: "/status" })
 }
 
 type GlobalStore = {
