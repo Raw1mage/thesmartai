@@ -172,6 +172,13 @@ This subsection documents how prompt footer usage/account metadata stays fresh w
    - The low-frequency footer timer (default 15s via `OPENCODE_TUI_FOOTER_REFRESH_MS`) is retained for lightweight elapsed/account display updates only; it does **not** poll OpenAI quota in the background.
    - Result: footer usage stays fresh during real OpenAI usage while avoiding idle quota polling.
 
+1.1 **TUI `/admin` quota display behavior**
+
+- Entry point: `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
+- Opening `/admin` is treated as a legitimate quota display request.
+- Admin OpenAI usage rows resolve through `getQuotaHintsForAccounts(...)` → `getOpenAIQuotaForDisplay(...)`, so they share the same display cache policy as the prompt footer.
+- Shared rule: OpenAI display cache TTL is 60 seconds. Within that window, footer/admin reuse cached values; after that window, the next visible display request returns cached data and triggers refresh via stale-while-revalidate.
+
 2. **Web prompt footer orchestration**
    - Entry point: `packages/app/src/components/prompt-input.tsx`
    - Web prompt footer also derives metadata from current provider/account state, but OpenAI quota refresh is stricter than TUI for browser efficiency.
@@ -186,6 +193,7 @@ This subsection documents how prompt footer usage/account metadata stays fresh w
    - Canonical implementation: `packages/opencode/src/account/quota/openai.ts`
    - Responsibilities:
      - refresh expired Codex/OpenAI OAuth access tokens
+     - maintain shared OpenAI display cache (`OPENAI_QUOTA_DISPLAY_TTL_MS = 60_000`) for TUI footer and `/admin`
      - call `https://chatgpt.com/backend-api/wham/usage`
      - normalize usage windows into footer-friendly remaining percentages (`hourlyRemaining`, `weeklyRemaining`, `hasHourlyWindow`)
    - Backend route `packages/opencode/src/server/routes/account.ts` exposes `/account/quota` for web consumption.

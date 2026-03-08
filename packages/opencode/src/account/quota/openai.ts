@@ -196,7 +196,19 @@ export async function refreshCodexAccessToken(refreshToken: string): Promise<Cod
 // ============================================================================
 
 const quotaCache = new Map<string, { quota: OpenAIQuota | null; timestamp: number }>()
-const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+export const OPENAI_QUOTA_DISPLAY_TTL_MS = 60_000
+const CACHE_TTL_MS = OPENAI_QUOTA_DISPLAY_TTL_MS
+
+function writeQuotaCache(id: string, quota: OpenAIQuota | null, timestamp: number) {
+  if (quota === null) {
+    const previous = quotaCache.get(id)
+    if (previous?.quota) {
+      quotaCache.set(id, { quota: previous.quota, timestamp })
+      return
+    }
+  }
+  quotaCache.set(id, { quota, timestamp })
+}
 
 // ============================================================================
 // Main API
@@ -298,6 +310,13 @@ export async function getOpenAIQuotaForDisplay(accountId: string): Promise<OpenA
   const now = Date.now()
 
   if (cached) {
+    if (cached.quota === null) {
+      // Treat failed/unknown display data as recoverable: a real display request
+      // (/admin or footer) should try to hydrate fresh data instead of reusing
+      // a full-TTL null placeholder.
+      return getOpenAIQuota(accountId, { waitFresh: true })
+    }
+
     const isStale = now - cached.timestamp >= CACHE_TTL_MS
     if (isStale) {
       const accounts = await Account.list("openai")
@@ -337,7 +356,7 @@ async function refreshOpenAIAccountQuota(id: string, info: Account.Info): Promis
       })
     } catch (e) {
       log.warn("Token refresh failed for OpenAI account", { id, error: String(e) })
-      quotaCache.set(id, { quota: null, timestamp: now })
+      writeQuotaCache(id, null, now)
       return
     }
   }
@@ -350,7 +369,7 @@ async function refreshOpenAIAccountQuota(id: string, info: Account.Info): Promis
     const response = await fetch(CODEX_USAGE_URL, { headers, signal: AbortSignal.timeout(10000) })
     if (!response.ok) {
       log.warn("Failed to fetch OpenAI usage", { id, status: response.status })
-      quotaCache.set(id, { quota: null, timestamp: now })
+      writeQuotaCache(id, null, now)
       return
     }
 
@@ -360,9 +379,9 @@ async function refreshOpenAIAccountQuota(id: string, info: Account.Info): Promis
     const weeklyRemaining = normalized.weeklyRemaining ?? normalized.hourlyRemaining ?? 100
 
     const quota = { hourlyRemaining, weeklyRemaining, hasHourlyWindow: normalized.hasHourlyWindow }
-    quotaCache.set(id, { quota, timestamp: now })
+    writeQuotaCache(id, quota, now)
   } catch (e) {
     log.warn("Error fetching OpenAI usage", { id, error: String(e) })
-    quotaCache.set(id, { quota: null, timestamp: now })
+    writeQuotaCache(id, null, now)
   }
 }

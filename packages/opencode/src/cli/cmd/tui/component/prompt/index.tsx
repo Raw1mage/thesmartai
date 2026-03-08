@@ -46,7 +46,7 @@ import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
 import { Account } from "@/account"
-import { formatOpenAIQuotaDisplay, getOpenAIQuotaForDisplay } from "@/account/quota"
+import { formatOpenAIQuotaDisplay, getOpenAIQuotaForDisplay, OPENAI_QUOTA_DISPLAY_TTL_MS } from "@/account/quota"
 import { createTimerCoordinator } from "../../util/timer-coordinator"
 import { buildVariantOptions, getEffectiveVariantValue, shouldShowVariantControl } from "../../util/model-variant"
 
@@ -71,8 +71,6 @@ export type PromptRef = {
 }
 
 const PLACEHOLDERS = ["Fix a TODO in the codebase", "What is the tech stack of this project?", "Fix broken tests"]
-const OPENAI_QUOTA_REFRESH_MIN_MS = 60_000
-
 export function Prompt(props: PromptProps) {
   let input: TextareaRenderable
   let anchor: BoxRenderable
@@ -144,7 +142,7 @@ export function Prompt(props: PromptProps) {
     if (disableFooterMeta) return
     if (currentQuotaFamily() !== "openai") return
     const now = Date.now()
-    if (!options?.force && now - lastQuotaRefreshAt() < OPENAI_QUOTA_REFRESH_MIN_MS) return
+    if (!options?.force && now - lastQuotaRefreshAt() < OPENAI_QUOTA_DISPLAY_TTL_MS) return
     setLastQuotaRefreshAt(now)
     setQuotaRefresh((v) => v + 1)
   }
