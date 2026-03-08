@@ -7,12 +7,10 @@ import {
   settingsNotificationsAgentSelector,
   settingsNotificationsErrorsSelector,
   settingsNotificationsPermissionsSelector,
-  settingsReleaseNotesSelector,
   settingsSoundsAgentSelector,
   settingsSoundsErrorsSelector,
   settingsSoundsPermissionsSelector,
   settingsThemeSelector,
-  settingsUpdatesStartupSelector,
 } from "../selectors"
 
 test("smoke settings dialog opens, switches tabs, closes", async ({ page, gotoSession }) => {
@@ -418,59 +416,11 @@ test("changing permissions and errors sounds updates localStorage", async ({ pag
   expect(stored?.sounds?.errors).not.toBe(initial?.sounds?.errors)
 })
 
-test("toggling updates startup switch updates localStorage", async ({ page, gotoSession }) => {
+test("updates controls are absent from settings dialog", async ({ page, gotoSession }) => {
   await gotoSession()
 
   const dialog = await openSettings(page)
-  const switchContainer = dialog.locator(settingsUpdatesStartupSelector)
-  await expect(switchContainer).toBeVisible()
-
-  const toggleInput = switchContainer.locator('[data-slot="switch-input"]')
-
-  const isDisabled = await toggleInput.evaluate((el: HTMLInputElement) => el.disabled)
-  if (isDisabled) {
-    test.skip()
-    return
-  }
-
-  const initialState = await toggleInput.evaluate((el: HTMLInputElement) => el.checked)
-  expect(initialState).toBe(true)
-
-  await switchContainer.locator('[data-slot="switch-control"]').click()
-  await page.waitForTimeout(100)
-
-  const newState = await toggleInput.evaluate((el: HTMLInputElement) => el.checked)
-  expect(newState).toBe(false)
-
-  const stored = await page.evaluate((key) => {
-    const raw = localStorage.getItem(key)
-    return raw ? JSON.parse(raw) : null
-  }, settingsKey)
-
-  expect(stored?.updates?.startup).toBe(false)
-})
-
-test("toggling release notes switch updates localStorage", async ({ page, gotoSession }) => {
-  await gotoSession()
-
-  const dialog = await openSettings(page)
-  const switchContainer = dialog.locator(settingsReleaseNotesSelector)
-  await expect(switchContainer).toBeVisible()
-
-  const toggleInput = switchContainer.locator('[data-slot="switch-input"]')
-  const initialState = await toggleInput.evaluate((el: HTMLInputElement) => el.checked)
-  expect(initialState).toBe(true)
-
-  await switchContainer.locator('[data-slot="switch-control"]').click()
-  await page.waitForTimeout(100)
-
-  const newState = await toggleInput.evaluate((el: HTMLInputElement) => el.checked)
-  expect(newState).toBe(false)
-
-  const stored = await page.evaluate((key) => {
-    const raw = localStorage.getItem(key)
-    return raw ? JSON.parse(raw) : null
-  }, settingsKey)
-
-  expect(stored?.general?.releaseNotes).toBe(false)
+  await expect(dialog.locator('[data-action="settings-updates-startup"]')).toHaveCount(0)
+  await expect(dialog.locator('[data-action="settings-release-notes"]')).toHaveCount(0)
+  await expect(dialog.getByRole("button", { name: /check now/i })).toHaveCount(0)
 })
