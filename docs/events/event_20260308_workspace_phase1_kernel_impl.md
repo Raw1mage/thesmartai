@@ -82,6 +82,10 @@ Status: Done
     - **沒有 session id** → 使用 `globalSync.child(directory).workspace.directory` 作 workspace fallback
   - `packages/app/src/context/file.tsx` 已把 child-store 派生出的 workspace directory 傳入 view cache
   - 新增 `getFileViewWorkspaceDirectory()` / `getFileViewSessionScopeDirectory()`，讓 file view 的 workspace-default 規則顯式化
+- 已補修 repo hook 可執行權限：
+  - `.husky/_/*` 中實際 hook shim 檔原本缺少 executable bit，導致 commit 時全部被 Git 視為 ignored
+  - 本輪已恢復主要 hook/shim 的 `+x` 權限，讓後續 commit 能重新進入正常 hook 流程
+  - 為了讓修復可持續，`package.json` 的 `prepare` 已更新為：在 `husky` 生成 hooks 後，自動補 `.husky/pre-push` 與 `.husky/_/*` 的 executable bit
 - 測試新增：
   - `packages/opencode/test/project/workspace-resolver.test.ts`
   - `packages/opencode/test/project/workspace-attachments.test.ts`
@@ -98,7 +102,10 @@ Status: Done
 - `bun run --cwd packages/opencode typecheck` ✅
 - `bun test --preload ./happydom.ts ./src/context/file/view-cache.test.ts ./src/context/comments.test.ts ./src/context/prompt.test.ts ./src/context/terminal.test.ts ./src/context/global-sync/child-store.test.ts ./src/context/global-sync/workspace-adapter.test.ts` (in `packages/app`) ✅
 - `bun run typecheck` (in `packages/app`) ✅
+- `.husky/_/*` executable bits restored via `chmod +x` ✅
+- `package.json` `prepare` 已補上 husky shim executable-bit 自動修復 ✅
 - Architecture Sync: Updated
   - 已同步 `/home/pkcs12/projects/opencode-beta/docs/ARCHITECTURE.md`，補入 `src/project/workspace/*` 模組責任說明。
   - 已同步 app file map：`global-sync/child-store.ts`、`terminal.tsx`、`prompt.tsx`、`comments.tsx`、`file/view-cache.ts` 的 mixed ownership / workspace-default 規則。
   - 已新增 WebApp runtime ownership 章節，說明目前 app 端 `workspace-owned` 與 `session-with-workspace-default` 的分層。
+  - Husky executable-bit 補修不改 architecture truth，因此本次無需再改寫 architecture 內容。
