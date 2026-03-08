@@ -2,7 +2,12 @@ import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
 import { Instance } from "../../project/instance"
-import { WorkspaceOperation, WorkspaceResetOperationResultSchema, WorkspaceService } from "../../project/workspace"
+import {
+  WorkspaceDeleteOperationResultSchema,
+  WorkspaceOperation,
+  WorkspaceResetOperationResultSchema,
+  WorkspaceService,
+} from "../../project/workspace"
 import { WorkspaceAggregateSchema } from "../../project/workspace/types"
 import { Storage } from "../../storage/storage"
 import { lazy } from "../../util/lazy"
@@ -138,6 +143,28 @@ export const WorkspaceRoutes = lazy(() =>
       }),
       validator("param", z.object({ workspaceID: z.string() })),
       async (c) => c.json(await WorkspaceOperation.reset({ workspaceID: c.req.valid("param").workspaceID })),
+    )
+    .post(
+      "/:workspaceID/delete-run",
+      describeRoute({
+        summary: "Run workspace delete operation",
+        description:
+          "Archive active sessions, dispose runtime instance state, remove the sandbox worktree, remove project sandbox metadata, and return the archived workspace aggregate.",
+        operationId: "workspace.deleteRun",
+        responses: {
+          200: {
+            description: "Workspace delete operation result",
+            content: {
+              "application/json": {
+                schema: resolver(WorkspaceDeleteOperationResultSchema),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator("param", z.object({ workspaceID: z.string() })),
+      async (c) => c.json(await WorkspaceOperation.delete({ workspaceID: c.req.valid("param").workspaceID })),
     )
     .post(
       "/:workspaceID/reset",

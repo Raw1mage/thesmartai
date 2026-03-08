@@ -1282,25 +1282,32 @@ export default function Layout(props: ParentProps) {
     if (directory === root) return
 
     setBusy(directory, true)
-    await transitionWorkspaceLifecycle({ directory, action: "delete" }).catch(() => undefined)
+    const [child] = globalSync.child(directory, { bootstrap: false })
+    const workspaceID = child.workspace?.workspaceId
+    if (!workspaceID) {
+      setBusy(directory, false)
+      return
+    }
 
-    const result = await globalSDK.client.worktree
-      .remove({ directory: root, worktreeRemoveInput: { directory } })
-      .then((x) => x.data)
+    const result = await globalSDK
+      .fetch(`${globalSDK.url}/api/v2/workspace/${workspaceID}/delete-run`, {
+        method: "POST",
+      })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await response.text())
+        return response.json()
+      })
       .catch((err) => {
         showToast({
           title: language.t("workspace.delete.failed.title"),
           description: errorMessage(err, language.t("common.requestFailed")),
         })
-        void transitionWorkspaceLifecycle({ directory, action: "failed" }).catch(() => undefined)
-        return false
+        return undefined
       })
 
     setBusy(directory, false)
 
     if (!result) return
-
-    await transitionWorkspaceLifecycle({ directory, action: "archive" }).catch(() => undefined)
 
     globalSync.set(
       "project",
