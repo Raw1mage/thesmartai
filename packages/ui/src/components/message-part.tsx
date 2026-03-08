@@ -89,6 +89,63 @@ function DiagnosticsDisplay(props: { diagnostics: Diagnostic[] }): JSX.Element {
   )
 }
 
+function BashToolOutput(props: { text: string }) {
+  const i18n = useI18n()
+  const [expanded, setExpanded] = createSignal(false)
+  const [canExpand, setCanExpand] = createSignal(false)
+  let outputRef: HTMLDivElement | undefined
+
+  const updateCanExpand = () => {
+    const el = outputRef
+    if (!el) return
+    if (expanded()) return
+    setCanExpand(el.scrollHeight > el.clientHeight + 2)
+  }
+
+  createResizeObserver(
+    () => outputRef,
+    () => {
+      updateCanExpand()
+    },
+  )
+
+  createEffect(() => {
+    props.text
+    if (expanded()) {
+      setCanExpand(true)
+      return
+    }
+    updateCanExpand()
+  })
+
+  return (
+    <div
+      ref={(el) => (outputRef = el)}
+      data-component="tool-output"
+      data-bash-output="true"
+      data-expanded={expanded() ? "true" : undefined}
+      data-can-expand={canExpand() ? "true" : undefined}
+      aria-live="off"
+      style={{ "overflow-anchor": "none" }}
+    >
+      <Markdown text={props.text} />
+      <Show when={canExpand()}>
+        <button
+          data-slot="bash-output-expand"
+          type="button"
+          aria-label={expanded() ? i18n.t("ui.message.collapse") : i18n.t("ui.message.expand")}
+          onClick={(event) => {
+            event.stopPropagation()
+            setExpanded((value) => !value)
+          }}
+        >
+          <Icon name="chevron-down" size="small" />
+        </button>
+      </Show>
+    </div>
+  )
+}
+
 export interface MessageProps {
   message: MessageType
   parts: PartType[]
@@ -983,17 +1040,20 @@ ToolRegistry.register({
   name: "grep",
   render(props) {
     const i18n = useI18n()
-    const args: string[] = []
-    if (props.input.pattern) args.push("pattern=" + props.input.pattern)
-    if (props.input.include) args.push("include=" + props.input.include)
+    const summary = createMemo(() => {
+      const parts: string[] = []
+      if (props.input.path) parts.push(getDirectory(props.input.path))
+      if (props.input.pattern) parts.push(`pattern=${props.input.pattern}`)
+      if (props.input.include) parts.push(`include=${props.input.include}`)
+      return parts.join(" · ") || "/"
+    })
     return (
       <BasicTool
         {...props}
         icon="magnifying-glass-menu"
         trigger={{
           title: i18n.t("ui.tool.grep"),
-          subtitle: getDirectory(props.input.path || "/"),
-          args,
+          subtitle: summary(),
         }}
       >
         <Show when={props.output}>
@@ -1248,6 +1308,10 @@ ToolRegistry.register({
   name: "bash",
   render(props) {
     const i18n = useI18n()
+    const shellText = createMemo(
+      () =>
+        `\`\`\`command\n$ ${props.input.command ?? props.metadata.command ?? ""}${props.output || props.metadata.output ? "\n\n" + stripAnsi(props.output || props.metadata.output) : ""}\n\`\`\``,
+    )
     return (
       <BasicTool
         {...props}
@@ -1257,17 +1321,7 @@ ToolRegistry.register({
           subtitle: props.input.description,
         }}
       >
-        <div
-          data-component="tool-output"
-          data-bash-output="true"
-          data-scrollable
-          aria-live="off"
-          style={{ "overflow-anchor": "none" }}
-        >
-          <Markdown
-            text={`\`\`\`command\n$ ${props.input.command ?? props.metadata.command ?? ""}${props.output || props.metadata.output ? "\n\n" + stripAnsi(props.output || props.metadata.output) : ""}\n\`\`\``}
-          />
-        </div>
+        <BashToolOutput text={shellText()} />
       </BasicTool>
     )
   },
