@@ -169,6 +169,7 @@ This subsection documents how prompt footer usage/account metadata stays fresh w
      - **provider relevance gate**: quota path is only armed when current effective provider family is `openai`
      - **initial on-demand hydrate**: entering an OpenAI-backed footer can trigger one refresh if the last refresh is older than 60 seconds
      - **turn completion signal**: when `lastCompletedAssistant` changes, TUI refreshes quota only if the previous refresh is older than 60 seconds
+   - Footer account label and footer OpenAI quota both resolve from the same active-account snapshot, so account identity and usage stay paired when the active OpenAI account changes.
    - The low-frequency footer timer (default 15s via `OPENCODE_TUI_FOOTER_REFRESH_MS`) is retained for lightweight elapsed/account display updates only; it does **not** poll OpenAI quota in the background.
    - Result: footer usage stays fresh during real OpenAI usage while avoiding idle quota polling.
 

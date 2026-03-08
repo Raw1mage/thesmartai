@@ -192,7 +192,7 @@ export function Prompt(props: PromptProps) {
     timers.scheduleInterval("retry-countdown", update, 1000)
   })
 
-  const [activeAccountLabel] = createResource(
+  const [activeAccountDisplay] = createResource(
     () => {
       if (disableFooterMeta) return undefined
       const current = local.model.current()
@@ -208,24 +208,42 @@ export function Prompt(props: PromptProps) {
         const activeId = await Account.getActive(fam)
         if (!activeId) return undefined
         const info = await Account.get(fam, activeId)
-        if (!info) return activeId
-        return Account.getDisplayName(activeId, info, providerId) || activeId
+        if (!info) {
+          return {
+            id: activeId,
+            label: activeId,
+          }
+        }
+        return {
+          id: activeId,
+          label: Account.getDisplayName(activeId, info, providerId) || activeId,
+        }
       } catch {
         return undefined
       }
     },
   )
 
-  const [codexQuota] = createResource(quotaRefresh, async () => {
-    if (disableFooterMeta) return null
-    try {
-      const activeId = await Account.getActive("openai")
+  const activeAccountLabel = createMemo(() => activeAccountDisplay()?.label)
+
+  const [codexQuota] = createResource(
+    () => {
+      if (disableFooterMeta) return undefined
+      if (currentQuotaFamily() !== "openai") return undefined
+      const activeId = activeAccountDisplay()?.id
+      if (!activeId) return undefined
+      return `${activeId}:${quotaRefresh()}`
+    },
+    async (key) => {
+      const [activeId] = key.split(":")
       if (!activeId) return null
-      return (await getOpenAIQuotaForDisplay(activeId)) ?? null
-    } catch {
-      return null
-    }
-  })
+      try {
+        return (await getOpenAIQuotaForDisplay(activeId)) ?? null
+      } catch {
+        return null
+      }
+    },
+  )
 
   function promptModelWarning() {
     toast.show({

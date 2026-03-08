@@ -56,6 +56,8 @@ Status: Done
 - 效果：成功值仍維持 60 秒 display cache；但 `--` 不再被當作等價成功結果長時間占住 `/admin` 與 footer 顯示。
 - 再補強：`refreshOpenAIAccountQuota()` 在 token refresh 失敗 / usage fetch 非 2xx / fetch throw 時，不再無條件用 `null` 覆蓋已存在的 quota cache；若該帳號已有 last-known-good quota，就保留舊值並只更新 timestamp。
 - 效果：`/admin` 與 footer 遇到偶發 OpenAI 查詢失敗時，優先維持最後一次成功值，而不是從數字退回 `--`。
+- 後續再發現：footer bar 的帳號名稱與 quota 數值可能來自不同 active account 時點；原因是 label 走 `activeAccountLabel` resource，quota 則走獨立的 `Account.getActive("openai") + quotaRefresh` resource，兩者沒有共用同一個 active-account snapshot。
+- 修正：`prompt/index.tsx` 改為先建立共享 `activeAccountDisplay` resource（含 `id + label`），再讓 footer label 與 OpenAI quota 都從同一份 active account snapshot 派生；如此即使 active account 發生切換，也不會出現「名稱是 pincyluo、quota 卻還是 ivon0829」的錯配。
 
 ### Validation
 
@@ -73,6 +75,8 @@ Status: Done
   - 觀察：本輪實機輸出中，`pincyluo` 已可從先前 `--` 恢復為數值；但另一次 live fetch 中 `yeatsluo@gmail.com` 仍可能出現 `--`，代表「不把舊 null 當長 TTL 成功快取」只能修正卡住問題，不能掩蓋當次即時 fetch 真失敗的情況
 - `bunx eslint packages/opencode/src/account/quota/openai.ts`
   - 通過（last-known-good 保留邏輯）
+- `bunx eslint packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx`
+  - 通過（footer account/quota pairing fix）
 - gate scenario simulation（以目前實作的條件做狀態機驗證）
   - `switch to openai after idle >60s` => 觸發 refresh
   - `assistant completes within 60s` => 不觸發 refresh
@@ -86,5 +90,6 @@ Status: Done
   - 同一套 OpenAI display TTL = 60 秒，同時約束 TUI footer 與 `/admin` 顯示請求，避免密集請求
   - 失敗態 (`quota = null`, UI 顯示 `--`) 不再與成功值共用相同 display cache 語意；新的 display request 會嘗試同步補抓最新值
   - 偶發 fetch 失敗時，若已有 last-known-good quota，現在會保留舊值而不是覆蓋成 `null`
+  - footer account label 與 OpenAI quota 現在共享同一個 active-account snapshot，避免顯示名稱與 quota 數值配錯帳號
 - Architecture Sync: Updated
   - 已把 `docs/ARCHITECTURE.md` 的 TUI footer quota contract 改為 event-driven + 60s gate，並明確註記 footer timer 不做 quota polling
