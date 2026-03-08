@@ -44,4 +44,32 @@ describe("project.workspace.service", () => {
 
     expect(await service.getById(workspace.workspaceId)).toEqual(workspace)
   })
+
+  test("attachSession and detachSession update workspace attachments", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const service = createWorkspaceService(createInMemoryWorkspaceRegistry())
+
+    await service.attachSession({ id: "session-1", directory: tmp.path, active: true })
+    const attached = await service.getByDirectory(tmp.path)
+    expect(attached?.attachments.sessionIds).toEqual(["session-1"])
+    expect(attached?.attachments.activeSessionId).toBe("session-1")
+
+    await service.detachSession({ sessionID: "session-1", directory: tmp.path })
+    const detached = await service.getByDirectory(tmp.path)
+    expect(detached?.attachments.sessionIds).toEqual([])
+    expect(detached?.attachments.activeSessionId).toBeUndefined()
+  })
+
+  test("attachPty and detachPty update workspace attachments", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const service = createWorkspaceService(createInMemoryWorkspaceRegistry())
+
+    await service.attachPty({ id: "pty-1", cwd: `${tmp.path}///` })
+    const attached = await service.getByDirectory(tmp.path)
+    expect(attached?.attachments.ptyIds).toEqual(["pty-1"])
+
+    await service.detachPty({ ptyID: "pty-1" })
+    const detached = await service.getByDirectory(tmp.path)
+    expect(detached?.attachments.ptyIds).toEqual([])
+  })
 })

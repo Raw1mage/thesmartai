@@ -1,3 +1,7 @@
+import { Bus } from "@/bus"
+import { Pty } from "@/pty"
+import { Session } from "@/session"
+import { summarizeWorkspaceAttachments, type WorkspaceAttachmentDescriptor } from "./attachments"
 import type { WorkspaceAggregate } from "./types"
 import { createInMemoryWorkspaceRegistry, type WorkspaceRegistry } from "./registry"
 import { normalizeWorkspaceDirectory } from "./identity"
@@ -10,11 +14,69 @@ export interface WorkspaceService {
   getByDirectory(directory: string): Promise<WorkspaceAggregate | undefined>
   getById(workspaceId: string): Promise<WorkspaceAggregate | undefined>
   listByProject(projectId: string): Promise<WorkspaceAggregate[]>
+  attachSession(info: Pick<Session.Info, "id" | "directory"> & { active?: boolean }): Promise<WorkspaceAggregate>
+  detachSession(input: { sessionID: string; directory: string }): Promise<WorkspaceAggregate>
+  attachPty(info: Pick<Pty.Info, "id" | "cwd">): Promise<WorkspaceAggregate>
+  detachPty(input: { ptyID: string; directory?: string }): Promise<WorkspaceAggregate | undefined>
+  initEventSubscriptions(): void
 }
 
 export function createWorkspaceService(
   registry: WorkspaceRegistry = createInMemoryWorkspaceRegistry(),
 ): WorkspaceService {
+  const ptyDirectoryById = new Map<string, string>()
+  let subscriptionsInitialized = false
+
+  async function updateAttachments(
+    directory: string,
+    updater: (descriptors: WorkspaceAttachmentDescriptor[]) => WorkspaceAttachmentDescriptor[],
+  ) {
+    const workspace = await resolveWorkspaceWithRegistry({ directory, registry })
+    const descriptors: WorkspaceAttachmentDescriptor[] = [
+      ...workspace.attachments.sessionIds.map((key) => ({
+        type: "session" as const,
+        ownership: "session" as const,
+        key,
+        active: workspace.attachments.activeSessionId === key,
+      })),
+      ...workspace.attachments.ptyIds.map((key) => ({
+        type: "pty" as const,
+        ownership: "workspace" as const,
+        key,
+      })),
+      ...workspace.attachments.previewIds.map((key) => ({
+        type: "preview" as const,
+        ownership: "workspace" as const,
+        key,
+      })),
+      ...workspace.attachments.workerIds.map((key) => ({
+        type: "worker" as const,
+        ownership: "workspace" as const,
+        key,
+      })),
+      ...workspace.attachments.draftKeys.map((key) => ({
+        type: "draft" as const,
+        ownership: "session_with_workspace_default" as const,
+        key,
+      })),
+      ...workspace.attachments.fileTabKeys.map((key) => ({
+        type: "file_tab" as const,
+        ownership: "session_with_workspace_default" as const,
+        key,
+      })),
+      ...workspace.attachments.commentKeys.map((key) => ({
+        type: "comment" as const,
+        ownership: "session_with_workspace_default" as const,
+        key,
+      })),
+    ]
+
+    return registry.upsert({
+      ...workspace,
+      attachments: summarizeWorkspaceAttachments(updater(descriptors)),
+    })
+  }
+
   return {
     registry,
     resolve(input) {
@@ -34,6 +96,67 @@ export function createWorkspaceService(
     },
     listByProject(projectId) {
       return registry.listByProject(projectId)
+    },
+    attachSession(info) {
+      return updateAttachments(info.directory, (descriptors) => {
+        const next = descriptors.filter((item) => !(item.type === "session" && item.key === info.id))
+        next.push({
+          type: "session",
+          ownership: "session",
+          key: info.id,
+          active: info.active,
+        })
+        if (info.active) {
+          for (const item of next) {
+            if (item.type === "session" && item.key !== info.id) item.active = false
+          }
+        }
+        return next
+      })
+    },
+    detachSession(input) {
+      return updateAttachments(input.directory, (descriptors) =>
+        descriptors.filter((item) => !(item.type === "session" && item.key === input.sessionID)),
+      )
+    },
+    attachPty(info) {
+      ptyDirectoryById.set(info.id, normalizeWorkspaceDirectory(info.cwd))
+      return updateAttachments(info.cwd, (descriptors) => {
+        const next = descriptors.filter((item) => !(item.type === "pty" && item.key === info.id))
+        next.push({
+          type: "pty",
+          ownership: "workspace",
+          key: info.id,
+        })
+        return next
+      })
+    },
+    async detachPty(input) {
+      const directory = input.directory ?? ptyDirectoryById.get(input.ptyID)
+      if (!directory) return undefined
+      ptyDirectoryById.delete(input.ptyID)
+      return updateAttachments(directory, (descriptors) =>
+        descriptors.filter((item) => !(item.type === "pty" && item.key === input.ptyID)),
+      )
+    },
+    initEventSubscriptions() {
+      if (subscriptionsInitialized) return
+      subscriptionsInitialized = true
+      Bus.subscribe(Session.Event.Created, (evt) => {
+        void this.attachSession({ id: evt.properties.info.id, directory: evt.properties.info.directory, active: true })
+      })
+      Bus.subscribe(Session.Event.Deleted, (evt) => {
+        void this.detachSession({ sessionID: evt.properties.info.id, directory: evt.properties.info.directory })
+      })
+      Bus.subscribe(Pty.Event.Created, (evt) => {
+        void this.attachPty({ id: evt.properties.info.id, cwd: evt.properties.info.cwd })
+      })
+      Bus.subscribe(Pty.Event.Deleted, (evt) => {
+        void this.detachPty({ ptyID: evt.properties.id })
+      })
+      Bus.subscribe(Pty.Event.Exited, (evt) => {
+        void this.detachPty({ ptyID: evt.properties.id })
+      })
     },
   }
 }

@@ -19,7 +19,6 @@ Status: Done
 
 ### OUT
 
-- 本輪不直接做 attachment registration
 - 不做 lifecycle/reset/delete policy
 - 不接 server route / app 直接讀取 runtime service
 
@@ -46,16 +45,23 @@ Status: Done
   - `getByDirectory(directory)`
   - `getById(workspaceId)`
   - `listByProject(projectId)`
+- 第二版延伸 attachment integration：
+  - `attachSession(...)` / `detachSession(...)`
+  - `attachPty(...)` / `detachPty(...)`
+  - `initEventSubscriptions()`
 - 預設 service 內部持有 in-memory registry，並透過 `resolveWorkspaceWithRegistry()` 對外提供 normalized lookup + auto-upsert。
 - 補上 `resolveWorkspaceViaService()`，讓後續 consumer 可先依賴 service seam，而不是直接碰 resolver/registry。
+- `InstanceBootstrap()` 已開始初始化 workspace service event subscriptions，讓 session/pty 事件能把 attachment ownership 寫回 workspace registry。
 - 新增 focused tests 驗證：
   - resolve 後 registry 可回讀
   - manual register / listByProject 正常
   - helper 可使用注入的 service
+  - session attachment registration 正常
+  - pty attachment registration 正常
 
 ### Validation
 
 - `bun test packages/opencode/test/project/workspace-resolver.test.ts packages/opencode/test/project/workspace-attachments.test.ts packages/opencode/test/project/workspace-service.test.ts` ✅
 - `bun run --cwd packages/opencode typecheck` ✅
 - Architecture Sync: Updated
-  - 已同步 architecture file map，補入 `src/project/workspace/service.ts` 作為 runtime façade。
+  - 已同步 architecture file map，補入 `src/project/workspace/service.ts` 作為 runtime façade，並註記其開始承接 session/pty attachment registration。
