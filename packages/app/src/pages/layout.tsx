@@ -578,21 +578,6 @@ export default function Layout(props: ParentProps) {
   const workspaceLabel = (directory: string, branch?: string, projectId?: string) =>
     workspaceName(directory, projectId, branch) ?? branch ?? getFilename(directory)
 
-  async function transitionWorkspaceLifecycle(input: {
-    directory: string
-    action: "reset" | "delete" | "archive" | "active" | "failed"
-  }) {
-    const [store, setStore] = globalSync.child(input.directory, { bootstrap: false })
-    const workspaceID = store.workspace?.workspaceId
-    if (!workspaceID) return
-    const response = await globalSDK.fetch(`${globalSDK.url}/api/v2/workspace/${workspaceID}/${input.action}`, {
-      method: "POST",
-    })
-    if (!response.ok) return
-    const workspace = await response.json()
-    setStore("workspace", workspace)
-  }
-
   const workspaceSetting = createMemo(() => {
     const project = currentProject()
     if (!project) return false

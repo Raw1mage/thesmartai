@@ -93,7 +93,6 @@ const baseState = (input: Partial<State> = {}) =>
     config: {} as State["config"],
     path: { directory: "/tmp" } as State["path"],
     workspace: undefined,
-    workspace_status: undefined,
     session: [],
     sessionTotal: 0,
     session_status: {},

@@ -245,9 +245,6 @@ export async function bootstrapDirectory(input: {
     fetchWorkspaceCurrent({ baseUrl: input.baseUrl, fetch: input.fetch }).then((x) => {
       if (x) input.setStore("workspace", x)
     }),
-    fetchWorkspaceStatus({ baseUrl: input.baseUrl, fetch: input.fetch }).then((x) => {
-      if (x) input.setStore("workspace_status", x)
-    }),
     input.sdk.session.status().then((x) => input.setStore("session_status", x.data!)),
     input.loadSessions(input.directory),
     input.sdk.mcp.status().then((x) => input.setStore("mcp", x.data!)),
