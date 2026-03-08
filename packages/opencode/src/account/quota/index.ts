@@ -21,6 +21,7 @@ export {
   // Main API
   getOpenAIQuotas,
   getOpenAIQuota,
+  getOpenAIQuotaForDisplay,
   // Codex helpers (used by dialog-admin.tsx)
   refreshCodexAccessToken,
   extractAccountIdFromTokens,
@@ -34,5 +35,14 @@ export {
   // Schemas & Types
   CodexUsageSchema,
 } from "./openai"
+
+export type { QuotaDisplayFormat } from "./display"
+export {
+  formatOpenAIQuotaDisplay,
+  formatOpenAIQuotaDisplay as formatOpenAIQuotaHint,
+  formatRequestMonitorQuotaDisplay,
+} from "./display"
+
+export { getQuotaHint, getQuotaHintsForAccounts } from "./hint"
 
 export type { OpenAIQuota, CodexTokenResponse, CodexIdTokenClaims, CodexUsage } from "./openai"

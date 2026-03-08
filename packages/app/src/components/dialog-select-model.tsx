@@ -40,6 +40,7 @@ import {
   filterModelsForMode,
   normalizeProviderFamily,
 } from "./model-selector-state"
+import { loadQuotaHint, peekQuotaHint } from "@/utils/quota-hint-cache"
 import "./dialog-select-model.css"
 
 function cn(...classes: (string | undefined | null | false)[]) {
@@ -50,7 +51,6 @@ const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
 
 const MODEL_MANAGER_LAYOUT_STORAGE_KEY = "opencode.web.modelManager.layout.v1"
-
 const ModelList: Component<{
   provider?: string
   class?: string
@@ -620,6 +620,70 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
     })
   })
 
+  const [accountQuotaHints, setAccountQuotaHints] = createSignal<Record<string, string>>({})
+  let accountQuotaRequestVersion = 0
+
+  createEffect(() => {
+    const providerId = selectedProviderId()
+    const rows = accountsForSelectedProvider()
+    const requestVersion = ++accountQuotaRequestVersion
+
+    if (!providerId || rows.length === 0) {
+      setAccountQuotaHints({})
+      return
+    }
+
+    const immediateEntries = rows.map((row) => {
+      const cached = peekQuotaHint({
+        baseURL: sdk.url,
+        providerId,
+        accountId: row.id,
+        format: "admin",
+      })
+      return [row.id, cached.hint ?? ""] as const
+    })
+    setAccountQuotaHints(Object.fromEntries(immediateEntries))
+
+    const staleRows = rows.filter(
+      (row) =>
+        peekQuotaHint({
+          baseURL: sdk.url,
+          providerId,
+          accountId: row.id,
+          format: "admin",
+        }).stale,
+    )
+    if (staleRows.length === 0) return
+
+    void (async () => {
+      const entries = await Promise.all(
+        staleRows.map(async (row) => {
+          const hint =
+            (await loadQuotaHint((input) => sdk.fetch(input), {
+              baseURL: sdk.url,
+              providerId,
+              accountId: row.id,
+              format: "admin",
+            })) ?? ""
+          return [row.id, hint] as const
+        }),
+      )
+      if (requestVersion !== accountQuotaRequestVersion) return
+      setAccountQuotaHints((current) => ({
+        ...current,
+        ...Object.fromEntries(entries),
+      }))
+    })()
+  })
+
+  const accountRowDisplay = (row: { id: string; label: string }) => {
+    const quota = accountQuotaHints()[row.id]
+    return {
+      label: row.label,
+      quota,
+    }
+  }
+
   createEffect(() => {
     const rows = accountsForSelectedProvider()
     if (!rows.length) {
@@ -892,11 +956,22 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
                     disabled={switchingAccountId() === row.id}
                     onClick={() => switchActiveAccount(row)}
                   >
-                    <div class="flex items-center gap-2">
-                      <span class="truncate flex-1">{row.label}</span>
-                      <Show when={row.active}>
-                        <Icon name="check-small" class="text-icon-success-base shrink-0" />
-                      </Show>
+                    <div class="flex items-center gap-2 min-w-0">
+                      <div class="flex items-center gap-3 min-w-0 flex-1">
+                        <span class="truncate min-w-0 flex-1">{row.label}</span>
+                        <span class="w-4 shrink-0 flex items-center justify-center">
+                          <Show when={row.active}>
+                            <Icon name="check-small" class="text-icon-success-base shrink-0" />
+                          </Show>
+                        </span>
+                        <Show when={accountRowDisplay(row).quota}>
+                          {(quota) => (
+                            <span class="shrink-0 w-[124px] text-right text-11-regular text-text-weak tabular-nums whitespace-nowrap">
+                              {quota()}
+                            </span>
+                          )}
+                        </Show>
+                      </div>
                       <Show when={row.unavailable}>
                         <Tag>{language.t("dialog.model.activity.unavailable")}</Tag>
                       </Show>

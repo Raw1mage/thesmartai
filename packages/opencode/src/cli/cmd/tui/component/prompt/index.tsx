@@ -45,19 +45,12 @@ import { DialogAlert } from "../../ui/dialog-alert"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
-import { Auth } from "@/auth"
 import { Account } from "@/account"
 import { checkAccountsQuota, type QuotaGroup } from "@/plugin/antigravity/plugin/quota"
 import { loadAccounts, saveAccounts } from "@/plugin/antigravity/plugin/storage"
 import { resolveAntigravityQuotaGroup } from "@/plugin/antigravity/plugin/quota-group"
 import type { PluginClient } from "@/plugin/antigravity/plugin/types"
-import {
-  refreshCodexAccessToken,
-  extractAccountIdFromTokens,
-  parseCodexUsage,
-  computeCodexRemaining,
-  CODEX_USAGE_URL,
-} from "@/account/quota"
+import { formatOpenAIQuotaDisplay, getOpenAIQuotaForDisplay } from "@/account/quota"
 import { createTimerCoordinator } from "../../util/timer-coordinator"
 import { buildVariantOptions, getEffectiveVariantValue, shouldShowVariantControl } from "../../util/model-variant"
 
@@ -244,42 +237,9 @@ export function Prompt(props: PromptProps) {
   const [codexQuota] = createResource(quotaRefresh, async () => {
     if (disableFooterMeta) return null
     try {
-      const auth = await Auth.get("openai")
-      if (!auth || auth.type !== "oauth") return null
-
-      let access = auth.access
-      let expires = auth.expires
-      let refresh = auth.refresh
-      let accountId = auth.accountId
-
-      if (!access || !expires || expires < Date.now()) {
-        const tokens = await refreshCodexAccessToken(refresh)
-        access = tokens.access_token
-        refresh = tokens.refresh_token ?? refresh
-        expires = Date.now() + (tokens.expires_in ?? 3600) * 1000
-        accountId = accountId ?? extractAccountIdFromTokens(tokens)
-
-        const activeId = await Account.getActive("openai")
-        if (activeId) {
-          await Account.update("openai", activeId, {
-            refreshToken: refresh,
-            accessToken: access,
-            expiresAt: expires,
-            accountId,
-          })
-        }
-      }
-
-      const headers = new Headers({ Authorization: `Bearer ${access}`, Accept: "application/json" })
-      if (accountId) headers.set("ChatGPT-Account-Id", accountId)
-
-      const response = await fetch(CODEX_USAGE_URL, { headers })
-      if (!response.ok) return null
-      const usage = parseCodexUsage(await response.json())
-      const normalized = computeCodexRemaining(usage)
-      const hourlyRemaining = normalized.hourlyRemaining ?? 100
-      const weeklyRemaining = normalized.weeklyRemaining ?? normalized.hourlyRemaining ?? 100
-      return { hourlyRemaining, weeklyRemaining, hasHourlyWindow: normalized.hasHourlyWindow }
+      const activeId = await Account.getActive("openai")
+      if (!activeId) return null
+      return (await getOpenAIQuotaForDisplay(activeId)) ?? null
     } catch {
       return null
     }
@@ -1120,9 +1080,7 @@ export function Prompt(props: PromptProps) {
     if (current.providerId === "openai" || Account.parseFamily(current.providerId) === "openai") {
       if (isRateLimited()) return "(5hrs:0% | week:0%)"
       const quota = codexQuota()
-      if (!quota) return "(5hrs:-- | week:--)"
-      const fiveHour = quota.hasHourlyWindow ? `${quota.hourlyRemaining}%` : "--"
-      return `(5hrs:${fiveHour} | week:${quota.weeklyRemaining}%)`
+      return formatOpenAIQuotaDisplay(quota, "footer")
     }
     if (current.providerId === "antigravity" || Account.parseFamily(current.providerId) === "antigravity") {
       if (isRateLimited()) return "0%"

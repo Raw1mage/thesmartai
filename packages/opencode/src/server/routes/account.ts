@@ -6,7 +6,7 @@ import { lazy } from "../../util/lazy"
 import { errors } from "../error"
 import { Config } from "../../config/config"
 import { Plugin } from "../../plugin"
-import { getOpenAIQuota } from "../../account/quota"
+import { getQuotaHint } from "../../account/quota"
 import { RequestUser } from "@/runtime/request-user"
 import { UserDaemonManager } from "../user-daemon"
 
@@ -36,12 +36,24 @@ export const AccountRoutes = lazy(() =>
           },
         },
       }),
-      validator("query", z.object({ providerId: z.string(), modelID: z.string().optional() })),
+      validator(
+        "query",
+        z.object({
+          providerId: z.string(),
+          modelID: z.string().optional(),
+          accountId: z.string().optional(),
+          format: z.enum(["footer", "admin"]).optional(),
+        }),
+      ),
       async (c) => {
-        const { providerId } = c.req.valid("query")
+        const { providerId, modelID, accountId: requestedAccountId, format = "footer" } = c.req.valid("query")
         const family = Account.parseFamily(providerId) ?? providerId
         const families = await Account.listAll()
-        const accountId = families[family]?.activeAccount
+        const familyAccounts = families[family]?.accounts ?? {}
+        const accountId =
+          requestedAccountId && familyAccounts[requestedAccountId]
+            ? requestedAccountId
+            : families[family]?.activeAccount
 
         if (!accountId) {
           return c.json({
@@ -50,22 +62,13 @@ export const AccountRoutes = lazy(() =>
           })
         }
 
-        if (family === "openai") {
-          const quota = await getOpenAIQuota(accountId, { waitFresh: true })
-          const fiveHour = quota ? (quota.hasHourlyWindow ? `${quota.hourlyRemaining}%` : "--") : "--"
-          const week = quota ? `${quota.weeklyRemaining}%` : "--"
-          return c.json({
-            providerId,
-            family,
-            accountId,
-            hint: `(5hrs:${fiveHour} | week:${week})`,
-          })
-        }
+        const quota = await getQuotaHint({ providerId, accountId, modelID, format })
 
         return c.json({
           providerId,
-          family,
-          accountId,
+          family: quota.family,
+          accountId: quota.accountId,
+          hint: quota.hint,
         })
       },
     )

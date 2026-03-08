@@ -50,14 +50,7 @@ import { checkAccountsQuota, type QuotaGroup, type QuotaGroupSummary } from "@/p
 import { loadAccounts, saveAccounts, type AccountMetadataV3 } from "@/plugin/antigravity/plugin/storage"
 import { resolveAntigravityQuotaGroup } from "@/plugin/antigravity/plugin/quota-group"
 import type { PluginClient } from "@/plugin/antigravity/plugin/types"
-import {
-  refreshCodexAccessToken,
-  extractAccountIdFromTokens,
-  parseCodexUsage,
-  computeCodexRemaining,
-  clampPercentage,
-  CODEX_USAGE_URL,
-} from "@/account/quota"
+import { formatOpenAIQuotaDisplay, formatRequestMonitorQuotaDisplay, getQuotaHintsForAccounts } from "@/account/quota"
 
 type DialogAdminOption = DialogSelectOption<unknown> & {
   coreId?: string
@@ -115,7 +108,7 @@ export type DialogAdminProps = {
 
 export function DialogAdmin(props: DialogAdminProps = {}) {
   debugCheckpoint("admin", "DialogAdmin init")
-  const MIN_DIALOG_WIDTH = 88
+  const MIN_DIALOG_WIDTH = 85
   const local = useLocal()
   const sync = useSync()
   const sdk = useSDK()
@@ -522,61 +515,10 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   const [codexQuota] = createResource(quotaRefresh, async () => {
     try {
       const accounts = await Account.list("openai")
-      const results: Record<
-        string,
-        { hourlyRemaining: number; weeklyRemaining: number; hasHourlyWindow: boolean } | null
-      > = {}
-
-      for (const [id, info] of Object.entries(accounts)) {
-        if (info.type !== "subscription") continue
-
-        let access = info.accessToken
-        let expires = info.expiresAt
-        let refresh = info.refreshToken
-        let accountId = info.accountId
-
-        if (!access || !expires || expires < Date.now()) {
-          try {
-            const tokens = await refreshCodexAccessToken(refresh)
-            access = tokens.access_token
-            refresh = tokens.refresh_token ?? refresh
-            expires = Date.now() + (tokens.expires_in ?? 3600) * 1000
-            accountId = accountId ?? extractAccountIdFromTokens(tokens)
-
-            await Account.update("openai", id, {
-              refreshToken: refresh,
-              accessToken: access,
-              expiresAt: expires,
-              accountId,
-            })
-          } catch (e) {
-            debugCheckpoint("admin.quota", "token refresh failed", { id, error: String(e) })
-            results[id] = null
-            continue
-          }
-        }
-
-        try {
-          const headers = new Headers({ Authorization: `Bearer ${access}`, Accept: "application/json" })
-          if (accountId) headers.set("ChatGPT-Account-Id", accountId)
-
-          const response = await fetch(CODEX_USAGE_URL, { headers })
-          if (!response.ok) {
-            debugCheckpoint("admin.quota", "codex usage error", { id, status: response.status })
-            results[id] = null
-            continue
-          }
-          const usage = parseCodexUsage(await response.json())
-          const normalized = computeCodexRemaining(usage)
-          const hourlyRemaining = normalized.hourlyRemaining ?? 100
-          const weeklyRemaining = normalized.weeklyRemaining ?? normalized.hourlyRemaining ?? 100
-          results[id] = { hourlyRemaining, weeklyRemaining, hasHourlyWindow: normalized.hasHourlyWindow }
-        } catch (e) {
-          debugCheckpoint("admin.quota", "fetch usage failed", { id, error: String(e) })
-          results[id] = null
-        }
-      }
-      return results
+      const ids = Object.entries(accounts)
+        .filter(([, info]) => info.type === "subscription")
+        .map(([id]) => id)
+      return await getQuotaHintsForAccounts({ providerId: "openai", accountIds: ids, format: "admin" })
     } catch (error) {
       debugCheckpoint("admin.quota", "codex fetch error", { error: String(error) })
       return {}
@@ -768,10 +710,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     // OpenAI: Codex 5-hour + weekly usage from chatgpt.com/backend-api/wham/usage
     if (providerFamily === "openai" || providerId === "openai") {
       const quotaMap = codexQuota()
-      const quota = quotaMap?.[accountId]
-      if (!quota) return "5H:-- WK:--"
-      const fiveHour = quota.hasHourlyWindow ? `${quota.hourlyRemaining}%` : "--"
-      return `5H:${fiveHour} WK:${quota.weeklyRemaining}%`
+      return quotaMap?.[accountId] ?? formatOpenAIQuotaDisplay(undefined, "admin")
     }
 
     // Antigravity: cockpit quota group remaining fraction
@@ -786,11 +725,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       const monitor = RequestMonitor.get()
       const stats = monitor.getStats(providerId, accountId || "unknown", modelID)
       const limits = monitor.getModelLimits(providerId, modelID)
-      if (limits.rpd > 0) {
-        const remaining = Math.max(0, limits.rpd - stats.rpd)
-        const pct = clampPercentage(Math.round((remaining / limits.rpd) * 100))
-        return `${pct}% (${stats.rpd}/${limits.rpd})`
-      }
+      return formatRequestMonitorQuotaDisplay(stats, limits)
     }
 
     // Unknown provider — no quota info available
@@ -1016,6 +951,14 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     })
 
     const branchWidth = 2
+    const ACTIVITY_PROVIDER_COL_MAX = 16
+    const ACTIVITY_MODEL_COL_MAX = 20
+    const ACTIVITY_ACCOUNT_COL_MAX = 24
+    const fitColumn = (value: string, width: number) => {
+      if (value.length <= width) return value.padEnd(width)
+      if (width <= 1) return value.slice(0, width)
+      return `${value.slice(0, width - 1)}…`
+    }
     const widths = sortedModels.reduce(
       (acc, entry) => {
         const providerLabel = Account.getProviderLabel(family(entry.providerId) || entry.providerId) || "-"
@@ -1034,6 +977,9 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       },
       { provider: 8, model: 12, account: 12 },
     )
+    widths.provider = Math.min(widths.provider, ACTIVITY_PROVIDER_COL_MAX)
+    widths.model = Math.min(widths.model, ACTIVITY_MODEL_COL_MAX)
+    widths.account = Math.min(widths.account, ACTIVITY_ACCOUNT_COL_MAX)
 
     const currentModel = local.model.current()
 
@@ -1047,8 +993,8 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       const accountIds = accountData ? Object.keys(accountData.accounts) : []
       const list = accountIds.length > 0 ? accountIds : ["-"]
       const providerLabel = Account.getProviderLabel(family(providerId) || providerId)
-      const providerCol = (providerLabel || "-").padEnd(widths.provider)
-      const modelCol = (modelId || "-").padEnd(widths.model)
+      const providerCol = fitColumn(providerLabel || "-", widths.provider)
+      const modelCol = fitColumn(modelId || "-", widths.model)
       const modelInfo = providerMap[providerId]?.models?.[modelId]
       const modelDisplayName = modelInfo?.name ?? modelId
       const fallbackFree = modelInfo ? shouldShowFree(providerId, modelInfo) : false
@@ -1060,7 +1006,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
         const isLast = i === list.length - 1
         const branchMarker = list.length === 1 ? "" : i === 0 ? "┬─" : isLast ? "└─" : "├─"
         const branchColValue = branchMarker.padEnd(branchWidth)
-        const accountCol = `${display || "-"}`.padEnd(widths.account)
+        const accountCol = fitColumn(`${display || "-"}`, widths.account)
         const titleProviderCol = i === 0 ? providerCol : "".padEnd(widths.provider)
         const titleModelCol = i === 0 ? modelCol : "".padEnd(widths.model)
         const isCurrentAccount = isCurrentModel && activeAccountId && activeAccountId === accountId
@@ -1077,7 +1023,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
           const statusText = `${waitTime.padStart(16)}${rowSuffix}`
           items.push({
             value: `${accountId}:${providerId}:${modelId}`,
-            title: `${titleProviderCol} ${titleModelCol} ${branchColValue}${accountCol} ${statusText}`,
+            title: `${titleProviderCol}  ${titleModelCol}  ${branchColValue}${accountCol}  ${statusText}`,
             description: "",
             category: "",
             footer: "",
@@ -1093,7 +1039,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
           const statusText = `${waitTime.padStart(16)}${rowSuffix}`
           items.push({
             value: `${accountId}:${providerId}:${modelId}`,
-            title: `${titleProviderCol} ${titleModelCol} ${branchColValue}${accountCol} ${statusText}`,
+            title: `${titleProviderCol}  ${titleModelCol}  ${branchColValue}${accountCol}  ${statusText}`,
             description: "",
             category: "",
             footer: "",
@@ -1117,7 +1063,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
           const readyFooter = `${statusColumn}${rowSuffix}`
           items.push({
             value: `${accountId}:${providerId}:${modelId}`,
-            title: `${titleProviderCol} ${titleModelCol} ${branchColValue}${accountCol} ${readyFooter}`,
+            title: `${titleProviderCol}  ${titleModelCol}  ${branchColValue}${accountCol}  ${readyFooter}`,
             description: "",
             category: "",
             footer: "",
@@ -1128,7 +1074,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
         items.push({
           value: `${accountId}:${providerId}:${modelId}`,
-          title: `${titleProviderCol} ${titleModelCol} ${branchColValue}${accountCol} ${statusColumn}${rowSuffix}`,
+          title: `${titleProviderCol}  ${titleModelCol}  ${branchColValue}${accountCol}  ${statusColumn}${rowSuffix}`,
           description: "",
           category: "",
           footer: "",
@@ -1146,13 +1092,13 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
         footer: "",
       })
     } else {
-      const headerProvider = "Provider".padEnd(widths.provider)
-      const headerModel = "Model".padEnd(widths.model)
+      const headerProvider = fitColumn("Provider", widths.provider)
+      const headerModel = fitColumn("Model", widths.model)
       const headerBranch = "".padEnd(branchWidth)
-      const headerAccount = "Account".padEnd(widths.account)
+      const headerAccount = fitColumn("Account", widths.account)
       items.unshift({
         value: "_header",
-        title: `${headerProvider} ${headerModel} ${headerBranch}${headerAccount} Status`,
+        title: `${headerProvider}  ${headerModel}  ${headerBranch}${headerAccount}  Status`,
         description: "",
         category: "",
         footer: "",
@@ -1990,7 +1936,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     const maxTitle = activityItems.reduce((max, item) => Math.max(max, item.title.length), 0)
     const headerTitle = `Model Activities (${activityData().stats.ready}/${activityData().stats.total})`
     const baseWidth = Math.max(maxTitle, headerTitle.length)
-    const desired = Math.max(baseWidth + 12, MIN_DIALOG_WIDTH)
+    const desired = Math.max(baseWidth + 9, MIN_DIALOG_WIDTH)
     dialog.setWidth(desired)
   })
 

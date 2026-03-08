@@ -62,9 +62,10 @@ import { PromptContextItems } from "./prompt-input/context-items"
 import { PromptImageAttachments } from "./prompt-input/image-attachments"
 import { PromptDragOverlay } from "./prompt-input/drag-overlay"
 import { promptPlaceholder } from "./prompt-input/placeholder"
-import { shouldRefreshOpenAIQuota } from "./prompt-input/quota-refresh"
+import { shouldRefreshProviderQuota } from "./prompt-input/quota-refresh"
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
 import { buildAccountRows, normalizeProviderFamily } from "./model-selector-state"
+import { loadQuotaHint, peekQuotaHint } from "@/utils/quota-hint-cache"
 
 interface PromptInputProps {
   class?: string
@@ -273,7 +274,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!last || completed === undefined) return
     const marker = `${last.id}:${completed}`
     if (marker === lastQuotaRefreshMarker()) return
-    if (!shouldRefreshOpenAIQuota({ providerFamily, lastRefreshAt: lastQuotaRefreshAt() })) return
+    if (!shouldRefreshProviderQuota({ providerFamily, lastRefreshAt: lastQuotaRefreshAt() })) return
     setLastQuotaRefreshMarker(marker)
     setLastQuotaRefreshAt(Date.now())
     setQuotaRefresh((value) => value + 1)
@@ -357,26 +358,42 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (family === "opencode") return "OpenCode"
     return model.provider.name ?? family ?? model.provider.id
   })
-  const [quotaHint] = createResource(
-    () => {
-      const model = currentModel()
-      if (!model) return
-      const providerFamily = effectiveProviderFamily() ?? model.provider.id
-      if (providerFamily !== "openai") return undefined
-      return `${providerFamily}:${model.id}:${quotaRefresh()}`
-    },
-    async (value) => {
-      const [providerId, ...rest] = value.split(":")
-      const modelID = rest.slice(0, -1).join(":")
-      if (!providerId || !modelID) return undefined
-      const response = await globalSDK.fetch(
-        `${globalSDK.url}/api/v2/account/quota?providerId=${encodeURIComponent(providerId)}&modelID=${encodeURIComponent(modelID)}`,
-      )
-      if (!response.ok) return undefined
-      const data = (await response.json()) as { hint?: string }
-      return data.hint
-    },
-  )
+  const [quotaHint, setQuotaHint] = createSignal<string | undefined>()
+  let quotaHintRequestVersion = 0
+
+  createEffect(() => {
+    const model = currentModel()
+    const refresh = quotaRefresh()
+    void refresh
+    if (!model) {
+      setQuotaHint(undefined)
+      return
+    }
+
+    const providerId = effectiveProviderFamily() ?? model.provider.id
+    const modelID = model.id
+    const requestVersion = ++quotaHintRequestVersion
+    const cached = peekQuotaHint({
+      baseURL: globalSDK.url,
+      providerId,
+      modelID,
+      format: "footer",
+    })
+
+    setQuotaHint(cached.hint)
+    if (!cached.stale) return
+
+    void (async () => {
+      const hint = await loadQuotaHint((input) => globalSDK.fetch(input), {
+        baseURL: globalSDK.url,
+        providerId,
+        modelID,
+        format: "footer",
+      })
+      if (requestVersion !== quotaHintRequestVersion) return
+      setQuotaHint(hint)
+    })()
+  })
   const formatVariantLabel = (value: string, family?: string) => {
     const normalized = value.toLowerCase()
     if (family === "openai" && (normalized === "xhigh" || normalized === "extra")) return "extra"

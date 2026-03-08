@@ -205,6 +205,24 @@ const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 const refreshingOpenAI = new Set<string>()
 const refreshingPromises = new Map<string, Promise<void>>()
 
+function ensureOpenAIQuotaRefresh(id: string, info: Account.Info) {
+  if (info.type !== "subscription") return
+  if (refreshingOpenAI.has(id)) return
+
+  const refreshPromise = refreshOpenAIAccountQuota(id, info)
+    .catch(() => {
+      // refreshOpenAIAccountQuota already writes cache and logs
+    })
+    .finally(() => {
+      refreshingOpenAI.delete(id)
+      refreshingPromises.delete(id)
+    })
+
+  refreshingOpenAI.add(id)
+  refreshingPromises.set(id, refreshPromise)
+  void refreshPromise
+}
+
 /**
  * Get quota information for all OpenAI subscription accounts.
  * Handles token refreshing and caching.
@@ -233,20 +251,7 @@ export async function getOpenAIQuotas(): Promise<Record<string, OpenAIQuota | nu
         results[id] = null
       }
 
-      if (isStale && !refreshingOpenAI.has(id)) {
-        const refreshPromise = refreshOpenAIAccountQuota(id, info)
-          .catch(() => {
-            // refreshOpenAIAccountQuota already writes cache and logs
-          })
-          .finally(() => {
-            refreshingOpenAI.delete(id)
-            refreshingPromises.delete(id)
-          })
-
-        refreshingOpenAI.add(id)
-        refreshingPromises.set(id, refreshPromise)
-        void refreshPromise
-      }
+      if (isStale) ensureOpenAIQuotaRefresh(id, info)
     }
 
     return results
@@ -286,6 +291,23 @@ export async function getOpenAIQuota(
   }
 
   return quotaCache.get(accountId)?.quota ?? null
+}
+
+export async function getOpenAIQuotaForDisplay(accountId: string): Promise<OpenAIQuota | null | undefined> {
+  const cached = quotaCache.get(accountId)
+  const now = Date.now()
+
+  if (cached) {
+    const isStale = now - cached.timestamp >= CACHE_TTL_MS
+    if (isStale) {
+      const accounts = await Account.list("openai")
+      const info = accounts[accountId]
+      if (info?.type === "subscription") ensureOpenAIQuotaRefresh(accountId, info)
+    }
+    return cached.quota
+  }
+
+  return getOpenAIQuota(accountId, { waitFresh: true })
 }
 
 async function refreshOpenAIAccountQuota(id: string, info: Account.Info): Promise<void> {
