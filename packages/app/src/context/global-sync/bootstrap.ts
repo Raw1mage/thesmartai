@@ -17,6 +17,38 @@ import { cmp, normalizeProviderList } from "./utils"
 import type { State, VcsCache } from "./types"
 import { formatServerError } from "@/utils/server-errors"
 
+export type WorkspaceSnapshot = {
+  workspaceId: string
+  directory: string
+  kind: "root" | "sandbox" | "derived"
+}
+
+export type WorkspaceStatus = {
+  projectId: string
+  total: number
+  kinds: { root: number; sandbox: number; derived: number }
+  attachments: { sessions: number; ptys: number; previews: number; workers: number }
+}
+
+async function getWorkspaceJson<T>(input: {
+  baseUrl?: string
+  fetch?: typeof fetch
+  path: string
+}): Promise<T | undefined> {
+  if (!input.baseUrl || !input.fetch) return undefined
+  const response = await input.fetch(`${input.baseUrl}/api/v2/workspace${input.path}`)
+  if (!response.ok) return undefined
+  return (await response.json()) as T
+}
+
+export function fetchWorkspaceCurrent(input: { baseUrl?: string; fetch?: typeof fetch }) {
+  return getWorkspaceJson<WorkspaceSnapshot>({ ...input, path: "/current" })
+}
+
+export function fetchWorkspaceStatus(input: { baseUrl?: string; fetch?: typeof fetch }) {
+  return getWorkspaceJson<WorkspaceStatus>({ ...input, path: "/status" })
+}
+
 type GlobalStore = {
   ready: boolean
   path: Path
@@ -157,6 +189,8 @@ function groupBySession<T extends { id: string; sessionID: string }>(input: T[])
 export async function bootstrapDirectory(input: {
   directory: string
   sdk: ReturnType<typeof createOpencodeClient>
+  fetch?: typeof fetch
+  baseUrl?: string
   store: Store<State>
   setStore: SetStoreFunction<State>
   vcsCache: VcsCache
@@ -193,6 +227,12 @@ export async function bootstrapDirectory(input: {
   Promise.all([
     input.sdk.path.get().then((x) => input.setStore("path", x.data!)),
     input.sdk.command.list().then((x) => input.setStore("command", x.data ?? [])),
+    fetchWorkspaceCurrent({ baseUrl: input.baseUrl, fetch: input.fetch }).then((x) => {
+      if (x) input.setStore("workspace", x)
+    }),
+    fetchWorkspaceStatus({ baseUrl: input.baseUrl, fetch: input.fetch }).then((x) => {
+      if (x) input.setStore("workspace_status", x)
+    }),
     input.sdk.session.status().then((x) => input.setStore("session_status", x.data!)),
     input.loadSessions(input.directory),
     input.sdk.mcp.status().then((x) => input.setStore("mcp", x.data!)),

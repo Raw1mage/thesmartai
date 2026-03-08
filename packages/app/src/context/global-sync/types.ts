@@ -43,6 +43,14 @@ export type State = {
         kind: "root" | "sandbox" | "derived"
       }
     | undefined
+  workspace_status:
+    | {
+        projectId: string
+        total: number
+        kinds: { root: number; sandbox: number; derived: number }
+        attachments: { sessions: number; ptys: number; previews: number; workers: number }
+      }
+    | undefined
   projectMeta: ProjectMeta | undefined
   icon: string | undefined
   provider: ProviderListResponse

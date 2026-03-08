@@ -178,6 +178,7 @@ export function createChildStoreManager(input: {
           const child = createStore<State>({
             project: "",
             workspace: undefined,
+            workspace_status: undefined,
             projectMeta: meta[0].value,
             icon: icon[0].value,
             provider: { all: [], connected: [], default: {} },
