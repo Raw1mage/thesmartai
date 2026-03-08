@@ -19,7 +19,7 @@ describe("model selector state", () => {
     expect(rows.find((row) => row.family === "google-api")?.enabled).toBe(false)
   })
 
-  test("account rows prioritize active account and include cooldown reason", () => {
+  test("account rows keep stable label ordering and include cooldown reason", () => {
     const now = 1_000
     const rows = buildAccountRows({
       selectedProviderFamily: "openai",
@@ -36,8 +36,43 @@ describe("model selector state", () => {
       },
     })
 
-    expect(rows[0]?.id).toBe("acct2")
+    expect(rows.map((row) => row.id)).toEqual(["acct1", "acct2"])
+    expect(rows.find((row) => row.id === "acct2")?.active).toBe(true)
     expect(rows.find((row) => row.id === "acct1")?.unavailable).toBe("cooldown 2m")
+  })
+
+  test("account row order stays stable when active account changes", () => {
+    const accountFamilies = {
+      openai: {
+        activeAccount: "acct1",
+        accounts: {
+          acct2: { name: "Beta" },
+          acct1: { name: "Alpha" },
+        },
+      },
+    }
+
+    const before = buildAccountRows({
+      selectedProviderFamily: "openai",
+      accountFamilies,
+      formatCooldown: (minutes) => `cooldown ${minutes}m`,
+    })
+
+    const after = buildAccountRows({
+      selectedProviderFamily: "openai",
+      accountFamilies: {
+        openai: {
+          ...accountFamilies.openai,
+          activeAccount: "acct2",
+        },
+      },
+      formatCooldown: (minutes) => `cooldown ${minutes}m`,
+    })
+
+    expect(before.map((row) => row.id)).toEqual(["acct1", "acct2"])
+    expect(after.map((row) => row.id)).toEqual(["acct1", "acct2"])
+    expect(before.find((row) => row.id === "acct1")?.active).toBe(true)
+    expect(after.find((row) => row.id === "acct2")?.active).toBe(true)
   })
 
   test("favorites mode only keeps visible models in selected provider family", () => {
