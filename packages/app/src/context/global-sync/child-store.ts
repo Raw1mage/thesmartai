@@ -20,14 +20,28 @@ function resolveWorkspaceState(input: { directory: string; projectId?: string; w
   if (!input.projectId) return undefined
   const directory = normalizeWorkspaceDirectory(input.directory)
   const kind = deriveWorkspaceKind({ directory, worktree: input.worktree })
+  const origin: "generated" | "local" = kind === "derived" ? "generated" : "local"
   return {
     workspaceId: createWorkspaceId({
       directory,
       projectId: input.projectId,
       kind,
     }),
+    projectId: input.projectId,
     directory,
     kind,
+    origin,
+    lifecycleState: "active" as const,
+    attachments: {
+      sessionIds: [],
+      activeSessionId: undefined,
+      ptyIds: [],
+      previewIds: [],
+      workerIds: [],
+      draftKeys: [],
+      fileTabKeys: [],
+      commentKeys: [],
+    },
   }
 }
 

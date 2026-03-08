@@ -149,7 +149,13 @@ export default function Layout(props: ParentProps) {
       }),
     )
   }
-  const isBusy = (directory: string) => !!state.busyWorkspaces[workspaceKey(directory)]
+  const isBusy = (directory: string) => {
+    const [child] = globalSync.child(directory, { bootstrap: false })
+    const lifecycleState = child.workspace?.lifecycleState
+    return (
+      lifecycleState === "resetting" || lifecycleState === "deleting" || !!state.busyWorkspaces[workspaceKey(directory)]
+    )
+  }
   const navLeave = { current: undefined as number | undefined }
   const [sortNow, setSortNow] = createSignal(Date.now())
   let sortNowInterval: ReturnType<typeof setInterval> | undefined
@@ -576,12 +582,15 @@ export default function Layout(props: ParentProps) {
     directory: string
     action: "reset" | "delete" | "archive" | "active" | "failed"
   }) {
-    const [store] = globalSync.child(input.directory, { bootstrap: false })
+    const [store, setStore] = globalSync.child(input.directory, { bootstrap: false })
     const workspaceID = store.workspace?.workspaceId
     if (!workspaceID) return
-    await globalSDK.fetch(`${globalSDK.url}/api/v2/workspace/${workspaceID}/${input.action}`, {
+    const response = await globalSDK.fetch(`${globalSDK.url}/api/v2/workspace/${workspaceID}/${input.action}`, {
       method: "POST",
     })
+    if (!response.ok) return
+    const workspace = await response.json()
+    setStore("workspace", workspace)
   }
 
   const workspaceSetting = createMemo(() => {

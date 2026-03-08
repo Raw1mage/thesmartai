@@ -19,8 +19,23 @@ import { formatServerError } from "@/utils/server-errors"
 
 export type WorkspaceSnapshot = {
   workspaceId: string
+  projectId: string
   directory: string
   kind: "root" | "sandbox" | "derived"
+  origin: "local" | "generated" | "imported"
+  lifecycleState: "active" | "archived" | "resetting" | "deleting" | "failed"
+  displayName?: string
+  branch?: string
+  attachments: {
+    sessionIds: string[]
+    activeSessionId?: string
+    ptyIds: string[]
+    previewIds: string[]
+    workerIds: string[]
+    draftKeys: string[]
+    fileTabKeys: string[]
+    commentKeys: string[]
+  }
 }
 
 export type WorkspaceStatus = {

@@ -8,8 +8,21 @@ describe("global-sync workspace bootstrap helpers", () => {
         new Response(
           JSON.stringify({
             workspaceId: "workspace:1",
+            projectId: "project-1",
             directory: "/repo",
             kind: "root",
+            origin: "local",
+            lifecycleState: "active",
+            attachments: {
+              sessionIds: ["session-1"],
+              activeSessionId: "session-1",
+              ptyIds: ["pty-1"],
+              previewIds: [],
+              workerIds: [],
+              draftKeys: [],
+              fileTabKeys: [],
+              commentKeys: [],
+            },
           }),
           { status: 200 },
         ),
@@ -18,8 +31,21 @@ describe("global-sync workspace bootstrap helpers", () => {
 
     await expect(fetchWorkspaceCurrent({ baseUrl: "http://localhost:4096", fetch: fetchMock })).resolves.toEqual({
       workspaceId: "workspace:1",
+      projectId: "project-1",
       directory: "/repo",
       kind: "root",
+      origin: "local",
+      lifecycleState: "active",
+      attachments: {
+        sessionIds: ["session-1"],
+        activeSessionId: "session-1",
+        ptyIds: ["pty-1"],
+        previewIds: [],
+        workerIds: [],
+        draftKeys: [],
+        fileTabKeys: [],
+        commentKeys: [],
+      },
     })
   })
 
