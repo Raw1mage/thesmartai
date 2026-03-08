@@ -22,7 +22,7 @@ type NewInput = {
   setActiveMessage: (message: UserMessage | undefined) => void
   setTurnStart: (value: number) => void
   scheduleTurnBackfill: () => void
-  autoScroll: { pause: () => void; forceScrollToBottom: () => void }
+  autoScroll: { pause: () => void; scrollToBottom: () => void }
   scroller: () => HTMLDivElement | undefined
   anchor: (id: string) => string
   scheduleScrollState: (el: HTMLDivElement) => void
@@ -36,7 +36,7 @@ type LegacyInput = {
   activeMessageId: () => string | undefined
   onActiveChange: (id: string | undefined) => void
   onPauseAutoScroll: () => void
-  onForceScrollToBottom: () => void
+  onScrollToBottom: () => void
   turnStart: () => number
   onBackfill: (index: number) => void
 }
@@ -69,7 +69,7 @@ export const useSessionHashScroll = (rawInput: NewInput | LegacyInput) => {
           scheduleTurnBackfill: () => {},
           autoScroll: {
             pause: rawInput.onPauseAutoScroll,
-            forceScrollToBottom: rawInput.onForceScrollToBottom,
+            scrollToBottom: rawInput.onScrollToBottom,
           },
           scroller: rawInput.scroller,
           anchor,
@@ -155,7 +155,7 @@ export const useSessionHashScroll = (rawInput: NewInput | LegacyInput) => {
   const applyHash = (behavior: ScrollBehavior) => {
     const hash = window.location.hash.slice(1)
     if (!hash) {
-      input.autoScroll.forceScrollToBottom()
+      input.autoScroll.scrollToBottom()
       const el = input.scroller()
       if (el) input.scheduleScrollState(el)
       return
@@ -179,7 +179,7 @@ export const useSessionHashScroll = (rawInput: NewInput | LegacyInput) => {
       return
     }
 
-    input.autoScroll.forceScrollToBottom()
+    input.autoScroll.scrollToBottom()
     const el = input.scroller()
     if (el) input.scheduleScrollState(el)
   }
@@ -200,7 +200,7 @@ export const useSessionHashScroll = (rawInput: NewInput | LegacyInput) => {
       setInitialAppliedForSession(true)
       requestAnimationFrame(() => {
         input.setActiveMessage(undefined)
-        input.autoScroll.forceScrollToBottom()
+        input.autoScroll.scrollToBottom()
         const el = input.scroller()
         if (el) input.scheduleScrollState(el)
         clearMessageHash()

@@ -1054,6 +1054,7 @@ ToolRegistry.register({
         trigger={{
           title: i18n.t("ui.tool.grep"),
           subtitle: summary(),
+          subtitleClass: "single-line-ellipsis",
         }}
       >
         <Show when={props.output}>

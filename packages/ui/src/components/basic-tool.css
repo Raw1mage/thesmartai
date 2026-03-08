@@ -166,6 +166,14 @@
         color: var(--text-base);
       }
     }
+
+    &.single-line-ellipsis {
+      white-space: nowrap;
+      word-break: normal;
+      display: block;
+      -webkit-line-clamp: unset;
+      -webkit-box-orient: unset;
+    }
   }
 
   [data-slot="basic-tool-tool-arg"] {

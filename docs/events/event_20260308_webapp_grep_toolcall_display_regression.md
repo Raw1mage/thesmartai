@@ -45,6 +45,7 @@ Status: Completed
 - 依使用者追問重新檢視 shell tool call 後確認：shared trigger 的責任只是穩定顯示一條 task line；shell 能承載多行細節，是因為細節放在展開後的 content pane，而不是 trigger。
 - 因此最終收斂方案改為：grep 不再嘗試在 trigger 內顯示多行參數卡片，改回 shared compact trigger，只提供單行 summary（path / pattern / include 摘要，超長則交由既有單行截斷規則處理）。
 - 這樣不會影響 grep 功能本身，因為詳細結果仍在 tool output；也更符合 shared trigger 原本只顯示 task line 的設計目的。
+- 後續實機觀察發現 grep subtitle 仍沿用 shared subtitle 的預設兩行 clamp，因此在長摘要下還是會掉成雙行。補充修正為 grep 專用 `single-line-ellipsis` class，強制回到單行 `…` 截斷。
 
 ### Validation
 

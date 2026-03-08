@@ -1099,7 +1099,7 @@ export default function Page() {
 
   const resumeScroll = () => {
     setStore("messageId", undefined)
-    autoScroll.forceScrollToBottom()
+    autoScroll.resume()
     clearMessageHash()
 
     const el = scroller
@@ -1243,7 +1243,7 @@ export default function Page() {
 
       setStore("promptHeight", next)
 
-      if (stick) autoScroll.forceScrollToBottom()
+      if (stick) autoScroll.scrollToBottom()
 
       if (el) scheduleScrollState(el)
       scrollSpy.markDirty()

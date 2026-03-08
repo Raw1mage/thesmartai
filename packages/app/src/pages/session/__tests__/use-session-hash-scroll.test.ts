@@ -58,7 +58,7 @@ describe("useSessionHashScroll", () => {
           onPauseAutoScroll: () => {
             pausedAutoScroll = true
           },
-          onForceScrollToBottom: () => {},
+          onScrollToBottom: () => {},
           activeMessageId: () => undefined,
           turnStart,
           onBackfill: () => {},
@@ -95,7 +95,7 @@ describe("useSessionHashScroll", () => {
         messagesReady: () => true,
         onActiveChange: () => {},
         onPauseAutoScroll: () => {},
-        onForceScrollToBottom: () => {},
+        onScrollToBottom: () => {},
         activeMessageId: () => undefined,
         turnStart: () => 0,
         onBackfill: () => {},
@@ -124,7 +124,7 @@ describe("useSessionHashScroll", () => {
         messagesReady: () => true,
         onActiveChange: () => {},
         onPauseAutoScroll: () => {},
-        onForceScrollToBottom: () => {},
+        onScrollToBottom: () => {},
         activeMessageId: () => undefined,
         turnStart: () => 2, // Only rendering from index 2
         onBackfill: (idx) => {
