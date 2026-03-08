@@ -8,20 +8,17 @@
 
 ### 本機 config 目錄 (建置時)
 
-執行 `./docker/sync-config.sh` 後產生：
+> 注意：`accounts.json`、`mcp-auth.json` 等 runtime secrets 應留在 user-home/XDG 路徑或由部署端 volume 管理，不應同步回 repo 的 `./config/data/`。
+
+執行同步流程後，建置上下文應只保留非敏感、可重建的 config/state：
 
 ```
-./docker/
-├── opencode/                  # XDG_CONFIG_HOME/opencode
+./config/
+├── opencode/                  # XDG_CONFIG_HOME/opencode 的非敏感設定鏡像
 │   ├── opencode.json          # 主配置檔
 │   ├── commands/              # 自訂命令
 │   ├── skills/                # Skills
-│   ├── bin/                   # 自訂腳本
-│   └── accounts.json
-├── data/                      # XDG_DATA_HOME/opencode
-│   ├── accounts.json          # 認證憑證 (多帳號)
-│   ├── mcp-auth.json          # MCP OAuth tokens
-│   └── ignored-models.json
+│   └── bin/                   # 自訂腳本
 └── state/                     # XDG_STATE_HOME/opencode
     ├── model.json             # 模型選擇偏好
     ├── model-health.json      # 模型健康狀態
@@ -37,7 +34,7 @@
 ├── config/
 │   └── opencode/              # 來自 ./config/opencode/
 ├── data/
-│   └── opencode/              # 來自 ./config/data/
+│   └── opencode/              # runtime data；由目標主機/volume 管理，不從 repo 注入 secrets
 ├── state/
 │   └── opencode/              # 來自 ./config/state/
 ├── cache/
@@ -57,20 +54,21 @@ sudo ./docker/docker-setup.sh
 
 ### 2. 同步配置文件
 
-將本機的 opencode 配置同步到 `./config/` 目錄：
+將本機的 opencode 配置同步到 `./config/` 目錄時，只同步非敏感設定：
 
 ```bash
-# 同步配置 (從 ~/.config/opencode, ~/.local/share/opencode 等)
+# 同步配置（僅非敏感設定；accounts.json 應留在 XDG runtime）
 ./docker/sync-config.sh
 ```
 
-這會複製以下檔案：
+這會複製以下非敏感內容：
 
-| 來源路徑                   | 目標路徑             | 內容                              |
-| -------------------------- | -------------------- | --------------------------------- |
-| `~/.config/opencode/`      | `./config/opencode/` | opencode.json, commands/, skills/ |
-| `~/.local/share/opencode/` | `./config/data/`     | accounts.json, mcp-auth.json      |
-| `~/.local/state/opencode/` | `./config/state/`    | model.json, model-health.json     |
+| 來源路徑                   | 目標路徑             | 內容                                                        |
+| -------------------------- | -------------------- | ----------------------------------------------------------- |
+| `~/.config/opencode/`      | `./config/opencode/` | `opencode.json`, commands/, skills/（排除敏感檔）           |
+| `~/.local/state/opencode/` | `./config/state/`    | 可重建的本機 state（避免把 runtime dump / secrets 入 repo） |
+
+`accounts.json`、`mcp-auth.json` 等敏感 runtime data 應直接保留在 XDG user-home 或部署端 volume，不應同步到 repo 工作樹。
 
 ### 3. 建置映像檔
 

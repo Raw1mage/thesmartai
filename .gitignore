@@ -45,7 +45,7 @@ __pycache__/
 /config/state/frecency.jsonl
 
 # runtime/local machine artifacts (cms workflow: template-first commits)
-/config/data/accounts.json
+/config/data/*.json
 /config/state/*.json
 /config/state/*.jsonl
 /config/lib/librust_pty.so

@@ -645,6 +645,6 @@ ls ~/.config/opencode/prompts/agents/
 | 檔案                          | 位置                                            | 職責                                                  |
 | ----------------------------- | ----------------------------------------------- | ----------------------------------------------------- |
 | `opencode.json`               | 專案根目錄                                      | Agent 設定覆蓋、permission、experimental.hook（stub） |
-| `accounts.json`               | `~/.local/share/opencode/data/`                 | 帳號儲存（OAuth token、API key）                      |
+| `accounts.json`               | `~/.config/opencode/`                           | 帳號儲存（OAuth token、API key）                      |
 | `AGENTS.md`                   | `~/.config/opencode/` 或 `<project>/.opencode/` | 指揮官指令（Main Agent 專用，確定性兩源）             |
 | `~/.config/opencode/prompts/` | XDG config                                      | 所有可覆蓋的 prompt 檔案                              |
