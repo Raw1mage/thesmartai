@@ -372,10 +372,15 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const roots = createMemo(() => {
       const map = new Map<string, string>()
       for (const project of globalSync.data.project) {
-        const sandboxes = project.sandboxes ?? []
-        for (const sandbox of sandboxes) {
-          map.set(sandbox, project.worktree)
-        }
+        map.set(project.worktree, project.worktree)
+      }
+      for (const project of server.projects.list()) {
+        const [store] = globalSync.child(project.worktree, { bootstrap: false })
+        const projectID = store.workspace?.projectId || store.project
+        if (!projectID) continue
+        const root = globalSync.data.project.find((item) => item.id === projectID)?.worktree
+        if (!root) continue
+        map.set(project.worktree, root)
       }
       return map
     })

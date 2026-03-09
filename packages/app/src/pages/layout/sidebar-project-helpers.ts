@@ -1,8 +1,8 @@
 import { workspaceKey } from "./helpers"
 
-export const projectSelected = (currentDir: string, worktree: string, sandboxes?: string[]) => {
+export const projectSelected = (currentDir: string, directories: string[]) => {
   const key = workspaceKey(currentDir)
-  return workspaceKey(worktree) === key || sandboxes?.some((sandbox) => workspaceKey(sandbox) === key) === true
+  return directories.some((directory) => workspaceKey(directory) === key)
 }
 
 export const projectTileActive = (args: {

@@ -3,12 +3,12 @@ import { projectSelected, projectTileActive } from "./sidebar-project-helpers"
 
 describe("projectSelected", () => {
   test("matches direct worktree", () => {
-    expect(projectSelected("/tmp/root", "/tmp/root")).toBe(true)
+    expect(projectSelected("/tmp/root", ["/tmp/root"])).toBe(true)
   })
 
   test("matches sandbox worktree", () => {
-    expect(projectSelected("/tmp/branch", "/tmp/root", ["/tmp/branch"])).toBe(true)
-    expect(projectSelected("/tmp/other", "/tmp/root", ["/tmp/branch"])).toBe(false)
+    expect(projectSelected("/tmp/branch", ["/tmp/root", "/tmp/branch"])).toBe(true)
+    expect(projectSelected("/tmp/other", ["/tmp/root", "/tmp/branch"])).toBe(false)
   })
 })
 

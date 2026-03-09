@@ -532,6 +532,11 @@ export default function Layout(props: ParentProps) {
     return layout.sidebar.workspaces(project.worktree)()
   })
 
+  const projectWorkspaceCandidates = (project: LocalProject | undefined) => {
+    if (!project) return [] as string[]
+    return workspaceIds(project)
+  }
+
   createEffect(() => {
     if (!pageReady()) return
     if (!layoutReady()) return
@@ -539,7 +544,7 @@ export default function Layout(props: ParentProps) {
     if (!project) return
 
     const local = project.worktree
-    const dirs = [project.worktree, ...(project.sandboxes ?? [])]
+    const dirs = projectWorkspaceCandidates(project)
     const existing = store.workspaceOrder[project.worktree]
     const merged = syncWorkspaceOrder(local, dirs, existing)
     if (!existing) {
@@ -564,9 +569,8 @@ export default function Layout(props: ParentProps) {
     for (const [directory, expanded] of Object.entries(store.workspaceExpanded)) {
       if (!expanded) continue
       const key = workspaceKey(directory)
-      const project = projects.find(
-        (item) =>
-          workspaceKey(item.worktree) === key || item.sandboxes?.some((sandbox) => workspaceKey(sandbox) === key),
+      const project = projects.find((item) =>
+        projectWorkspaceCandidates(item).some((candidate) => workspaceKey(candidate) === key),
       )
       if (!project) continue
       if (project.vcs === "git" && layout.sidebar.workspaces(project.worktree)()) continue
@@ -1053,7 +1057,9 @@ export default function Layout(props: ParentProps) {
     const root = project?.worktree ?? directory
     server.projects.touch(root)
 
-    const dirs = Array.from(new Set([root, ...(store.workspaceOrder[root] ?? []), ...(project?.sandboxes ?? [])]))
+    const dirs = Array.from(
+      new Set([root, ...(store.workspaceOrder[root] ?? []), ...projectWorkspaceCandidates(project)]),
+    )
 
     const openSession = async (target: { directory: string; id: string }) => {
       const resolved = await globalSDK.client.session
@@ -1509,7 +1515,7 @@ export default function Layout(props: ParentProps) {
 
     if (workspaces) {
       const activeDir = currentDir()
-      const dirs = [project.worktree, ...(project.sandboxes ?? [])]
+      const dirs = projectWorkspaceCandidates(project)
       for (const directory of dirs) {
         const expanded = workspaceOpenState(
           store.workspaceExpanded,

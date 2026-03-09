@@ -60,6 +60,7 @@ const ProjectTile = (props: {
   selected: Accessor<boolean>
   active: Accessor<boolean>
   overlay: Accessor<boolean>
+  directories: Accessor<string[]>
   suppressHover: Accessor<boolean>
   onProjectMouseEnter: (worktree: string, event: MouseEvent) => void
   onProjectMouseLeave: (worktree: string) => void
@@ -132,7 +133,7 @@ const ProjectTile = (props: {
         }}
         onBlur={() => props.setOpen(false)}
       >
-        <ProjectIcon project={props.project} notify />
+        <ProjectIcon project={props.project} directories={props.directories()} notify />
       </ContextMenu.Trigger>
       <ContextMenu.Portal mount={!props.mobile ? props.nav() : undefined}>
         <ContextMenu.Content>
@@ -276,10 +277,9 @@ export const SortableProject = (props: {
   const globalSync = useGlobalSync()
   const language = useLanguage()
   const sortable = createSortable(props.project.worktree)
-  const selected = createMemo(() =>
-    projectSelected(props.ctx.currentDir(), props.project.worktree, props.project.sandboxes),
-  )
-  const workspaces = createMemo(() => props.ctx.workspaceIds(props.project).slice(0, 2))
+  const workspaceDirectories = createMemo(() => props.ctx.workspaceIds(props.project))
+  const selected = createMemo(() => projectSelected(props.ctx.currentDir(), workspaceDirectories()))
+  const workspaces = createMemo(() => workspaceDirectories().slice(0, 2))
   const workspaceEnabled = createMemo(() => props.ctx.workspacesEnabled(props.project))
   const [state, setState] = createStore({
     open: false,
@@ -340,6 +340,7 @@ export const SortableProject = (props: {
       selected={selected}
       active={active}
       overlay={overlay}
+      directories={workspaceDirectories}
       suppressHover={() => state.suppressHover}
       onProjectMouseEnter={props.ctx.onProjectMouseEnter}
       onProjectMouseLeave={props.ctx.onProjectMouseLeave}
