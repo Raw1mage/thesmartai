@@ -539,6 +539,9 @@ function createGlobalSync() {
     refresh() {
       return refreshGlobal({ project: true })
     },
+    refreshDirectory(directory: string) {
+      return bootstrapInstance(directory)
+    },
     meta(directory: string, patch: ProjectMeta) {
       children.projectMeta(directory, patch)
     },

@@ -1315,6 +1315,8 @@ export default function Layout(props: ParentProps) {
       return
     }
 
+    await globalSync.project.refreshDirectory(directory).catch(() => undefined)
+
     setBusy(directory, false)
     dismiss()
 

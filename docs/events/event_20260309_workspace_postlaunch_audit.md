@@ -78,12 +78,19 @@ Status: In Progress
   - 結果是 workspace delete 流程現在更清楚分層：
     - runtime/project metadata → 由正式 refresh 收斂
     - UI preference (`workspaceOrder`) → 仍由 app local state 管理
+- 第三個 slice 進一步處理 reset convergence：
+  - `packages/app/src/context/global-sync.tsx`
+    - 對外補上 `globalSync.project.refreshDirectory(directory)`，正式重用既有 `bootstrapInstance(...)` 路徑
+  - `packages/app/src/pages/layout.tsx`
+    - `resetWorkspace(...)` 成功後，會主動 refresh 該 workspace directory store，而不是只依賴 operation 期間的事件時序自然收斂
+  - 這讓 reset 完成後的 session list / workspace aggregate / child store 狀態更新有一條更明確的後置收斂路徑
 
 ### Validation
 
 - `bun run --cwd packages/app typecheck` ✅
 - `bun run --cwd packages/app test:unit -- src/pages/layout/sidebar-project-helpers.test.ts` ✅
 - `bun run --cwd packages/app test:unit` ✅
+- 第二、三個 slice 共用驗證：`bun run --cwd packages/app typecheck` ✅ / `bun run --cwd packages/app test:unit` ✅
 - 期間另行修復 subagent `worker_busy` 阻斷，已獨立記錄於 `event_20260309_subagent_worker_busy_block.md`。
 - Architecture Sync: Verified (No doc changes)
   - 本輪屬於既有 app consumer consistency 收斂，未改變 workspace architecture boundary 或 runtime API contract。
