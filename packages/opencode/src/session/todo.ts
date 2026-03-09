@@ -106,6 +106,50 @@ export namespace Todo {
     )
   }
 
+  export function applyHostAdoptedReplan(
+    todos: Info[],
+    proposal?: {
+      targetTodoID?: string
+      proposedAction?: string
+      policy?: {
+        adoptionMode?: string
+        requiresUserConfirm?: boolean
+        requiresHostReview?: boolean
+      }
+    },
+  ) {
+    if (!proposal?.targetTodoID) return { adopted: false as const, reason: "missing_target" as const, todos }
+    if (proposal.proposedAction !== "replan_todos") return { adopted: false as const, reason: "unsupported_action" as const, todos }
+    if (proposal.policy?.adoptionMode !== "host_adoptable")
+      return { adopted: false as const, reason: "policy_not_host_adoptable" as const, todos }
+    if (proposal.policy?.requiresUserConfirm)
+      return { adopted: false as const, reason: "user_confirm_required" as const, todos }
+    if (proposal.policy?.requiresHostReview === false)
+      return { adopted: false as const, reason: "host_review_missing" as const, todos }
+    if (todos.some((todo) => todo.status === "in_progress"))
+      return { adopted: false as const, reason: "active_todo_in_progress" as const, todos }
+
+    const enriched = enrichAll(todos)
+    const target = enriched.find((todo) => todo.id === proposal.targetTodoID)
+    if (!target || target.status !== "pending")
+      return { adopted: false as const, reason: "target_not_pending" as const, todos: enriched }
+    if (!isDependencyReady(target, enriched))
+      return { adopted: false as const, reason: "dependencies_not_ready" as const, todos: enriched }
+    if (target.action?.needsApproval)
+      return { adopted: false as const, reason: "approval_gate" as const, todos: enriched }
+    if (target.action?.waitingOn)
+      return { adopted: false as const, reason: "waiting_gate" as const, todos: enriched }
+    if (target.action?.kind && target.action.kind !== "implement")
+      return { adopted: false as const, reason: "unsupported_todo_kind" as const, todos: enriched }
+
+    return {
+      adopted: true as const,
+      adoptedTodoID: target.id,
+      reason: "adopted" as const,
+      todos: enriched.map((todo) => (todo.id === target.id ? { ...todo, status: "in_progress" } : todo)),
+    }
+  }
+
   export async function reconcileProgress(input: {
     sessionID: string
     linkedTodoID?: string

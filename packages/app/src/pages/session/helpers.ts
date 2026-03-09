@@ -114,6 +114,14 @@ type WorkflowLikeSession = {
             targetTodoID?: string
             rationale?: string
             adoptionNote?: string
+            policy?: {
+              trustLevel?: string
+              adoptionMode?: string
+              requiresUserConfirm?: boolean
+              requiresHostReview?: boolean
+            }
+            hostAdopted?: boolean
+            hostAdoptionReason?: string
           }
           replanRequest?: {
             targetTodoID?: string
@@ -128,6 +136,14 @@ type WorkflowLikeSession = {
             proposedNextStep?: string
             rationale?: string
             adoptionNote?: string
+            policy?: {
+              trustLevel?: string
+              adoptionMode?: string
+              requiresUserConfirm?: boolean
+              requiresHostReview?: boolean
+            }
+            hostAdopted?: boolean
+            hostAdoptionReason?: string
           }
         }
         decision?: {
@@ -167,6 +183,12 @@ type WorkflowLikeSession = {
             targetTodoID?: string
             rationale?: string
             adoptionNote?: string
+            policy?: {
+              trustLevel?: string
+              adoptionMode?: string
+              requiresUserConfirm?: boolean
+              requiresHostReview?: boolean
+            }
           }
           replanRequest?: {
             targetTodoID?: string
@@ -181,6 +203,12 @@ type WorkflowLikeSession = {
             proposedNextStep?: string
             rationale?: string
             adoptionNote?: string
+            policy?: {
+              trustLevel?: string
+              adoptionMode?: string
+              requiresUserConfirm?: boolean
+              requiresHostReview?: boolean
+            }
           }
         }
         decision?: {
@@ -331,6 +359,8 @@ export type SessionStatusSummary = {
     askUserAdoption?: string
     replanRequest?: string
     replanAdoption?: string
+    policy?: string
+    adoptionOutcome?: string
     error?: string
   }>
   latestNarration?: {
@@ -527,6 +557,11 @@ export const getSessionStatusSummary = (input: {
       supervisor.lastGovernorTrace.suggestion.askUserAdoption?.proposalID
     ) {
       debugLines.push(`Ask-user proposal: ${supervisor.lastGovernorTrace.suggestion.askUserAdoption.proposalID}`)
+      if (supervisor.lastGovernorTrace.suggestion.askUserAdoption.policy?.adoptionMode) {
+        debugLines.push(
+          `Ask-user policy: ${supervisor.lastGovernorTrace.suggestion.askUserAdoption.policy.adoptionMode}${supervisor.lastGovernorTrace.suggestion.askUserAdoption.policy.trustLevel ? ` (${supervisor.lastGovernorTrace.suggestion.askUserAdoption.policy.trustLevel})` : ""}`,
+        )
+      }
     }
     if (
       supervisor.lastGovernorTrace.suggestion.kind === "replan" &&
@@ -540,7 +575,19 @@ export const getSessionStatusSummary = (input: {
       supervisor.lastGovernorTrace.suggestion.kind === "replan" &&
       supervisor.lastGovernorTrace.suggestion.replanAdoption?.proposalID
     ) {
-      debugLines.push(`Replan proposal: ${supervisor.lastGovernorTrace.suggestion.replanAdoption.proposalID}`)
+      debugLines.push(
+        `Replan proposal: ${supervisor.lastGovernorTrace.suggestion.replanAdoption.proposalID}${supervisor.lastGovernorTrace.suggestion.replanAdoption.hostAdopted ? " (adopted)" : ""}`,
+      )
+      if (supervisor.lastGovernorTrace.suggestion.replanAdoption.policy?.adoptionMode) {
+        debugLines.push(
+          `Replan policy: ${supervisor.lastGovernorTrace.suggestion.replanAdoption.policy.adoptionMode}${supervisor.lastGovernorTrace.suggestion.replanAdoption.policy.trustLevel ? ` (${supervisor.lastGovernorTrace.suggestion.replanAdoption.policy.trustLevel})` : ""}`,
+        )
+      }
+      if (supervisor.lastGovernorTrace.suggestion.replanAdoption.hostAdoptionReason) {
+        debugLines.push(
+          `Replan adoption: ${supervisor.lastGovernorTrace.suggestion.replanAdoption.hostAdoptionReason.replaceAll("_", " ")}`,
+        )
+      }
     }
   }
   if (supervisor?.lastGovernorTraceAt)
@@ -563,7 +610,19 @@ export const getSessionStatusSummary = (input: {
     askUserHandoff: trace.suggestion?.askUserHandoff?.blockingDecision,
     askUserAdoption: trace.suggestion?.askUserAdoption?.proposalID,
     replanRequest: trace.suggestion?.replanRequest?.proposedNextStep,
-    replanAdoption: trace.suggestion?.replanAdoption?.proposalID,
+    replanAdoption: trace.suggestion?.replanAdoption?.proposalID
+      ? `${trace.suggestion.replanAdoption.proposalID}${trace.suggestion.replanAdoption.hostAdopted ? " · adopted" : ""}`
+      : undefined,
+    policy: trace.suggestion?.askUserAdoption?.policy?.adoptionMode
+      ? `${trace.suggestion.askUserAdoption.policy.adoptionMode}${trace.suggestion.askUserAdoption.policy.trustLevel ? ` · ${trace.suggestion.askUserAdoption.policy.trustLevel}` : ""}`
+      : trace.suggestion?.replanAdoption?.policy?.adoptionMode
+        ? `${trace.suggestion.replanAdoption.policy.adoptionMode}${trace.suggestion.replanAdoption.policy.trustLevel ? ` · ${trace.suggestion.replanAdoption.policy.trustLevel}` : ""}`
+        : undefined,
+    adoptionOutcome: trace.suggestion?.replanAdoption?.hostAdoptionReason
+      ? trace.suggestion.replanAdoption.hostAdoptionReason === "adopted"
+        ? "adopted"
+        : `not adopted · ${trace.suggestion.replanAdoption.hostAdoptionReason.replaceAll("_", " ")}`
+      : undefined,
     error: trace.error,
   }))
   const smartRunnerSummary = buildSmartRunnerSummary(supervisor?.governorTraceHistory ?? [])

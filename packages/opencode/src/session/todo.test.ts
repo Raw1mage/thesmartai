@@ -131,4 +131,94 @@ describe("Session todo action metadata", () => {
       },
     ])
   })
+
+  it("can promote a host-adopted replan target into the next in-progress todo", () => {
+    const result = Todo.applyHostAdoptedReplan(
+      [
+        { id: "a", content: "original next step", status: "pending", priority: "high" },
+        { id: "b", content: "reprioritized fix", status: "pending", priority: "high" },
+      ],
+      {
+        targetTodoID: "b",
+        proposedAction: "replan_todos",
+        policy: {
+          adoptionMode: "host_adoptable",
+          requiresUserConfirm: false,
+          requiresHostReview: true,
+        },
+      },
+    )
+
+    expect(result).toEqual({
+      adopted: true,
+      adoptedTodoID: "b",
+      reason: "adopted",
+      todos: [
+        {
+          id: "a",
+          content: "original next step",
+          status: "pending",
+          priority: "high",
+          action: { kind: "implement", canDelegate: true },
+        },
+        {
+          id: "b",
+          content: "reprioritized fix",
+          status: "in_progress",
+          priority: "high",
+          action: { kind: "implement", canDelegate: true },
+        },
+      ],
+    })
+  })
+
+  it("refuses host-adopted replans that would bypass user confirmation or gated work", () => {
+    expect(
+      Todo.applyHostAdoptedReplan(
+        [{ id: "a", content: "push release", status: "pending", priority: "high" }],
+        {
+          targetTodoID: "a",
+          proposedAction: "replan_todos",
+          policy: {
+            adoptionMode: "host_adoptable",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+          },
+        },
+      ).reason,
+    ).toBe("approval_gate")
+
+    expect(
+      Todo.applyHostAdoptedReplan(
+        [{ id: "a", content: "safe next step", status: "pending", priority: "high" }],
+        {
+          targetTodoID: "a",
+          proposedAction: "replan_todos",
+          policy: {
+            adoptionMode: "host_adoptable",
+            requiresUserConfirm: true,
+            requiresHostReview: true,
+          },
+        },
+      ).reason,
+    ).toBe("user_confirm_required")
+
+    expect(
+      Todo.applyHostAdoptedReplan(
+        [
+          { id: "a", content: "current work", status: "in_progress", priority: "high" },
+          { id: "b", content: "safe next step", status: "pending", priority: "high" },
+        ],
+        {
+          targetTodoID: "b",
+          proposedAction: "replan_todos",
+          policy: {
+            adoptionMode: "host_adoptable",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+          },
+        },
+      ).reason,
+    ).toBe("active_todo_in_progress")
+  })
 })

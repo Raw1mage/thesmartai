@@ -86,6 +86,31 @@ const SmartRunnerTraceSchema = z.object({
           targetTodoID: z.string().optional(),
           rationale: z.string().optional(),
           adoptionNote: z.string().optional(),
+          policy: z
+            .object({
+              trustLevel: z.enum(["low", "medium", "high"]).optional(),
+              adoptionMode: z.enum(["advisory_only", "host_adoptable", "user_confirm_required"]).optional(),
+              requiresUserConfirm: z.boolean().optional(),
+              requiresHostReview: z.boolean().optional(),
+            })
+            .optional(),
+          hostAdopted: z.boolean().optional(),
+          hostAdoptionReason: z
+            .enum([
+              "adopted",
+              "missing_target",
+              "unsupported_action",
+              "policy_not_host_adoptable",
+              "user_confirm_required",
+              "host_review_missing",
+              "active_todo_in_progress",
+              "target_not_pending",
+              "dependencies_not_ready",
+              "approval_gate",
+              "waiting_gate",
+              "unsupported_todo_kind",
+            ])
+            .optional(),
         })
         .optional(),
       replanRequest: z
@@ -104,6 +129,31 @@ const SmartRunnerTraceSchema = z.object({
           proposedNextStep: z.string().optional(),
           rationale: z.string().optional(),
           adoptionNote: z.string().optional(),
+          policy: z
+            .object({
+              trustLevel: z.enum(["low", "medium", "high"]).optional(),
+              adoptionMode: z.enum(["advisory_only", "host_adoptable", "user_confirm_required"]).optional(),
+              requiresUserConfirm: z.boolean().optional(),
+              requiresHostReview: z.boolean().optional(),
+            })
+            .optional(),
+          hostAdopted: z.boolean().optional(),
+          hostAdoptionReason: z
+            .enum([
+              "adopted",
+              "missing_target",
+              "unsupported_action",
+              "policy_not_host_adoptable",
+              "user_confirm_required",
+              "host_review_missing",
+              "active_todo_in_progress",
+              "target_not_pending",
+              "dependencies_not_ready",
+              "approval_gate",
+              "waiting_gate",
+              "unsupported_todo_kind",
+            ])
+            .optional(),
         })
         .optional(),
     })
@@ -313,6 +363,12 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
           rationale: input.trace.decision.reason,
           adoptionNote:
             "Host may adopt this proposal into a real user question if the current loop should pause for clarification.",
+          policy: {
+            trustLevel: "medium",
+            adoptionMode: "user_confirm_required",
+            requiresUserConfirm: true,
+            requiresHostReview: true,
+          },
         }
       : undefined
   const replanRequest =
@@ -342,6 +398,12 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
           rationale: input.trace.decision.reason,
           adoptionNote:
             "Host may adopt this proposal into a real todo replan if current execution no longer matches the plan.",
+          policy: {
+            trustLevel: "medium",
+            adoptionMode: "host_adoptable",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+          },
         }
       : undefined
 
@@ -357,6 +419,40 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
       askUserAdoption,
       replanRequest,
       replanAdoption,
+    },
+  })
+}
+
+export function annotateSmartRunnerReplanAdoption(input: {
+  trace: SmartRunnerTrace
+  adopted: boolean
+  reason?:
+    | "adopted"
+    | "missing_target"
+    | "unsupported_action"
+    | "policy_not_host_adoptable"
+    | "user_confirm_required"
+    | "host_review_missing"
+    | "active_todo_in_progress"
+    | "target_not_pending"
+    | "dependencies_not_ready"
+    | "approval_gate"
+    | "waiting_gate"
+    | "unsupported_todo_kind"
+}) {
+  if (input.trace.status !== "advisory" || input.trace.suggestion?.kind !== "replan" || !input.trace.suggestion.replanAdoption) {
+    return input.trace
+  }
+
+  return SmartRunnerTraceSchema.parse({
+    ...input.trace,
+    suggestion: {
+      ...input.trace.suggestion,
+      replanAdoption: {
+        ...input.trace.suggestion.replanAdoption,
+        hostAdopted: input.adopted,
+        hostAdoptionReason: input.reason,
+      },
     },
   })
 }

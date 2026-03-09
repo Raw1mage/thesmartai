@@ -192,6 +192,12 @@ describe("getSessionStatusSummary", () => {
                     rationale: "The next step depends on a product choice the current context does not resolve",
                     adoptionNote:
                       "Host may adopt this proposal into a real user question if the current loop should pause for clarification.",
+                    policy: {
+                      trustLevel: "medium",
+                      adoptionMode: "user_confirm_required",
+                      requiresUserConfirm: true,
+                      requiresHostReview: true,
+                    },
                   },
                 },
                 decision: {
@@ -226,6 +232,14 @@ describe("getSessionStatusSummary", () => {
                       rationale: "The current todo ordering no longer matches the latest task state",
                       adoptionNote:
                         "Host may adopt this proposal into a real todo replan if current execution no longer matches the plan.",
+                      policy: {
+                        trustLevel: "medium",
+                        adoptionMode: "host_adoptable",
+                        requiresUserConfirm: false,
+                        requiresHostReview: true,
+                      },
+                      hostAdopted: true,
+                      hostAdoptionReason: "adopted",
                     },
                   },
                   decision: {
@@ -373,6 +387,12 @@ describe("getSessionStatusSummary", () => {
                   rationale: "The next step depends on a product choice the current context does not resolve",
                   adoptionNote:
                     "Host may adopt this proposal into a real user question if the current loop should pause for clarification.",
+                  policy: {
+                    trustLevel: "medium",
+                    adoptionMode: "user_confirm_required",
+                    requiresUserConfirm: true,
+                    requiresHostReview: true,
+                  },
                 },
               },
               decision: {
@@ -407,6 +427,14 @@ describe("getSessionStatusSummary", () => {
                     rationale: "The current todo ordering no longer matches the latest task state",
                     adoptionNote:
                       "Host may adopt this proposal into a real todo replan if current execution no longer matches the plan.",
+                    policy: {
+                      trustLevel: "medium",
+                      adoptionMode: "host_adoptable",
+                      requiresUserConfirm: false,
+                      requiresHostReview: true,
+                    },
+                    hostAdopted: true,
+                    hostAdoptionReason: "adopted",
                   },
                 },
                 decision: {
@@ -441,6 +469,12 @@ describe("getSessionStatusSummary", () => {
                     rationale: "The next step depends on a product choice the current context does not resolve",
                     adoptionNote:
                       "Host may adopt this proposal into a real user question if the current loop should pause for clarification.",
+                    policy: {
+                      trustLevel: "medium",
+                      adoptionMode: "user_confirm_required",
+                      requiresUserConfirm: true,
+                      requiresHostReview: true,
+                    },
                   },
                 },
                 decision: {
@@ -515,6 +549,7 @@ describe("getSessionStatusSummary", () => {
       "Ask-user draft: Should we keep the current product behavior or switch to the new flow?",
       "Ask-user handoff: Need a decision before continuing todo t3.",
       "Ask-user proposal: ask-user:t3",
+      "Ask-user policy: user_confirm_required (medium)",
       expect.stringMatching(/^Governor at: \d{2}:\d{2}:\d{2}$/),
     ])
     expect(summary.smartRunnerHistory).toEqual([
@@ -533,6 +568,7 @@ describe("getSessionStatusSummary", () => {
         askUserAdoption: "ask-user:t3",
         replanRequest: undefined,
         replanAdoption: undefined,
+        policy: "user_confirm_required · medium",
         error: undefined,
       },
       {
@@ -548,7 +584,9 @@ describe("getSessionStatusSummary", () => {
         askUserHandoff: undefined,
         askUserAdoption: undefined,
         replanRequest: "Re-evaluate todo t2 before continuing.",
-        replanAdoption: "replan:t2",
+        replanAdoption: "replan:t2 · adopted",
+        policy: "host_adoptable · medium",
+        adoptionOutcome: "adopted",
         error: undefined,
       },
     ])
@@ -561,6 +599,66 @@ describe("getSessionStatusSummary", () => {
       replan: 1,
       askUser: 1,
       recentTrend: ["continue → replan", "debug_preflight_first → ask_user"],
+    })
+  })
+
+  test("surfaces non-adopted replan reasons in debug and history", () => {
+    const summary = getSessionStatusSummary({
+      session: {
+        workflow: {
+          supervisor: {
+            lastGovernorTrace: {
+              status: "advisory",
+              suggestion: {
+                kind: "replan",
+                reason: "Need re-evaluation",
+                suggestedAction: "replan_todos",
+                replanAdoption: {
+                  proposalID: "replan:t9",
+                  policy: {
+                    trustLevel: "medium",
+                    adoptionMode: "host_adoptable",
+                    requiresUserConfirm: false,
+                    requiresHostReview: true,
+                  },
+                  hostAdopted: false,
+                  hostAdoptionReason: "active_todo_in_progress",
+                },
+              },
+            },
+            governorTraceHistory: [
+              {
+                createdAt: 70_000,
+                status: "advisory",
+                suggestion: {
+                  kind: "replan",
+                  reason: "Need re-evaluation",
+                  suggestedAction: "replan_todos",
+                  replanAdoption: {
+                    proposalID: "replan:t9",
+                    policy: {
+                      trustLevel: "medium",
+                      adoptionMode: "host_adoptable",
+                      requiresUserConfirm: false,
+                      requiresHostReview: true,
+                    },
+                    hostAdopted: false,
+                    hostAdoptionReason: "active_todo_in_progress",
+                  },
+                },
+              },
+            ],
+          },
+        },
+      } as any,
+    })
+
+    expect(summary.debugLines).toContain("Replan proposal: replan:t9")
+    expect(summary.debugLines).toContain("Replan adoption: active todo in progress")
+    expect(summary.smartRunnerHistory[0]).toMatchObject({
+      replanAdoption: "replan:t9",
+      policy: "host_adoptable · medium",
+      adoptionOutcome: "not adopted · active todo in progress",
     })
   })
 

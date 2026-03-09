@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { Session } from "."
 import {
+  annotateSmartRunnerReplanAdoption,
   annotateSmartRunnerTraceSuggestion,
   annotateSmartRunnerTraceAssist,
   applySmartRunnerBoundedAssist,
@@ -276,8 +277,80 @@ describe("Smart Runner Governor", () => {
         rationale: "The current todo ordering no longer matches the latest task state",
         adoptionNote:
           "Host may adopt this proposal into a real todo replan if current execution no longer matches the plan.",
+        policy: {
+          trustLevel: "medium",
+          adoptionMode: "host_adoptable",
+          requiresUserConfirm: false,
+          requiresHostReview: true,
+        },
       },
     })
+  })
+
+  it("marks when a replan proposal was host-adopted", () => {
+    const trace = annotateSmartRunnerReplanAdoption({
+      adopted: true,
+      reason: "adopted",
+      trace: annotateSmartRunnerTraceSuggestion({
+        trace: {
+          source: "smart_runner_governor",
+          dryRun: true,
+          status: "advisory",
+          createdAt: 1,
+          deterministicReason: "todo_pending",
+          decision: {
+            situation: "plan_invalid",
+            assessment: "Plan drifted",
+            decision: "replan",
+            reason: "The current todo ordering no longer matches the latest task state",
+            nextAction: {
+              kind: "replan_todos",
+              todoID: "t2",
+              skillHints: ["agent-workflow"],
+              narration: "Suggesting a replan before continuing.",
+            },
+            needsUserInput: false,
+            confidence: "high",
+          },
+        },
+      }),
+    })
+
+    expect(trace.suggestion?.replanAdoption?.hostAdopted).toBe(true)
+    expect(trace.suggestion?.replanAdoption?.hostAdoptionReason).toBe("adopted")
+  })
+
+  it("records non-adopted replan reasons for host observability", () => {
+    const trace = annotateSmartRunnerReplanAdoption({
+      adopted: false,
+      reason: "dependencies_not_ready",
+      trace: annotateSmartRunnerTraceSuggestion({
+        trace: {
+          source: "smart_runner_governor",
+          dryRun: true,
+          status: "advisory",
+          createdAt: 1,
+          deterministicReason: "todo_pending",
+          decision: {
+            situation: "plan_invalid",
+            assessment: "Plan drifted",
+            decision: "replan",
+            reason: "The current todo ordering no longer matches the latest task state",
+            nextAction: {
+              kind: "replan_todos",
+              todoID: "t2",
+              skillHints: ["agent-workflow"],
+              narration: "Suggesting a replan before continuing.",
+            },
+            needsUserInput: false,
+            confidence: "high",
+          },
+        },
+      }),
+    })
+
+    expect(trace.suggestion?.replanAdoption?.hostAdopted).toBe(false)
+    expect(trace.suggestion?.replanAdoption?.hostAdoptionReason).toBe("dependencies_not_ready")
   })
 
   it("annotates ask-user suggestions without changing control flow", () => {
@@ -325,6 +398,12 @@ describe("Smart Runner Governor", () => {
         rationale: "The next step depends on a product choice the current context does not resolve",
         adoptionNote:
           "Host may adopt this proposal into a real user question if the current loop should pause for clarification.",
+        policy: {
+          trustLevel: "medium",
+          adoptionMode: "user_confirm_required",
+          requiresUserConfirm: true,
+          requiresHostReview: true,
+        },
       },
     })
   })

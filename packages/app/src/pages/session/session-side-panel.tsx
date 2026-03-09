@@ -431,6 +431,14 @@ export function SessionSidePanel(props: {
                                     Replan proposal: {entry.replanAdoption}
                                   </div>
                                 </Show>
+                                <Show when={entry.policy}>
+                                  <div class="text-12-regular text-text-muted break-words">Policy: {entry.policy}</div>
+                                </Show>
+                                <Show when={entry.adoptionOutcome}>
+                                  <div class="text-12-regular text-text-muted break-words">
+                                    Adoption: {entry.adoptionOutcome}
+                                  </div>
+                                </Show>
                                 <Show when={entry.error}>
                                   <div class="text-12-regular text-warning break-words">Error: {entry.error}</div>
                                 </Show>

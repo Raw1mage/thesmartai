@@ -67,6 +67,7 @@ import {
   shouldInterruptAutonomousRun,
 } from "./workflow-runner"
 import {
+  annotateSmartRunnerReplanAdoption,
   annotateSmartRunnerTraceAssist,
   annotateSmartRunnerTraceSuggestion,
   applySmartRunnerBoundedAssist,
@@ -752,25 +753,42 @@ export namespace SessionPrompt {
         let narrationOverride: string | undefined
         if (decision.continue) {
           const smartRunnerGovernor = await getSmartRunnerConfig()
+          const todos = await Todo.get(sessionID)
           const trace = await evaluateSmartRunnerGovernorDryRun({
             sessionID,
             model: activeModel,
             enabled: smartRunnerGovernor.enabled,
-            todos: await Todo.get(sessionID),
+            todos,
             roundCount: autonomousRounds,
             deterministicDecision: decision,
             messages: msgs,
           })
+          const suggestedTrace = annotateSmartRunnerTraceSuggestion({ trace })
+          const adoptedReplan = Todo.applyHostAdoptedReplan(todos, suggestedTrace.suggestion?.replanAdoption)
+          const adoptedDecision = adoptedReplan.adopted
+            ? await (async () => {
+                await Todo.update({ sessionID, todos: adoptedReplan.todos })
+                const nextDecision = await decideAutonomousContinuation({
+                  sessionID,
+                  roundCount: autonomousRounds,
+                })
+                return nextDecision.continue ? nextDecision : decision
+              })()
+            : decision
           const assist = applySmartRunnerBoundedAssist({
             enabled: smartRunnerGovernor.assist,
-            decision,
-            trace,
+            decision: adoptedDecision,
+            trace: suggestedTrace,
           })
           const tracedAssist = annotateSmartRunnerTraceAssist({
-            trace: annotateSmartRunnerTraceSuggestion({ trace }),
+            trace: annotateSmartRunnerReplanAdoption({
+              trace: suggestedTrace,
+              adopted: adoptedReplan.adopted,
+              reason: adoptedReplan.reason,
+            }),
             enabled: smartRunnerGovernor.assist,
             assist,
-            originalText: decision.text,
+            originalText: adoptedDecision.text,
           })
           await persistSmartRunnerGovernorTrace({
             sessionID,

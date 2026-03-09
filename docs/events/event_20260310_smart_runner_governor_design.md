@@ -667,3 +667,98 @@ Validation（bounded replan adoption proposal）:
   - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 adoption proposal 修改無關
 - `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
 - 結果：Smart Runner 現在能在 `replan` suggestion 上附帶 bounded adoption proposal，供 host/runtime 未來決定是否採納成真正的 todo replan，但 deterministic runner 與 todo graph 仍完全不變。
+
+### Current Slice (adoption policy / trust model)
+
+需求：既然 ask-user / replan 兩側都已有 adoption proposal，下一步要把「哪些 proposal 屬於哪種信任等級、需要什麼核准」明確結構化，作為未來 adoption path 的政策底盤。
+
+範圍：
+
+- IN
+  - 為 adoption proposal 增加 policy metadata
+  - 在 session status / history 顯示 policy / trust / confirm requirement
+  - 保持所有 proposal 仍為 advisory only
+- OUT
+  - 不實作真正 auto-adopt
+  - 不改變 runtime control flow
+  - 不讓 Smart Runner 直接接管 question / todo mutation
+
+任務清單：
+
+- [x] 在 Smart Runner proposal 中增加 adoption policy metadata
+- [x] 在 session status / history 顯示 policy / trust model
+- [x] 驗證 policy 只增加可觀測性，不改變控制流
+
+Validation（adoption policy / trust model）:
+
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts`
+  - Smart Runner adoption policy assertions 通過
+  - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 adoption policy 修改無關
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
+- 結果：Smart Runner 現在會在 ask-user / replan adoption proposal 上附帶 bounded policy metadata，session status / history 也會顯示 policy 與 trust model；所有 proposal 仍維持 advisory only，不改變 runtime control flow。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 adoption proposal policy contract（ask-user / replan）
+
+### Current Slice (deterministic host adoption for replan)
+
+需求：既然 `replan` proposal 已有 `host_adoptable` policy，下一步要讓 deterministic host 真正能在安全前提下採納 proposal，把它轉成受控的 todo reprioritization，而不是永遠停留在 advisory trace。
+
+範圍：
+
+- IN
+  - 為 `replanAdoption` 增加 deterministic host adoption path
+  - 僅允許 `host_adoptable` 且不需 user confirm 的 proposal 被採納
+  - 將 adoption 結果回寫到 trace / session status history
+- OUT
+  - 不讓 Smart Runner 直接改 todo
+  - 不開放 ask-user auto adoption
+  - 不繞過 approval / wait / dependency gates
+
+任務清單：
+
+- [x] 為 host-adoptable replan proposal 增加 deterministic adoption helper
+- [x] 在 prompt loop 中接上 adoption path，並於採納後重新計算下一步 continue decision
+- [x] 在 trace / session status 顯示 replan proposal 是否已被 host 採納
+- [x] 驗證 adoption 只作用於安全條件下，不改變 Smart Runner 無直接 mutation 權限的邊界
+
+Validation（deterministic host adoption for replan）:
+
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/todo.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts`
+  - `todo.test.ts` / `smart-runner-governor.test.ts` 新增 adoption assertions 通過
+  - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 adoption path 修改無關
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/todo.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/todo.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts` ✅
+- 結果：`replanAdoption.policy.adoptionMode = host_adoptable` 的 proposal 現在可在 deterministic host 審核下被採納；採納條件仍受「無 active in-progress todo / dependency-ready / 不可 bypass approval 或 waiting gate」限制。Smart Runner 仍只提供 proposal，實際 todo mutation 由 host path 執行，並以 `hostAdopted=true` 回寫到 trace / session history。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 deterministic host adoption for replan contract
+
+### Current Slice (adoption observability)
+
+需求：既然 `replan` proposal 已可被 deterministic host 採納，下一步需要讓 trace / UI 能分辨「已採納」與「未採納」的具體原因，避免 host policy 行為變成黑盒。
+
+範圍：
+
+- IN
+  - 為 `replanAdoption` 補上 host adoption reason
+  - 在 session debug / history 顯示 adopted vs not adopted outcome
+  - 保持原有 adoption gate 與 deterministic authority 不變
+- OUT
+  - 不改 ask-user adoption contract
+  - 不新增新的 auto-adopt 類型
+  - 不修改 `focusTerminalById` 既存 DOM-less 測試問題
+
+任務清單：
+
+- [x] 在 deterministic host adoption helper 回傳明確 reason code
+- [x] 在 Smart Runner trace 補記 `hostAdoptionReason`
+- [x] 在 session debug / history 顯示 adoption outcome
+- [x] 驗證 adopted / not adopted 都能被觀測，且不改變既有 guardrails
+
+Validation（adoption observability）:
+
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/todo.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts`
+  - adoption observability assertions 通過
+  - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 observability 修改無關
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/todo.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/todo.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
+- 結果：session trace / debug / history 現在不只會顯示 `hostAdopted`，也會顯示 `hostAdoptionReason`，例如 `adopted`、`active_todo_in_progress`、`approval_gate`。因此 host policy 行為對人類可解釋，但 Smart Runner 仍沒有直接 mutation 權限。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 `hostAdoptionReason` observability contract
