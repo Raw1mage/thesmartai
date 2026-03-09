@@ -108,6 +108,13 @@ type WorkflowLikeSession = {
             blockingDecision?: string
             impactIfUnanswered?: string
           }
+          askUserAdoption?: {
+            proposalID?: string
+            proposedQuestion?: string
+            targetTodoID?: string
+            rationale?: string
+            adoptionNote?: string
+          }
           replanRequest?: {
             targetTodoID?: string
             requestedAction?: string
@@ -145,6 +152,13 @@ type WorkflowLikeSession = {
             whyNow?: string
             blockingDecision?: string
             impactIfUnanswered?: string
+          }
+          askUserAdoption?: {
+            proposalID?: string
+            proposedQuestion?: string
+            targetTodoID?: string
+            rationale?: string
+            adoptionNote?: string
           }
           replanRequest?: {
             targetTodoID?: string
@@ -298,6 +312,7 @@ export type SessionStatusSummary = {
     suggestion?: string
     draftQuestion?: string
     askUserHandoff?: string
+    askUserAdoption?: string
     replanRequest?: string
     error?: string
   }>
@@ -491,6 +506,12 @@ export const getSessionStatusSummary = (input: {
       )
     }
     if (
+      supervisor.lastGovernorTrace.suggestion.kind === "ask_user" &&
+      supervisor.lastGovernorTrace.suggestion.askUserAdoption?.proposalID
+    ) {
+      debugLines.push(`Ask-user proposal: ${supervisor.lastGovernorTrace.suggestion.askUserAdoption.proposalID}`)
+    }
+    if (
       supervisor.lastGovernorTrace.suggestion.kind === "replan" &&
       supervisor.lastGovernorTrace.suggestion.replanRequest?.proposedNextStep
     ) {
@@ -517,6 +538,7 @@ export const getSessionStatusSummary = (input: {
       : undefined,
     draftQuestion: trace.suggestion?.draftQuestion,
     askUserHandoff: trace.suggestion?.askUserHandoff?.blockingDecision,
+    askUserAdoption: trace.suggestion?.askUserAdoption?.proposalID,
     replanRequest: trace.suggestion?.replanRequest?.proposedNextStep,
     error: trace.error,
   }))

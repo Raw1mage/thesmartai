@@ -309,6 +309,14 @@ describe("Smart Runner Governor", () => {
         impactIfUnanswered:
           "Autonomous progress may continue in the wrong direction or stall on an unresolved product choice.",
       },
+      askUserAdoption: {
+        proposalID: "ask-user:t3",
+        proposedQuestion: "Suggesting a user clarification before continuing.",
+        targetTodoID: "t3",
+        rationale: "The next step depends on a product choice the current context does not resolve",
+        adoptionNote:
+          "Host may adopt this proposal into a real user question if the current loop should pause for clarification.",
+      },
     })
   })
 

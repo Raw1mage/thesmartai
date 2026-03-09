@@ -79,6 +79,15 @@ const SmartRunnerTraceSchema = z.object({
           impactIfUnanswered: z.string().optional(),
         })
         .optional(),
+      askUserAdoption: z
+        .object({
+          proposalID: z.string().optional(),
+          proposedQuestion: z.string().optional(),
+          targetTodoID: z.string().optional(),
+          rationale: z.string().optional(),
+          adoptionNote: z.string().optional(),
+        })
+        .optional(),
       replanRequest: z
         .object({
           targetTodoID: z.string().optional(),
@@ -283,6 +292,19 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
             "Autonomous progress may continue in the wrong direction or stall on an unresolved product choice.",
         }
       : undefined
+  const askUserAdoption =
+    input.trace.decision.decision === "ask_user"
+      ? {
+          proposalID: input.trace.decision.nextAction.todoID
+            ? `ask-user:${input.trace.decision.nextAction.todoID}`
+            : "ask-user:unspecified",
+          proposedQuestion: draftQuestion,
+          targetTodoID: input.trace.decision.nextAction.todoID,
+          rationale: input.trace.decision.reason,
+          adoptionNote:
+            "Host may adopt this proposal into a real user question if the current loop should pause for clarification.",
+        }
+      : undefined
   const replanRequest =
     input.trace.decision.decision === "replan"
       ? {
@@ -305,6 +327,7 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
       suggestedAction: input.trace.decision.nextAction.kind,
       draftQuestion,
       askUserHandoff,
+      askUserAdoption,
       replanRequest,
     },
   })

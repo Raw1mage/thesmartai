@@ -609,3 +609,32 @@ Validation（bounded ask-user handoff）:
   - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 handoff 修改無關
 - `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
 - 結果：Smart Runner 現在能在 `ask_user` suggestion 上附帶 bounded handoff metadata，供主持者評估是否要真正向人提問，但 deterministic question flow 仍完全不變。
+
+### Current Slice (bounded ask-user adoption proposal)
+
+需求：在 handoff 之上再前進一步，讓 Smart Runner 產生一個可採納的 ask-user proposal，供 deterministic layer / host 明確決定是否轉成真正的 question flow。
+
+範圍：
+
+- IN
+  - 為 `ask_user` suggestion 增加 bounded adoption proposal metadata
+  - 在 session status / history 顯示 ask-user adoption proposal
+  - 保持 deterministic question flow 不變
+- OUT
+  - 不自動發問
+  - 不建立真正 question queue
+  - 不自動 pause / stop session
+
+任務清單：
+
+- [x] 在 Smart Runner trace suggestion 中增加 ask-user adoption proposal
+- [x] 在 session status / history 顯示 adoption proposal
+- [x] 驗證 proposal 只增加可觀測性，不改變控制流
+
+Validation（bounded ask-user adoption proposal）:
+
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts`
+  - Smart Runner ask-user adoption proposal assertions 通過
+  - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 adoption proposal 修改無關
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
+- 結果：Smart Runner 現在能在 `ask_user` suggestion 上附帶 bounded adoption proposal，供 host/runtime 未來決定是否採納成真正的 question flow，但 deterministic question flow 仍完全不變。

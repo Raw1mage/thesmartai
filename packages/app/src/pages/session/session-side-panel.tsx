@@ -416,6 +416,11 @@ export function SessionSidePanel(props: {
                                     Ask-user handoff: {entry.askUserHandoff}
                                   </div>
                                 </Show>
+                                <Show when={entry.askUserAdoption}>
+                                  <div class="text-12-regular text-text-muted break-words">
+                                    Ask-user proposal: {entry.askUserAdoption}
+                                  </div>
+                                </Show>
                                 <Show when={entry.replanRequest}>
                                   <div class="text-12-regular text-text-muted break-words">
                                     Replan request: {entry.replanRequest}

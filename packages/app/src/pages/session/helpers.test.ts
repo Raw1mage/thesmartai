@@ -185,6 +185,14 @@ describe("getSessionStatusSummary", () => {
                     impactIfUnanswered:
                       "Autonomous progress may continue in the wrong direction or stall on an unresolved product choice.",
                   },
+                  askUserAdoption: {
+                    proposalID: "ask-user:t3",
+                    proposedQuestion: "Should we keep the current product behavior or switch to the new flow?",
+                    targetTodoID: "t3",
+                    rationale: "The next step depends on a product choice the current context does not resolve",
+                    adoptionNote:
+                      "Host may adopt this proposal into a real user question if the current loop should pause for clarification.",
+                  },
                 },
                 decision: {
                   decision: "debug_preflight_first",
@@ -235,6 +243,14 @@ describe("getSessionStatusSummary", () => {
                       blockingDecision: "Need a decision before continuing todo t3.",
                       impactIfUnanswered:
                         "Autonomous progress may continue in the wrong direction or stall on an unresolved product choice.",
+                    },
+                    askUserAdoption: {
+                      proposalID: "ask-user:t3",
+                      proposedQuestion: "Should we keep the current product behavior or switch to the new flow?",
+                      targetTodoID: "t3",
+                      rationale: "The next step depends on a product choice the current context does not resolve",
+                      adoptionNote:
+                        "Host may adopt this proposal into a real user question if the current loop should pause for clarification.",
                     },
                   },
                   decision: {
@@ -341,6 +357,14 @@ describe("getSessionStatusSummary", () => {
                   impactIfUnanswered:
                     "Autonomous progress may continue in the wrong direction or stall on an unresolved product choice.",
                 },
+                askUserAdoption: {
+                  proposalID: "ask-user:t3",
+                  proposedQuestion: "Should we keep the current product behavior or switch to the new flow?",
+                  targetTodoID: "t3",
+                  rationale: "The next step depends on a product choice the current context does not resolve",
+                  adoptionNote:
+                    "Host may adopt this proposal into a real user question if the current loop should pause for clarification.",
+                },
               },
               decision: {
                 decision: "debug_preflight_first",
@@ -391,6 +415,14 @@ describe("getSessionStatusSummary", () => {
                     blockingDecision: "Need a decision before continuing todo t3.",
                     impactIfUnanswered:
                       "Autonomous progress may continue in the wrong direction or stall on an unresolved product choice.",
+                  },
+                  askUserAdoption: {
+                    proposalID: "ask-user:t3",
+                    proposedQuestion: "Should we keep the current product behavior or switch to the new flow?",
+                    targetTodoID: "t3",
+                    rationale: "The next step depends on a product choice the current context does not resolve",
+                    adoptionNote:
+                      "Host may adopt this proposal into a real user question if the current loop should pause for clarification.",
                   },
                 },
                 decision: {
@@ -464,6 +496,7 @@ describe("getSessionStatusSummary", () => {
       "Ask-user why: The next step depends on a product choice the current context does not resolve",
       "Ask-user draft: Should we keep the current product behavior or switch to the new flow?",
       "Ask-user handoff: Need a decision before continuing todo t3.",
+      "Ask-user proposal: ask-user:t3",
       expect.stringMatching(/^Governor at: \d{2}:\d{2}:\d{2}$/),
     ])
     expect(summary.smartRunnerHistory).toEqual([
@@ -479,6 +512,7 @@ describe("getSessionStatusSummary", () => {
           "ask_user · request_user_input · The next step depends on a product choice the current context does not resolve",
         draftQuestion: "Should we keep the current product behavior or switch to the new flow?",
         askUserHandoff: "Need a decision before continuing todo t3.",
+        askUserAdoption: "ask-user:t3",
         replanRequest: undefined,
         error: undefined,
       },
@@ -493,6 +527,7 @@ describe("getSessionStatusSummary", () => {
         suggestion: "replan · replan_todos · The current todo ordering no longer matches the latest task state",
         draftQuestion: undefined,
         askUserHandoff: undefined,
+        askUserAdoption: undefined,
         replanRequest: "Re-evaluate todo t2 before continuing.",
         error: undefined,
       },
