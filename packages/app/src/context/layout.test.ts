@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { createRoot, createSignal } from "solid-js"
-import { createSessionKeyReader, ensureSessionKey, pruneSessionKeys } from "./layout"
+import {
+  buildProjectRootMap,
+  createSessionKeyReader,
+  ensureSessionKey,
+  pruneSessionKeys,
+  resolveProjectRoot,
+} from "./layout"
 
 describe("layout session-key helpers", () => {
   test("couples touch and scroll seed in order", () => {
@@ -65,5 +71,46 @@ describe("pruneSessionKeys", () => {
     })
 
     expect(drop).toEqual([])
+  })
+})
+
+describe("layout project root helpers", () => {
+  test("maps open workspace directories back to canonical project roots", () => {
+    const roots = buildProjectRootMap({
+      projects: [
+        { id: "project-a", worktree: "/repo/a" },
+        { id: "project-b", worktree: "/repo/b" },
+      ],
+      openProjects: ["/repo/a", "/repo/a/feature", "/repo/b/review"],
+      resolveProjectID(directory) {
+        if (directory.startsWith("/repo/a")) return "project-a"
+        if (directory.startsWith("/repo/b")) return "project-b"
+        return undefined
+      },
+    })
+
+    expect(roots.get("/repo/a")).toBe("/repo/a")
+    expect(roots.get("/repo/a/feature")).toBe("/repo/a")
+    expect(roots.get("/repo/b/review")).toBe("/repo/b")
+  })
+
+  test("resolves canonical project root through chained aliases", () => {
+    const roots = new Map<string, string>([
+      ["/repo/a", "/repo/a"],
+      ["/repo/a/feature", "/repo/a"],
+      ["/repo/a/feature-copy", "/repo/a/feature"],
+    ])
+
+    expect(resolveProjectRoot("/repo/a/feature-copy", roots)).toBe("/repo/a")
+    expect(resolveProjectRoot("/repo/unknown", roots)).toBe("/repo/unknown")
+  })
+
+  test("guards cyclic root mappings by returning original directory", () => {
+    const roots = new Map<string, string>([
+      ["/repo/a", "/repo/b"],
+      ["/repo/b", "/repo/a"],
+    ])
+
+    expect(resolveProjectRoot("/repo/a", roots)).toBe("/repo/a")
   })
 })

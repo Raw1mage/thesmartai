@@ -92,6 +92,14 @@ Status: In Progress
   - `packages/app/src/pages/layout/helpers.ts`
     - `syncWorkspaceOrder(...)` 先前不會去重 canonical duplicate entries；新測試實際抓出 `/root/feature` 與 `/root/feature///` 會同時留在排序結果
     - 現已修成 canonical-key 去重，避免 workspace reorder / delete 後殘留重複 alias 項目
+- 第五個 slice 補上 layout root resolution regression coverage，並再抓出一個實 bug：
+  - `packages/app/src/context/layout.test.ts`
+    - 新增 `buildProjectRootMap(...)` / `resolveProjectRoot(...)` regression 測試
+  - `packages/app/src/context/layout.tsx`
+    - 抽出 `buildProjectRootMap(...)` / `resolveProjectRoot(...)` 純 helper，讓 root resolution 的 app-level convergence 更可測
+    - 測試過程發現 `resolveProjectRoot(...)` 把 root self-mapping (`/repo/a -> /repo/a`) 誤判成 cycle，導致 chained workspace root lookup 提前回傳原始 directory
+    - 現已在 `next === current` 時先直接返回，避免 root self-map 被視為 cycle
+    - 同時讓 helper 對 directory/root map 做 canonical normalization，避免 alias 形式影響 root resolution 測試與消費
 
 ### Validation
 
@@ -101,6 +109,10 @@ Status: In Progress
 - 第二、三個 slice 共用驗證：`bun run --cwd packages/app typecheck` ✅ / `bun run --cwd packages/app test:unit` ✅
 - 第四個 slice 驗證：
   - `bun run --cwd packages/app test:unit -- src/pages/layout/helpers.test.ts src/pages/layout/sidebar-project-helpers.test.ts` ✅
+  - `bun run --cwd packages/app typecheck` ✅
+  - `bun run --cwd packages/app test:unit` ✅
+- 第五個 slice 驗證：
+  - `bun run --cwd packages/app test:unit -- src/context/layout.test.ts src/pages/layout/helpers.test.ts src/pages/layout/sidebar-project-helpers.test.ts` ✅
   - `bun run --cwd packages/app typecheck` ✅
   - `bun run --cwd packages/app test:unit` ✅
 - 期間另行修復 subagent `worker_busy` 阻斷，已獨立記錄於 `event_20260309_subagent_worker_busy_block.md`。

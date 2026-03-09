@@ -9,6 +9,7 @@ import { Project } from "@opencode-ai/sdk/v2"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 import { same } from "@/utils/same"
 import { createScrollPersistence, type SessionScroll } from "./layout-scroll"
+import { normalizeWorkspaceDirectory } from "./global-sync/workspace-adapter"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 const DEFAULT_PANEL_WIDTH = 344
@@ -86,6 +87,50 @@ export function pruneSessionKeys(input: {
   return Array.from(keys)
     .sort((a, b) => score(b) - score(a))
     .slice(input.max)
+}
+
+export function buildProjectRootMap(input: {
+  projects: Array<{ id: string; worktree: string }>
+  openProjects: string[]
+  resolveProjectID: (directory: string) => string | undefined
+}) {
+  const map = new Map<string, string>()
+  for (const project of input.projects) {
+    const root = normalizeWorkspaceDirectory(project.worktree)
+    map.set(root, root)
+  }
+  for (const directory of input.openProjects) {
+    const normalized = normalizeWorkspaceDirectory(directory)
+    const projectID = input.resolveProjectID(normalized)
+    if (!projectID) continue
+    const root = input.projects.find((item) => item.id === projectID)?.worktree
+    if (!root) continue
+    map.set(normalized, normalizeWorkspaceDirectory(root))
+  }
+  return map
+}
+
+export function resolveProjectRoot(directory: string, roots: Map<string, string>) {
+  const normalized = normalizeWorkspaceDirectory(directory)
+  if (roots.size === 0) return directory
+
+  const visited = new Set<string>()
+  const chain = [normalized]
+
+  while (chain.length) {
+    const current = chain[chain.length - 1]
+    if (!current) return normalized
+
+    const next = roots.get(current)
+    if (!next) return current
+    if (next === current) return current
+
+    if (visited.has(next)) return normalized
+    visited.add(next)
+    chain.push(next)
+  }
+
+  return normalized
 }
 
 function nextSessionTabsForOpen(current: SessionTabs | undefined, tab: string): SessionTabs {
@@ -370,42 +415,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     const roots = createMemo(() => {
-      const map = new Map<string, string>()
-      for (const project of globalSync.data.project) {
-        map.set(project.worktree, project.worktree)
-      }
-      for (const project of server.projects.list()) {
-        const [store] = globalSync.child(project.worktree, { bootstrap: false })
-        const projectID = store.workspace?.projectId || store.project
-        if (!projectID) continue
-        const root = globalSync.data.project.find((item) => item.id === projectID)?.worktree
-        if (!root) continue
-        map.set(project.worktree, root)
-      }
-      return map
+      return buildProjectRootMap({
+        projects: globalSync.data.project,
+        openProjects: server.projects.list().map((project) => project.worktree),
+        resolveProjectID(directory) {
+          const [store] = globalSync.child(directory, { bootstrap: false })
+          return store.workspace?.projectId || store.project
+        },
+      })
     })
 
-    const rootFor = (directory: string) => {
-      const map = roots()
-      if (map.size === 0) return directory
-
-      const visited = new Set<string>()
-      const chain = [directory]
-
-      while (chain.length) {
-        const current = chain[chain.length - 1]
-        if (!current) return directory
-
-        const next = map.get(current)
-        if (!next) return current
-
-        if (visited.has(next)) return directory
-        visited.add(next)
-        chain.push(next)
-      }
-
-      return directory
-    }
+    const rootFor = (directory: string) => resolveProjectRoot(directory, roots())
 
     createEffect(() => {
       const projects = server.projects.list()
