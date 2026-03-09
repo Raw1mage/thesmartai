@@ -296,6 +296,30 @@ Status: In Progress
 - `bun run --cwd "/home/pkcs12/projects/opencode/packages/app" typecheck && bun run --cwd "/home/pkcs12/projects/opencode/packages/opencode" typecheck` ✅
 - Architecture Sync: Verified (No doc changes required for debug-log cleanup; current architecture wording already covers sidebar status/todo linkage/runtime contract)
 
+## Phase 6 實作（subagent milestone narration + explicit replanning status）
+
+- `packages/opencode/src/session/narration.ts`
+  - 新增共用 narration helper，統一建立 transcript-visible / model-excluded synthetic assistant narration
+  - 新增 task lifecycle 文案 helper 與 narration message detector，避免這類 synthetic assistant message 干擾 prompt loop 的正常收尾判斷
+- `packages/opencode/src/session/prompt.ts`
+  - 當新使用者訊息中斷 busy autonomous run 時，現在會先寫入一則明確的 interrupt/replanning narration：
+    - `Interrupted the previous autonomous run and replanning around your latest message.`
+  - prompt loop 會跳過 narration-only assistant messages，避免它們被誤判成最新已完成 assistant turn 而提前停止
+- `packages/opencode/src/session/processor.ts`
+  - 對 `task` tool 新增 transcript-visible lifecycle narration：
+    - start: `Delegating ...`
+    - complete: `Subagent completed: ...`
+    - error: `Subagent blocked: ...`
+  - 這讓使用者在 timeline 內可直接看見 subagent milestone，而不只在 sidebar monitor 讀狀態
+- `packages/opencode/src/session/narration.test.ts`
+  - 補 pure helper tests，驗證 task lifecycle 文案與 narration message detection
+
+### Validation
+
+- `bun test "/home/pkcs12/projects/opencode/packages/opencode/src/session/narration.test.ts" "/home/pkcs12/projects/opencode/packages/opencode/src/session/workflow-runner.test.ts" "/home/pkcs12/projects/opencode/packages/opencode/src/session/prompt-runtime.test.ts"` ✅
+- `bun run --cwd "/home/pkcs12/projects/opencode/packages/opencode" typecheck` ✅
+- Architecture Sync: Verified (Doc updated for transcript-visible task lifecycle narration and replanning status contract)
+
 ## Dynamic model orchestration follow-up
 
 - `packages/opencode/src/session/model-orchestration.ts`

@@ -22,6 +22,7 @@ import { Global } from "@/global"
 import path from "path"
 import { materializeToolAttachments } from "./attachment-ownership"
 import { clearPendingContinuation } from "./workflow-runner"
+import { describeTaskNarration, emitSessionNarration } from "./narration"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -305,6 +306,36 @@ export namespace SessionProcessor {
                     })
                     toolcalls[value.toolCallId] = part as MessageV2.ToolPart
 
+                    if (value.toolName === "task") {
+                      await emitSessionNarration({
+                        sessionID: input.sessionID,
+                        parentID: input.assistantMessage.parentID,
+                        agent: input.assistantMessage.agent,
+                        variant: input.assistantMessage.variant,
+                        model: {
+                          providerId: input.assistantMessage.providerId,
+                          modelID: input.assistantMessage.modelID,
+                        },
+                        text: describeTaskNarration({
+                          phase: "start",
+                          description:
+                            typeof value.input?.description === "string"
+                              ? value.input.description
+                              : typeof value.input?.prompt === "string"
+                                ? value.input.prompt
+                                : undefined,
+                          subagentType:
+                            typeof value.input?.subagent_type === "string" ? value.input.subagent_type : undefined,
+                        }),
+                        kind: "task",
+                        metadata: {
+                          taskNarration: true,
+                          taskPhase: "start",
+                          toolCallId: value.toolCallId,
+                        },
+                      })
+                    }
+
                     const parts = await MessageV2.parts(input.assistantMessage.id)
                     const lastThree = parts.slice(-DOOM_LOOP_THRESHOLD)
 
@@ -357,6 +388,30 @@ export namespace SessionProcessor {
                       },
                     })
 
+                    if (match.tool === "task") {
+                      await emitSessionNarration({
+                        sessionID: input.sessionID,
+                        parentID: input.assistantMessage.parentID,
+                        agent: input.assistantMessage.agent,
+                        variant: input.assistantMessage.variant,
+                        model: {
+                          providerId: input.assistantMessage.providerId,
+                          modelID: input.assistantMessage.modelID,
+                        },
+                        text: describeTaskNarration({
+                          phase: "complete",
+                          title: value.output.title,
+                          output: value.output.output,
+                        }),
+                        kind: "task",
+                        metadata: {
+                          taskNarration: true,
+                          taskPhase: "complete",
+                          toolCallId: value.toolCallId,
+                        },
+                      })
+                    }
+
                     delete toolcalls[value.toolCallId]
                   }
                   break
@@ -377,6 +432,29 @@ export namespace SessionProcessor {
                         },
                       },
                     })
+
+                    if (match.tool === "task") {
+                      await emitSessionNarration({
+                        sessionID: input.sessionID,
+                        parentID: input.assistantMessage.parentID,
+                        agent: input.assistantMessage.agent,
+                        variant: input.assistantMessage.variant,
+                        model: {
+                          providerId: input.assistantMessage.providerId,
+                          modelID: input.assistantMessage.modelID,
+                        },
+                        text: describeTaskNarration({
+                          phase: "error",
+                          error: String(value.error),
+                        }),
+                        kind: "task",
+                        metadata: {
+                          taskNarration: true,
+                          taskPhase: "error",
+                          toolCallId: value.toolCallId,
+                        },
+                      })
+                    }
 
                     if (
                       value.error instanceof PermissionNext.RejectedError ||

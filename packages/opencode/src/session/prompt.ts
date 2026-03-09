@@ -57,6 +57,7 @@ import { persistUserMessage } from "./user-message-persist"
 import { prepareUserMessageContext } from "./user-message-context"
 import { buildUserMessageParts } from "./user-message-parts"
 import { materializeToolAttachments } from "./attachment-ownership"
+import { emitSessionNarration, isNarrationAssistantMessage } from "./narration"
 import {
   decideAutonomousContinuation,
   describeAutonomousNextAction,
@@ -181,6 +182,17 @@ export namespace SessionPrompt {
     }
 
     const shouldReplaceRuntime = await shouldInterruptForIncomingPrompt(input.sessionID)
+    if (shouldReplaceRuntime) {
+      await emitSessionNarration({
+        sessionID: input.sessionID,
+        parentID: message.info.id,
+        agent: message.info.agent,
+        variant: message.info.variant,
+        model: message.info.model,
+        text: "Interrupted the previous autonomous run and replanning around your latest message.",
+        kind: "interrupt",
+      })
+    }
     return runLoop(input.sessionID, { replaceRuntime: shouldReplaceRuntime })
   })
 
@@ -223,65 +235,7 @@ export namespace SessionPrompt {
     return cancelRuntime(sessionID)
   }
 
-  async function emitAutonomousNarration(input: {
-    sessionID: string
-    parentID: string
-    agent: string
-    variant?: string
-    model: {
-      providerId: string
-      modelID: string
-    }
-    text: string
-    kind: "continue" | "pause" | "complete" | "interrupt"
-  }) {
-    const created = Date.now()
-    const assistantMessage: MessageV2.Assistant = {
-      id: Identifier.ascending("message"),
-      role: "assistant",
-      parentID: input.parentID,
-      sessionID: input.sessionID,
-      mode: input.agent,
-      agent: input.agent,
-      variant: input.variant,
-      path: {
-        cwd: Instance.directory,
-        root: Instance.worktree,
-      },
-      cost: 0,
-      tokens: {
-        input: 0,
-        output: 0,
-        reasoning: 0,
-        cache: { read: 0, write: 0 },
-      },
-      modelID: input.model.modelID,
-      providerId: input.model.providerId,
-      finish: "stop",
-      time: {
-        created,
-        completed: created,
-      },
-    }
-    await Session.updateMessage(assistantMessage)
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: assistantMessage.id,
-      sessionID: input.sessionID,
-      type: "text",
-      text: input.text,
-      synthetic: true,
-      metadata: {
-        autonomousNarration: true,
-        narrationKind: input.kind,
-        excludeFromModel: true,
-      },
-      time: {
-        start: created,
-        end: created,
-      },
-    } satisfies MessageV2.TextPart)
-  }
+  const emitAutonomousNarration = emitSessionNarration
 
   async function shouldInterruptForIncomingPrompt(sessionID: string) {
     const status = SessionStatus.get(sessionID)
@@ -342,6 +296,7 @@ export namespace SessionPrompt {
       for (let i = msgs.length - 1; i >= 0; i--) {
         const msg = msgs[i]
         if (msg.info.role === "assistant") {
+          if (isNarrationAssistantMessage(msg.info, msg.parts)) continue
           if (msg.info.parentID) {
             processedCompactionParents.add(msg.info.parentID)
           }
