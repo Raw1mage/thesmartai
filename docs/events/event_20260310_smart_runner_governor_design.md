@@ -466,3 +466,33 @@ Validation（ask-user suggestion）:
   - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 ask-user suggestion 修改無關
 - `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts` ✅
 - 結果：Smart Runner 現在可在 trace / history 中明確標示 `ask_user` suggestion 與原因，但 deterministic runner、question flow 與 todo graph 仍完全不變。
+
+### Current Slice (trace summary / counters)
+
+需求：既然 Smart Runner 已經有 assist、replan、ask-user 與 history，下一步需要一個總覽層，讓人不用逐筆讀 trace 也能快速判斷最近行為趨勢。
+
+範圍：
+
+- IN
+  - 統計 assist applied / noop 次數
+  - 統計 docs/debug assist mode 次數
+  - 統計 replan / ask-user suggestion 次數
+  - 顯示最近 decision trend
+- OUT
+  - 不改變 runtime 控制流
+  - 不新增 todo mutation
+  - 不新增新的 suggestion/assist 類型
+
+任務清單：
+
+- [x] 在 session status summary 中加入 Smart Runner counters
+- [x] 在 UI 顯示 Smart Runner summary / trend
+- [x] 驗證 summary 只增加可觀測性，不影響既有控制流
+
+Validation（trace summary / counters）:
+
+- `bun test /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/workflow-runner.test.ts`
+  - Smart Runner summary/trend assertions 通過
+  - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 summary/counter 修改無關
+- `bun x eslint /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
+- 結果：現在可以不逐筆閱讀 history，就快速看到 Smart Runner 最近的 assist/suggestion 統計與 decision trend；此變更只增加可觀測性，不影響 runtime 控制流。

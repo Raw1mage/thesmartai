@@ -251,6 +251,16 @@ export type SessionStatusSummary = {
   methodChips: SessionWorkflowChip[]
   processLines: string[]
   debugLines: string[]
+  smartRunnerSummary?: {
+    total: number
+    assistApplied: number
+    assistNoop: number
+    docsSync: number
+    debugPreflight: number
+    replan: number
+    askUser: number
+    recentTrend: string[]
+  }
   smartRunnerHistory: Array<{
     time?: string
     status: string
@@ -340,6 +350,46 @@ const formatDebugTime = (value: number) => {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
+const buildSmartRunnerSummary = (
+  traces: Array<{
+    decision?: { decision?: string }
+    assist?: { enabled?: boolean; applied?: boolean; mode?: string }
+    suggestion?: { kind?: string }
+  }>,
+) => {
+  if (traces.length === 0) return undefined
+  const summary = {
+    total: traces.length,
+    assistApplied: 0,
+    assistNoop: 0,
+    docsSync: 0,
+    debugPreflight: 0,
+    replan: 0,
+    askUser: 0,
+    recentTrend: [] as string[],
+  }
+
+  for (const trace of traces) {
+    if (trace.assist?.enabled) {
+      if (trace.assist.applied) summary.assistApplied += 1
+      else summary.assistNoop += 1
+      if (trace.assist.mode === "docs_sync_first") summary.docsSync += 1
+      if (trace.assist.mode === "debug_preflight_first") summary.debugPreflight += 1
+    }
+    if (trace.suggestion?.kind === "replan") summary.replan += 1
+    if (trace.suggestion?.kind === "ask_user") summary.askUser += 1
+  }
+
+  summary.recentTrend = traces.slice(-5).map((trace) => {
+    const decision = trace.decision?.decision ?? "unknown"
+    if (trace.suggestion?.kind) return `${decision} → ${trace.suggestion.kind}`
+    if (trace.assist?.enabled) return `${decision} → ${trace.assist.applied ? (trace.assist.mode ?? "assist") : "noop"}`
+    return decision
+  })
+
+  return summary
+}
+
 export const getSessionStatusSummary = (input: {
   session?: WorkflowLikeSession
   todos?: readonly Todo[]
@@ -416,6 +466,7 @@ export const getSessionStatusSummary = (input: {
       : undefined,
     error: trace.error,
   }))
+  const smartRunnerSummary = buildSmartRunnerSummary(supervisor?.governorTraceHistory ?? [])
 
   const latestTaskResult = summarizeTaskResult({ messages: input.messages, partsByMessage: input.partsByMessage })
   const latestNarration = summarizeNarration({ messages: input.messages, partsByMessage: input.partsByMessage })
@@ -434,6 +485,7 @@ export const getSessionStatusSummary = (input: {
     methodChips,
     processLines,
     debugLines,
+    smartRunnerSummary,
     smartRunnerHistory,
     latestNarration,
     latestResult,

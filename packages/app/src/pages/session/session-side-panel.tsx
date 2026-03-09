@@ -346,6 +346,37 @@ export function SessionSidePanel(props: {
                       <Show when={statusSummary().smartRunnerHistory.length > 0}>
                         <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-2">
                           <div class="text-11-medium uppercase tracking-wide text-text-weak">Smart Runner history</div>
+                          <Show when={statusSummary().smartRunnerSummary}>
+                            {(summary) => (
+                              <div class="rounded-md border border-border-weak-base bg-surface-panel px-2 py-2 flex flex-col gap-2">
+                                <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-12-regular text-text-weak">
+                                  <div>Total traces: {summary().total}</div>
+                                  <div>Assist applied: {summary().assistApplied}</div>
+                                  <div>Assist noop: {summary().assistNoop}</div>
+                                  <div>Docs sync: {summary().docsSync}</div>
+                                  <div>Debug preflight: {summary().debugPreflight}</div>
+                                  <div>Replan: {summary().replan}</div>
+                                  <div>Ask user: {summary().askUser}</div>
+                                </div>
+                                <Show when={summary().recentTrend.length > 0}>
+                                  <div class="flex flex-col gap-1">
+                                    <div class="text-[11px] font-medium uppercase tracking-wide text-text-weak">
+                                      Recent trend
+                                    </div>
+                                    <div class="flex flex-wrap gap-1">
+                                      <For each={summary().recentTrend}>
+                                        {(item) => (
+                                          <span class="rounded-full border border-border-weak-base px-2 py-0.5 text-[11px] text-text-weak">
+                                            {item}
+                                          </span>
+                                        )}
+                                      </For>
+                                    </div>
+                                  </div>
+                                </Show>
+                              </div>
+                            )}
+                          </Show>
                           <For each={statusSummary().smartRunnerHistory}>
                             {(entry) => (
                               <div class="rounded-md border border-border-weak-base bg-surface-panel px-2 py-2 flex flex-col gap-1">

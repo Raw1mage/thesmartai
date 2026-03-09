@@ -445,6 +445,16 @@ describe("getSessionStatusSummary", () => {
         error: undefined,
       },
     ])
+    expect(summary.smartRunnerSummary).toEqual({
+      total: 2,
+      assistApplied: 1,
+      assistNoop: 1,
+      docsSync: 0,
+      debugPreflight: 1,
+      replan: 1,
+      askUser: 1,
+      recentTrend: ["continue → replan", "debug_preflight_first → ask_user"],
+    })
   })
 
   test("prefers synthesized task result over plain todo completion when available", () => {
@@ -499,6 +509,7 @@ describe("getSessionStatusSummary", () => {
       }),
     ).toMatchObject({
       debugLines: [],
+      smartRunnerSummary: undefined,
       smartRunnerHistory: [],
       latestResult: { label: "Task completed · google/gemini-2.5-pro", tone: "success" },
     })
