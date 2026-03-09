@@ -101,6 +101,7 @@ type WorkflowLikeSession = {
           reason?: string
           suggestedTodoID?: string
           suggestedAction?: string
+          draftQuestion?: string
         }
         decision?: {
           decision?: string
@@ -126,6 +127,7 @@ type WorkflowLikeSession = {
           reason?: string
           suggestedTodoID?: string
           suggestedAction?: string
+          draftQuestion?: string
         }
         decision?: {
           decision?: string
@@ -270,6 +272,7 @@ export type SessionStatusSummary = {
     assessment?: string
     assist?: string
     suggestion?: string
+    draftQuestion?: string
     error?: string
   }>
   latestNarration?: {
@@ -447,6 +450,12 @@ export const getSessionStatusSummary = (input: {
         `${supervisor.lastGovernorTrace.suggestion.kind === "ask_user" ? "Ask-user why" : "Replan why"}: ${supervisor.lastGovernorTrace.suggestion.reason.slice(0, 120)}`,
       )
     }
+    if (
+      supervisor.lastGovernorTrace.suggestion.kind === "ask_user" &&
+      supervisor.lastGovernorTrace.suggestion.draftQuestion
+    ) {
+      debugLines.push(`Ask-user draft: ${supervisor.lastGovernorTrace.suggestion.draftQuestion.slice(0, 120)}`)
+    }
   }
   if (supervisor?.lastGovernorTraceAt)
     debugLines.push(`Governor at: ${formatDebugTime(supervisor.lastGovernorTraceAt)}`)
@@ -464,6 +473,7 @@ export const getSessionStatusSummary = (input: {
     suggestion: trace.suggestion?.kind
       ? `${trace.suggestion.kind}${trace.suggestion.suggestedAction ? ` · ${trace.suggestion.suggestedAction}` : ""}${trace.suggestion.reason ? ` · ${trace.suggestion.reason}` : ""}`
       : undefined,
+    draftQuestion: trace.suggestion?.draftQuestion,
     error: trace.error,
   }))
   const smartRunnerSummary = buildSmartRunnerSummary(supervisor?.governorTraceHistory ?? [])

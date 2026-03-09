@@ -177,6 +177,7 @@ describe("getSessionStatusSummary", () => {
                   reason: "The next step depends on a product choice the current context does not resolve",
                   suggestedTodoID: "t3",
                   suggestedAction: "request_user_input",
+                  draftQuestion: "Should we keep the current product behavior or switch to the new flow?",
                 },
                 decision: {
                   decision: "debug_preflight_first",
@@ -214,6 +215,7 @@ describe("getSessionStatusSummary", () => {
                     reason: "The next step depends on a product choice the current context does not resolve",
                     suggestedTodoID: "t3",
                     suggestedAction: "request_user_input",
+                    draftQuestion: "Should we keep the current product behavior or switch to the new flow?",
                   },
                   decision: {
                     decision: "debug_preflight_first",
@@ -311,6 +313,7 @@ describe("getSessionStatusSummary", () => {
                 reason: "The next step depends on a product choice the current context does not resolve",
                 suggestedTodoID: "t3",
                 suggestedAction: "request_user_input",
+                draftQuestion: "Should we keep the current product behavior or switch to the new flow?",
               },
               decision: {
                 decision: "debug_preflight_first",
@@ -348,6 +351,7 @@ describe("getSessionStatusSummary", () => {
                   reason: "The next step depends on a product choice the current context does not resolve",
                   suggestedTodoID: "t3",
                   suggestedAction: "request_user_input",
+                  draftQuestion: "Should we keep the current product behavior or switch to the new flow?",
                 },
                 decision: {
                   decision: "debug_preflight_first",
@@ -418,6 +422,7 @@ describe("getSessionStatusSummary", () => {
       "Smart Runner assist: applied (debug_preflight_first)",
       "Smart Runner suggestion: ask_user (request_user_input)",
       "Ask-user why: The next step depends on a product choice the current context does not resolve",
+      "Ask-user draft: Should we keep the current product behavior or switch to the new flow?",
       expect.stringMatching(/^Governor at: \d{2}:\d{2}:\d{2}$/),
     ])
     expect(summary.smartRunnerHistory).toEqual([
@@ -431,6 +436,7 @@ describe("getSessionStatusSummary", () => {
         assist: "applied · debug_preflight_first",
         suggestion:
           "ask_user · request_user_input · The next step depends on a product choice the current context does not resolve",
+        draftQuestion: "Should we keep the current product behavior or switch to the new flow?",
         error: undefined,
       },
       {
@@ -442,6 +448,7 @@ describe("getSessionStatusSummary", () => {
         assessment: "Start next step cleanly",
         assist: "noop",
         suggestion: "replan · replan_todos · The current todo ordering no longer matches the latest task state",
+        draftQuestion: undefined,
         error: undefined,
       },
     ])

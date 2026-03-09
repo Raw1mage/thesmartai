@@ -70,6 +70,7 @@ const SmartRunnerTraceSchema = z.object({
       reason: z.string(),
       suggestedTodoID: z.string().optional(),
       suggestedAction: z.string().optional(),
+      draftQuestion: z.string().optional(),
     })
     .optional(),
   error: z.string().optional(),
@@ -242,6 +243,11 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
   if (input.trace.status !== "advisory" || !input.trace.decision) return input.trace
   if (!["replan", "ask_user"].includes(input.trace.decision.decision)) return input.trace
 
+  const draftQuestion =
+    input.trace.decision.decision === "ask_user"
+      ? input.trace.decision.nextAction.narration.trim() || input.trace.decision.reason.trim()
+      : undefined
+
   return SmartRunnerTraceSchema.parse({
     ...input.trace,
     suggestion: {
@@ -249,6 +255,7 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
       reason: input.trace.decision.reason,
       suggestedTodoID: input.trace.decision.nextAction.todoID,
       suggestedAction: input.trace.decision.nextAction.kind,
+      draftQuestion,
     },
   })
 }

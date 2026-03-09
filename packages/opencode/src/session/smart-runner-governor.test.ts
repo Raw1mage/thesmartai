@@ -294,6 +294,7 @@ describe("Smart Runner Governor", () => {
       reason: "The next step depends on a product choice the current context does not resolve",
       suggestedTodoID: "t3",
       suggestedAction: "request_user_input",
+      draftQuestion: "Suggesting a user clarification before continuing.",
     })
   })
 

@@ -496,3 +496,32 @@ Validation（trace summary / counters）:
   - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 summary/counter 修改無關
 - `bun x eslint /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
 - 結果：現在可以不逐筆閱讀 history，就快速看到 Smart Runner 最近的 assist/suggestion 統計與 decision trend；此變更只增加可觀測性，不影響 runtime 控制流。
+
+### Current Slice (bounded ask-user draft)
+
+需求：既然 `ask_user` suggestion 已經能指出「該問」，下一步要讓它同時草擬建議問題，讓主持者可以直接評估這個問題是否合理，但仍不自動送出。
+
+範圍：
+
+- IN
+  - 為 `ask_user` suggestion 增加 draft question metadata
+  - 在 session status / history 顯示 draft question
+  - 保持 deterministic question flow 不變
+- OUT
+  - 不自動發問
+  - 不中止目前控制流
+  - 不直接建立 question queue
+
+任務清單：
+
+- [x] 在 Smart Runner trace suggestion 中增加 ask-user draft question
+- [x] 在 session status / history 顯示 ask-user draft
+- [x] 驗證 ask-user draft 只增加可觀測性，不改變控制流
+
+Validation（bounded ask-user draft）:
+
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts`
+  - Smart Runner ask-user draft assertions 通過
+  - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 ask-user draft 修改無關
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
+- 結果：Smart Runner 現在能在 `ask_user` suggestion 上附帶 draft question，供人檢視與採納，但 deterministic question flow 仍完全不變。

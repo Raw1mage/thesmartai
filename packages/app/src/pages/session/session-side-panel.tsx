@@ -406,6 +406,11 @@ export function SessionSidePanel(props: {
                                     Suggestion: {entry.suggestion}
                                   </div>
                                 </Show>
+                                <Show when={entry.draftQuestion}>
+                                  <div class="text-12-regular text-text-muted break-words">
+                                    Draft question: {entry.draftQuestion}
+                                  </div>
+                                </Show>
                                 <Show when={entry.error}>
                                   <div class="text-12-regular text-warning break-words">Error: {entry.error}</div>
                                 </Show>
