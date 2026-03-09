@@ -91,6 +91,11 @@ type WorkflowLikeSession = {
         status?: string
         deterministicReason?: string
         assessment?: string
+        assist?: {
+          enabled?: boolean
+          applied?: boolean
+          mode?: string
+        }
         decision?: {
           decision?: string
           confidence?: string
@@ -105,6 +110,11 @@ type WorkflowLikeSession = {
         status?: string
         deterministicReason?: string
         assessment?: string
+        assist?: {
+          enabled?: boolean
+          applied?: boolean
+          mode?: string
+        }
         decision?: {
           decision?: string
           confidence?: string
@@ -236,6 +246,7 @@ export type SessionStatusSummary = {
     confidence?: string
     next?: string
     assessment?: string
+    assist?: string
     error?: string
   }>
   latestNarration?: {
@@ -359,6 +370,11 @@ export const getSessionStatusSummary = (input: {
   if (supervisor?.lastGovernorTrace?.decision?.nextAction?.kind) {
     debugLines.push(`Governor next: ${supervisor.lastGovernorTrace.decision.nextAction.kind}`)
   }
+  if (supervisor?.lastGovernorTrace?.assist?.enabled) {
+    debugLines.push(
+      `Smart Runner assist: ${supervisor.lastGovernorTrace.assist.applied ? "applied" : "noop"}${supervisor.lastGovernorTrace.assist.mode ? ` (${supervisor.lastGovernorTrace.assist.mode})` : ""}`,
+    )
+  }
   if (supervisor?.lastGovernorTraceAt)
     debugLines.push(`Governor at: ${formatDebugTime(supervisor.lastGovernorTraceAt)}`)
 
@@ -369,6 +385,9 @@ export const getSessionStatusSummary = (input: {
     confidence: trace.decision?.confidence,
     next: trace.decision?.nextAction?.kind,
     assessment: trace.assessment,
+    assist: trace.assist?.enabled
+      ? `${trace.assist.applied ? "applied" : "noop"}${trace.assist.mode ? ` · ${trace.assist.mode}` : ""}`
+      : undefined,
     error: trace.error,
   }))
 

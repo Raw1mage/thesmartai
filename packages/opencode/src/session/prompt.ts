@@ -67,6 +67,7 @@ import {
   shouldInterruptAutonomousRun,
 } from "./workflow-runner"
 import {
+  annotateSmartRunnerTraceAssist,
   applySmartRunnerBoundedAssist,
   evaluateSmartRunnerGovernorDryRun,
   getSmartRunnerConfig,
@@ -758,14 +759,20 @@ export namespace SessionPrompt {
             deterministicDecision: decision,
             messages: msgs,
           })
-          await persistSmartRunnerGovernorTrace({
-            sessionID,
-            trace,
-          })
           const assist = applySmartRunnerBoundedAssist({
             enabled: smartRunnerGovernor.assist,
             decision,
             trace,
+          })
+          const tracedAssist = annotateSmartRunnerTraceAssist({
+            trace,
+            enabled: smartRunnerGovernor.assist,
+            assist,
+            originalText: decision.text,
+          })
+          await persistSmartRunnerGovernorTrace({
+            sessionID,
+            trace: tracedAssist,
           })
           continueDecision = assist.decision
           narrationOverride = assist.narration

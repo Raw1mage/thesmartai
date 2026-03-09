@@ -171,6 +171,7 @@ describe("getSessionStatusSummary", () => {
                 status: "advisory",
                 deterministicReason: "todo_in_progress",
                 assessment: "Needs preflight",
+                assist: { enabled: true, applied: true, mode: "debug_preflight_first" },
                 decision: {
                   decision: "debug_preflight_first",
                   confidence: "high",
@@ -183,6 +184,7 @@ describe("getSessionStatusSummary", () => {
                   status: "advisory",
                   deterministicReason: "todo_pending",
                   assessment: "Start next step cleanly",
+                  assist: { enabled: true, applied: false },
                   decision: {
                     decision: "continue",
                     confidence: "medium",
@@ -194,6 +196,7 @@ describe("getSessionStatusSummary", () => {
                   status: "advisory",
                   deterministicReason: "todo_in_progress",
                   assessment: "Needs preflight",
+                  assist: { enabled: true, applied: true, mode: "debug_preflight_first" },
                   decision: {
                     decision: "debug_preflight_first",
                     confidence: "high",
@@ -284,6 +287,7 @@ describe("getSessionStatusSummary", () => {
               status: "advisory",
               deterministicReason: "todo_in_progress",
               assessment: "Needs preflight",
+              assist: { enabled: true, applied: true, mode: "debug_preflight_first" },
               decision: {
                 decision: "debug_preflight_first",
                 confidence: "high",
@@ -296,6 +300,7 @@ describe("getSessionStatusSummary", () => {
                 status: "advisory",
                 deterministicReason: "todo_pending",
                 assessment: "Start next step cleanly",
+                assist: { enabled: true, applied: false },
                 decision: {
                   decision: "continue",
                   confidence: "medium",
@@ -307,6 +312,7 @@ describe("getSessionStatusSummary", () => {
                 status: "advisory",
                 deterministicReason: "todo_in_progress",
                 assessment: "Needs preflight",
+                assist: { enabled: true, applied: true, mode: "debug_preflight_first" },
                 decision: {
                   decision: "debug_preflight_first",
                   confidence: "high",
@@ -373,6 +379,7 @@ describe("getSessionStatusSummary", () => {
       "Governor: advisory",
       "Governor decision: debug_preflight_first (high)",
       "Governor next: request_debug_preflight",
+      "Smart Runner assist: applied (debug_preflight_first)",
       expect.stringMatching(/^Governor at: \d{2}:\d{2}:\d{2}$/),
     ])
     expect(summary.smartRunnerHistory).toEqual([
@@ -383,6 +390,7 @@ describe("getSessionStatusSummary", () => {
         confidence: "high",
         next: "request_debug_preflight",
         assessment: "Needs preflight",
+        assist: "applied · debug_preflight_first",
         error: undefined,
       },
       {
@@ -392,6 +400,7 @@ describe("getSessionStatusSummary", () => {
         confidence: "medium",
         next: "start_next_todo",
         assessment: "Start next step cleanly",
+        assist: "noop",
         error: undefined,
       },
     ])

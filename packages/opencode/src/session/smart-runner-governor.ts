@@ -55,6 +55,15 @@ const SmartRunnerTraceSchema = z.object({
     .optional(),
   context: z.record(z.string(), z.unknown()).optional(),
   decision: SmartRunnerDecisionSchema.optional(),
+  assist: z
+    .object({
+      enabled: z.boolean(),
+      applied: z.boolean(),
+      mode: z.string().optional(),
+      finalTextChanged: z.boolean().optional(),
+      narrationUsed: z.boolean().optional(),
+    })
+    .optional(),
   error: z.string().optional(),
 })
 
@@ -64,6 +73,26 @@ const SMART_RUNNER_TRACE_HISTORY_LIMIT = 5
 export type SmartRunnerBoundedAssistResult = {
   decision: DeterministicContinueDecision
   narration?: string
+  applied: boolean
+  mode?: string
+}
+
+function buildDocsSyncAssistText(input: { todo: Todo.Info }) {
+  return [
+    `Smart Runner preflight: docs sync before execution.`,
+    `1. Re-read the relevant architecture/event docs for this task and extract only the constraints that matter to the current step.`,
+    `2. Verify the current todo still matches that documented context: ${input.todo.content}.`,
+    `3. If the docs and task still align, continue the planned work immediately after the docs check. If they conflict, stop and explain the mismatch before changing code.`,
+  ].join("\n")
+}
+
+function buildDebugPreflightAssistText(input: { todo: Todo.Info }) {
+  return [
+    `Smart Runner preflight: debug before execution.`,
+    `1. Restate the exact symptom and the system/component boundaries involved in: ${input.todo.content}.`,
+    `2. Define the evidence to gather next (logs, checkpoints, failing path, or verification signal) before attempting further fixes.`,
+    `3. Only after that preflight, continue the planned work. If the evidence points somewhere else, explain the pivot before changing code.`,
+  ].join("\n")
 }
 
 type DeterministicContinueDecision = {
@@ -118,19 +147,21 @@ export function applySmartRunnerBoundedAssist(input: {
   decision: DeterministicContinueDecision
   trace?: SmartRunnerTrace
 }): SmartRunnerBoundedAssistResult {
-  if (!input.enabled) return { decision: input.decision }
-  if (input.trace?.status !== "advisory" || !input.trace.decision) return { decision: input.decision }
+  if (!input.enabled) return { decision: input.decision, applied: false }
+  if (input.trace?.status !== "advisory" || !input.trace.decision) return { decision: input.decision, applied: false }
 
   const advisory = input.trace.decision
-  if (advisory.confidence === "low") return { decision: input.decision }
+  if (advisory.confidence === "low") return { decision: input.decision, applied: false }
 
   if (advisory.decision === "docs_sync_first" && advisory.nextAction.kind === "request_docs_sync") {
     return {
       decision: {
         ...input.decision,
-        text: "Before continuing implementation, refresh the relevant architecture/event docs context, then continue with the current planned step unless that review exposes a real mismatch.",
+        text: buildDocsSyncAssistText({ todo: input.decision.todo }),
       },
       narration: advisory.nextAction.narration,
+      applied: true,
+      mode: "docs_sync_first",
     }
   }
 
@@ -138,9 +169,11 @@ export function applySmartRunnerBoundedAssist(input: {
     return {
       decision: {
         ...input.decision,
-        text: "Before continuing fixes, perform a debug preflight: restate the symptom, identify boundaries, define instrumentation or verification signals, then continue with the current planned step.",
+        text: buildDebugPreflightAssistText({ todo: input.decision.todo }),
       },
       narration: advisory.nextAction.narration,
+      applied: true,
+      mode: "debug_preflight_first",
     }
   }
 
@@ -155,6 +188,8 @@ export function applySmartRunnerBoundedAssist(input: {
         text: "Continue the task already in progress. Keep scope tight, finish or unblock it first, and avoid starting new work unless the current step is clearly invalid.",
       },
       narration: advisory.nextAction.narration,
+      applied: true,
+      mode: "continue_current",
     }
   }
 
@@ -169,10 +204,30 @@ export function applySmartRunnerBoundedAssist(input: {
         text: "Start the next actionable todo. Stay aligned with the current goal and only stop if you hit a real blocker, approval gate, or product decision.",
       },
       narration: advisory.nextAction.narration,
+      applied: true,
+      mode: "start_next_todo",
     }
   }
 
-  return { decision: input.decision }
+  return { decision: input.decision, applied: false }
+}
+
+export function annotateSmartRunnerTraceAssist(input: {
+  trace: SmartRunnerTrace
+  enabled: boolean
+  assist: SmartRunnerBoundedAssistResult
+  originalText: string
+}) {
+  return SmartRunnerTraceSchema.parse({
+    ...input.trace,
+    assist: {
+      enabled: input.enabled,
+      applied: input.assist.applied,
+      mode: input.assist.mode,
+      finalTextChanged: input.originalText !== input.assist.decision.text,
+      narrationUsed: !!input.assist.narration,
+    },
+  })
 }
 
 function latestUserGoal(messages: MessageV2.WithParts[], fallback: Todo.Info) {

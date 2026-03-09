@@ -335,6 +335,7 @@ Smart Runner 的每次決策應可被觀測：
   - session status panel `Debug` 區塊現在會顯示 governor status / decision / next action / timestamp
   - same trace 也會隨 `Session.Info.workflow.supervisor` 出現在 session API payload
   - session status panel 現在另有 `Smart Runner history` 區塊，顯示最近幾筆 trace（time / status / decision / confidence / next / assessment）
+  - 最新一輪也會顯示 `Smart Runner assist: applied|noop`，history 內會標出 assist outcome
 - runtime switch source：
   - 使用 `~/.config/opencode/opencode.json` 的 `experimental.smart_runner.{enabled,assist}`
   - 本機目前已設為 `enabled=true`, `assist=true`
@@ -352,3 +353,58 @@ Smart Runner 的每次決策應可被觀測：
 - [x] 在 session status / inspect surface 顯示 trace history，而不只是一組 last trace
 - [ ] 在真實 autonomous 任務中觀察 history：判斷是否過度插手、是否常誤判為 docs/debug preflight
 - [ ] 待 history evidence 足夠後，再決定是否放大 assist 權限到真正的 preflight insertion
+
+### Current Slice (in-session test)
+
+需求：既然這一輪要在 Smart Runner 開啟狀態下繼續開發，就需要讓 trace 本身能回答「這次 assist 到底有沒有真的被採用」。
+
+範圍：
+
+- IN
+  - 在 runtime trace 中補記 assist outcome（enabled / applied / mode）
+  - 在 session status 顯示 assist 是否生效，方便本輪開發直接觀察
+  - 保持 deterministic guardrail authority 不變
+- OUT
+  - 不新增真正的 preflight insertion
+  - 不放大 ask_user / replan / stop 權限
+
+任務清單：
+
+- [x] 為 Smart Runner trace 增加 assist outcome metadata
+- [x] 在 prompt loop 中以 assist 實際採用結果回寫 trace
+- [x] 在 session status / history 顯示 assist applied vs noop
+- [x] 跑 targeted validation，確認本輪可用於真實觀察
+
+Validation（current slice）:
+
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts`
+  - Smart Runner 新增 assertions 通過
+  - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 assist outcome 修改無關
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts` ✅
+
+### Next Stage Unlock
+
+需求：使用者要求不要只觀測 Smart Runner，而是開始逐步解放能力。因此本輪選擇最安全的解鎖方式：讓 `docs_sync_first` 與 `debug_preflight_first` 不只是 wording 微調，而是變成**明確的 preflight continuation contract**。
+
+範圍：
+
+- IN
+  - Smart Runner 在 low-risk continue path 上可插入明確 preflight 指令
+  - docs/debug preflight 文字改為結構化 step contract
+  - guardrail authority 仍由 deterministic runner 持有
+- OUT
+  - 不開放 ask_user / replan / pause takeover
+  - 不直接修改 todo graph
+  - 不新增 tool-call autonomy
+
+任務清單：
+
+- [x] 將 docs sync assist 升級為明確 preflight continuation
+- [x] 將 debug preflight assist 升級為明確 preflight continuation
+- [x] 驗證仍只影響 low-risk continue path，不影響 stop gates
+
+Validation（next stage unlock）:
+
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/workflow-runner.test.ts` ✅
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts` ✅
+- 結果：Smart Runner 現在已能在 bounded-assist 範圍內，把 docs/debug 模式從「語氣提示」提升為「結構化 preflight contract」，但仍不接管 stop/approval/replan authority。

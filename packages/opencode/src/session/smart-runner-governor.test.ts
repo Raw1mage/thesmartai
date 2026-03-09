@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { Session } from "."
 import {
+  annotateSmartRunnerTraceAssist,
   applySmartRunnerBoundedAssist,
   buildSmartRunnerGovernorContext,
   shouldRunSmartRunnerGovernorDryRun,
@@ -132,6 +133,33 @@ describe("Smart Runner Governor", () => {
           createdAt: 1,
           deterministicReason: "todo_in_progress",
           decision: {
+            situation: "execution_stalled",
+            assessment: "Needs preflight",
+            decision: "debug_preflight_first",
+            reason: "Debug work should define signals first",
+            nextAction: {
+              kind: "request_debug_preflight",
+              skillHints: ["code-thinker"],
+              narration: "Running debug preflight before the next fix.",
+            },
+            needsUserInput: false,
+            confidence: "high",
+          },
+        },
+      }).decision.text,
+    ).toContain("Smart Runner preflight: debug before execution.")
+
+    expect(
+      applySmartRunnerBoundedAssist({
+        enabled: true,
+        decision: baseDecision,
+        trace: {
+          source: "smart_runner_governor",
+          dryRun: true,
+          status: "advisory",
+          createdAt: 1,
+          deterministicReason: "todo_in_progress",
+          decision: {
             situation: "waiting_for_human",
             assessment: "Unsure",
             decision: "ask_user",
@@ -147,5 +175,95 @@ describe("Smart Runner Governor", () => {
         },
       }).decision.text,
     ).toBe(baseDecision.text)
+  })
+
+  it("records whether assist was actually applied", () => {
+    const assist = applySmartRunnerBoundedAssist({
+      enabled: true,
+      decision: {
+        continue: true,
+        reason: "todo_in_progress",
+        text: "Continue the task already in progress.",
+        todo: { id: "t1", content: "finish current slice", status: "in_progress", priority: "high" },
+      },
+      trace: {
+        source: "smart_runner_governor",
+        dryRun: true,
+        status: "advisory",
+        createdAt: 1,
+        deterministicReason: "todo_in_progress",
+        decision: {
+          situation: "execution_stalled",
+          assessment: "Needs preflight",
+          decision: "debug_preflight_first",
+          reason: "Debug work should define signals first",
+          nextAction: {
+            kind: "request_debug_preflight",
+            skillHints: ["code-thinker"],
+            narration: "Running debug preflight before the next fix.",
+          },
+          needsUserInput: false,
+          confidence: "high",
+        },
+      },
+    })
+
+    const traced = annotateSmartRunnerTraceAssist({
+      trace: {
+        source: "smart_runner_governor",
+        dryRun: true,
+        status: "advisory",
+        createdAt: 1,
+        deterministicReason: "todo_in_progress",
+      },
+      enabled: true,
+      assist,
+      originalText: "Continue the task already in progress.",
+    })
+
+    expect(traced.assist).toEqual({
+      enabled: true,
+      applied: true,
+      mode: "debug_preflight_first",
+      finalTextChanged: true,
+      narrationUsed: true,
+    })
+  })
+
+  it("turns docs sync assist into an explicit preflight continuation", () => {
+    const assist = applySmartRunnerBoundedAssist({
+      enabled: true,
+      decision: {
+        continue: true,
+        reason: "todo_pending",
+        text: "Continue with the next planned step.",
+        todo: { id: "t2", content: "implement the next slice", status: "pending", priority: "high" },
+      },
+      trace: {
+        source: "smart_runner_governor",
+        dryRun: true,
+        status: "advisory",
+        createdAt: 1,
+        deterministicReason: "todo_pending",
+        decision: {
+          situation: "context_gap",
+          assessment: "Refresh docs first",
+          decision: "docs_sync_first",
+          reason: "Need docs alignment before continuing",
+          nextAction: {
+            kind: "request_docs_sync",
+            skillHints: ["doc-coauthoring"],
+            narration: "Refreshing docs context before the next implementation step.",
+          },
+          needsUserInput: false,
+          confidence: "high",
+        },
+      },
+    })
+
+    expect(assist.applied).toBe(true)
+    expect(assist.mode).toBe("docs_sync_first")
+    expect(assist.decision.text).toContain("Smart Runner preflight: docs sync before execution.")
+    expect(assist.decision.text).toContain("implement the next slice")
   })
 })

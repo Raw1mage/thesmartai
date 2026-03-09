@@ -367,6 +367,9 @@ export function SessionSidePanel(props: {
                                 <Show when={entry.assessment}>
                                   <div class="text-12-regular text-text-muted break-words">{entry.assessment}</div>
                                 </Show>
+                                <Show when={entry.assist}>
+                                  <div class="text-12-regular text-info break-words">Assist: {entry.assist}</div>
+                                </Show>
                                 <Show when={entry.error}>
                                   <div class="text-12-regular text-warning break-words">Error: {entry.error}</div>
                                 </Show>
