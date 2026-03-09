@@ -50,7 +50,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
 
   const [expanded, setExpanded] = createStore({
     mcp: true,
-    diff: true,
+    diff: false,
     todo: true,
     lsp: true,
   })
@@ -445,43 +445,32 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                 </Show>
               </box>
             </Show>
-            <Show when={diff().length > 0}>
-              <box>
-                <box
-                  flexDirection="row"
-                  gap={1}
-                  onMouseDown={() => diff().length > 2 && setExpanded("diff", !expanded.diff)}
-                >
-                  <Show when={diff().length > 2}>
-                    <text fg={theme.text}>{expanded.diff ? "▼" : "▶"}</text>
-                  </Show>
-                  <text fg={theme.text}>
-                    <b>Modified Files</b>
-                  </text>
-                </box>
-                <Show when={diff().length <= 2 || expanded.diff}>
-                  <For each={diff() || []}>
-                    {(item) => {
-                      return (
-                        <box flexDirection="row" gap={1} justifyContent="space-between">
-                          <text fg={theme.textMuted} wrapMode="none">
-                            {item.file}
-                          </text>
-                          <box flexDirection="row" gap={1} flexShrink={0}>
-                            <Show when={item.additions}>
-                              <text fg={theme.diffAdded}>+{item.additions}</text>
-                            </Show>
-                            <Show when={item.deletions}>
-                              <text fg={theme.diffRemoved}>-{item.deletions}</text>
-                            </Show>
-                          </box>
-                        </box>
-                      )
-                    }}
-                  </For>
-                </Show>
+            <box>
+              <box flexDirection="row" gap={1} onMouseDown={() => setExpanded("diff", !expanded.diff)}>
+                <text fg={theme.text}>{expanded.diff ? "▼" : "▶"}</text>
+                <text fg={theme.text}>
+                  <b>Changes</b>
+                  <span style={{ fg: theme.textMuted }}> {diff().length === 0 ? "(Clean)" : `(${diff().length})`}</span>
+                </text>
               </box>
-            </Show>
+              <Show when={diff().length === 0 && expanded.diff}>
+                <text fg={theme.textMuted}>No session-owned uncommitted files</text>
+              </Show>
+              <Show when={diff().length > 0 && expanded.diff}>
+                <For each={diff() || []}>
+                  {(item) => {
+                    return (
+                      <box flexDirection="row" gap={1}>
+                        <text fg={theme.textMuted}>•</text>
+                        <text fg={theme.textMuted} wrapMode="word">
+                          {item.file}
+                        </text>
+                      </box>
+                    )
+                  }}
+                </For>
+              </Show>
+            </box>
           </box>
         </scrollbox>
 
