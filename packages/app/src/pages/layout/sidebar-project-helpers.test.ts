@@ -10,6 +10,11 @@ describe("projectSelected", () => {
     expect(projectSelected("/tmp/branch", ["/tmp/root", "/tmp/branch"])).toBe(true)
     expect(projectSelected("/tmp/other", ["/tmp/root", "/tmp/branch"])).toBe(false)
   })
+
+  test("matches canonicalized workspace aliases", () => {
+    expect(projectSelected("/tmp/root/feature///", ["/tmp/root", "/tmp/root/feature"])).toBe(true)
+    expect(projectSelected("C:\\repo\\branch\\", ["C:/repo", "C:/repo/branch"])).toBe(true)
+  })
 })
 
 describe("projectTileActive", () => {

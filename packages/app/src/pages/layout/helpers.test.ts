@@ -91,6 +91,15 @@ describe("layout workspace helpers", () => {
     expect(result).toEqual(["/root", "/c", "/b"])
   })
 
+  test("de-duplicates canonical workspace aliases while preserving local first", () => {
+    const result = syncWorkspaceOrder(
+      "/root///",
+      ["/root", "/root/feature", "/root/review///"],
+      ["/root", "/root/feature///", "/root/review", "/root/feature"],
+    )
+    expect(result).toEqual(["/root///", "/root/feature///", "/root/review"])
+  })
+
   test("finds the latest root session across workspaces", () => {
     const result = latestRootSession(
       [

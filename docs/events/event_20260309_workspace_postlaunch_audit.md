@@ -84,6 +84,14 @@ Status: In Progress
   - `packages/app/src/pages/layout.tsx`
     - `resetWorkspace(...)` 成功後，會主動 refresh 該 workspace directory store，而不是只依賴 operation 期間的事件時序自然收斂
   - 這讓 reset 完成後的 session list / workspace aggregate / child store 狀態更新有一條更明確的後置收斂路徑
+- 第四個 slice 補上 regression coverage，順手修出一個真正的 canonical-order bug：
+  - `packages/app/src/pages/layout/helpers.test.ts`
+    - 新增 canonical alias / duplicate workspace order 測試
+  - `packages/app/src/pages/layout/sidebar-project-helpers.test.ts`
+    - 新增 canonicalized workspace alias 命中測試
+  - `packages/app/src/pages/layout/helpers.ts`
+    - `syncWorkspaceOrder(...)` 先前不會去重 canonical duplicate entries；新測試實際抓出 `/root/feature` 與 `/root/feature///` 會同時留在排序結果
+    - 現已修成 canonical-key 去重，避免 workspace reorder / delete 後殘留重複 alias 項目
 
 ### Validation
 
@@ -91,6 +99,10 @@ Status: In Progress
 - `bun run --cwd packages/app test:unit -- src/pages/layout/sidebar-project-helpers.test.ts` ✅
 - `bun run --cwd packages/app test:unit` ✅
 - 第二、三個 slice 共用驗證：`bun run --cwd packages/app typecheck` ✅ / `bun run --cwd packages/app test:unit` ✅
+- 第四個 slice 驗證：
+  - `bun run --cwd packages/app test:unit -- src/pages/layout/helpers.test.ts src/pages/layout/sidebar-project-helpers.test.ts` ✅
+  - `bun run --cwd packages/app typecheck` ✅
+  - `bun run --cwd packages/app test:unit` ✅
 - 期間另行修復 subagent `worker_busy` 阻斷，已獨立記錄於 `event_20260309_subagent_worker_busy_block.md`。
 - Architecture Sync: Verified (No doc changes)
   - 本輪屬於既有 app consumer consistency 收斂，未改變 workspace architecture boundary 或 runtime API contract。

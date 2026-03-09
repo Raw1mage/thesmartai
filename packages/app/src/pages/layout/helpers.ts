@@ -75,9 +75,12 @@ export const syncWorkspaceOrder = (local: string, dirs: string[], existing?: str
   const root = workspaceKey(local)
   const canonical = new Map(dirs.map((directory) => [workspaceKey(directory), directory]))
   if (!existing) return [local, ...dirs.filter((directory) => workspaceKey(directory) !== root)]
+  const seen = new Set<string>()
   const keep = existing.filter((directory) => {
     const key = workspaceKey(directory)
-    return key !== root && canonical.has(key)
+    if (key === root || !canonical.has(key) || seen.has(key)) return false
+    seen.add(key)
+    return true
   })
   const keepKeys = new Set(keep.map((directory) => workspaceKey(directory)))
   const missing = dirs.filter((directory) => {
