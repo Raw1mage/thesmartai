@@ -6,7 +6,9 @@ import {
   annotateSmartRunnerTraceSuggestion,
   annotateSmartRunnerTraceAssist,
   applySmartRunnerBoundedAssist,
+  evaluateSmartRunnerAskUserAdoption,
   buildSmartRunnerGovernorContext,
+  getSmartRunnerAskUserQuestionText,
   prefixSmartRunnerText,
   shouldRunSmartRunnerGovernorDryRun,
 } from "./smart-runner-governor"
@@ -418,6 +420,71 @@ describe("Smart Runner Governor", () => {
 
     expect(trace.suggestion?.askUserAdoption?.hostAdopted).toBe(false)
     expect(trace.suggestion?.askUserAdoption?.hostAdoptionReason).toBe("question_already_pending")
+  })
+
+  it("evaluates ask-user adoption gates from suggestion policy and pending question state", () => {
+    const trace = annotateSmartRunnerTraceSuggestion({
+      trace: {
+        source: "smart_runner_governor",
+        dryRun: true,
+        status: "advisory",
+        createdAt: 1,
+        deterministicReason: "todo_pending",
+        decision: {
+          situation: "waiting_for_human",
+          assessment: "Needs clarification",
+          decision: "ask_user",
+          reason: "The next step depends on a product choice the current context does not resolve",
+          nextAction: {
+            kind: "request_user_input",
+            todoID: "t3",
+            skillHints: [],
+            narration: "Suggesting a user clarification before continuing.",
+          },
+          needsUserInput: true,
+          confidence: "high",
+        },
+      },
+    })
+
+    expect(getSmartRunnerAskUserQuestionText({ suggestion: trace.suggestion })).toBe(
+      "Suggesting a user clarification before continuing.",
+    )
+    expect(evaluateSmartRunnerAskUserAdoption({ suggestion: trace.suggestion, pendingQuestions: 0 })).toEqual({
+      adopted: true,
+      reason: "adopted",
+      questionText: "Suggesting a user clarification before continuing.",
+    })
+    expect(evaluateSmartRunnerAskUserAdoption({ suggestion: trace.suggestion, pendingQuestions: 1 })).toEqual({
+      adopted: false,
+      reason: "question_already_pending",
+      questionText: "Suggesting a user clarification before continuing.",
+    })
+  })
+
+  it("rejects ask-user adoption when no usable question text exists", () => {
+    expect(
+      evaluateSmartRunnerAskUserAdoption({
+        suggestion: {
+          kind: "ask_user",
+          reason: "Need clarification",
+          askUserAdoption: {
+            proposalID: "ask-user:t9",
+            policy: {
+              trustLevel: "medium",
+              adoptionMode: "user_confirm_required",
+              requiresUserConfirm: true,
+              requiresHostReview: true,
+            },
+          },
+        },
+        pendingQuestions: 0,
+      }),
+    ).toEqual({
+      adopted: false,
+      reason: "missing_question",
+      questionText: undefined,
+    })
   })
 
   it("annotates ask-user suggestions without changing control flow", () => {

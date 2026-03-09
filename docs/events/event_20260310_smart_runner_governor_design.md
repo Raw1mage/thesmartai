@@ -825,3 +825,113 @@ Validation（session-scoped Changes contract fix）:
 - 結果：`session.diff` 現在改成先從 session-owned candidate files 出發，再對這些檔案查 git dirty state；因此 sidebar / session `Changes` 的 count contract 重新對齊為 current session uncommitted files。
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 canonical per-session `Changes` source 的兩階段 contract
+
+### Current Slice (prompt-side Smart Runner question helper coverage)
+
+需求：在補 full prompt-loop integration 前，先為 `prompt.ts` 內 Smart Runner 問答組裝 helper 補一層穩定測試，避免 ask-user host adoption 的 prompt-side contract 再次退化。
+
+範圍：
+
+- IN
+  - 驗證 `buildSmartRunnerQuestion(...)` 的實際 question payload
+  - 驗證空白 question text 的 fail-closed 行為
+  - 驗證 synthetic user answer 文本格式
+- OUT
+  - 不模擬完整 prompt runLoop
+  - 不新增新的 host adoption policy
+
+任務清單：
+
+- [x] 新增 `/home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts`
+- [x] 覆蓋 ask-user question payload / empty question / answer formatting
+- [x] 跑 Smart Runner governor + prompt helper targeted tests
+
+Validation（prompt-side Smart Runner question helper coverage）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts` ✅
+- 結果：Smart Runner ask-user host adoption 現在至少有一層 prompt-side helper coverage，可穩定約束 question payload 與 synthetic answer 文本 contract。
+- Architecture Sync: Verified (No doc changes)
+  - 比對依據：此輪只補 prompt helper tests，未改 runtime flow / policy / data-path contract
+
+### Current Slice (ask-user orchestration helper extraction)
+
+需求：直接對 `prompt.ts` 靜態 import 路徑做 full loop integration mock 成本偏高，因此先把 ask-user host adoption 的 orchestration 抽成可注入依賴的 helper，讓 rejection/answer side effect 可以被穩定測試。
+
+範圍：
+
+- IN
+  - 將 ask-user adopted path 的 persist / ask / synthetic user answer / waiting_user stop-state 流程抽成 helper
+  - 補 rejection path 測試
+- OUT
+  - 不改 Smart Runner policy
+  - 不新增新的 adoption 類型
+  - 不改整體 prompt loop contract
+
+任務清單：
+
+- [x] 在 `prompt.ts` 新增 `handleSmartRunnerAskUserAdoption(...)`
+- [x] 讓 prompt loop 改用此 helper 執行 ask-user adopted path
+- [x] 補測 rejection path 會回寫 trace 並切到 `waiting_user/product_decision_needed`
+
+Validation（ask-user orchestration helper extraction）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts` ✅
+- 結果：ask-user host adoption 的 side-effect orchestration 現在可在不依賴 brittle module mocks 的情況下被穩定測試，並覆蓋 rejection → `waiting_user` 的核心分支。
+- Architecture Sync: Verified (No doc changes)
+  - 比對依據：此輪只做 prompt-side orchestration helper extraction，未改 Smart Runner policy、資料流或 UI/runtime contract
+
+### Current Slice (replan orchestration helper extraction)
+
+需求：延續 ask-user 路線，把 host-adopted replan 的 prompt-side orchestration 也抽成 helper，讓 todo update + continuation re-evaluation 可被穩定測試，而不必依賴 brittle full-loop mocks。
+
+範圍：
+
+- IN
+  - 將 host-adopted replan 的 todo update / decision refresh 流程抽成 helper
+  - 補 adopted path 測試
+- OUT
+  - 不改 Smart Runner replan policy
+  - 不改 bounded assist contract
+  - 不新增新的 adoption 類型
+
+任務清單：
+
+- [x] 在 `prompt.ts` 新增 `handleSmartRunnerReplanAdoption(...)`
+- [x] 讓 prompt loop 改用此 helper 執行 replan adopted path
+- [x] 補 adopted path 會更新 todos 並重新評估 continuation 的測試
+
+Validation（replan orchestration helper extraction）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts` ✅
+- 結果：replan adopted path 現在也有 prompt-side orchestration helper coverage，可穩定驗證 todo graph 被 host 採納後，continuation 決策會被重新計算。
+- Architecture Sync: Verified (No doc changes)
+  - 比對依據：此輪只做 prompt-side replan helper extraction，未改 Smart Runner policy、資料流或 UI/runtime contract
+
+### Current Slice (ask-user answered-path coverage)
+
+需求：既然 ask-user rejection path 已有 coverage，下一步補齊 answered path，確認 host-adopted question 在有答案時會正確產生 synthetic user continuation message。
+
+範圍：
+
+- IN
+  - 補 ask-user answered path 測試
+  - 驗證 synthetic text part 內容
+- OUT
+  - 不改 Smart Runner policy
+  - 不改 prompt loop contract
+
+任務清單：
+
+- [x] 在 `smart-runner-prompt.test.ts` 補 ask-user answered path
+- [x] 驗證 answered path 不會誤切到 `waiting_user`
+
+Validation（ask-user answered-path coverage）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts` ✅
+- 結果：ask-user host adoption 的 answered / rejected 兩條 prompt-side orchestration 分支現在都有測試覆蓋。
+- Architecture Sync: Verified (No doc changes)
+  - 比對依據：此輪只補 answered path tests，未改 runtime flow / policy / data-path contract

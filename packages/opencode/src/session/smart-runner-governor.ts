@@ -160,6 +160,10 @@ export type SmartRunnerTrace = z.infer<typeof SmartRunnerTraceSchema>
 const SMART_RUNNER_TRACE_HISTORY_LIMIT = 5
 const SMART_RUNNER_LABEL = "[AI]"
 
+export type SmartRunnerAskUserAdoptionReason = NonNullable<
+  NonNullable<NonNullable<SmartRunnerTrace["suggestion"]>["askUserAdoption"]>["hostAdoptionReason"]
+>
+
 export type SmartRunnerBoundedAssistResult = {
   decision: DeterministicContinueDecision
   narration?: string
@@ -172,6 +176,48 @@ export function prefixSmartRunnerText(text: string) {
   if (!trimmed) return SMART_RUNNER_LABEL
   if (trimmed.startsWith(SMART_RUNNER_LABEL)) return text
   return `${SMART_RUNNER_LABEL} ${text}`
+}
+
+export function getSmartRunnerAskUserQuestionText(input: {
+  suggestion?: SmartRunnerTrace["suggestion"]
+}): string | undefined {
+  const proposed =
+    input.suggestion?.askUserAdoption?.proposedQuestion ??
+    input.suggestion?.askUserHandoff?.question ??
+    input.suggestion?.draftQuestion
+  const question = proposed?.trim()
+  return question || undefined
+}
+
+export function evaluateSmartRunnerAskUserAdoption(input: {
+  suggestion?: SmartRunnerTrace["suggestion"]
+  pendingQuestions: number
+}): {
+  adopted: boolean
+  reason?: SmartRunnerAskUserAdoptionReason
+  questionText?: string
+} {
+  if (!input.suggestion?.askUserAdoption) return { adopted: false }
+
+  const questionText = getSmartRunnerAskUserQuestionText({ suggestion: input.suggestion })
+  const policy = input.suggestion.askUserAdoption.policy
+  const reason = !questionText
+    ? ("missing_question" as const)
+    : policy?.adoptionMode !== "user_confirm_required"
+      ? ("policy_not_user_confirm_required" as const)
+      : policy?.requiresUserConfirm !== true
+        ? ("user_confirm_missing" as const)
+        : policy?.requiresHostReview === false
+          ? ("host_review_missing" as const)
+          : input.pendingQuestions > 0
+            ? ("question_already_pending" as const)
+            : ("adopted" as const)
+
+  return {
+    adopted: reason === "adopted",
+    reason,
+    questionText,
+  }
 }
 
 function buildDocsSyncAssistText(input: { todo: Todo.Info }) {
@@ -430,7 +476,11 @@ export function annotateSmartRunnerAskUserAdoption(input: {
     | "question_already_pending"
     | "question_rejected"
 }) {
-  if (input.trace.status !== "advisory" || input.trace.suggestion?.kind !== "ask_user" || !input.trace.suggestion.askUserAdoption) {
+  if (
+    input.trace.status !== "advisory" ||
+    input.trace.suggestion?.kind !== "ask_user" ||
+    !input.trace.suggestion.askUserAdoption
+  ) {
     return input.trace
   }
 
@@ -464,7 +514,11 @@ export function annotateSmartRunnerReplanAdoption(input: {
     | "waiting_gate"
     | "unsupported_todo_kind"
 }) {
-  if (input.trace.status !== "advisory" || input.trace.suggestion?.kind !== "replan" || !input.trace.suggestion.replanAdoption) {
+  if (
+    input.trace.status !== "advisory" ||
+    input.trace.suggestion?.kind !== "replan" ||
+    !input.trace.suggestion.replanAdoption
+  ) {
     return input.trace
   }
 
