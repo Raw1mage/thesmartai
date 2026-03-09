@@ -47,10 +47,18 @@ export type AutonomousNarration = {
   text: string
 }
 
+function actionableTodos(todos: Todo.Info[]) {
+  return todos.filter((todo) => {
+    if (todo.status === "in_progress") return true
+    if (todo.status !== "pending") return false
+    return Todo.isDependencyReady(todo, todos)
+  })
+}
+
 function detectStructuredStopReason(
   todos: Todo.Info[],
 ): Extract<ContinuationDecisionReason, "approval_needed" | "product_decision_needed" | "wait_subagent"> | undefined {
-  const actionable = todos.filter((todo) => todo.status === "pending" || todo.status === "in_progress")
+  const actionable = actionableTodos(todos)
   if (
     actionable.some(
       (todo) => todo.action?.waitingOn === "approval" || todo.action?.kind === "approval" || todo.action?.needsApproval,
@@ -67,7 +75,7 @@ function detectStructuredStopReason(
 }
 
 function detectStructuredApprovalGate(todos: Todo.Info[]): ApprovalGate | undefined {
-  const actionable = todos.filter((todo) => todo.status === "pending" || todo.status === "in_progress")
+  const actionable = actionableTodos(todos)
   if (actionable.some((todo) => todo.action?.kind === "push")) return "push"
   if (actionable.some((todo) => todo.action?.kind === "destructive")) return "destructive"
   if (actionable.some((todo) => todo.action?.kind === "architecture_change")) return "architecture_change"
@@ -84,9 +92,7 @@ export function detectApprovalRequiredForTodos(input: { gates?: string[]; todos:
   if (required.size === 0) return undefined
   const structured = detectStructuredApprovalGate(input.todos)
   if (structured && required.has(structured)) return structured
-  const actionable = input.todos.filter(
-    (todo) => (todo.status === "pending" || todo.status === "in_progress") && Todo.isDependencyReady(todo, input.todos),
-  )
+  const actionable = actionableTodos(input.todos)
   const text = actionable.map((todo) => todo.content.toLowerCase()).join("\n")
 
   if (
@@ -169,6 +175,18 @@ export function shouldResumePendingContinuation(input: {
 export function computeResumeBackoffMs(consecutiveFailures: number) {
   const step = Math.max(1, consecutiveFailures)
   return Math.min(5 * 60_000, 15_000 * 2 ** (step - 1))
+}
+
+export function computeResumeRetryAt(input: {
+  now: number
+  consecutiveFailures: number
+  category: ResumeFailureCategory
+  budgetWaitTimeMs?: number
+}) {
+  const backoffMs = computeResumeBackoffMs(input.consecutiveFailures)
+  const effectiveWaitMs =
+    input.category === "provider_rate_limit" ? Math.max(backoffMs, input.budgetWaitTimeMs ?? 0) : backoffMs
+  return input.now + effectiveWaitMs
 }
 
 function shouldBlockAfterResumeFailure(consecutiveFailures: number) {
@@ -301,6 +319,9 @@ export function pickPendingContinuationsForResume(input: { items: ResumeCandidat
       const aWait = a.budget?.waitTimeMs ?? 0
       const bWait = b.budget?.waitTimeMs ?? 0
       if (aWait !== bWait) return aWait - bWait
+      const aFailures = a.session.workflow?.supervisor?.consecutiveResumeFailures ?? 0
+      const bFailures = b.session.workflow?.supervisor?.consecutiveResumeFailures ?? 0
+      if (aFailures !== bFailures) return aFailures - bFailures
       const aRun = a.session.workflow?.lastRunAt ?? 0
       const bRun = b.session.workflow?.lastRunAt ?? 0
       if (aRun !== bRun) return aRun - bRun
@@ -377,10 +398,6 @@ export function planAutonomousNextAction(input: {
   if (workflow.state === "blocked") {
     return { type: "stop", reason: "blocked" }
   }
-  const maxRounds = workflow.autonomous.maxContinuousRounds
-  if (typeof maxRounds === "number" && input.roundCount >= maxRounds) {
-    return { type: "stop", reason: "max_continuous_rounds" }
-  }
   if ((input.pendingApprovals ?? 0) > 0) {
     return { type: "stop", reason: "approval_needed" }
   }
@@ -402,6 +419,13 @@ export function planAutonomousNextAction(input: {
     return { type: "stop", reason: "wait_subagent" }
   }
   const current = Todo.nextActionableTodo(input.todos)
+  if (!current) {
+    return { type: "stop", reason: "todo_complete" }
+  }
+  const maxRounds = workflow.autonomous.maxContinuousRounds
+  if (typeof maxRounds === "number" && input.roundCount >= maxRounds) {
+    return { type: "stop", reason: "max_continuous_rounds" }
+  }
   if (current?.status === "in_progress") {
     return { type: "continue", reason: "todo_in_progress", text: AUTONOMOUS_PROGRESS_TEXT, todo: current }
   }
@@ -577,15 +601,24 @@ export async function resumePendingContinuations(input?: { maxCount?: number }) 
           clear: ["leaseOwner", "leaseExpiresAt", "retryAt", "lastResumeError"],
         }).catch(() => undefined)
       } catch (error) {
-        await clearPendingContinuation(sessionID)
         const current = await Session.get(sessionID).catch(() => undefined)
         const nextFailures = (current?.workflow?.supervisor?.consecutiveResumeFailures ?? 0) + 1
         const classified = classifyResumeFailure(error)
-        const backoffMs = computeResumeBackoffMs(nextFailures)
+        const retryAt = computeResumeRetryAt({
+          now: Date.now(),
+          consecutiveFailures: nextFailures,
+          category: classified.category,
+          budgetWaitTimeMs: item.budget?.waitTimeMs,
+        })
         const blocked =
           classified.shouldBlockImmediately ||
           (!classified.shouldRetry && nextFailures >= 1) ||
           shouldBlockAfterResumeFailure(nextFailures)
+        if (blocked) {
+          await clearPendingContinuation(sessionID)
+        } else {
+          await enqueuePendingContinuation(item.pending).catch(() => undefined)
+        }
         await Session.setWorkflowState({
           sessionID,
           state: blocked ? "blocked" : "waiting_user",
@@ -598,7 +631,7 @@ export async function resumePendingContinuations(input?: { maxCount?: number }) 
           sessionID,
           patch: {
             consecutiveResumeFailures: nextFailures,
-            retryAt: blocked ? undefined : Date.now() + backoffMs,
+            retryAt: blocked ? undefined : retryAt,
             lastResumeCategory: classified.category,
             lastResumeError: classified.reason,
           },

@@ -14,6 +14,7 @@ type MonitorTodoLink = {
 export type EnrichedMonitorEntry = SessionMonitorInfo & {
   todo?: MonitorTodoLink
   latestResult?: string
+  latestNarration?: string
 }
 
 export const MONITOR_STATUS_LABELS: Record<string, string> = {
@@ -111,9 +112,22 @@ export function buildMonitorEntries(input: {
   status?: SessionStatus
   partsByMessage?: Record<string, readonly Part[] | undefined>
 }) {
+  const taskNarration = new Map<string, string>()
+  for (const message of input.messages) {
+    if (message.role !== "assistant") continue
+    const parts = input.partsByMessage?.[message.id] ?? []
+    for (const part of parts) {
+      if (part.type !== "text") continue
+      if (part.metadata?.taskNarration !== true) continue
+      const toolCallId = typeof part.metadata?.toolCallId === "string" ? part.metadata.toolCallId : undefined
+      if (!toolCallId) continue
+      taskNarration.set(toolCallId, part.text)
+    }
+  }
+
   const toolMeta = new Map<
     string,
-    { todo?: MonitorTodoLink; result?: string; sessionID: string; agent?: string; tool: string }
+    { todo?: MonitorTodoLink; result?: string; narration?: string; sessionID: string; agent?: string; tool: string }
   >()
   for (const message of input.messages) {
     if (message.role !== "assistant") continue
@@ -130,6 +144,7 @@ export function buildMonitorEntries(input: {
       toolMeta.set(part.id, {
         todo,
         result,
+        narration: part.callID ? taskNarration.get(part.callID) : undefined,
         sessionID: part.sessionID,
         agent: message.agent,
         tool: part.tool,
@@ -180,6 +195,7 @@ export function buildMonitorEntries(input: {
       ...entry,
       todo: inferred?.todo,
       latestResult: inferred?.result,
+      latestNarration: inferred?.narration,
     } satisfies EnrichedMonitorEntry
   })
 }

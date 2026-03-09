@@ -61,6 +61,19 @@ describe("buildMonitorEntries", () => {
               time: { start: 1, end: 2 },
             },
           } as any,
+          {
+            id: "part_note",
+            sessionID: "session_1",
+            messageID: "m1",
+            type: "text",
+            text: "Subagent completed: report ready",
+            synthetic: true,
+            metadata: {
+              autonomousNarration: true,
+              taskNarration: true,
+              toolCallId: "call_1",
+            },
+          } as any,
         ],
       },
     })
@@ -70,8 +83,10 @@ describe("buildMonitorEntries", () => {
         todo: {
           id: "todo_1",
           content: "Audit API edge cases",
+          status: "in_progress",
         },
         latestResult: "report ready",
+        latestNarration: "Subagent completed: report ready",
       },
     ])
   })

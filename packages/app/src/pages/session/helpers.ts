@@ -80,6 +80,13 @@ type WorkflowLikeSession = {
     }
     state?: string
     stopReason?: string
+    supervisor?: {
+      leaseOwner?: string
+      retryAt?: number
+      consecutiveResumeFailures?: number
+      lastResumeCategory?: string
+      lastResumeError?: string
+    }
   }
 }
 
@@ -192,6 +199,11 @@ export type SessionStatusSummary = {
   currentStep?: TodoWithAction
   methodChips: SessionWorkflowChip[]
   processLines: string[]
+  debugLines: string[]
+  latestNarration?: {
+    label: string
+    tone: SessionWorkflowChip["tone"]
+  }
   latestResult?: {
     label: string
     tone: SessionWorkflowChip["tone"]
@@ -235,6 +247,37 @@ const summarizeTaskResult = (input: { messages?: readonly Message[]; partsByMess
   }
 }
 
+const summarizeNarration = (input: { messages?: readonly Message[]; partsByMessage?: PartsByMessage }) => {
+  const messages = input.messages ?? []
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message.role !== "assistant") continue
+    const parts = input.partsByMessage?.[message.id] ?? []
+    for (let partIndex = parts.length - 1; partIndex >= 0; partIndex--) {
+      const part = parts[partIndex]
+      if (part.type !== "text") continue
+      if (part.metadata?.autonomousNarration !== true) continue
+      const kind = typeof part.metadata?.narrationKind === "string" ? part.metadata.narrationKind : undefined
+      return {
+        label: part.text,
+        tone:
+          kind === "pause" || kind === "interrupt"
+            ? ("warning" as const)
+            : kind === "complete"
+              ? ("success" as const)
+              : ("info" as const),
+      }
+    }
+  }
+}
+
+const formatDebugTime = (value: number) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  const pad = (part: number) => part.toString().padStart(2, "0")
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
 export const getSessionStatusSummary = (input: {
   session?: WorkflowLikeSession
   todos?: readonly Todo[]
@@ -260,7 +303,17 @@ export const getSessionStatusSummary = (input: {
   if (stopReason) processLines.push(`Stop: ${stopReason}`)
   if (input.status?.type && input.status.type !== "idle") processLines.push(`Runtime: ${input.status.type}`)
 
+  const debugLines: string[] = []
+  const supervisor = input.session?.workflow?.supervisor
+  if (supervisor?.leaseOwner) debugLines.push(`Lease: ${supervisor.leaseOwner}`)
+  if (supervisor?.retryAt) debugLines.push(`Retry at: ${formatDebugTime(supervisor.retryAt)}`)
+  if ((supervisor?.consecutiveResumeFailures ?? 0) > 0)
+    debugLines.push(`Resume failures: ${supervisor?.consecutiveResumeFailures}`)
+  if (supervisor?.lastResumeCategory) debugLines.push(`Last category: ${supervisor.lastResumeCategory}`)
+  if (supervisor?.lastResumeError) debugLines.push(`Last error: ${supervisor.lastResumeError.slice(0, 120)}`)
+
   const latestTaskResult = summarizeTaskResult({ messages: input.messages, partsByMessage: input.partsByMessage })
+  const latestNarration = summarizeNarration({ messages: input.messages, partsByMessage: input.partsByMessage })
   const latestTodo = [...todos].reverse().find((todo) => todo.status === "completed" || todo.status === "cancelled")
   const latestResult =
     latestTaskResult ??
@@ -275,6 +328,8 @@ export const getSessionStatusSummary = (input: {
     currentStep,
     methodChips,
     processLines,
+    debugLines,
+    latestNarration,
     latestResult,
   }
 }

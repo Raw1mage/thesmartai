@@ -160,6 +160,13 @@ describe("getSessionStatusSummary", () => {
             autonomous: { enabled: true },
             state: "waiting_user",
             stopReason: "wait_subagent",
+            supervisor: {
+              leaseOwner: "supervisor:test",
+              retryAt: 60_000,
+              consecutiveResumeFailures: 2,
+              lastResumeCategory: "provider_rate_limit",
+              lastResumeError: "rate limited",
+            },
           },
         },
         status: { type: "busy" },
@@ -178,8 +185,37 @@ describe("getSessionStatusSummary", () => {
             action: { kind: "wait", waitingOn: "subagent" },
           },
         ] as any,
+        messages: [
+          {
+            id: "m2",
+            sessionID: "s1",
+            role: "assistant",
+            parentID: "u1",
+            modelID: "gpt-5",
+            providerId: "openai",
+            mode: "default",
+            agent: "coding",
+            path: { cwd: "/tmp", root: "/tmp" },
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            time: { created: 2 },
+          },
+        ] as any,
+        partsByMessage: {
+          m2: [
+            {
+              id: "p2",
+              sessionID: "s1",
+              messageID: "m2",
+              type: "text",
+              text: "Paused: a delegated subagent task is still running.",
+              synthetic: true,
+              metadata: { autonomousNarration: true, narrationKind: "pause", excludeFromModel: true },
+            },
+          ] as any,
+        },
       }),
-    ).toEqual({
+    ).toMatchObject({
       currentStep: {
         id: "b",
         content: "wait for subagent result",
@@ -192,8 +228,79 @@ describe("getSessionStatusSummary", () => {
         { label: "waiting: subagent", tone: "neutral" },
       ],
       processLines: ["Workflow: Waiting", "Stop: Wait subagent", "Runtime: busy"],
+      latestNarration: { label: "Paused: a delegated subagent task is still running.", tone: "warning" },
       latestResult: { label: "Completed: delegate API audit", tone: "success" },
     })
+
+    const summary = getSessionStatusSummary({
+      session: {
+        workflow: {
+          autonomous: { enabled: true },
+          state: "waiting_user",
+          stopReason: "wait_subagent",
+          supervisor: {
+            leaseOwner: "supervisor:test",
+            retryAt: 60_000,
+            consecutiveResumeFailures: 2,
+            lastResumeCategory: "provider_rate_limit",
+            lastResumeError: "rate limited",
+          },
+        },
+      },
+      status: { type: "busy" },
+      todos: [
+        {
+          id: "a",
+          content: "delegate API audit",
+          status: "completed",
+          priority: "medium",
+        },
+        {
+          id: "b",
+          content: "wait for subagent result",
+          status: "in_progress",
+          priority: "high",
+          action: { kind: "wait", waitingOn: "subagent" },
+        },
+      ] as any,
+      messages: [
+        {
+          id: "m2",
+          sessionID: "s1",
+          role: "assistant",
+          parentID: "u1",
+          modelID: "gpt-5",
+          providerId: "openai",
+          mode: "default",
+          agent: "coding",
+          path: { cwd: "/tmp", root: "/tmp" },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: 2 },
+        },
+      ] as any,
+      partsByMessage: {
+        m2: [
+          {
+            id: "p2",
+            sessionID: "s1",
+            messageID: "m2",
+            type: "text",
+            text: "Paused: a delegated subagent task is still running.",
+            synthetic: true,
+            metadata: { autonomousNarration: true, narrationKind: "pause", excludeFromModel: true },
+          },
+        ] as any,
+      },
+    })
+
+    expect(summary.debugLines).toEqual([
+      "Lease: supervisor:test",
+      expect.stringMatching(/^Retry at: \d{2}:\d{2}:\d{2}$/),
+      "Resume failures: 2",
+      "Last category: provider_rate_limit",
+      "Last error: rate limited",
+    ])
   })
 
   test("prefers synthesized task result over plain todo completion when available", () => {
@@ -247,6 +354,7 @@ describe("getSessionStatusSummary", () => {
         },
       }),
     ).toMatchObject({
+      debugLines: [],
       latestResult: { label: "Task completed · google/gemini-2.5-pro", tone: "success" },
     })
   })

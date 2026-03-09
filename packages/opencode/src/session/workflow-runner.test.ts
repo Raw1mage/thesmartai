@@ -3,6 +3,7 @@ import { Session } from "./index"
 import {
   classifyResumeFailure,
   computeResumeBackoffMs,
+  computeResumeRetryAt,
   clearPendingContinuation,
   describeAutonomousNextAction,
   detectApprovalRequiredForTodos,
@@ -218,6 +219,43 @@ describe("Session workflow runner", () => {
         roundCount: 0,
       }),
     ).toEqual({ type: "stop", reason: "wait_subagent" })
+  })
+
+  it("ignores structured gates on pending todos whose dependencies are not ready", () => {
+    expect(
+      planAutonomousNextAction({
+        session: {
+          parentID: undefined,
+          workflow: {
+            ...Session.defaultWorkflow(1),
+            autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
+            state: "waiting_user",
+          },
+          time: { created: 1, updated: 1 },
+        },
+        todos: [
+          {
+            id: "later",
+            content: "dangerous deploy later",
+            status: "pending",
+            priority: "high",
+            action: { kind: "push", needsApproval: true, dependsOn: ["first"] },
+          },
+          {
+            id: "first",
+            content: "finish prerequisite",
+            status: "pending",
+            priority: "high",
+          },
+        ],
+        roundCount: 0,
+      }),
+    ).toEqual({
+      type: "continue",
+      reason: "todo_pending",
+      text: "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision.",
+      todo: { id: "first", content: "finish prerequisite", status: "pending", priority: "high" },
+    })
   })
 
   it("planner skips pending todos whose dependencies are not completed yet", () => {
@@ -503,6 +541,26 @@ describe("Session workflow runner", () => {
     expect(computeResumeBackoffMs(10)).toBe(300_000)
   })
 
+  it("uses provider bucket wait time when scheduling rate-limit retries", () => {
+    expect(
+      computeResumeRetryAt({
+        now: 1_000,
+        consecutiveFailures: 2,
+        category: "provider_rate_limit",
+        budgetWaitTimeMs: 90_000,
+      }),
+    ).toBe(91_000)
+
+    expect(
+      computeResumeRetryAt({
+        now: 1_000,
+        consecutiveFailures: 2,
+        category: "provider_transient",
+        budgetWaitTimeMs: 90_000,
+      }),
+    ).toBe(31_000)
+  })
+
   it("classifies auth and runtime failures as immediate block conditions", () => {
     expect(
       classifyResumeFailure({
@@ -767,5 +825,57 @@ describe("Session workflow runner", () => {
     })
 
     expect(picked.map((item) => item.pending.sessionID)).toEqual(["session_openai_a", "session_google_a"])
+  })
+
+  it("prefers lower-failure resumptions when budget readiness is otherwise equal", () => {
+    const picked = pickPendingContinuationsForResume({
+      maxCount: 1,
+      items: [
+        {
+          pending: {
+            sessionID: "session_flaky",
+            messageID: "msg_1",
+            createdAt: 1,
+            roundCount: 1,
+            reason: "todo_pending",
+            text: "Continue",
+          },
+          session: {
+            workflow: {
+              ...Session.defaultWorkflow(1),
+              autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
+              lastRunAt: 1,
+              supervisor: { consecutiveResumeFailures: 3 },
+            },
+          },
+          status: { type: "idle" },
+          inFlight: false,
+          budget: { family: "openai", waitTimeMs: 0 },
+        },
+        {
+          pending: {
+            sessionID: "session_healthy",
+            messageID: "msg_2",
+            createdAt: 2,
+            roundCount: 1,
+            reason: "todo_pending",
+            text: "Continue",
+          },
+          session: {
+            workflow: {
+              ...Session.defaultWorkflow(1),
+              autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
+              lastRunAt: 2,
+              supervisor: { consecutiveResumeFailures: 0 },
+            },
+          },
+          status: { type: "idle" },
+          inFlight: false,
+          budget: { family: "google-api", waitTimeMs: 0 },
+        },
+      ],
+    })
+
+    expect(picked.map((item) => item.pending.sessionID)).toEqual(["session_healthy"])
   })
 })

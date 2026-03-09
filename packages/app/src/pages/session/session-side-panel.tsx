@@ -315,6 +315,34 @@ export function SessionSidePanel(props: {
                         </div>
                       </Show>
 
+                      <Show when={statusSummary().latestNarration}>
+                        {(result) => (
+                          <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-1">
+                            <div class="text-11-medium uppercase tracking-wide text-text-weak">Latest narration</div>
+                            <div
+                              class="text-12-medium break-words"
+                              classList={{
+                                "text-success": result().tone === "success",
+                                "text-warning": result().tone === "warning",
+                                "text-info": result().tone === "info",
+                                "text-text-strong": result().tone === "neutral",
+                              }}
+                            >
+                              {result().label}
+                            </div>
+                          </div>
+                        )}
+                      </Show>
+
+                      <Show when={statusSummary().debugLines.length > 0}>
+                        <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-1">
+                          <div class="text-11-medium uppercase tracking-wide text-text-weak">Debug</div>
+                          <For each={statusSummary().debugLines}>
+                            {(line) => <div class="text-12-regular text-text-weak break-words">{line}</div>}
+                          </For>
+                        </div>
+                      </Show>
+
                       <Show when={statusSummary().latestResult}>
                         {(result) => (
                           <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-1">
@@ -383,6 +411,11 @@ export function SessionSidePanel(props: {
                                 <Show when={item.todo?.content}>
                                   <div class="text-11-regular text-info break-words">Todo: {item.todo?.content}</div>
                                 </Show>
+                                <Show when={item.todo?.status}>
+                                  <div class="text-11-regular text-text-weak break-words">
+                                    Todo status: {item.todo?.status}
+                                  </div>
+                                </Show>
                                 <div class="text-11-regular text-text-weak break-words">
                                   {MONITOR_STATUS_LABELS[item.status.type] ?? item.status.type}
                                   {item.model ? ` · ${item.model.providerId}/${item.model.modelID}` : ""}
@@ -417,6 +450,11 @@ export function SessionSidePanel(props: {
                                 <Show when={item.latestResult}>
                                   <div class="text-11-regular text-text-weak break-words">
                                     Result: {item.latestResult}
+                                  </div>
+                                </Show>
+                                <Show when={item.latestNarration}>
+                                  <div class="text-11-regular text-info break-words">
+                                    Narration: {item.latestNarration}
                                   </div>
                                 </Show>
                               </div>

@@ -320,6 +320,49 @@ Status: In Progress
 - `bun run --cwd "/home/pkcs12/projects/opencode/packages/opencode" typecheck` ✅
 - Architecture Sync: Verified (Doc updated for transcript-visible task lifecycle narration and replanning status contract)
 
+## Phase 7 實作（sidebar / monitor debug visibility alignment）
+
+- `packages/app/src/pages/session/helpers.ts`
+  - sidebar summary 現在除了 current objective / process / latest result，也會萃取：
+    - `latestNarration`
+    - workflow supervisor debug lines（lease / retryAt / consecutive failures / last category / last error）
+- `packages/app/src/pages/session/session-side-panel.tsx`
+  - status summary 新增：
+    - `Latest narration`
+    - `Debug`
+  - monitor row 新增：
+    - `Todo status`
+    - `Narration`
+- `packages/app/src/pages/session/monitor-helper.ts`
+  - monitor enrichment 現在會從 synthetic task narration text part 反查 toolCallId，讓 monitor row 能顯示對應 task 的最新 narration
+- `packages/app/src/pages/session/helpers.test.ts`
+  - 補 sidebar summary regression test，驗證 latest narration + supervisor debug lines
+- `packages/app/src/pages/session/monitor-helper.test.ts`
+  - 補 monitor narration linkage regression test
+
+### Validation
+
+- `bun test --preload "/home/pkcs12/projects/opencode/packages/app/happydom.ts" "/home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts" "/home/pkcs12/projects/opencode/packages/app/src/pages/session/monitor-helper.test.ts" "/home/pkcs12/projects/opencode/packages/opencode/src/session/narration.test.ts"` ✅
+- `bun run --cwd "/home/pkcs12/projects/opencode/packages/app" typecheck && bun run --cwd "/home/pkcs12/projects/opencode/packages/opencode" typecheck` ✅
+- Architecture Sync: Verified (Doc updated for sidebar/monitor debug visibility alignment)
+
+## Phase 8 實作（scheduler / budget / policy refinement）
+
+- `packages/opencode/src/session/workflow-runner.ts`
+  - 新增 `actionableTodos(...)` helper，structured stop / approval gate 現在只會攔住真正 dependency-ready 的 pending todo（或已在進行中的 todo），避免尚未輪到的後續步驟過早卡住 autonomous plan
+  - `planAutonomousNextAction(...)` 現在先確認是否還有 actionable todo，再套用 `maxContinuousRounds`，避免「其實已完成」卻被 round-limit 誤標成 paused
+  - resume candidate 排序新增 `consecutiveResumeFailures` 權重，當 budget readiness 相同時，較健康的 session 先跑，降低 flaky session 反覆搶佔 resume 機會
+  - 新增 `computeResumeRetryAt(...)`，provider rate-limit retry 現在會對齊 family/model bucket wait time，而不是只用固定 exponential backoff
+  - 修正 retry path：resume 失敗但仍可重試時，會保留/重新寫回 pending continuation，而不是排了 `retryAt` 卻把 queue 清掉
+- `packages/opencode/src/session/workflow-runner.test.ts`
+  - 補 dependency-ready gate、rate-limit retryAt、failure-aware fairness 等 regression tests
+
+### Validation
+
+- `bun test "/home/pkcs12/projects/opencode/packages/opencode/src/session/workflow-runner.test.ts" "/home/pkcs12/projects/opencode/packages/opencode/src/session/narration.test.ts" "/home/pkcs12/projects/opencode/packages/opencode/src/session/prompt-runtime.test.ts"` ✅
+- `bun run --cwd "/home/pkcs12/projects/opencode/packages/opencode" typecheck && bun run --cwd "/home/pkcs12/projects/opencode/packages/app" typecheck` ✅
+- Architecture Sync: Verified (Doc updated for scheduler/budget/policy refinement)
+
 ## Dynamic model orchestration follow-up
 
 - `packages/opencode/src/session/model-orchestration.ts`
