@@ -170,12 +170,37 @@ describe("getSessionStatusSummary", () => {
               lastGovernorTrace: {
                 status: "advisory",
                 deterministicReason: "todo_in_progress",
+                assessment: "Needs preflight",
                 decision: {
                   decision: "debug_preflight_first",
                   confidence: "high",
-                  nextAction: { kind: "request_debug_preflight" },
+                  nextAction: { kind: "request_debug_preflight", narration: "Run debug preflight." },
                 },
               },
+              governorTraceHistory: [
+                {
+                  createdAt: 64_000,
+                  status: "advisory",
+                  deterministicReason: "todo_pending",
+                  assessment: "Start next step cleanly",
+                  decision: {
+                    decision: "continue",
+                    confidence: "medium",
+                    nextAction: { kind: "start_next_todo", narration: "Start the next todo." },
+                  },
+                },
+                {
+                  createdAt: 65_000,
+                  status: "advisory",
+                  deterministicReason: "todo_in_progress",
+                  assessment: "Needs preflight",
+                  decision: {
+                    decision: "debug_preflight_first",
+                    confidence: "high",
+                    nextAction: { kind: "request_debug_preflight", narration: "Run debug preflight." },
+                  },
+                },
+              ],
             },
           },
         },
@@ -258,12 +283,37 @@ describe("getSessionStatusSummary", () => {
             lastGovernorTrace: {
               status: "advisory",
               deterministicReason: "todo_in_progress",
+              assessment: "Needs preflight",
               decision: {
                 decision: "debug_preflight_first",
                 confidence: "high",
-                nextAction: { kind: "request_debug_preflight" },
+                nextAction: { kind: "request_debug_preflight", narration: "Run debug preflight." },
               },
             },
+            governorTraceHistory: [
+              {
+                createdAt: 64_000,
+                status: "advisory",
+                deterministicReason: "todo_pending",
+                assessment: "Start next step cleanly",
+                decision: {
+                  decision: "continue",
+                  confidence: "medium",
+                  nextAction: { kind: "start_next_todo", narration: "Start the next todo." },
+                },
+              },
+              {
+                createdAt: 65_000,
+                status: "advisory",
+                deterministicReason: "todo_in_progress",
+                assessment: "Needs preflight",
+                decision: {
+                  decision: "debug_preflight_first",
+                  confidence: "high",
+                  nextAction: { kind: "request_debug_preflight", narration: "Run debug preflight." },
+                },
+              },
+            ],
           },
         },
       },
@@ -325,6 +375,26 @@ describe("getSessionStatusSummary", () => {
       "Governor next: request_debug_preflight",
       expect.stringMatching(/^Governor at: \d{2}:\d{2}:\d{2}$/),
     ])
+    expect(summary.smartRunnerHistory).toEqual([
+      {
+        time: expect.stringMatching(/^\d{2}:\d{2}:\d{2}$/),
+        status: "advisory",
+        decision: "debug_preflight_first",
+        confidence: "high",
+        next: "request_debug_preflight",
+        assessment: "Needs preflight",
+        error: undefined,
+      },
+      {
+        time: expect.stringMatching(/^\d{2}:\d{2}:\d{2}$/),
+        status: "advisory",
+        decision: "continue",
+        confidence: "medium",
+        next: "start_next_todo",
+        assessment: "Start next step cleanly",
+        error: undefined,
+      },
+    ])
   })
 
   test("prefers synthesized task result over plain todo completion when available", () => {
@@ -379,6 +449,7 @@ describe("getSessionStatusSummary", () => {
       }),
     ).toMatchObject({
       debugLines: [],
+      smartRunnerHistory: [],
       latestResult: { label: "Task completed · google/gemini-2.5-pro", tone: "success" },
     })
   })

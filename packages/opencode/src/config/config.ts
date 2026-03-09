@@ -1360,6 +1360,12 @@ export namespace Config {
                 .describe("Per-role model overrides in provider/model format"),
             })
             .optional(),
+          smart_runner: z
+            .object({
+              enabled: z.boolean().optional().describe("Enable Smart Runner dry-run tracing"),
+              assist: z.boolean().optional().describe("Allow Smart Runner to refine low-risk continuation wording"),
+            })
+            .optional(),
           mcp_timeout: z
             .number()
             .int()

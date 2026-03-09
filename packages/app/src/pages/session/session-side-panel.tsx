@@ -343,6 +343,39 @@ export function SessionSidePanel(props: {
                         </div>
                       </Show>
 
+                      <Show when={statusSummary().smartRunnerHistory.length > 0}>
+                        <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-2">
+                          <div class="text-11-medium uppercase tracking-wide text-text-weak">Smart Runner history</div>
+                          <For each={statusSummary().smartRunnerHistory}>
+                            {(entry) => (
+                              <div class="rounded-md border border-border-weak-base bg-surface-panel px-2 py-2 flex flex-col gap-1">
+                                <div class="flex flex-wrap items-center gap-2">
+                                  <span class="text-[11px] font-medium text-text-strong">
+                                    {entry.time ?? "--:--:--"}
+                                  </span>
+                                  <span class="text-[11px] text-text-weak">{entry.status}</span>
+                                  <Show when={entry.decision}>
+                                    <span class="text-[11px] text-info">{entry.decision}</span>
+                                  </Show>
+                                  <Show when={entry.confidence}>
+                                    <span class="text-[11px] text-text-weak">{entry.confidence}</span>
+                                  </Show>
+                                </div>
+                                <Show when={entry.next}>
+                                  <div class="text-12-regular text-text-weak break-words">Next: {entry.next}</div>
+                                </Show>
+                                <Show when={entry.assessment}>
+                                  <div class="text-12-regular text-text-muted break-words">{entry.assessment}</div>
+                                </Show>
+                                <Show when={entry.error}>
+                                  <div class="text-12-regular text-warning break-words">Error: {entry.error}</div>
+                                </Show>
+                              </div>
+                            )}
+                          </For>
+                        </div>
+                      </Show>
+
                       <Show when={statusSummary().latestResult}>
                         {(result) => (
                           <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-1">

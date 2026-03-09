@@ -1,10 +1,10 @@
 import { generateObject, streamObject, type ModelMessage } from "ai"
 import z from "zod"
-import { Flag } from "@/flag/flag"
 import type { Provider } from "@/provider/provider"
 import { Provider as ProviderRegistry } from "@/provider/provider"
 import { ProviderTransform } from "@/provider/transform"
 import { Auth } from "@/auth"
+import { Config } from "@/config/config"
 import { Session } from "."
 import { Todo } from "./todo"
 import type { MessageV2 } from "./message-v2"
@@ -59,6 +59,7 @@ const SmartRunnerTraceSchema = z.object({
 })
 
 export type SmartRunnerTrace = z.infer<typeof SmartRunnerTraceSchema>
+const SMART_RUNNER_TRACE_HISTORY_LIMIT = 5
 
 export type SmartRunnerBoundedAssistResult = {
   decision: DeterministicContinueDecision
@@ -324,6 +325,7 @@ async function runGovernorModel(input: { model: Provider.Model; context: Governo
 export async function evaluateSmartRunnerGovernorDryRun(input: {
   sessionID: string
   model: Provider.Model
+  enabled?: boolean
   todos: Todo.Info[]
   roundCount: number
   deterministicDecision: DeterministicContinueDecision
@@ -335,7 +337,7 @@ export async function evaluateSmartRunnerGovernorDryRun(input: {
   const createdAt = Date.now()
   if (
     !shouldRunSmartRunnerGovernorDryRun({
-      enabled: Flag.OPENCODE_EXPERIMENTAL_SMART_RUNNER_GOVERNOR,
+      enabled: input.enabled,
       decision: input.deterministicDecision,
     })
   ) {
@@ -400,11 +402,23 @@ export async function evaluateSmartRunnerGovernorDryRun(input: {
 }
 
 export async function persistSmartRunnerGovernorTrace(input: { sessionID: string; trace: SmartRunnerTrace }) {
+  const session = await Session.get(input.sessionID)
+  const currentHistory = session.workflow?.supervisor?.governorTraceHistory ?? []
+  const nextHistory = [...currentHistory, input.trace].slice(-SMART_RUNNER_TRACE_HISTORY_LIMIT)
   await Session.updateWorkflowSupervisor({
     sessionID: input.sessionID,
     patch: {
       lastGovernorTraceAt: input.trace.createdAt,
       lastGovernorTrace: input.trace,
+      governorTraceHistory: nextHistory,
     },
   })
+}
+
+export async function getSmartRunnerConfig() {
+  const config = await Config.get()
+  return {
+    enabled: config.experimental?.smart_runner?.enabled === true,
+    assist: config.experimental?.smart_runner?.assist === true,
+  }
 }

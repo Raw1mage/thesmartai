@@ -90,14 +90,31 @@ type WorkflowLikeSession = {
       lastGovernorTrace?: {
         status?: string
         deterministicReason?: string
+        assessment?: string
         decision?: {
           decision?: string
           confidence?: string
           nextAction?: {
             kind?: string
+            narration?: string
           }
         }
       }
+      governorTraceHistory?: Array<{
+        createdAt?: number
+        status?: string
+        deterministicReason?: string
+        assessment?: string
+        decision?: {
+          decision?: string
+          confidence?: string
+          nextAction?: {
+            kind?: string
+            narration?: string
+          }
+        }
+        error?: string
+      }>
     }
   }
 }
@@ -212,6 +229,15 @@ export type SessionStatusSummary = {
   methodChips: SessionWorkflowChip[]
   processLines: string[]
   debugLines: string[]
+  smartRunnerHistory: Array<{
+    time?: string
+    status: string
+    decision?: string
+    confidence?: string
+    next?: string
+    assessment?: string
+    error?: string
+  }>
   latestNarration?: {
     label: string
     tone: SessionWorkflowChip["tone"]
@@ -336,6 +362,16 @@ export const getSessionStatusSummary = (input: {
   if (supervisor?.lastGovernorTraceAt)
     debugLines.push(`Governor at: ${formatDebugTime(supervisor.lastGovernorTraceAt)}`)
 
+  const smartRunnerHistory = (supervisor?.governorTraceHistory ?? []).toReversed().map((trace) => ({
+    time: trace.createdAt ? formatDebugTime(trace.createdAt) : undefined,
+    status: trace.status ?? "unknown",
+    decision: trace.decision?.decision,
+    confidence: trace.decision?.confidence,
+    next: trace.decision?.nextAction?.kind,
+    assessment: trace.assessment,
+    error: trace.error,
+  }))
+
   const latestTaskResult = summarizeTaskResult({ messages: input.messages, partsByMessage: input.partsByMessage })
   const latestNarration = summarizeNarration({ messages: input.messages, partsByMessage: input.partsByMessage })
   const latestTodo = [...todos].reverse().find((todo) => todo.status === "completed" || todo.status === "cancelled")
@@ -353,6 +389,7 @@ export const getSessionStatusSummary = (input: {
     methodChips,
     processLines,
     debugLines,
+    smartRunnerHistory,
     latestNarration,
     latestResult,
   }

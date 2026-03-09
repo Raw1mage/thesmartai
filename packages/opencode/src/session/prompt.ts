@@ -69,6 +69,7 @@ import {
 import {
   applySmartRunnerBoundedAssist,
   evaluateSmartRunnerGovernorDryRun,
+  getSmartRunnerConfig,
   persistSmartRunnerGovernorTrace,
 } from "./smart-runner-governor"
 
@@ -747,9 +748,11 @@ export namespace SessionPrompt {
         let continueDecision = decision.continue ? decision : undefined
         let narrationOverride: string | undefined
         if (decision.continue) {
+          const smartRunnerGovernor = await getSmartRunnerConfig()
           const trace = await evaluateSmartRunnerGovernorDryRun({
             sessionID,
             model: activeModel,
+            enabled: smartRunnerGovernor.enabled,
             todos: await Todo.get(sessionID),
             roundCount: autonomousRounds,
             deterministicDecision: decision,
@@ -760,7 +763,7 @@ export namespace SessionPrompt {
             trace,
           })
           const assist = applySmartRunnerBoundedAssist({
-            enabled: Flag.OPENCODE_EXPERIMENTAL_SMART_RUNNER_GOVERNOR_ASSIST,
+            enabled: smartRunnerGovernor.assist,
             decision,
             trace,
           })

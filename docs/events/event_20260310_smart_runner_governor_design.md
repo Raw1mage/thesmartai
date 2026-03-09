@@ -256,7 +256,7 @@ Context pack 原則：
   - docs_sync_first
   - debug_preflight_first
 - `ask_user` / `pause` / hard stop 仍由 deterministic layer 最終裁決。
-- 本輪已以 feature flag 形式落地：只改寫 synthetic continue wording 與 narration，不直接改 todo graph 或 stop state。
+- 本輪已以 runtime config 形式落地：只改寫 synthetic continue wording 與 narration，不直接改 todo graph 或 stop state。
 
 **Phase 3 — hosted-session mode**
 
@@ -328,14 +328,27 @@ Smart Runner 的每次決策應可被觀測：
 - 整合點：
   - `prompt.ts` 在 deterministic `decision.continue` 時執行 governor dry-run
   - trace 僅寫入 `workflow.supervisor.lastGovernorTrace*`
-  - `OPENCODE_EXPERIMENTAL_SMART_RUNNER_GOVERNOR_ASSIST=1` 時，僅允許 governor 調整 low-risk continuation text / narration
+  - `experimental.smart_runner.assist=true` 時，僅允許 Smart Runner 調整 low-risk continuation text / narration
   - 不改變 enqueue / pause / complete / approval gating 的既有控制流
+- runtime config 來源：`~/.config/opencode/opencode.json`（user layer）或 `/etc/opencode/opencode.json`（managed layer）
 - UI / inspect visibility：
   - session status panel `Debug` 區塊現在會顯示 governor status / decision / next action / timestamp
   - same trace 也會隨 `Session.Info.workflow.supervisor` 出現在 session API payload
+  - session status panel 現在另有 `Smart Runner history` 區塊，顯示最近幾筆 trace（time / status / decision / confidence / next / assessment）
+- runtime switch source：
+  - 使用 `~/.config/opencode/opencode.json` 的 `experimental.smart_runner.{enabled,assist}`
+  - 本機目前已設為 `enabled=true`, `assist=true`
 - 驗證：
   - `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/workflow-runner.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts` ✅
   - `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/workflow-runner.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts` ⚠️ `helpers.test.ts` 仍含既存 DOM-less 測試失敗（`document is not defined`），但本輪新增的 workflow/governor assertions 通過
   - `bunx tsc --noEmit -p /home/pkcs12/projects/opencode/tsconfig.json` ⚠️ repo 仍有大量既存 typecheck 噪音（infra / template 等），本輪未新增可見於輸出的 Smart Runner 相關錯誤
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 experimental Smart Runner dry-run + bounded-assist 現況
+
+### Next Phase Plan
+
+- [x] 將 runtime switch 收斂到 `experimental.smart_runner.{enabled,assist}`
+- [x] 將 Smart Runner trace 從 single last-trace 擴充為 bounded history（先保留最近數筆）
+- [x] 在 session status / inspect surface 顯示 trace history，而不只是一組 last trace
+- [ ] 在真實 autonomous 任務中觀察 history：判斷是否過度插手、是否常誤判為 docs/debug preflight
+- [ ] 待 history evidence 足夠後，再決定是否放大 assist 權限到真正的 preflight insertion
