@@ -237,6 +237,20 @@ export default function Page() {
 
   const isDesktop = createMediaQuery("(min-width: 1024px)")
 
+  createEffect(
+    on(
+      () => [params.dir, params.id, isDesktop()] as const,
+      ([dir, id, desktop], prev) => {
+        if (!dir) return
+        if (id) return
+        if (desktop) return
+        if (prev && prev[0] === dir && prev[1] === id && prev[2] === desktop) return
+        layout.mobileSidebar.show()
+      },
+      { defer: true },
+    ),
+  )
+
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
     return file.tab(tab)
