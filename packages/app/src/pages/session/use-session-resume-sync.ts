@@ -29,8 +29,6 @@ export function useSessionResumeSync(input: {
     if (!input.enabled()) return
     const sessionID = input.sessionID()
     if (!sessionID) return
-    const isCoarsePointer = () => window.matchMedia?.("(pointer: coarse)")?.matches ?? false
-    if (isCoarsePointer()) return
 
     let hiddenAt = 0
 
