@@ -21,6 +21,7 @@ import { isVectorRateLimited } from "@/account/rotation3d"
 import { Global } from "@/global"
 import path from "path"
 import { materializeToolAttachments } from "./attachment-ownership"
+import { clearPendingContinuation } from "./workflow-runner"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -213,6 +214,7 @@ export namespace SessionProcessor {
               input.abort.throwIfAborted()
               switch (value.type) {
                 case "start":
+                  await clearPendingContinuation(input.sessionID)
                   SessionStatus.set(input.sessionID, { type: "busy" })
                   await Session.setWorkflowState({
                     sessionID: input.sessionID,

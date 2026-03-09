@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import { Session } from "./index"
-import { evaluateAutonomousContinuation } from "./workflow-runner"
+import {
+  clearPendingContinuation,
+  enqueuePendingContinuation,
+  evaluateAutonomousContinuation,
+  getPendingContinuation,
+} from "./workflow-runner"
 
 describe("Session workflow runner", () => {
   it("continues when autonomous mode is enabled and todos remain", () => {
@@ -80,5 +85,29 @@ describe("Session workflow runner", () => {
     })
 
     expect(decision).toEqual({ continue: false, reason: "todo_complete" })
+  })
+
+  it("persists and clears pending continuation entries", async () => {
+    const sessionID = "session_test_pending"
+    await enqueuePendingContinuation({
+      sessionID,
+      messageID: "msg_test_pending",
+      createdAt: 123,
+      roundCount: 2,
+      reason: "todo_pending",
+      text: "Continue",
+    })
+
+    await expect(getPendingContinuation(sessionID)).resolves.toEqual({
+      sessionID,
+      messageID: "msg_test_pending",
+      createdAt: 123,
+      roundCount: 2,
+      reason: "todo_pending",
+      text: "Continue",
+    })
+
+    await clearPendingContinuation(sessionID)
+    await expect(getPendingContinuation(sessionID)).resolves.toBeUndefined()
   })
 })

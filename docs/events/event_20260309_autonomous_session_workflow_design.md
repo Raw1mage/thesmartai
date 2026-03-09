@@ -182,6 +182,26 @@ Status: In Progress
 - 將 pending continuation 寫入 storage
 - 支援 runtime 重啟後恢復 autonomous session
 
+## Phase 3 實作（foundation）
+
+- `packages/opencode/src/session/workflow-runner.ts`
+  - 新增 storage-backed pending continuation helpers：
+    - `enqueuePendingContinuation(...)`
+    - `getPendingContinuation(...)`
+    - `clearPendingContinuation(...)`
+    - `listPendingContinuations()`
+  - `enqueueAutonomousContinue(...)` 現在在寫入 synthetic user message 的同時，也會留下 durable pending continuation record
+- `packages/opencode/src/session/processor.ts`
+  - assistant 回合真正開始時會 `clearPendingContinuation(sessionID)`
+  - 這表示 queue entry 的語義是：
+    - 「下一輪 autonomous continuation 已經排入，但尚未被 processor 實際接手」
+- `packages/opencode/src/session/workflow-runner.test.ts`
+  - 補 queue persistence / clear regression test
+- 目前這仍是 **Phase 3 foundation**，尚未完成完整 resume：
+  - queue 已 durable
+  - 但還沒有 boot-time supervisor 去掃描 queue 並自動重新喚醒 session loop
+  - 這會留到下一個 slice（Phase 3b / Phase 4 之間）
+
 ### Phase 4 — Supervisor / scheduling policy
 
 - 引入更完整的 queue fairness、rate limiting、multi-session arbitration
@@ -192,5 +212,8 @@ Status: In Progress
 - `bun run --cwd packages/opencode typecheck` ✅
 - `bun test --cwd packages/opencode src/session/index.test.ts` ✅
 - `bun test --cwd packages/opencode src/session/index.test.ts src/session/workflow-runner.test.ts` ✅
+- Phase 3 foundation 驗證：
+  - `bun run --cwd packages/opencode typecheck` ✅
+  - `bun test --cwd packages/opencode src/session/index.test.ts src/session/workflow-runner.test.ts` ✅
 - Architecture Sync: Updated `docs/ARCHITECTURE.md`
-  - 本輪已從 Phase 1 metadata 進入 Phase 2 in-process autonomous continuation，因此同步更新 Session Core 與 prompt loop 行為描述。
+  - 本輪補上 durable continuation queue foundation，因此同步更新 Session Core 與 session storage/autonomous continuation 說明。

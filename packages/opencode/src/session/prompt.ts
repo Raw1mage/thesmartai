@@ -696,6 +696,7 @@ export namespace SessionPrompt {
           await enqueueAutonomousContinue({
             sessionID,
             user: lastUser,
+            roundCount: autonomousRounds,
           })
           continue
         }
