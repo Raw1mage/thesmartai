@@ -20,6 +20,7 @@ import { errors } from "../error"
 import { lazy } from "../../util/lazy"
 import { RequestUser } from "@/runtime/request-user"
 import { UserDaemonManager } from "../user-daemon"
+import { debugCheckpoint } from "@/util/debug"
 
 const log = Log.create({ service: "server" })
 
@@ -104,10 +105,26 @@ export const SessionRoutes = lazy(() =>
       }),
       async (c) => {
         const username = RequestUser.username()
+        log.debug("session.status request", { username: username ?? "local" })
+        debugCheckpoint("session.route", "session.status request", { username: username ?? "local" })
         if (username && UserDaemonManager.routeSessionStatusEnabled()) {
           const response =
             await UserDaemonManager.callSessionStatus<Record<string, z.infer<typeof SessionStatus.Info>>>(username)
           if (response.ok && response.data && typeof response.data === "object") {
+            debugCheckpoint("session.route", "session.status response", {
+              username,
+              count: Object.keys(response.data).length,
+              active: Object.entries(response.data)
+                .filter(([, value]) => value?.type && value.type !== "idle")
+                .map(([id, value]) => ({ id, type: value.type })),
+            })
+            log.debug("session.status response", {
+              username,
+              count: Object.keys(response.data).length,
+              active: Object.entries(response.data)
+                .filter(([, value]) => value?.type && value.type !== "idle")
+                .map(([id, value]) => ({ id, type: value.type })),
+            })
             return c.json(response.data)
           }
           return c.json(
@@ -119,6 +136,20 @@ export const SessionRoutes = lazy(() =>
           )
         }
         const result = SessionStatus.list()
+        debugCheckpoint("session.route", "session.status response", {
+          username: "local",
+          count: Object.keys(result).length,
+          active: Object.entries(result)
+            .filter(([, value]) => value?.type && value.type !== "idle")
+            .map(([id, value]) => ({ id, type: value.type })),
+        })
+        log.debug("session.status response", {
+          username: "local",
+          count: Object.keys(result).length,
+          active: Object.entries(result)
+            .filter(([, value]) => value?.type && value.type !== "idle")
+            .map(([id, value]) => ({ id, type: value.type })),
+        })
         return c.json(result)
       },
     )
@@ -210,6 +241,11 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
         const username = RequestUser.username()
+        log.debug("session.get request", { sessionID, username: username ?? "local" })
+        debugCheckpoint("session.route", "session.get request", {
+          sessionID,
+          username: username ?? "local",
+        })
         if (username && UserDaemonManager.routeSessionReadEnabled()) {
           const response = await UserDaemonManager.callSessionGet<Session.Info>(username, sessionID)
           if (response.ok && response.data) return c.json(response.data)
@@ -223,6 +259,16 @@ export const SessionRoutes = lazy(() =>
         }
         log.info("SEARCH", { url: c.req.url })
         const session = await Session.get(sessionID)
+        debugCheckpoint("session.route", "session.get response", {
+          sessionID,
+          found: !!session,
+          directory: session?.directory,
+        })
+        log.debug("session.get response", {
+          sessionID,
+          found: !!session,
+          directory: session?.directory,
+        })
         return c.json(session)
       },
     )
@@ -855,6 +901,16 @@ export const SessionRoutes = lazy(() =>
         const query = c.req.valid("query")
         const sessionID = c.req.valid("param").sessionID
         const username = RequestUser.username()
+        log.debug("session.messages request", {
+          sessionID,
+          limit: query.limit,
+          username: username ?? "local",
+        })
+        debugCheckpoint("session.route", "session.messages request", {
+          sessionID,
+          limit: query.limit,
+          username: username ?? "local",
+        })
         if (username && UserDaemonManager.routeSessionReadEnabled()) {
           const response = await UserDaemonManager.callSessionMessages<MessageV2.WithParts[]>(
             username,
@@ -872,6 +928,16 @@ export const SessionRoutes = lazy(() =>
         }
         const messages = await Session.messages({
           sessionID,
+          limit: query.limit,
+        })
+        debugCheckpoint("session.route", "session.messages response", {
+          sessionID,
+          count: messages.length,
+          limit: query.limit,
+        })
+        log.debug("session.messages response", {
+          sessionID,
+          count: messages.length,
           limit: query.limit,
         })
         return c.json(messages)

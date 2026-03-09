@@ -5,6 +5,7 @@ import { retry } from "@opencode-ai/util/retry"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
+import { sendSessionReloadDebugBeacon } from "@/utils/debug-beacon"
 import type { Message, Part } from "@opencode-ai/sdk/v2/client"
 import type { State } from "./global-sync/types"
 
@@ -172,7 +173,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
     const fetchMessages = async (input: { client: typeof sdk.client; sessionID: string; limit: number }) => {
       const messages = await retry(() =>
-        input.client.session.messages({ sessionID: input.sessionID, limit: input.limit }),
+        input.client.session.messages({ directory: sdk.directory, sessionID: input.sessionID, limit: input.limit }),
       )
       const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
       const session = items
@@ -197,9 +198,39 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const key = keyFor(input.directory, input.sessionID)
       if (meta.loading[key]) return
 
+      console.debug("[session-reload-debug] loadMessages:start", {
+        directory: input.directory,
+        sessionID: input.sessionID,
+        limit: input.limit,
+      })
+      sendSessionReloadDebugBeacon({
+        sdk,
+        event: "loadMessages:start",
+        sessionID: input.sessionID,
+        payload: {
+          directory: input.directory,
+          limit: input.limit,
+        },
+      })
       setMeta("loading", key, true)
       await fetchMessages(input)
         .then((next) => {
+          console.debug("[session-reload-debug] loadMessages:success", {
+            directory: input.directory,
+            sessionID: input.sessionID,
+            messageCount: next.session.length,
+            complete: next.complete,
+          })
+          sendSessionReloadDebugBeacon({
+            sdk,
+            event: "loadMessages:success",
+            sessionID: input.sessionID,
+            payload: {
+              directory: input.directory,
+              messageCount: next.session.length,
+              complete: next.complete,
+            },
+          })
           batch(() => {
             input.setStore("message", input.sessionID, reconcile(next.session, { key: "id" }))
             for (const message of next.part) {
@@ -209,7 +240,36 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             setMeta("complete", key, next.complete)
           })
         })
+        .catch((error) => {
+          console.debug("[session-reload-debug] loadMessages:error", {
+            directory: input.directory,
+            sessionID: input.sessionID,
+            error: error instanceof Error ? error.message : String(error),
+          })
+          sendSessionReloadDebugBeacon({
+            sdk,
+            event: "loadMessages:error",
+            sessionID: input.sessionID,
+            payload: {
+              directory: input.directory,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          })
+          throw error
+        })
         .finally(() => {
+          console.debug("[session-reload-debug] loadMessages:done", {
+            directory: input.directory,
+            sessionID: input.sessionID,
+          })
+          sendSessionReloadDebugBeacon({
+            sdk,
+            event: "loadMessages:done",
+            sessionID: input.sessionID,
+            payload: {
+              directory: input.directory,
+            },
+          })
           setMeta("loading", key, false)
         })
     }
@@ -280,6 +340,26 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           const hasMessages = store.message[sessionID] !== undefined
           const hydrated = meta.limit[key] !== undefined
+          console.debug("[session-reload-debug] session.sync:start", {
+            directory,
+            sessionID,
+            force,
+            hasSession,
+            hasMessages,
+            hydrated,
+          })
+          sendSessionReloadDebugBeacon({
+            sdk,
+            event: "session.sync:start",
+            sessionID,
+            payload: {
+              directory,
+              force,
+              hasSession,
+              hasMessages,
+              hydrated,
+            },
+          })
           if (!force && hasSession && hasMessages && hydrated) return
 
           const count = store.message[sessionID]?.length ?? 0
@@ -288,8 +368,24 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const sessionReq =
             hasSession && !force
               ? Promise.resolve()
-              : retry(() => client.session.get({ sessionID })).then((session) => {
+              : retry(() => client.session.get({ directory, sessionID })).then((session) => {
                   const data = session.data
+                  console.debug("[session-reload-debug] session.sync:get", {
+                    directory,
+                    sessionID,
+                    found: !!data,
+                    resolvedDirectory: data?.directory,
+                  })
+                  sendSessionReloadDebugBeacon({
+                    sdk,
+                    event: "session.sync:get",
+                    sessionID,
+                    payload: {
+                      directory,
+                      found: !!data,
+                      resolvedDirectory: data?.directory,
+                    },
+                  })
                   if (!data) return
                   setStore(
                     "session",
@@ -315,7 +411,40 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   limit,
                 })
 
-          return runInflight(inflight, key, () => Promise.all([sessionReq, messagesReq]).then(() => {}))
+          return runInflight(inflight, key, () =>
+            Promise.all([sessionReq, messagesReq])
+              .then(() => {
+                console.debug("[session-reload-debug] session.sync:done", {
+                  directory,
+                  sessionID,
+                })
+                sendSessionReloadDebugBeacon({
+                  sdk,
+                  event: "session.sync:done",
+                  sessionID,
+                  payload: {
+                    directory,
+                  },
+                })
+              })
+              .catch((error) => {
+                console.debug("[session-reload-debug] session.sync:error", {
+                  directory,
+                  sessionID,
+                  error: error instanceof Error ? error.message : String(error),
+                })
+                sendSessionReloadDebugBeacon({
+                  sdk,
+                  event: "session.sync:error",
+                  sessionID,
+                  payload: {
+                    directory,
+                    error: error instanceof Error ? error.message : String(error),
+                  },
+                })
+                throw error
+              }),
+          )
         },
         async diff(sessionID: string, options?: { force?: boolean; messageID?: string }) {
           const directory = sdk.directory

@@ -359,7 +359,6 @@ export default function Page() {
         })
         void sync.session.sync(id, { force: true })
       },
-      { defer: true },
     ),
   )
   const historyMore = createMemo(() => {

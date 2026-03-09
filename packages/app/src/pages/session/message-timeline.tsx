@@ -1,4 +1,4 @@
-import { For, onCleanup, onMount, Show, type JSX } from "solid-js"
+import { For, createEffect, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -10,7 +10,9 @@ import type { UserMessage } from "@opencode-ai/sdk/v2"
 import { DirtyCountBubble } from "@/components/dirty-count-bubble"
 import { shouldMarkBoundaryGesture, normalizeWheelDelta } from "@/pages/session/message-gesture"
 import { useSettings } from "@/context/settings"
+import { useSDK } from "@/context/sdk"
 import type { SessionWorkflowChip } from "@/pages/session/helpers"
+import { sendSessionReloadDebugBeacon } from "@/utils/debug-beacon"
 
 const boundaryTarget = (root: HTMLElement, target: EventTarget | null) => {
   const current = target instanceof Element ? target : undefined
@@ -98,8 +100,24 @@ export function MessageTimeline(props: {
   onToggleExpanded: (id: string) => void
 }) {
   const settings = useSettings()
+  const sdk = useSDK()
 
   let touchGesture: number | undefined
+
+  createEffect(() => {
+    sendSessionReloadDebugBeacon({
+      sdk,
+      event: "message-timeline:render-state",
+      sessionID: props.sessionID,
+      payload: {
+        mobileChanges: props.mobileChanges,
+        renderedUserMessages: props.renderedUserMessages.map((message) => message.id),
+        turnStart: props.turnStart,
+        historyMore: props.historyMore,
+        historyLoading: props.historyLoading,
+      },
+    })
+  })
 
   return (
     <Show
@@ -323,6 +341,19 @@ export function MessageTimeline(props: {
               </Show>
               <For each={props.renderedUserMessages}>
                 {(message) => {
+                  onMount(() => {
+                    sendSessionReloadDebugBeacon({
+                      sdk,
+                      event: "message-timeline:turn-mounted",
+                      sessionID: props.sessionID,
+                      messageID: message.id,
+                      payload: {
+                        lastUserMessageID: props.lastUserMessageID,
+                        expanded: props.expanded[message.id] ?? false,
+                      },
+                    })
+                  })
+
                   if (import.meta.env.DEV && props.onFirstTurnMount) {
                     onMount(() => props.onFirstTurnMount?.())
                   }

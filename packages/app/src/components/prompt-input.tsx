@@ -66,6 +66,7 @@ import { shouldRefreshProviderQuota } from "./prompt-input/quota-refresh"
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
 import { buildAccountRows, normalizeProviderFamily } from "./model-selector-state"
 import { loadQuotaHint, peekQuotaHint } from "@/utils/quota-hint-cache"
+import { sendSessionReloadDebugBeacon } from "@/utils/debug-beacon"
 
 interface PromptInputProps {
   class?: string
@@ -240,6 +241,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         if (disposed) return
         const next = result.data?.[sessionID] ?? { type: "idle" }
         const current = sync.data.session_status[sessionID]
+        console.debug("[session-reload-debug] prompt-input:status-poll", {
+          sessionID,
+          currentType: current?.type ?? "idle",
+          nextType: next.type,
+        })
+        sendSessionReloadDebugBeacon({
+          sdk,
+          event: "prompt-input:status-poll",
+          sessionID,
+          payload: {
+            currentType: current?.type ?? "idle",
+            nextType: next.type,
+          },
+        })
         if (current && JSON.stringify(current) === JSON.stringify(next)) return
         sync.set("session_status", sessionID, next)
       } catch {

@@ -14,6 +14,7 @@ import { UserDaemonManager } from "../user-daemon"
 import { File } from "../../file"
 import { RequestUser } from "@/runtime/request-user"
 import { git } from "@/util/git"
+import { debugCheckpoint } from "@/util/debug"
 
 function isZodSchemaLike(value: unknown): value is z.ZodType {
   return !!value && typeof value === "object" && "_def" in value
@@ -21,6 +22,48 @@ function isZodSchemaLike(value: unknown): value is z.ZodType {
 
 export const ExperimentalRoutes = lazy(() =>
   new Hono()
+    .post(
+      "/debug-beacon",
+      describeRoute({
+        summary: "Record frontend debug beacon",
+        description: "Accept browser-side debug checkpoints and mirror them into debug.log for RCA.",
+        operationId: "experimental.debug.beacon",
+        responses: {
+          200: {
+            description: "Beacon recorded",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ ok: z.literal(true) })),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          source: z.string().optional(),
+          event: z.string(),
+          directory: z.string().optional(),
+          sessionID: z.string().optional(),
+          messageID: z.string().optional(),
+          payload: z.record(z.string(), z.any()).optional(),
+        }),
+      ),
+      async (c) => {
+        const body = c.req.valid("json")
+        debugCheckpoint("web.debug", body.event, {
+          source: body.source ?? "web",
+          requestUser: RequestUser.username() ?? "local",
+          resolvedDirectory: Instance.directory,
+          directory: body.directory,
+          sessionID: body.sessionID,
+          messageID: body.messageID,
+          ...(body.payload ?? {}),
+        })
+        return c.json({ ok: true as const })
+      },
+    )
     .get(
       "/review-checkpoint",
       describeRoute({
