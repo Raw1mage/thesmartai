@@ -594,12 +594,15 @@ export default function Page() {
     promptHeight: 0,
   })
 
-  const reviewDiffKey = createMemo(() => params.id)
-
   const reviewDiffs = createMemo(() => {
-    const key = reviewDiffKey()
-    if (!key) return []
-    return sync.data.session_diff[key] ?? []
+    return (sync.data.changes ?? []).map((item) => ({
+      file: item.path,
+      additions: item.added,
+      deletions: item.removed,
+      status: item.status,
+      before: item.before ?? "",
+      after: item.after ?? "",
+    }))
   })
   const reviewCount = createMemo(() => reviewDiffs().length)
   const reviewBubbleCount = createMemo(() => reviewDiffs().length)
@@ -752,9 +755,7 @@ export default function Page() {
     const out = new Map<string, "add" | "del" | "mix">()
     for (const diff of reviewDiffs()) {
       const file = normalize(diff.file)
-      const beforeText = typeof diff.before === "string" ? diff.before : ""
-      const afterText = typeof diff.after === "string" ? diff.after : ""
-      const kind = beforeText.length === 0 && afterText.length > 0 ? "add" : afterText.length === 0 ? "del" : "mix"
+      const kind = diff.status === "added" ? "add" : diff.status === "deleted" ? "del" : "mix"
 
       out.set(file, kind)
 
@@ -769,12 +770,7 @@ export default function Page() {
   })
   const emptyDiffFiles: string[] = []
   const diffFiles = createMemo(() => reviewDiffs().map((d) => d.file), emptyDiffFiles, { equals: same })
-  const diffsReady = createMemo(() => {
-    const key = reviewDiffKey()
-    if (!key) return true
-    if (!hasReview()) return true
-    return sync.data.session_diff[key] !== undefined
-  })
+  const diffsReady = createMemo(() => sync.data.changes !== undefined)
   const idle = { type: "idle" as const }
   let inputRef!: HTMLDivElement
   let promptDock: HTMLDivElement | undefined
@@ -1062,24 +1058,22 @@ export default function Page() {
     emptyClass: string
   }) => (
     <Switch>
+      <Match when={!diffsReady()}>
+        <div class={input.loadingClass}>{language.t("session.review.loadingChanges")}</div>
+      </Match>
       <Match when={hasReview()}>
-        <Show
-          when={diffsReady()}
-          fallback={<div class={input.loadingClass}>{language.t("session.review.loadingChanges")}</div>}
-        >
-          <SessionReviewTab
-            diffs={reviewDiffs}
-            view={view}
-            diffStyle={input.diffStyle}
-            onDiffStyleChange={input.onDiffStyleChange}
-            onLineComment={(comment) => addCommentToContext({ ...comment, origin: "review" })}
-            comments={comments.all()}
-            focusedComment={comments.focus()}
-            onFocusedCommentChange={comments.setFocus}
-            onViewFile={openReviewFile}
-            classes={input.classes}
-          />
-        </Show>
+        <SessionReviewTab
+          diffs={reviewDiffs}
+          view={view}
+          diffStyle={input.diffStyle}
+          onDiffStyleChange={input.onDiffStyleChange}
+          onLineComment={(comment) => addCommentToContext({ ...comment, origin: "review" })}
+          comments={comments.all()}
+          focusedComment={comments.focus()}
+          onFocusedCommentChange={comments.setFocus}
+          onViewFile={openReviewFile}
+          classes={input.classes}
+        />
       </Match>
       <Match when={true}>
         <SessionReviewTab
@@ -1156,7 +1150,7 @@ export default function Page() {
     if (!id) return
     if (sync.status === "loading") return
 
-    void sync.session.diff(id)
+    void sync.session.diff(id, { force: true })
   })
 
   createEffect(() => {
@@ -1170,7 +1164,7 @@ export default function Page() {
     if (!wants) return
     if (sync.status === "loading") return
 
-    void sync.session.diff(id)
+    void sync.session.diff(id, { force: true })
   })
 
   let treeDir: string | undefined

@@ -9,6 +9,7 @@ import type {
   Command,
   PermissionRequest,
   QuestionRequest,
+  File as FileStatus,
   LspStatus,
   McpStatus,
   McpResource,
@@ -58,6 +59,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       session_status: {
         [sessionID: string]: SessionStatus
       }
+      changes: FileStatus[] | undefined
       session_diff: {
         [sessionID: string]: Snapshot.FileDiff[]
       }
@@ -99,6 +101,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       provider_default: {},
       session: [],
       session_status: {},
+      changes: undefined,
       session_diff: {},
       monitor: [],
       todo: {},
@@ -704,11 +707,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         },
         async sync(sessionID: string, options?: { force?: boolean }) {
           if (!options?.force && fullSyncedSessions.has(sessionID)) return
-          const [session, messages, todo, diff] = await Promise.all([
+          const [session, messages, todo, changes] = await Promise.all([
             sdk.client.session.get({ sessionID }, { throwOnError: true }),
             sdk.client.session.messages({ sessionID, limit: 100 }),
             sdk.client.session.todo({ sessionID }),
-            sdk.client.session.diff({ sessionID }),
+            sdk.client.file.status(),
           ])
           const nextMessages = messages.data ?? []
 
@@ -737,7 +740,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             for (const message of nextMessages) {
               setStore("part", message.info.id, reconcile(message.parts, { key: "id", merge: true }))
             }
-            setStore("session_diff", sessionID, reconcile(diff.data ?? []))
+            setStore("changes", reconcile(changes.data ?? [], { key: "path", merge: true }))
           })
           fullSyncedSessions.add(sessionID)
         },

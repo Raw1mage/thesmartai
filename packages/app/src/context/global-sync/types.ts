@@ -2,6 +2,7 @@ import type {
   Agent,
   Command,
   Config,
+  File as FileStatus,
   FileDiff,
   LspStatus,
   McpStatus,
@@ -71,6 +72,7 @@ export type State = {
   session_diff: {
     [sessionID: string]: FileDiff[]
   }
+  changes: FileStatus[] | undefined
   todo: {
     [sessionID: string]: Todo[]
   }
