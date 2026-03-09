@@ -175,6 +175,26 @@ export namespace Session {
     )
   }
 
+  export const AutonomousPolicy = z.object({
+    enabled: z.boolean(),
+    maxContinuousRounds: z.number().optional(),
+    stopOnTestsFail: z.boolean().optional(),
+    requireApprovalFor: z.array(z.string()).optional(),
+  })
+  export type AutonomousPolicy = z.output<typeof AutonomousPolicy>
+
+  export const WorkflowState = z.enum(["idle", "running", "waiting_user", "blocked", "completed"])
+  export type WorkflowState = z.output<typeof WorkflowState>
+
+  export const WorkflowInfo = z.object({
+    autonomous: AutonomousPolicy,
+    state: WorkflowState,
+    stopReason: z.string().optional(),
+    updatedAt: z.number(),
+    lastRunAt: z.number().optional(),
+  })
+  export type WorkflowInfo = z.output<typeof WorkflowInfo>
+
   export const Info = z
     .object({
       id: Identifier.schema("session"),
@@ -213,11 +233,37 @@ export namespace Session {
         })
         .optional(),
       stats: Stats.optional(),
+      workflow: WorkflowInfo.optional(),
     })
     .meta({
       ref: "Session",
     })
   export type Info = z.output<typeof Info>
+
+  export function defaultWorkflow(now = Date.now()): WorkflowInfo {
+    return {
+      autonomous: {
+        enabled: false,
+        stopOnTestsFail: true,
+        requireApprovalFor: ["push", "destructive", "architecture_change"],
+      },
+      state: "waiting_user",
+      updatedAt: now,
+    }
+  }
+
+  export function mergeAutonomousPolicy(
+    current: AutonomousPolicy | undefined,
+    patch: Partial<AutonomousPolicy>,
+  ): AutonomousPolicy {
+    const base = current ?? defaultWorkflow().autonomous
+    return {
+      enabled: patch.enabled ?? base.enabled,
+      maxContinuousRounds: patch.maxContinuousRounds ?? base.maxContinuousRounds,
+      stopOnTestsFail: patch.stopOnTestsFail ?? base.stopOnTestsFail,
+      requireApprovalFor: patch.requireApprovalFor ?? base.requireApprovalFor,
+    }
+  }
 
   export const ProjectInfo = z
     .object({
@@ -278,6 +324,13 @@ export namespace Session {
       z.object({
         sessionID: z.string().optional(),
         error: MessageV2.Assistant.shape.error,
+      }),
+    ),
+    WorkflowUpdated: BusEvent.define(
+      "session.workflow.updated",
+      z.object({
+        sessionID: Identifier.schema("session"),
+        workflow: WorkflowInfo,
       }),
     ),
   }
@@ -369,6 +422,7 @@ export namespace Session {
         updated: Date.now(),
       },
       stats: emptyStats(),
+      workflow: defaultWorkflow(),
     }
     log.info("created", result)
     await Storage.write(["session", Instance.project.id, result.id], result)
@@ -451,7 +505,50 @@ export namespace Session {
     Bus.publish(Event.Updated, {
       info: result,
     })
+    if (result.workflow) {
+      Bus.publish(Event.WorkflowUpdated, {
+        sessionID: result.id,
+        workflow: result.workflow,
+      })
+    }
     return result
+  }
+
+  export async function setWorkflowState(input: {
+    sessionID: string
+    state: WorkflowState
+    stopReason?: string
+    lastRunAt?: number
+  }) {
+    return update(
+      input.sessionID,
+      (draft) => {
+        const current = draft.workflow ?? defaultWorkflow(draft.time.updated)
+        draft.workflow = {
+          ...current,
+          state: input.state,
+          stopReason: input.stopReason,
+          lastRunAt: input.lastRunAt ?? current.lastRunAt,
+          updatedAt: Date.now(),
+        }
+      },
+      { touch: false },
+    )
+  }
+
+  export async function updateAutonomous(input: { sessionID: string; policy: Partial<AutonomousPolicy> }) {
+    return update(
+      input.sessionID,
+      (draft) => {
+        const current = draft.workflow ?? defaultWorkflow(draft.time.updated)
+        draft.workflow = {
+          ...current,
+          autonomous: mergeAutonomousPolicy(current.autonomous, input.policy),
+          updatedAt: Date.now(),
+        }
+      },
+      { touch: false },
+    )
   }
 
   export const diff = fn(Identifier.schema("session"), async (sessionID) => {
@@ -557,7 +654,7 @@ export namespace Session {
       for (const child of await children(sessionID)) {
         await remove(child.id)
       }
-      await unshare(sessionID).catch(() => { })
+      await unshare(sessionID).catch(() => {})
       for (const msg of await Storage.list(["message", sessionID])) {
         for (const part of await Storage.list(["part", msg.at(-1)!])) {
           await Storage.remove(part)
@@ -583,7 +680,7 @@ export namespace Session {
           applyMessageUsageDelta(draft, previous, msg)
         },
         { touch: false },
-      ).catch(() => { })
+      ).catch(() => {})
     }
     Bus.publish(MessageV2.Event.Updated, {
       info: msg,
@@ -608,7 +705,7 @@ export namespace Session {
             applyMessageUsageDelta(draft, previous, undefined)
           },
           { touch: false },
-        ).catch(() => { })
+        ).catch(() => {})
       }
       Bus.publish(MessageV2.Event.Removed, {
         sessionID: input.sessionID,

@@ -424,6 +424,13 @@ export const SessionRoutes = lazy(() =>
               archived: z.number().optional(),
             })
             .optional(),
+          workflow: z
+            .object({
+              autonomous: Session.AutonomousPolicy.partial().optional(),
+              state: Session.WorkflowState.optional(),
+              stopReason: z.string().nullable().optional(),
+            })
+            .optional(),
         }),
       ),
       async (c) => {
@@ -449,6 +456,21 @@ export const SessionRoutes = lazy(() =>
               session.title = updates.title
             }
             if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
+            if (updates.workflow) {
+              const current = session.workflow ?? Session.defaultWorkflow(session.time.updated)
+              session.workflow = {
+                ...current,
+                autonomous: updates.workflow.autonomous
+                  ? Session.mergeAutonomousPolicy(current.autonomous, updates.workflow.autonomous)
+                  : current.autonomous,
+                state: updates.workflow.state ?? current.state,
+                stopReason:
+                  updates.workflow.stopReason === undefined
+                    ? current.stopReason
+                    : (updates.workflow.stopReason ?? undefined),
+                updatedAt: Date.now(),
+              }
+            }
           },
           { touch: false },
         )

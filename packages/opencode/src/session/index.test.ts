@@ -79,3 +79,33 @@ describe("Session.getUsage reasoning pricing", () => {
     expect(result.cost).toBe(9.21)
   })
 })
+
+describe("Session workflow helpers", () => {
+  it("provides a waiting-user workflow default with autonomous safeguards", () => {
+    const workflow = Session.defaultWorkflow(123)
+
+    expect(workflow).toEqual({
+      autonomous: {
+        enabled: false,
+        stopOnTestsFail: true,
+        requireApprovalFor: ["push", "destructive", "architecture_change"],
+      },
+      state: "waiting_user",
+      updatedAt: 123,
+    })
+  })
+
+  it("merges autonomous policy patches without dropping defaults", () => {
+    const policy = Session.mergeAutonomousPolicy(undefined, {
+      enabled: true,
+      maxContinuousRounds: 5,
+    })
+
+    expect(policy).toEqual({
+      enabled: true,
+      maxContinuousRounds: 5,
+      stopOnTestsFail: true,
+      requireApprovalFor: ["push", "destructive", "architecture_change"],
+    })
+  })
+})

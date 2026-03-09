@@ -214,6 +214,12 @@ export namespace SessionProcessor {
               switch (value.type) {
                 case "start":
                   SessionStatus.set(input.sessionID, { type: "busy" })
+                  await Session.setWorkflowState({
+                    sessionID: input.sessionID,
+                    state: "running",
+                    stopReason: undefined,
+                    lastRunAt: Date.now(),
+                  })
                   break
 
                 case "reasoning-start":
@@ -655,6 +661,16 @@ export namespace SessionProcessor {
           }
           input.assistantMessage.time.completed = Date.now()
           await Session.updateMessage(input.assistantMessage)
+          await Session.setWorkflowState({
+            sessionID: input.sessionID,
+            state: blocked ? "blocked" : "waiting_user",
+            stopReason: blocked
+              ? "permission_or_question_gate"
+              : input.assistantMessage.error
+                ? "assistant_error"
+                : undefined,
+            lastRunAt: Date.now(),
+          })
           if (needsCompaction) return "compact"
           if (blocked) return "stop"
           if (input.assistantMessage.error) return "stop"
