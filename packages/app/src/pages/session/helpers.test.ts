@@ -218,6 +218,15 @@ describe("getSessionStatusSummary", () => {
                       proposedNextStep: "Re-evaluate todo t2 before continuing.",
                       note: "The current todo ordering no longer matches the latest task state",
                     },
+                    replanAdoption: {
+                      proposalID: "replan:t2",
+                      targetTodoID: "t2",
+                      proposedAction: "replan_todos",
+                      proposedNextStep: "Host may adopt a replan around todo t2 before continuing.",
+                      rationale: "The current todo ordering no longer matches the latest task state",
+                      adoptionNote:
+                        "Host may adopt this proposal into a real todo replan if current execution no longer matches the plan.",
+                    },
                   },
                   decision: {
                     decision: "continue",
@@ -390,6 +399,15 @@ describe("getSessionStatusSummary", () => {
                     proposedNextStep: "Re-evaluate todo t2 before continuing.",
                     note: "The current todo ordering no longer matches the latest task state",
                   },
+                  replanAdoption: {
+                    proposalID: "replan:t2",
+                    targetTodoID: "t2",
+                    proposedAction: "replan_todos",
+                    proposedNextStep: "Host may adopt a replan around todo t2 before continuing.",
+                    rationale: "The current todo ordering no longer matches the latest task state",
+                    adoptionNote:
+                      "Host may adopt this proposal into a real todo replan if current execution no longer matches the plan.",
+                  },
                 },
                 decision: {
                   decision: "continue",
@@ -514,6 +532,7 @@ describe("getSessionStatusSummary", () => {
         askUserHandoff: "Need a decision before continuing todo t3.",
         askUserAdoption: "ask-user:t3",
         replanRequest: undefined,
+        replanAdoption: undefined,
         error: undefined,
       },
       {
@@ -529,6 +548,7 @@ describe("getSessionStatusSummary", () => {
         askUserHandoff: undefined,
         askUserAdoption: undefined,
         replanRequest: "Re-evaluate todo t2 before continuing.",
+        replanAdoption: "replan:t2",
         error: undefined,
       },
     ])

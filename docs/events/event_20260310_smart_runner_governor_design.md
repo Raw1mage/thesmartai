@@ -638,3 +638,32 @@ Validation（bounded ask-user adoption proposal）:
   - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 adoption proposal 修改無關
 - `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
 - 結果：Smart Runner 現在能在 `ask_user` suggestion 上附帶 bounded adoption proposal，供 host/runtime 未來決定是否採納成真正的 question flow，但 deterministic question flow 仍完全不變。
+
+### Current Slice (bounded replan adoption proposal)
+
+需求：與 ask-user adoption proposal 對稱，讓 `replan` 也能從 request 再前進一步，產生可採納的 proposal，供 host/runtime 未來決定是否採納成真正的 todo replan。
+
+範圍：
+
+- IN
+  - 為 `replan` suggestion 增加 bounded adoption proposal metadata
+  - 在 session status / history 顯示 replan adoption proposal
+  - 保持 deterministic runner 與 todo graph 不變
+- OUT
+  - 不自動改 todos
+  - 不自動採納 proposal
+  - 不改變 runtime stop / approval / question flow
+
+任務清單：
+
+- [x] 在 Smart Runner trace suggestion 中增加 replan adoption proposal
+- [x] 在 session status / history 顯示 adoption proposal
+- [x] 驗證 proposal 只增加可觀測性，不改變控制流
+
+Validation（bounded replan adoption proposal）:
+
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts`
+  - Smart Runner replan adoption proposal assertions 通過
+  - `helpers.test.ts` 仍有既存 DOM-less 失敗（`document is not defined`），與本輪 adoption proposal 修改無關
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
+- 結果：Smart Runner 現在能在 `replan` suggestion 上附帶 bounded adoption proposal，供 host/runtime 未來決定是否採納成真正的 todo replan，但 deterministic runner 與 todo graph 仍完全不變。

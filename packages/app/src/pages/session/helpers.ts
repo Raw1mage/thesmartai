@@ -121,6 +121,14 @@ type WorkflowLikeSession = {
             proposedNextStep?: string
             note?: string
           }
+          replanAdoption?: {
+            proposalID?: string
+            targetTodoID?: string
+            proposedAction?: string
+            proposedNextStep?: string
+            rationale?: string
+            adoptionNote?: string
+          }
         }
         decision?: {
           decision?: string
@@ -165,6 +173,14 @@ type WorkflowLikeSession = {
             requestedAction?: string
             proposedNextStep?: string
             note?: string
+          }
+          replanAdoption?: {
+            proposalID?: string
+            targetTodoID?: string
+            proposedAction?: string
+            proposedNextStep?: string
+            rationale?: string
+            adoptionNote?: string
           }
         }
         decision?: {
@@ -314,6 +330,7 @@ export type SessionStatusSummary = {
     askUserHandoff?: string
     askUserAdoption?: string
     replanRequest?: string
+    replanAdoption?: string
     error?: string
   }>
   latestNarration?: {
@@ -519,6 +536,12 @@ export const getSessionStatusSummary = (input: {
         `Replan request: ${supervisor.lastGovernorTrace.suggestion.replanRequest.proposedNextStep.slice(0, 120)}`,
       )
     }
+    if (
+      supervisor.lastGovernorTrace.suggestion.kind === "replan" &&
+      supervisor.lastGovernorTrace.suggestion.replanAdoption?.proposalID
+    ) {
+      debugLines.push(`Replan proposal: ${supervisor.lastGovernorTrace.suggestion.replanAdoption.proposalID}`)
+    }
   }
   if (supervisor?.lastGovernorTraceAt)
     debugLines.push(`Governor at: ${formatDebugTime(supervisor.lastGovernorTraceAt)}`)
@@ -540,6 +563,7 @@ export const getSessionStatusSummary = (input: {
     askUserHandoff: trace.suggestion?.askUserHandoff?.blockingDecision,
     askUserAdoption: trace.suggestion?.askUserAdoption?.proposalID,
     replanRequest: trace.suggestion?.replanRequest?.proposedNextStep,
+    replanAdoption: trace.suggestion?.replanAdoption?.proposalID,
     error: trace.error,
   }))
   const smartRunnerSummary = buildSmartRunnerSummary(supervisor?.governorTraceHistory ?? [])

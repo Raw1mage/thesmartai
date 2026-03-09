@@ -96,6 +96,16 @@ const SmartRunnerTraceSchema = z.object({
           note: z.string().optional(),
         })
         .optional(),
+      replanAdoption: z
+        .object({
+          proposalID: z.string().optional(),
+          targetTodoID: z.string().optional(),
+          proposedAction: z.string().optional(),
+          proposedNextStep: z.string().optional(),
+          rationale: z.string().optional(),
+          adoptionNote: z.string().optional(),
+        })
+        .optional(),
     })
     .optional(),
   error: z.string().optional(),
@@ -317,6 +327,23 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
           note: input.trace.decision.reason,
         }
       : undefined
+  const replanAdoption =
+    input.trace.decision.decision === "replan"
+      ? {
+          proposalID: input.trace.decision.nextAction.todoID
+            ? `replan:${input.trace.decision.nextAction.todoID}`
+            : "replan:unspecified",
+          targetTodoID: input.trace.decision.nextAction.todoID,
+          proposedAction: input.trace.decision.nextAction.kind,
+          proposedNextStep:
+            input.trace.decision.nextAction.todoID || input.trace.decision.nextAction.kind
+              ? `Host may adopt a replan around todo ${input.trace.decision.nextAction.todoID ?? "(unspecified)"} before continuing.`
+              : undefined,
+          rationale: input.trace.decision.reason,
+          adoptionNote:
+            "Host may adopt this proposal into a real todo replan if current execution no longer matches the plan.",
+        }
+      : undefined
 
   return SmartRunnerTraceSchema.parse({
     ...input.trace,
@@ -329,6 +356,7 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
       askUserHandoff,
       askUserAdoption,
       replanRequest,
+      replanAdoption,
     },
   })
 }
