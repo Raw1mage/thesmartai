@@ -78,7 +78,7 @@ const SmartRunnerTraceSchema = z.object({
     .optional(),
   suggestion: z
     .object({
-      kind: z.enum(["replan", "ask_user", "request_approval", "pause_for_risk", "complete"]),
+      kind: z.enum(["replan", "ask_user", "request_approval", "pause_for_risk", "complete", "pause"]),
       reason: z.string(),
       suggestedTodoID: z.string().optional(),
       suggestedAction: z.string().optional(),
@@ -193,6 +193,21 @@ const SmartRunnerTraceSchema = z.object({
               "waiting_gate",
               "not_terminal_after_completion",
             ])
+            .optional(),
+        })
+        .optional(),
+      pauseRequest: z
+        .object({
+          rationale: z.string().optional(),
+          pauseScope: z.string().optional(),
+          advisoryNote: z.string().optional(),
+          policy: z
+            .object({
+              trustLevel: z.enum(["low", "medium", "high"]).optional(),
+              adoptionMode: z.enum(["advisory_only", "host_adoptable", "user_confirm_required"]).optional(),
+              requiresUserConfirm: z.boolean().optional(),
+              requiresHostReview: z.boolean().optional(),
+            })
             .optional(),
         })
         .optional(),
@@ -483,7 +498,11 @@ export function annotateSmartRunnerTraceAssist(input: {
 
 export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTrace }) {
   if (input.trace.status !== "advisory" || !input.trace.decision) return input.trace
-  if (!["replan", "ask_user", "request_approval", "pause_for_risk", "complete"].includes(input.trace.decision.decision))
+  if (
+    !["replan", "ask_user", "request_approval", "pause_for_risk", "complete", "pause"].includes(
+      input.trace.decision.decision,
+    )
+  )
     return input.trace
 
   const draftQuestion =
@@ -596,6 +615,23 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
           },
         }
       : undefined
+  const pauseRequest =
+    input.trace.decision.decision === "pause"
+      ? {
+          rationale: input.trace.decision.reason,
+          pauseScope: input.trace.decision.nextAction.todoID
+            ? `Pause around todo ${input.trace.decision.nextAction.todoID} until a clearer next step exists.`
+            : "Pause the current autonomous plan until a clearer next step exists.",
+          advisoryNote:
+            "This is an advisory-only Smart Runner pause suggestion; host should observe it but not auto-adopt it into a new stop contract.",
+          policy: {
+            trustLevel: "medium",
+            adoptionMode: "advisory_only",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+          },
+        }
+      : undefined
   const replanAdoption =
     input.trace.decision.decision === "replan"
       ? {
@@ -633,6 +669,7 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
       approvalRequest,
       riskPauseRequest,
       completionRequest,
+      pauseRequest,
       replanRequest,
       replanAdoption,
     },

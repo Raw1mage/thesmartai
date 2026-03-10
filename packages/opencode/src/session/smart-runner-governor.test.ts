@@ -811,6 +811,53 @@ describe("Smart Runner Governor", () => {
     expect(trace.suggestion?.completionRequest?.hostAdoptionReason).toBe("adopted")
   })
 
+  it("annotates advisory pause suggestions without creating a host-adoption contract", () => {
+    const trace = annotateSmartRunnerTraceSuggestion({
+      trace: {
+        source: "smart_runner_governor",
+        dryRun: true,
+        status: "advisory",
+        createdAt: 1,
+        deterministicReason: "todo_pending",
+        decision: {
+          situation: "execution_stalled",
+          assessment: "The plan should pause until a clearer next step exists",
+          decision: "pause",
+          reason: "Current evidence is too weak to continue safely",
+          nextAction: {
+            kind: "request_user_input",
+            todoID: "t8",
+            skillHints: [],
+            narration: "Pause and wait for a clearer next step.",
+          },
+          needsUserInput: true,
+          confidence: "medium",
+        },
+      },
+    })
+
+    expect(trace.suggestion).toEqual(
+      expect.objectContaining({
+        kind: "pause",
+        reason: "Current evidence is too weak to continue safely",
+        suggestedTodoID: "t8",
+        suggestedAction: "request_user_input",
+        pauseRequest: {
+          rationale: "Current evidence is too weak to continue safely",
+          pauseScope: "Pause around todo t8 until a clearer next step exists.",
+          advisoryNote:
+            "This is an advisory-only Smart Runner pause suggestion; host should observe it but not auto-adopt it into a new stop contract.",
+          policy: {
+            trustLevel: "medium",
+            adoptionMode: "advisory_only",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+          },
+        },
+      }),
+    )
+  })
+
   it("turns docs sync assist into an explicit preflight continuation", () => {
     const assist = applySmartRunnerBoundedAssist({
       enabled: true,

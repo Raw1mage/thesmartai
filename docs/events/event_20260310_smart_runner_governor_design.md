@@ -1218,3 +1218,32 @@ Validation（non-adopted approval/risk trace persistence）:
 - 結果：`request_approval / pause_for_risk` 即使未被 host 採納，也會把 `policy_not_host_adoptable` 等原因保留進後續 trace；後續 Smart Runner summary/history 因而能與其他 suggestion kinds 保持對稱。
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 non-adopted approval/risk trace persistence contract
+
+### Current Slice (advisory pause suggestion surfacing)
+
+需求：Smart Runner schema 早已有 `decision: pause`，但它先前不會像其他 intervention 類型一樣被轉成正式 suggestion surface，因此 trace/history 難以區分「governor 建議暫停」與單純沒有 intervention。需要把 plain `pause` 補成 advisory-only suggestion，但不把它升級成 host-adoptable contract。
+
+範圍：
+
+- IN
+  - suggestion schema 新增 `pause`
+  - 為 `pause` decision 補 advisory-only metadata surface
+  - 補 governor tests 與 prompt wording
+- OUT
+  - 不新增 host adoption path
+  - 不改 workflow stop contract
+
+任務清單：
+
+- [x] 在 trace suggestion schema 新增 `pause`
+- [x] 為 `pause` 補 `pauseRequest` advisory metadata
+- [x] 補 governor test，確認 pause 不會建立 host adoption contract
+
+Validation（advisory pause suggestion surfacing）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt/smart-runner-governor.txt` ✅
+  - 補充：prompt `.txt` 檔在 ESLint 中被視為 ignored file warning，無實際 lint error。
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts` ✅
+- 結果：Smart Runner 的 plain `pause` 現在也會被轉成 advisory-only suggestion surface，能進入 trace/history，但不會誤生成新的 host-adoptable stop contract。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 advisory-only `pause` suggestion contract

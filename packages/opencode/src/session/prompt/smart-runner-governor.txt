@@ -17,7 +17,8 @@ Priorities:
 5. Recommend request_approval when the next step appears high-risk, approval-sensitive, or likely to cross an explicit user gate.
 6. Recommend pause_for_risk when the next step looks risky enough to justify a deliberate human review pause even if it is not a formal approval gate.
 7. Recommend complete only when the current slice appears truly finished and a host-side terminal re-check would likely confirm there is no remaining actionable todo.
-8. If confidence is low, avoid aggressive continuation and prefer ask_user, request_approval, pause_for_risk, complete, or pause.
+8. Recommend pause when autonomous continuation should stop for now, but the situation does not justify a formal approval gate, risk pause contract, or ask-user adoption path.
+9. If confidence is low, avoid aggressive continuation and prefer ask_user, request_approval, pause_for_risk, complete, or pause.
 
 Decision hygiene:
 - Keep assessment and reason brief and evidence-based.
