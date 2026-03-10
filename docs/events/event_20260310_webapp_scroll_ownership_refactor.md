@@ -96,6 +96,7 @@ Status: In Progress
   - 使用者肉眼觀察不到具體是哪一塊在振動，但症狀符合「外層 page follow 與內層展開卡 anchoring/scroll state」互相競爭。
 - 補充後續觀察：即使未立即復現 oscillation，只要上方有展開卡，追底也可能「追不夠底」，使最新內容局部落到可視範圍外。
 - 最新使用者觀察：在追底模式下，瀏覽器似乎會把錨點吸附到最後一個「文字類型」段落，而不是整個 growing bottom；當下方 toolcall/card 持續增生時，就形成最後文字段落固定、真正底部繼續往下長的錯位，進而導致 oscillation 或 under-follow。
+- 最新補充觀察：在所有 toolcall 結束、進入純文字回覆 streaming 的階段，只要使用者自己的 prompt window 處於展開態，且思考鏈也展開，viewport 震盪位置會鎖在中下方、靠近該 prompt window；症狀像是想追最新文字、卻瞬間被拉回 prompt window。
 
 ### Execution
 
@@ -170,11 +171,51 @@ Status: In Progress
        - outer `.session-scroller` 的 `scrollTop / scrollHeight / clientHeight / distanceFromBottom`
        - shell command/description 摘要（`debugLabel`）
      - 目的：下次一旦復現，可直接判定是最新 shell 卡還是前一張 shell 卡觸發 reflow 與 anchor 競爭。
+  7. User prompt window anchoring hypothesis
+     - 由於震盪在「純文字回覆 streaming」階段仍可發生，且視窗主要鎖在展開中的 user prompt window 附近，代表不是只有 shell/tool cards 會成為錯誤 anchor。
+     - 最小修正：將 `user-message` 整塊也標記為 `overflow-anchor: none`，避免展開中的 prompt window 被瀏覽器當作 anchor candidate。
+  8. Bottom-trace instrumentation
+     - `create-auto-scroll.tsx`
+       - 額外記錄 `bottom-formula` 事件，直接輸出 `scrollTop / scrollHeight / clientHeight / distanceFromBottom / maxScrollTop / threshold`
+       - `scroll-apply` 現區分 `before / after-scrollTo / after-assignment`，可看出每次寫 `scrollTop` 前後的真實值變化
+     - `session.tsx`
+       - 額外記錄 page-level `update-scroll-state`
+       - 額外記錄 `prompt-dock-resize`，觀察 prompt dock 高度變化是否在追底判定中扮演角色
+     - `message-part.tsx`
+       - `user-message` 額外記錄 `user-message-resize / expand / collapse`
+       - `bash-output` 已額外記錄 `bash-output-text-update / resize / expand / collapse`
+     - `session-turn.tsx`
+       - `sticky-height` 現額外帶上 `working / stepsExpanded / stickyDisabled / distanceFromBottom`
+     - 目的：把「底怎麼算、誰改了它、誰在同一時間改高度」串成單一可追 trace，而不是只靠肉眼觀察症狀猜測。
+  9. Auto-capture instrumentation
+     - `scroll-debug.ts` 現在會對 `session-page` recent events 做輕量模式偵測：
+       - `oscillation`：短窗口內 `distanceFromBottom` 在 near-bottom / far-from-bottom 之間反覆切換，且伴隨多次 `scroll-apply`
+       - `under-follow`：在 `follow-bottom` 模式下，連續多筆事件仍維持顯著 `distanceFromBottom > 24`
+       - `conclusion-stream-instability`：在 follow-bottom 下進入純文字結論 streaming 階段時，即使未達強 oscillation，也只要連續出現 `resize-follow / scroll-apply / bottom-formula` 並伴隨明顯 `distanceFromBottom` 波動，就先抓樣本
+     - 一旦命中，會自動插入 `scope="scroll-auto-capture" / event="auto-capture"` 事件，附上最近一段 page-level metrics 摘要，並立即嘗試 flush
+     - 目標：盡量不需要使用者手動開 console dump，也能在復現瞬間保住最關鍵的 evidence slice
+     - 額外快速檢索契約：
+       - `auto-capture` 現帶固定 marker：`OPENCODE_SCROLL_AUTO_CAPTURE`
+       - 同時會把最後一次 capture 摘要寫入 `localStorage["opencode:scroll-auto-capture:last"]`
+       - 之後使用者只要回報「發生了」，即可優先從固定 marker / localStorage 摘要定位，不必再對整個 session storage 做慢速全域掃描
+  10. Server-side retained capture path
+      - 為了避免 auto-capture 只存在於前端 buffer 或一般 `/api/v2/log` 大海撈針，新增專用 retained path：
+        - `POST /api/v2/experimental/scroll-capture`
+        - `GET /api/v2/experimental/scroll-capture/latest`
+      - 後端固定落點：`${Global.Path.log}/scroll-capture-latest.json`
+      - 保留策略：`latest` + `recent[0..9]`
+      - 目的：當使用者只說「發生了」時，可直接讀固定檔或 hit 固定 endpoint，不必再掃整份 debug.log
 
 ### Validation
 
 - 驗證指令：`bun turbo typecheck --filter @opencode-ai/ui --filter @opencode-ai/app`
 - 結果：passed（Phase 1 + Phase 2 第二輪）
+- 驗證指令：
+  - `cd /home/pkcs12/projects/opencode/packages/opencode && bun run typecheck`
+  - `cd /home/pkcs12/projects/opencode/packages/ui && bun run typecheck`
+  - `cd /home/pkcs12/projects/opencode/packages/app && bun run typecheck`
+- 結果：passed（server-side retained capture path round）
+- 補充：`bun turbo typecheck --filter opencode --filter @opencode-ai/ui --filter @opencode-ai/app` 曾因 workspace 依賴建置超時而中斷，故改用各 package 直接 typecheck 驗證此次最小變更。
 - 使用者觀察回饋（pre-phase2）
   - 已確認 agent 純文字輸出不再強制貼底，表示 page-level follow source 已顯著下降
   - 剩餘問題更集中在 thinking/steps 相關 focus 錨點，而非全文字流本身
@@ -194,5 +235,8 @@ Status: In Progress
   - 目的是避免瀏覽器將最後一個文字段落選為 anchor，與真正的 growing bottom 分離
   - 共用 `collapsible` / `collapsible-content` 現也強制 `overflow-anchor: none`
   - 目的是避免上一張 shell/tool card 整張被瀏覽器選為 anchor，與最新 growing shell output 互相競爭
-- Architecture Sync: Verified (No doc changes)
-  - 依據：本輪僅收斂前端 scroll ownership 的 page-level mode 表示與 debug observability，未改變模組邊界、資料流或 runtime architecture contract。
+  - `user-message` 現也強制 `overflow-anchor: none`
+  - 目的是避免展開中的 prompt window 在純文字 streaming 階段被選成 anchor，將 viewport 拉回使用者輸入位置
+- Architecture Sync: Updated
+  - 已同步 `docs/ARCHITECTURE.md`，新增 web scroll incident observability contract。
+  - 依據：本輪新增固定 server-side retained capture path（專用 POST / GET route + 固定 JSON 檔），已形成可長期依賴的 observability / retrieval contract。

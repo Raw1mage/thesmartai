@@ -15,8 +15,48 @@ import { File } from "../../file"
 import { RequestUser } from "@/runtime/request-user"
 import { git } from "@/util/git"
 import { debugCheckpoint } from "@/util/debug"
+import { Global } from "@/global"
+import path from "path"
 
 const EXPERIMENTAL_DEBUG_BEACON_ENABLED = false
+const SCROLL_CAPTURE_FILE = path.join(Global.Path.log, "scroll-capture-latest.json")
+const MAX_SCROLL_CAPTURE_HISTORY = 10
+
+type ScrollCaptureRecord = {
+  capturedAt: number
+  requestUser: string | null
+  resolvedDirectory: string
+  source: string
+  payload: Record<string, unknown>
+}
+
+async function readScrollCaptureStore(): Promise<{ latest?: ScrollCaptureRecord; recent: ScrollCaptureRecord[] }> {
+  const file = Bun.file(SCROLL_CAPTURE_FILE)
+  if (!(await file.exists())) return { recent: [] }
+  try {
+    const parsed = JSON.parse(await file.text())
+    const latest = parsed && typeof parsed === "object" ? parsed.latest : undefined
+    const recent =
+      parsed && typeof parsed === "object" && Array.isArray(parsed.recent)
+        ? parsed.recent.filter((item: unknown): item is ScrollCaptureRecord => !!item && typeof item === "object")
+        : []
+    return {
+      latest: latest && typeof latest === "object" ? (latest as ScrollCaptureRecord) : undefined,
+      recent,
+    }
+  } catch {
+    return { recent: [] }
+  }
+}
+
+async function writeScrollCapture(record: ScrollCaptureRecord) {
+  const current = await readScrollCaptureStore()
+  const next = {
+    latest: record,
+    recent: [record, ...current.recent].slice(0, MAX_SCROLL_CAPTURE_HISTORY),
+  }
+  await Bun.write(Bun.file(SCROLL_CAPTURE_FILE), JSON.stringify(next, null, 2))
+}
 
 function experimentalDebugBeacon(event: string, data: Record<string, unknown>) {
   // Kept for future RCA; disabled during normal operation.
@@ -70,6 +110,85 @@ export const ExperimentalRoutes = lazy(() =>
           ...(body.payload ?? {}),
         })
         return c.json({ ok: true as const })
+      },
+    )
+    .get(
+      "/scroll-capture/latest",
+      describeRoute({
+        summary: "Get latest scroll incident capture",
+        description: "Return the latest retained web scroll incident capture plus recent history.",
+        operationId: "experimental.scrollCapture.latest",
+        responses: {
+          200: {
+            description: "Latest scroll capture store",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    latest: z.record(z.string(), z.any()).optional(),
+                    recent: z.array(z.record(z.string(), z.any())),
+                    file: z.string(),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const store = await readScrollCaptureStore()
+        return c.json({
+          ...store,
+          file: SCROLL_CAPTURE_FILE,
+        })
+      },
+    )
+    .post(
+      "/scroll-capture",
+      describeRoute({
+        summary: "Record scroll incident capture",
+        description: "Persist a retained web scroll incident capture to a fixed server-side file for later RCA.",
+        operationId: "experimental.scrollCapture.record",
+        responses: {
+          200: {
+            description: "Scroll capture recorded",
+            content: {
+              "application/json": {
+                schema: resolver(z.object({ ok: z.literal(true), file: z.string() })),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          source: z.string().optional(),
+          capturedAt: z.number().optional(),
+          payload: z.record(z.string(), z.any()),
+        }),
+      ),
+      async (c) => {
+        const body = c.req.valid("json")
+        const record: ScrollCaptureRecord = {
+          capturedAt: body.capturedAt ?? Date.now(),
+          requestUser: RequestUser.username() ?? null,
+          resolvedDirectory: Instance.directory,
+          source: body.source ?? "webapp.scroll-debug",
+          payload: body.payload,
+        }
+        await writeScrollCapture(record)
+        debugCheckpoint("scroll.capture", "recorded", {
+          source: record.source,
+          requestUser: record.requestUser,
+          resolvedDirectory: record.resolvedDirectory,
+          capturedAt: record.capturedAt,
+          file: SCROLL_CAPTURE_FILE,
+          marker: record.payload.marker,
+          captureID: record.payload.captureID,
+          kind: record.payload.kind,
+        })
+        return c.json({ ok: true as const, file: SCROLL_CAPTURE_FILE })
       },
     )
     .get(

@@ -178,6 +178,13 @@ The `cms` branch is the primary product line for this environment, featuring sig
      - `X-Opencode-Review-Count`
    - Deep diagnostics route `GET /experimental/review-checkpoint` is available only when `OPENCODE_DEBUG_REVIEW_CHECKPOINT=1`.
 
+8. **Web scroll incident observability contract**
+   - Frontend scroll RCA auto-capture now has a dedicated retained server path separate from generic `/log` batching.
+   - Browser auto-capture posts to `POST /experimental/scroll-capture`.
+   - Latest retained evidence is readable from `GET /experimental/scroll-capture/latest`.
+   - Server persists this retained slot at `${Global.Path.log}/scroll-capture-latest.json` with `latest` plus bounded `recent` history.
+   - Goal: when an operator reports「發生了」, debugging can inspect a fixed capture slot instead of scanning generic debug.log output.
+
 #### Capability registry contract
 
 - Capability discovery source-of-truth is `packages/opencode/src/session/prompt/enablement.json` with template mirror at `templates/prompts/enablement.json`.
