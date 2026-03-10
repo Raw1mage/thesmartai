@@ -495,6 +495,8 @@ export type SessionStatusSummary = {
 
 type PartsByMessage = Record<string, readonly Part[] | undefined>
 
+const SMART_RUNNER_ROLE_TREND_WINDOW = 5
+
 const summarizeTaskResult = (input: { messages?: readonly Message[]; partsByMessage?: PartsByMessage }) => {
   const messages = input.messages ?? []
   for (let index = messages.length - 1; index >= 0; index--) {
@@ -592,7 +594,7 @@ const summarizeSmartRunnerConversation = (input: {
       kindCounts.set(kind ?? "unknown", (kindCounts.get(kind ?? "unknown") ?? 0) + 1)
       if (role) {
         roleCounts.set(role, (roleCounts.get(role) ?? 0) + 1)
-        if (recentRolesNewestFirst.length < 5) recentRolesNewestFirst.push(role)
+        if (recentRolesNewestFirst.length < SMART_RUNNER_ROLE_TREND_WINDOW) recentRolesNewestFirst.push(role)
       }
       if (!latestLabel) {
         latestKind = kind

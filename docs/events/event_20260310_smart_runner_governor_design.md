@@ -1615,3 +1615,32 @@ Validation（AI operator digest）:
 - 結果：session summary 與 side panel 現在都會顯示一條 compact `AI digest`，把 latest role 與 recent role trend 壓成可快速掃讀的主持摘要。
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 AI operator digest contract
+
+### Current Slice (AI trend window contract)
+
+需求：目前 `recentRoles` / `AI trend` / `AI digest` 實際上只看最近 5 次 Smart Runner narration role，但這個數字還只是實作裡的隱含魔術數字。需要把它升級成明確 contract，避免未來 UI、測試與實作各自漂移。
+
+範圍：
+
+- IN
+  - 將 recent-role trend window 抽成明確常數
+  - 補 helper test 驗證超過 window 時只保留最近 5 筆
+  - 文件明確記錄 trend/digest 共享同一個 5-entry observability window
+- OUT
+  - 不改 runtime 控制流
+  - 不改 side panel 顯示格式
+  - 不新增新的 suggestion / assist 類型
+
+任務清單：
+
+- [x] 將 recent-role trend window 抽為明確常數
+- [x] 補 `helpers.test.ts` 驗證超過 window 時的截斷行為
+- [x] 同步 `docs/ARCHITECTURE.md` 與 event contract
+
+Validation（AI trend window contract）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts --test-name-pattern "getSessionStatusSummary"` ✅
+- 結果：recent role trend 與 operator digest 現在都明確採用最近 5 次 Smart Runner narration roles 作為共享 observability window；未來若要調整，會是明確規格變更，而不是隱性行為漂移。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 AI trend/digest 5-entry window contract

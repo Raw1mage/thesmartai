@@ -1133,4 +1133,64 @@ describe("getSessionStatusSummary", () => {
       "AI digest: latest continuation · trend interruption → completion → continuation",
     )
   })
+
+  test("limits Smart Runner recent role trend to the configured window size", () => {
+    const summary = getSessionStatusSummary({
+      messages: [
+        { id: "m1", sessionID: "s1", role: "assistant" },
+        { id: "m2", sessionID: "s1", role: "assistant" },
+        { id: "m3", sessionID: "s1", role: "assistant" },
+        { id: "m4", sessionID: "s1", role: "assistant" },
+        { id: "m5", sessionID: "s1", role: "assistant" },
+        { id: "m6", sessionID: "s1", role: "assistant" },
+      ] as any,
+      partsByMessage: {
+        m1: [
+          { type: "text", text: "[AI] first", metadata: { autonomousNarration: true, narrationKind: "pause" } } as any,
+        ],
+        m2: [
+          {
+            type: "text",
+            text: "[AI] second",
+            metadata: { autonomousNarration: true, narrationKind: "continue" },
+          } as any,
+        ],
+        m3: [
+          {
+            type: "text",
+            text: "[AI] third",
+            metadata: { autonomousNarration: true, narrationKind: "complete" },
+          } as any,
+        ],
+        m4: [
+          {
+            type: "text",
+            text: "[AI] fourth",
+            metadata: { autonomousNarration: true, narrationKind: "continue" },
+          } as any,
+        ],
+        m5: [
+          { type: "text", text: "[AI] fifth", metadata: { autonomousNarration: true, narrationKind: "pause" } } as any,
+        ],
+        m6: [
+          {
+            type: "text",
+            text: "[AI] sixth",
+            metadata: { autonomousNarration: true, narrationKind: "continue" },
+          } as any,
+        ],
+      },
+    })
+
+    expect(summary.smartRunnerConversation?.recentRoles).toEqual([
+      "continuation",
+      "completion",
+      "continuation",
+      "interruption",
+      "continuation",
+    ])
+    expect(summary.smartRunnerConversation?.digest).toBe(
+      "latest continuation · trend continuation → completion → continuation → interruption → continuation",
+    )
+  })
 })
