@@ -606,6 +606,11 @@ describe("getSessionStatusSummary", () => {
       debugPreflight: 1,
       replan: 1,
       askUser: 1,
+      requestApproval: 0,
+      pauseForRisk: 0,
+      complete: 0,
+      adopted: 1,
+      notAdopted: 1,
       recentTrend: ["continue → replan", "debug_preflight_first → ask_user"],
     })
   })
@@ -667,6 +672,129 @@ describe("getSessionStatusSummary", () => {
       replanAdoption: "replan:t9",
       policy: "host_adoptable · medium",
       adoptionOutcome: "not adopted · active todo in progress",
+    })
+  })
+
+  test("surfaces approval, risk-pause, and complete adoption traces in summary and history", () => {
+    const summary = getSessionStatusSummary({
+      session: {
+        workflow: {
+          supervisor: {
+            lastGovernorTraceAt: 80_000,
+            lastGovernorTrace: {
+              status: "advisory",
+              suggestion: {
+                kind: "complete",
+                reason: "Current slice is done",
+                suggestedAction: "continue_current",
+                completionRequest: {
+                  proposalID: "complete:t5",
+                  policy: {
+                    trustLevel: "medium",
+                    adoptionMode: "host_adoptable",
+                    requiresUserConfirm: false,
+                    requiresHostReview: true,
+                  },
+                  hostAdopted: false,
+                  hostAdoptionReason: "not_terminal_after_completion",
+                },
+              },
+            },
+            governorTraceHistory: [
+              {
+                createdAt: 78_000,
+                status: "advisory",
+                decision: {
+                  decision: "request_approval",
+                  confidence: "high",
+                  nextAction: { kind: "request_approval" },
+                },
+                suggestion: {
+                  kind: "request_approval",
+                  reason: "Needs approval",
+                  suggestedAction: "request_approval",
+                  approvalRequest: {
+                    proposalID: "approval:t9",
+                    policy: {
+                      trustLevel: "medium",
+                      adoptionMode: "host_adoptable",
+                      requiresUserConfirm: false,
+                      requiresHostReview: true,
+                    },
+                    hostAdopted: true,
+                    hostAdoptionReason: "adopted",
+                  },
+                },
+              },
+              {
+                createdAt: 79_000,
+                status: "advisory",
+                decision: { decision: "pause_for_risk", confidence: "high", nextAction: { kind: "pause_for_risk" } },
+                suggestion: {
+                  kind: "pause_for_risk",
+                  reason: "Needs review",
+                  suggestedAction: "pause_for_risk",
+                  riskPauseRequest: {
+                    proposalID: "risk-pause:t7",
+                    policy: {
+                      trustLevel: "medium",
+                      adoptionMode: "host_adoptable",
+                      requiresUserConfirm: false,
+                      requiresHostReview: true,
+                    },
+                    hostAdopted: true,
+                    hostAdoptionReason: "adopted",
+                  },
+                },
+              },
+              {
+                createdAt: 80_000,
+                status: "advisory",
+                decision: { decision: "complete", confidence: "high", nextAction: { kind: "continue_current" } },
+                suggestion: {
+                  kind: "complete",
+                  reason: "Current slice is done",
+                  suggestedAction: "continue_current",
+                  completionRequest: {
+                    proposalID: "complete:t5",
+                    policy: {
+                      trustLevel: "medium",
+                      adoptionMode: "host_adoptable",
+                      requiresUserConfirm: false,
+                      requiresHostReview: true,
+                    },
+                    hostAdopted: false,
+                    hostAdoptionReason: "not_terminal_after_completion",
+                  },
+                },
+              },
+            ],
+          },
+        },
+      } as any,
+    })
+
+    expect(summary.debugLines).toContain("Complete proposal: complete:t5")
+    expect(summary.debugLines).toContain("Complete adoption: not terminal after completion")
+    expect(summary.smartRunnerHistory[0]).toMatchObject({
+      completionRequest: "complete:t5",
+      policy: "host_adoptable · medium",
+      adoptionOutcome: "not adopted · not terminal after completion",
+    })
+    expect(summary.smartRunnerHistory[1]).toMatchObject({
+      riskPauseRequest: "risk-pause:t7 · adopted",
+      adoptionOutcome: "adopted",
+    })
+    expect(summary.smartRunnerHistory[2]).toMatchObject({
+      approvalRequest: "approval:t9 · adopted",
+      adoptionOutcome: "adopted",
+    })
+    expect(summary.smartRunnerSummary).toMatchObject({
+      requestApproval: 1,
+      pauseForRisk: 1,
+      complete: 1,
+      adopted: 2,
+      notAdopted: 1,
     })
   })
 

@@ -357,6 +357,11 @@ export function SessionSidePanel(props: {
                                   <div>Debug preflight: {summary().debugPreflight}</div>
                                   <div>Replan: {summary().replan}</div>
                                   <div>Ask user: {summary().askUser}</div>
+                                  <div>Approval: {summary().requestApproval}</div>
+                                  <div>Risk pause: {summary().pauseForRisk}</div>
+                                  <div>Complete: {summary().complete}</div>
+                                  <div>Adopted: {summary().adopted}</div>
+                                  <div>Not adopted: {summary().notAdopted}</div>
                                 </div>
                                 <Show when={summary().recentTrend.length > 0}>
                                   <div class="flex flex-col gap-1">
@@ -419,6 +424,21 @@ export function SessionSidePanel(props: {
                                 <Show when={entry.askUserAdoption}>
                                   <div class="text-12-regular text-text-muted break-words">
                                     Ask-user proposal: {entry.askUserAdoption}
+                                  </div>
+                                </Show>
+                                <Show when={entry.approvalRequest}>
+                                  <div class="text-12-regular text-text-muted break-words">
+                                    Approval proposal: {entry.approvalRequest}
+                                  </div>
+                                </Show>
+                                <Show when={entry.riskPauseRequest}>
+                                  <div class="text-12-regular text-text-muted break-words">
+                                    Risk-pause proposal: {entry.riskPauseRequest}
+                                  </div>
+                                </Show>
+                                <Show when={entry.completionRequest}>
+                                  <div class="text-12-regular text-text-muted break-words">
+                                    Complete proposal: {entry.completionRequest}
                                   </div>
                                 </Show>
                                 <Show when={entry.replanRequest}>

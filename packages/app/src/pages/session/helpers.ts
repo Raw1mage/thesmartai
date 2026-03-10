@@ -123,6 +123,39 @@ type WorkflowLikeSession = {
             hostAdopted?: boolean
             hostAdoptionReason?: string
           }
+          approvalRequest?: {
+            proposalID?: string
+            policy?: {
+              trustLevel?: string
+              adoptionMode?: string
+              requiresUserConfirm?: boolean
+              requiresHostReview?: boolean
+            }
+            hostAdopted?: boolean
+            hostAdoptionReason?: string
+          }
+          riskPauseRequest?: {
+            proposalID?: string
+            policy?: {
+              trustLevel?: string
+              adoptionMode?: string
+              requiresUserConfirm?: boolean
+              requiresHostReview?: boolean
+            }
+            hostAdopted?: boolean
+            hostAdoptionReason?: string
+          }
+          completionRequest?: {
+            proposalID?: string
+            policy?: {
+              trustLevel?: string
+              adoptionMode?: string
+              requiresUserConfirm?: boolean
+              requiresHostReview?: boolean
+            }
+            hostAdopted?: boolean
+            hostAdoptionReason?: string
+          }
           replanRequest?: {
             targetTodoID?: string
             requestedAction?: string
@@ -183,6 +216,39 @@ type WorkflowLikeSession = {
             targetTodoID?: string
             rationale?: string
             adoptionNote?: string
+            policy?: {
+              trustLevel?: string
+              adoptionMode?: string
+              requiresUserConfirm?: boolean
+              requiresHostReview?: boolean
+            }
+            hostAdopted?: boolean
+            hostAdoptionReason?: string
+          }
+          approvalRequest?: {
+            proposalID?: string
+            policy?: {
+              trustLevel?: string
+              adoptionMode?: string
+              requiresUserConfirm?: boolean
+              requiresHostReview?: boolean
+            }
+            hostAdopted?: boolean
+            hostAdoptionReason?: string
+          }
+          riskPauseRequest?: {
+            proposalID?: string
+            policy?: {
+              trustLevel?: string
+              adoptionMode?: string
+              requiresUserConfirm?: boolean
+              requiresHostReview?: boolean
+            }
+            hostAdopted?: boolean
+            hostAdoptionReason?: string
+          }
+          completionRequest?: {
+            proposalID?: string
             policy?: {
               trustLevel?: string
               adoptionMode?: string
@@ -347,6 +413,11 @@ export type SessionStatusSummary = {
     debugPreflight: number
     replan: number
     askUser: number
+    requestApproval: number
+    pauseForRisk: number
+    complete: number
+    adopted: number
+    notAdopted: number
     recentTrend: string[]
   }
   smartRunnerHistory: Array<{
@@ -361,6 +432,9 @@ export type SessionStatusSummary = {
     draftQuestion?: string
     askUserHandoff?: string
     askUserAdoption?: string
+    approvalRequest?: string
+    riskPauseRequest?: string
+    completionRequest?: string
     replanRequest?: string
     replanAdoption?: string
     policy?: string
@@ -449,7 +523,14 @@ const buildSmartRunnerSummary = (
   traces: Array<{
     decision?: { decision?: string }
     assist?: { enabled?: boolean; applied?: boolean; mode?: string }
-    suggestion?: { kind?: string }
+    suggestion?: {
+      kind?: string
+      askUserAdoption?: { hostAdoptionReason?: string }
+      replanAdoption?: { hostAdoptionReason?: string }
+      approvalRequest?: { hostAdoptionReason?: string }
+      riskPauseRequest?: { hostAdoptionReason?: string }
+      completionRequest?: { hostAdoptionReason?: string }
+    }
   }>,
 ) => {
   if (traces.length === 0) return undefined
@@ -461,6 +542,11 @@ const buildSmartRunnerSummary = (
     debugPreflight: 0,
     replan: 0,
     askUser: 0,
+    requestApproval: 0,
+    pauseForRisk: 0,
+    complete: 0,
+    adopted: 0,
+    notAdopted: 0,
     recentTrend: [] as string[],
   }
 
@@ -473,6 +559,21 @@ const buildSmartRunnerSummary = (
     }
     if (trace.suggestion?.kind === "replan") summary.replan += 1
     if (trace.suggestion?.kind === "ask_user") summary.askUser += 1
+    if (trace.suggestion?.kind === "request_approval") summary.requestApproval += 1
+    if (trace.suggestion?.kind === "pause_for_risk") summary.pauseForRisk += 1
+    if (trace.suggestion?.kind === "complete") summary.complete += 1
+
+    const adoptionReasons = [
+      trace.suggestion?.askUserAdoption?.hostAdoptionReason,
+      trace.suggestion?.replanAdoption?.hostAdoptionReason,
+      trace.suggestion?.approvalRequest?.hostAdoptionReason,
+      trace.suggestion?.riskPauseRequest?.hostAdoptionReason,
+      trace.suggestion?.completionRequest?.hostAdoptionReason,
+    ].filter(Boolean)
+    for (const reason of adoptionReasons) {
+      if (reason === "adopted") summary.adopted += 1
+      else summary.notAdopted += 1
+    }
   }
 
   summary.recentTrend = traces.slice(-5).map((trace) => {
@@ -539,7 +640,19 @@ export const getSessionStatusSummary = (input: {
     )
     if (supervisor.lastGovernorTrace.suggestion.reason) {
       debugLines.push(
-        `${supervisor.lastGovernorTrace.suggestion.kind === "ask_user" ? "Ask-user why" : "Replan why"}: ${supervisor.lastGovernorTrace.suggestion.reason.slice(0, 120)}`,
+        `${
+          supervisor.lastGovernorTrace.suggestion.kind === "ask_user"
+            ? "Ask-user why"
+            : supervisor.lastGovernorTrace.suggestion.kind === "replan"
+              ? "Replan why"
+              : supervisor.lastGovernorTrace.suggestion.kind === "request_approval"
+                ? "Approval why"
+                : supervisor.lastGovernorTrace.suggestion.kind === "pause_for_risk"
+                  ? "Risk-pause why"
+                  : supervisor.lastGovernorTrace.suggestion.kind === "complete"
+                    ? "Complete why"
+                    : "Suggestion why"
+        }: ${supervisor.lastGovernorTrace.suggestion.reason.slice(0, 120)}`,
       )
     }
     if (
@@ -569,6 +682,54 @@ export const getSessionStatusSummary = (input: {
       if (supervisor.lastGovernorTrace.suggestion.askUserAdoption.hostAdoptionReason) {
         debugLines.push(
           `Ask-user adoption: ${supervisor.lastGovernorTrace.suggestion.askUserAdoption.hostAdoptionReason.replaceAll("_", " ")}`,
+        )
+      }
+    }
+    if (
+      supervisor.lastGovernorTrace.suggestion.kind === "request_approval" &&
+      supervisor.lastGovernorTrace.suggestion.approvalRequest?.proposalID
+    ) {
+      debugLines.push(`Approval proposal: ${supervisor.lastGovernorTrace.suggestion.approvalRequest.proposalID}`)
+      if (supervisor.lastGovernorTrace.suggestion.approvalRequest.policy?.adoptionMode) {
+        debugLines.push(
+          `Approval policy: ${supervisor.lastGovernorTrace.suggestion.approvalRequest.policy.adoptionMode}${supervisor.lastGovernorTrace.suggestion.approvalRequest.policy.trustLevel ? ` (${supervisor.lastGovernorTrace.suggestion.approvalRequest.policy.trustLevel})` : ""}`,
+        )
+      }
+      if (supervisor.lastGovernorTrace.suggestion.approvalRequest.hostAdoptionReason) {
+        debugLines.push(
+          `Approval adoption: ${supervisor.lastGovernorTrace.suggestion.approvalRequest.hostAdoptionReason.replaceAll("_", " ")}`,
+        )
+      }
+    }
+    if (
+      supervisor.lastGovernorTrace.suggestion.kind === "pause_for_risk" &&
+      supervisor.lastGovernorTrace.suggestion.riskPauseRequest?.proposalID
+    ) {
+      debugLines.push(`Risk-pause proposal: ${supervisor.lastGovernorTrace.suggestion.riskPauseRequest.proposalID}`)
+      if (supervisor.lastGovernorTrace.suggestion.riskPauseRequest.policy?.adoptionMode) {
+        debugLines.push(
+          `Risk-pause policy: ${supervisor.lastGovernorTrace.suggestion.riskPauseRequest.policy.adoptionMode}${supervisor.lastGovernorTrace.suggestion.riskPauseRequest.policy.trustLevel ? ` (${supervisor.lastGovernorTrace.suggestion.riskPauseRequest.policy.trustLevel})` : ""}`,
+        )
+      }
+      if (supervisor.lastGovernorTrace.suggestion.riskPauseRequest.hostAdoptionReason) {
+        debugLines.push(
+          `Risk-pause adoption: ${supervisor.lastGovernorTrace.suggestion.riskPauseRequest.hostAdoptionReason.replaceAll("_", " ")}`,
+        )
+      }
+    }
+    if (
+      supervisor.lastGovernorTrace.suggestion.kind === "complete" &&
+      supervisor.lastGovernorTrace.suggestion.completionRequest?.proposalID
+    ) {
+      debugLines.push(`Complete proposal: ${supervisor.lastGovernorTrace.suggestion.completionRequest.proposalID}`)
+      if (supervisor.lastGovernorTrace.suggestion.completionRequest.policy?.adoptionMode) {
+        debugLines.push(
+          `Complete policy: ${supervisor.lastGovernorTrace.suggestion.completionRequest.policy.adoptionMode}${supervisor.lastGovernorTrace.suggestion.completionRequest.policy.trustLevel ? ` (${supervisor.lastGovernorTrace.suggestion.completionRequest.policy.trustLevel})` : ""}`,
+        )
+      }
+      if (supervisor.lastGovernorTrace.suggestion.completionRequest.hostAdoptionReason) {
+        debugLines.push(
+          `Complete adoption: ${supervisor.lastGovernorTrace.suggestion.completionRequest.hostAdoptionReason.replaceAll("_", " ")}`,
         )
       }
     }
@@ -620,24 +781,51 @@ export const getSessionStatusSummary = (input: {
     askUserAdoption: trace.suggestion?.askUserAdoption?.proposalID
       ? `${trace.suggestion.askUserAdoption.proposalID}${trace.suggestion.askUserAdoption.hostAdopted ? " · adopted" : ""}`
       : undefined,
+    approvalRequest: trace.suggestion?.approvalRequest?.proposalID
+      ? `${trace.suggestion.approvalRequest.proposalID}${trace.suggestion.approvalRequest.hostAdopted ? " · adopted" : ""}`
+      : undefined,
+    riskPauseRequest: trace.suggestion?.riskPauseRequest?.proposalID
+      ? `${trace.suggestion.riskPauseRequest.proposalID}${trace.suggestion.riskPauseRequest.hostAdopted ? " · adopted" : ""}`
+      : undefined,
+    completionRequest: trace.suggestion?.completionRequest?.proposalID
+      ? `${trace.suggestion.completionRequest.proposalID}${trace.suggestion.completionRequest.hostAdopted ? " · adopted" : ""}`
+      : undefined,
     replanRequest: trace.suggestion?.replanRequest?.proposedNextStep,
     replanAdoption: trace.suggestion?.replanAdoption?.proposalID
       ? `${trace.suggestion.replanAdoption.proposalID}${trace.suggestion.replanAdoption.hostAdopted ? " · adopted" : ""}`
       : undefined,
     policy: trace.suggestion?.askUserAdoption?.policy?.adoptionMode
       ? `${trace.suggestion.askUserAdoption.policy.adoptionMode}${trace.suggestion.askUserAdoption.policy.trustLevel ? ` · ${trace.suggestion.askUserAdoption.policy.trustLevel}` : ""}`
-      : trace.suggestion?.replanAdoption?.policy?.adoptionMode
-        ? `${trace.suggestion.replanAdoption.policy.adoptionMode}${trace.suggestion.replanAdoption.policy.trustLevel ? ` · ${trace.suggestion.replanAdoption.policy.trustLevel}` : ""}`
-        : undefined,
+      : trace.suggestion?.approvalRequest?.policy?.adoptionMode
+        ? `${trace.suggestion.approvalRequest.policy.adoptionMode}${trace.suggestion.approvalRequest.policy.trustLevel ? ` · ${trace.suggestion.approvalRequest.policy.trustLevel}` : ""}`
+        : trace.suggestion?.riskPauseRequest?.policy?.adoptionMode
+          ? `${trace.suggestion.riskPauseRequest.policy.adoptionMode}${trace.suggestion.riskPauseRequest.policy.trustLevel ? ` · ${trace.suggestion.riskPauseRequest.policy.trustLevel}` : ""}`
+          : trace.suggestion?.completionRequest?.policy?.adoptionMode
+            ? `${trace.suggestion.completionRequest.policy.adoptionMode}${trace.suggestion.completionRequest.policy.trustLevel ? ` · ${trace.suggestion.completionRequest.policy.trustLevel}` : ""}`
+            : trace.suggestion?.replanAdoption?.policy?.adoptionMode
+              ? `${trace.suggestion.replanAdoption.policy.adoptionMode}${trace.suggestion.replanAdoption.policy.trustLevel ? ` · ${trace.suggestion.replanAdoption.policy.trustLevel}` : ""}`
+              : undefined,
     adoptionOutcome: trace.suggestion?.askUserAdoption?.hostAdoptionReason
       ? trace.suggestion.askUserAdoption.hostAdoptionReason === "adopted"
         ? "adopted"
         : `not adopted · ${trace.suggestion.askUserAdoption.hostAdoptionReason.replaceAll("_", " ")}`
-      : trace.suggestion?.replanAdoption?.hostAdoptionReason
-        ? trace.suggestion.replanAdoption.hostAdoptionReason === "adopted"
+      : trace.suggestion?.approvalRequest?.hostAdoptionReason
+        ? trace.suggestion.approvalRequest.hostAdoptionReason === "adopted"
           ? "adopted"
-          : `not adopted · ${trace.suggestion.replanAdoption.hostAdoptionReason.replaceAll("_", " ")}`
-        : undefined,
+          : `not adopted · ${trace.suggestion.approvalRequest.hostAdoptionReason.replaceAll("_", " ")}`
+        : trace.suggestion?.riskPauseRequest?.hostAdoptionReason
+          ? trace.suggestion.riskPauseRequest.hostAdoptionReason === "adopted"
+            ? "adopted"
+            : `not adopted · ${trace.suggestion.riskPauseRequest.hostAdoptionReason.replaceAll("_", " ")}`
+          : trace.suggestion?.completionRequest?.hostAdoptionReason
+            ? trace.suggestion.completionRequest.hostAdoptionReason === "adopted"
+              ? "adopted"
+              : `not adopted · ${trace.suggestion.completionRequest.hostAdoptionReason.replaceAll("_", " ")}`
+            : trace.suggestion?.replanAdoption?.hostAdoptionReason
+              ? trace.suggestion.replanAdoption.hostAdoptionReason === "adopted"
+                ? "adopted"
+                : `not adopted · ${trace.suggestion.replanAdoption.hostAdoptionReason.replaceAll("_", " ")}`
+              : undefined,
     error: trace.error,
   }))
   const smartRunnerSummary = buildSmartRunnerSummary(supervisor?.governorTraceHistory ?? [])

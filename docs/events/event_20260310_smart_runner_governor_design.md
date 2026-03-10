@@ -1161,3 +1161,32 @@ Validation（complete-path adoption）:
 - 結果：Smart Runner 現在可提出 bounded `complete` proposal，但 host 只會在標記目標 todo 完成後重新驗證確定 workflow 進入 `todo_complete` 時才採納；若仍有後續 actionable todo，則拒絕 adoption 並留下 `not_terminal_after_completion` observability 原因。
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 conservative complete-path adoption contract
+
+### Current Slice (Smart Runner adoption observability parity)
+
+需求：session side panel 先前對 Smart Runner 的觀測較偏向 `ask_user / replan`，但新的 `request_approval / pause_for_risk / complete` 已成為正式 adopted path。若摘要/歷史不對稱，使用者會看到 governor 有新能力，卻無法快速盤點採納結果。
+
+範圍：
+
+- IN
+  - 更新 session helper summary，將 `request_approval / pause_for_risk / complete` 納入計數
+  - 在 debug/history 補 proposal / policy / adoptionOutcome 顯示
+  - 更新 side panel 顯示欄位
+- OUT
+  - 不改 Smart Runner runtime 決策邏輯
+  - 不改 trace persistence schema
+
+任務清單：
+
+- [x] 擴充 `helpers.ts` 的 Smart Runner summary/history 映射
+- [x] 擴充 `helpers.test.ts` 覆蓋新 suggestion kinds
+- [x] 更新 `session-side-panel.tsx` 顯示新摘要欄位與 proposal 行
+
+Validation（Smart Runner adoption observability parity）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts --test-name-pattern "getSessionStatusSummary"` ✅
+- 補充：整檔 `helpers.test.ts` 目前仍有兩個既有 DOM 環境失敗（`focusTerminalById` 的 `document is not defined`），與本次 Smart Runner observability 變更無關，因此本輪以 `getSessionStatusSummary` 子集作為直接驗證面。
+- 結果：session side panel 現在能對稱顯示 `request_approval / pause_for_risk / complete` 的 proposal、policy 與 adoptionOutcome，摘要也能統計 adopted / not adopted 數量。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 session-side Smart Runner observability parity
