@@ -1102,3 +1102,31 @@ Validation（pause_for_risk proposal and host handling）:
 - 結果：Smart Runner 現在除了 `request_approval` 外，也能由 host 採納 `pause_for_risk` proposal；採納後 workflow 會安全切到 `waiting_user / risk_review_needed`，且不影響既有 deterministic approval gate。
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 `pause_for_risk` adopted path 與 proposal surface
+
+### Current Slice (adopted stop-path narration)
+
+需求：`request_approval` 與 `pause_for_risk` 已能被 host 採納成真正的 workflow pause，但若只改 workflow state 而不寫入 transcript，使用者仍可能只看到 loop 停住、卻不知道 Smart Runner 為何暫停。因此要補一層 transcript-visible narration。
+
+範圍：
+
+- IN
+  - 為 host-adopted `request_approval` / `pause_for_risk` stop path 補 transcript-visible pause narration
+  - 保持 `[AI]` 前綴規則一致
+  - 不改 ask-user question flow
+- OUT
+  - 不改 deterministic workflow-runner stop narration
+  - 不新增新的 pause policy 類型
+
+任務清單：
+
+- [x] 新增 adopted stop-path narration helper
+- [x] 在 request_approval / pause_for_risk break 前發出 pause narration
+- [x] 補 prompt-side helper regression
+
+Validation（adopted stop-path narration）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- 結果：host-adopted `request_approval` / `pause_for_risk` 現在都會在真正停下前寫入 transcript-visible pause narration，且沿用 `[AI]` 前綴，不再只依賴 workflow/debug state 才看得出為何暫停。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 adopted stop-path transcript narration contract

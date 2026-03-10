@@ -508,6 +508,36 @@ describe("session.smart-runner-prompt", () => {
     )
   })
 
+  test("emits transcript-visible narration for a host-adopted Smart Runner stop path", async () => {
+    const emitNarration = mock(async () => {})
+
+    const result = await SessionPrompt.handleSmartRunnerAdoptedStopNarration({
+      sessionID: "ses_test",
+      user: {
+        id: "msg_user",
+        sessionID: "ses_test",
+        role: "user",
+        time: { created: Date.now() },
+        agent: "build",
+        model: { providerId: "openai", modelID: "gpt-5.2" },
+        variant: undefined,
+        format: undefined,
+      },
+      text: "Approval needed before continuing.",
+      emitNarration,
+    })
+
+    expect(result).toEqual({ emitted: true })
+    expect(emitNarration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionID: "ses_test",
+        parentID: "msg_user",
+        kind: "pause",
+        text: "[AI] Approval needed before continuing.",
+      }),
+    )
+  })
+
   test("coordinates stop-decision ask-user adoption at a high level", async () => {
     const getConfig = mock(async () => ({ enabled: true, assist: false }))
     const evaluateGovernor = mock(async () => ({

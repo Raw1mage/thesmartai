@@ -475,6 +475,27 @@ export namespace SessionPrompt {
     }
   }
 
+  export async function handleSmartRunnerAdoptedStopNarration(input: {
+    sessionID: string
+    user: MessageV2.User
+    text?: string
+    emitNarration?: typeof emitAutonomousNarration
+  }) {
+    const narrationText = input.text?.trim()
+    if (!narrationText) return { emitted: false as const }
+    const emitNarration = input.emitNarration ?? emitAutonomousNarration
+    await emitNarration({
+      sessionID: input.sessionID,
+      parentID: input.user.id,
+      agent: input.user.agent,
+      variant: input.user.variant,
+      model: input.user.model,
+      text: prefixSmartRunnerText(narrationText),
+      kind: "pause",
+    })
+    return { emitted: true as const }
+  }
+
   export async function handleSmartRunnerStopDecision(input: {
     sessionID: string
     activeModel: Provider.Model
@@ -1144,9 +1165,19 @@ export namespace SessionPrompt {
             break
           }
           if (stopResult.kind === "request_approval") {
+            await handleSmartRunnerAdoptedStopNarration({
+              sessionID,
+              user: lastUser,
+              text: stopResult.trace?.decision?.nextAction.narration,
+            })
             break
           }
           if (stopResult.kind === "pause_for_risk") {
+            await handleSmartRunnerAdoptedStopNarration({
+              sessionID,
+              user: lastUser,
+              text: stopResult.trace?.decision?.nextAction.narration,
+            })
             break
           }
           continueDecision = stopResult.continueDecision
