@@ -68,6 +68,7 @@ import {
   shouldInterruptAutonomousRun,
 } from "./workflow-runner"
 import {
+  annotateSmartRunnerApprovalAdoption,
   annotateSmartRunnerAskUserAdoption,
   annotateSmartRunnerReplanAdoption,
   annotateSmartRunnerTraceAssist,
@@ -358,6 +359,27 @@ export namespace SessionPrompt {
     }
   }
 
+  export async function handleSmartRunnerApprovalRequest(input: {
+    sessionID: string
+    trace: ReturnType<typeof annotateSmartRunnerApprovalAdoption>
+    persistTrace?: (input: {
+      sessionID: string
+      trace: ReturnType<typeof annotateSmartRunnerApprovalAdoption>
+    }) => Promise<void>
+    setWorkflowState?: typeof Session.setWorkflowState
+  }) {
+    const persistTrace = input.persistTrace ?? persistSmartRunnerGovernorTrace
+    const setWorkflowState = input.setWorkflowState ?? Session.setWorkflowState
+    await persistTrace({ sessionID: input.sessionID, trace: input.trace })
+    await setWorkflowState({
+      sessionID: input.sessionID,
+      state: "waiting_user",
+      stopReason: "approval_needed",
+      lastRunAt: Date.now(),
+    })
+    return { outcome: "requested" as const }
+  }
+
   export async function handleSmartRunnerReplanAdoption(input: {
     sessionID: string
     todos: Todo.Info[]
@@ -443,6 +465,7 @@ export namespace SessionPrompt {
     evaluateGovernor?: typeof evaluateSmartRunnerGovernorDryRun
     listQuestions?: typeof Question.list
     askUser?: typeof handleSmartRunnerAskUserAdoption
+    requestApproval?: typeof handleSmartRunnerApprovalRequest
     replan?: typeof handleSmartRunnerReplanAdoption
     persistTrace?: typeof persistSmartRunnerGovernorTrace
     applyAssist?: typeof applySmartRunnerBoundedAssist
@@ -451,6 +474,7 @@ export namespace SessionPrompt {
     const evaluateGovernor = input.evaluateGovernor ?? evaluateSmartRunnerGovernorDryRun
     const listQuestions = input.listQuestions ?? Question.list
     const askUser = input.askUser ?? handleSmartRunnerAskUserAdoption
+    const requestApproval = input.requestApproval ?? handleSmartRunnerApprovalRequest
     const replan = input.replan ?? handleSmartRunnerReplanAdoption
     const persistTrace = input.persistTrace ?? persistSmartRunnerGovernorTrace
     const applyAssist = input.applyAssist ?? applySmartRunnerBoundedAssist
@@ -475,6 +499,35 @@ export namespace SessionPrompt {
     const askUserQuestion = buildSmartRunnerQuestion({
       questionText: getSmartRunnerAskUserQuestionText({ suggestion: suggestedTrace.suggestion }),
     })
+
+    if (suggestedTrace.suggestion?.kind === "request_approval") {
+      const policy = suggestedTrace.suggestion.approvalRequest?.policy
+      const approvalReason =
+        policy?.adoptionMode !== "host_adoptable"
+          ? ("policy_not_host_adoptable" as const)
+          : policy?.requiresUserConfirm === true
+            ? ("user_confirm_required" as const)
+            : policy?.requiresHostReview === false
+              ? ("host_review_missing" as const)
+              : ("adopted" as const)
+      const approvalTrace = annotateSmartRunnerApprovalAdoption({
+        trace: suggestedTrace,
+        adopted: approvalReason === "adopted",
+        reason: approvalReason,
+      })
+      if (approvalReason === "adopted") {
+        const approvalResult = await requestApproval({
+          sessionID: input.sessionID,
+          trace: approvalTrace,
+        })
+        return {
+          kind: "request_approval" as const,
+          adopted: true,
+          outcome: approvalResult.outcome,
+          trace: approvalTrace,
+        }
+      }
+    }
 
     if (suggestedTrace.suggestion?.kind === "ask_user" && askUserAdoption.reason) {
       traceForAssist = annotateSmartRunnerAskUserAdoption({
@@ -1035,6 +1088,9 @@ export namespace SessionPrompt {
           })
           if (stopResult.kind === "ask_user") {
             if (stopResult.outcome === "answered") continue
+            break
+          }
+          if (stopResult.kind === "request_approval") {
             break
           }
           continueDecision = stopResult.continueDecision

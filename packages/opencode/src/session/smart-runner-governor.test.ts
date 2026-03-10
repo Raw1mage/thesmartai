@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { Session } from "."
 import {
+  annotateSmartRunnerApprovalAdoption,
   annotateSmartRunnerAskUserAdoption,
   annotateSmartRunnerReplanAdoption,
   annotateSmartRunnerTraceSuggestion,
@@ -540,6 +541,87 @@ describe("Smart Runner Governor", () => {
         },
       },
     })
+  })
+
+  it("annotates request-approval suggestions without changing control flow", () => {
+    const trace = annotateSmartRunnerTraceSuggestion({
+      trace: {
+        source: "smart_runner_governor",
+        dryRun: true,
+        status: "advisory",
+        createdAt: 1,
+        deterministicReason: "todo_pending",
+        decision: {
+          situation: "waiting_for_human",
+          assessment: "High-risk step needs approval",
+          decision: "request_approval",
+          reason: "The next step changes architecture and should be user-approved",
+          nextAction: {
+            kind: "request_approval",
+            todoID: "t9",
+            skillHints: [],
+            narration: "Approval needed before continuing.",
+          },
+          needsUserInput: true,
+          confidence: "high",
+        },
+      },
+    })
+
+    expect(trace.suggestion).toEqual(
+      expect.objectContaining({
+        kind: "request_approval",
+        reason: "The next step changes architecture and should be user-approved",
+        suggestedTodoID: "t9",
+        suggestedAction: "request_approval",
+        approvalRequest: {
+          proposalID: "approval:t9",
+          targetTodoID: "t9",
+          rationale: "The next step changes architecture and should be user-approved",
+          approvalScope: "Approval needed before continuing todo t9.",
+          adoptionNote: "Host may adopt this proposal into a real approval pause before continuing execution.",
+          policy: {
+            trustLevel: "medium",
+            adoptionMode: "host_adoptable",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+          },
+        },
+      }),
+    )
+  })
+
+  it("marks when a request-approval proposal was host-adopted", () => {
+    const trace = annotateSmartRunnerApprovalAdoption({
+      trace: annotateSmartRunnerTraceSuggestion({
+        trace: {
+          source: "smart_runner_governor",
+          dryRun: true,
+          status: "advisory",
+          createdAt: 1,
+          deterministicReason: "todo_pending",
+          decision: {
+            situation: "waiting_for_human",
+            assessment: "High-risk step needs approval",
+            decision: "request_approval",
+            reason: "The next step changes architecture and should be user-approved",
+            nextAction: {
+              kind: "request_approval",
+              todoID: "t9",
+              skillHints: [],
+              narration: "Approval needed before continuing.",
+            },
+            needsUserInput: true,
+            confidence: "high",
+          },
+        },
+      }),
+      adopted: true,
+      reason: "adopted",
+    })
+
+    expect(trace.suggestion?.approvalRequest?.hostAdopted).toBe(true)
+    expect(trace.suggestion?.approvalRequest?.hostAdoptionReason).toBe("adopted")
   })
 
   it("turns docs sync assist into an explicit preflight continuation", () => {

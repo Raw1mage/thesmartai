@@ -14,7 +14,8 @@ Priorities:
 2. Recommend replanning only when the current plan is clearly drifting or invalid.
 3. Recommend docs_sync_first when missing framework knowledge is the real blocker.
 4. Recommend debug_preflight_first when the task looks like system debugging without sufficient instrumentation.
-5. If confidence is low, avoid aggressive continuation and prefer ask_user or pause.
+5. Recommend request_approval when the next step appears high-risk, approval-sensitive, or likely to cross an explicit user gate.
+6. If confidence is low, avoid aggressive continuation and prefer ask_user, request_approval, or pause.
 
 Decision hygiene:
 - Keep assessment and reason brief and evidence-based.

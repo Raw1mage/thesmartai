@@ -1408,13 +1408,156 @@ Behavior boundary (current cms WebApp):
 3. Unavailable/cooldown states are surfaced and selection is blocked with explicit reason.
 4. Web has admin-lite parity slices; TUI `/admin` remains canonical full control plane.
 
-### E. Deployment/runtime contract for WebApp correctness
+### E. Smart Runner session-governance architecture
+
+Smart Runner is now a **session-level LLM governance layer**, not the primary assistant speaking role.
+
+It should be modeled as four cooperating layers:
+
+1. **Main Agent / visible assistant**
+   - still owns the user-facing assistant response stream
+   - remains the canonical conversation actor
+   - may emit normal assistant/tool output and narration
+
+2. **Deterministic host / prompt loop**
+   - implemented primarily in `packages/opencode/src/session/prompt.ts`
+   - owns actual execution side effects:
+     - message writes
+     - question lifecycle entry
+     - todo mutation
+     - queueing autonomous continuation
+     - workflow-state transitions
+   - Smart Runner never bypasses this host layer
+
+3. **Workflow runner / continuation gate**
+   - implemented primarily in `packages/opencode/src/session/workflow-runner.ts`
+   - remains the deterministic authority for whether a session may continue, stop, wait, or complete
+   - emits the baseline `decision.continue + reason + text + todo` contract that Smart Runner may observe and refine, but not replace arbitrarily
+
+4. **Smart Runner governor**
+   - implemented primarily in `packages/opencode/src/session/smart-runner-governor.ts`
+   - uses LLM reasoning in dry-run/governance mode over:
+     - recent messages
+     - todo graph
+     - deterministic continuation decision
+     - session health / pending questions / approvals
+   - produces governance metadata, not direct unchecked side effects
+
+Current product position:
+
+- Smart Runner **is** an LLM-backed agent layer
+- but it is specifically a **governor / advisor / bounded co-pilot** for session workflow
+- not a second primary assistant persona
+- not an unrestricted autonomous executor
+
+### F. Smart Runner proposal and adoption contract
+
+The current Smart Runner contract has four distinct output levels:
+
+1. **Trace**
+   - every dry-run governance evaluation can be persisted as a Smart Runner trace
+   - trace is the durable observability layer for later UI/debug/history inspection
+
+2. **Suggestion**
+   - Smart Runner may emit structured suggestions such as:
+     - `ask_user`
+     - `replan`
+   - suggestions are still advisory until host/runtime evaluates them
+
+3. **Bounded assist**
+   - low-risk continuation text/narration may be adjusted when policy allows
+   - assist never rewrites the deterministic continuation gate itself into an unrelated action
+
+4. **Host adoption**
+   - certain suggestions may be adopted by deterministic host/runtime under explicit policy
+   - current implemented adoption paths:
+     - `ask_user`
+     - `request_approval`
+     - `replan`
+
+Adoption policy principles:
+
+- proposal policy is explicit (`trustLevel`, `adoptionMode`, `requiresUserConfirm`, `requiresHostReview`)
+- host/runtime must still verify local gates before acting
+- Smart Runner proposals do not directly mutate session state on their own
+
+### G. Current implemented Smart Runner flows
+
+#### 1. Ask-user adopted path
+
+- Smart Runner may propose `ask_user`
+- host/runtime evaluates adoption gates:
+  - question text exists
+  - policy is `user_confirm_required`
+  - host review is still required
+  - no pending question already exists for the session
+- if adopted:
+  - host persists trace/adoption metadata
+  - host calls `Question.ask(...)`
+  - on reply, host creates a synthetic user text turn and continues the loop
+  - on reject, host persists rejection outcome and moves workflow to `waiting_user / product_decision_needed`
+
+#### 2. Replan adopted path
+
+- Smart Runner may propose `replan`
+- host/runtime evaluates todo safety gates (dependency readiness, no conflicting in-progress todo, supported action/kind, no approval bypass)
+- if adopted:
+  - host updates todos deterministically
+  - host immediately re-runs continuation evaluation
+  - Smart Runner assist may still refine the resulting continue text within bounded rules
+
+#### 3. Request-approval adopted path
+
+- Smart Runner may propose `request_approval`
+- host/runtime evaluates approval-adoption policy gates:
+  - policy must remain `host_adoptable`
+  - host review must still be required
+  - no extra user-confirm precondition should exist before requesting approval itself
+- if adopted:
+  - host persists trace/adoption metadata
+  - host transitions workflow to `waiting_user / approval_needed`
+  - execution pauses without enqueuing another autonomous continue step
+
+#### 4. Continue-branch side effects
+
+- after deterministic continuation (possibly refined by Smart Runner adoption/assist), host/runtime still owns:
+  - narration emission
+  - autonomous continue enqueue
+  - round-count advancement
+
+### H. Smart Runner testability layering
+
+The current test strategy intentionally avoids relying only on brittle full-loop mocks.
+
+Coverage now exists at multiple layers:
+
+1. **Governor unit tests**
+   - proposal generation
+   - host-adoption annotations
+   - assist application boundaries
+
+2. **Prompt-side helper tests**
+   - ask-user question building
+   - synthetic answer formatting
+   - ask-user orchestration helper
+   - replan orchestration helper
+   - continuation side-effects helper
+
+3. **Real question event-flow integration**
+   - real `Question.ask/list/reply/reject` lifecycle exercised via prompt-side helpers
+
+4. **High-level stop-decision regression**
+   - `result === "stop" && decision.continue` Smart Runner branch is now factored into a dedicated high-level helper so the most important governance path can be tested without brittle module-cache mocking
+
+This means current Smart Runner validation is already close to runLoop truth, even though a fully mocked end-to-end `SessionPrompt.loop()` regression is still considered future work.
+
+### I. Deployment/runtime contract for WebApp correctness
 
 1. Server should serve local frontend bundle via `OPENCODE_FRONTEND_PATH` for cms-consistent behavior.
 2. If not set, CDN proxy fallback can produce frontend/runtime contract drift (auth and feature mismatch risk).
 3. Operationally, direct web mode is primary for host-workspace parity; Docker remains optional isolation path.
 
-### F. Reference decision records
+### J. Reference decision records
 
 - `docs/events/event_20260223_web_architecture_first_plan.md`
 - `docs/events/event_20260223_web_runtime_bug_backlog.md`

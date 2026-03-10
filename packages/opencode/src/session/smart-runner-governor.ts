@@ -20,13 +20,23 @@ const SmartRunnerDecisionSchema = z.object({
     "completed",
   ]),
   assessment: z.string(),
-  decision: z.enum(["continue", "replan", "ask_user", "pause", "complete", "docs_sync_first", "debug_preflight_first"]),
+  decision: z.enum([
+    "continue",
+    "replan",
+    "ask_user",
+    "request_approval",
+    "pause",
+    "complete",
+    "docs_sync_first",
+    "debug_preflight_first",
+  ]),
   reason: z.string(),
   nextAction: z.object({
     kind: z.enum([
       "continue_current",
       "start_next_todo",
       "replan_todos",
+      "request_approval",
       "request_docs_sync",
       "request_debug_preflight",
       "request_user_input",
@@ -66,7 +76,7 @@ const SmartRunnerTraceSchema = z.object({
     .optional(),
   suggestion: z
     .object({
-      kind: z.enum(["replan", "ask_user"]),
+      kind: z.enum(["replan", "ask_user", "request_approval"]),
       reason: z.string(),
       suggestedTodoID: z.string().optional(),
       suggestedAction: z.string().optional(),
@@ -105,6 +115,27 @@ const SmartRunnerTraceSchema = z.object({
               "question_already_pending",
               "question_rejected",
             ])
+            .optional(),
+        })
+        .optional(),
+      approvalRequest: z
+        .object({
+          proposalID: z.string().optional(),
+          targetTodoID: z.string().optional(),
+          rationale: z.string().optional(),
+          approvalScope: z.string().optional(),
+          adoptionNote: z.string().optional(),
+          policy: z
+            .object({
+              trustLevel: z.enum(["low", "medium", "high"]).optional(),
+              adoptionMode: z.enum(["advisory_only", "host_adoptable", "user_confirm_required"]).optional(),
+              requiresUserConfirm: z.boolean().optional(),
+              requiresHostReview: z.boolean().optional(),
+            })
+            .optional(),
+          hostAdopted: z.boolean().optional(),
+          hostAdoptionReason: z
+            .enum(["adopted", "policy_not_host_adoptable", "user_confirm_required", "host_review_missing"])
             .optional(),
         })
         .optional(),
@@ -375,7 +406,7 @@ export function annotateSmartRunnerTraceAssist(input: {
 
 export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTrace }) {
   if (input.trace.status !== "advisory" || !input.trace.decision) return input.trace
-  if (!["replan", "ask_user"].includes(input.trace.decision.decision)) return input.trace
+  if (!["replan", "ask_user", "request_approval"].includes(input.trace.decision.decision)) return input.trace
 
   const draftQuestion =
     input.trace.decision.decision === "ask_user"
@@ -424,6 +455,26 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
           note: input.trace.decision.reason,
         }
       : undefined
+  const approvalRequest =
+    input.trace.decision.decision === "request_approval"
+      ? {
+          proposalID: input.trace.decision.nextAction.todoID
+            ? `approval:${input.trace.decision.nextAction.todoID}`
+            : "approval:unspecified",
+          targetTodoID: input.trace.decision.nextAction.todoID,
+          rationale: input.trace.decision.reason,
+          approvalScope: input.trace.decision.nextAction.todoID
+            ? `Approval needed before continuing todo ${input.trace.decision.nextAction.todoID}.`
+            : "Approval needed before continuing the current plan.",
+          adoptionNote: "Host may adopt this proposal into a real approval pause before continuing execution.",
+          policy: {
+            trustLevel: "medium",
+            adoptionMode: "host_adoptable",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+          },
+        }
+      : undefined
   const replanAdoption =
     input.trace.decision.decision === "replan"
       ? {
@@ -458,8 +509,35 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
       draftQuestion,
       askUserHandoff,
       askUserAdoption,
+      approvalRequest,
       replanRequest,
       replanAdoption,
+    },
+  })
+}
+
+export function annotateSmartRunnerApprovalAdoption(input: {
+  trace: SmartRunnerTrace
+  adopted: boolean
+  reason?: "adopted" | "policy_not_host_adoptable" | "user_confirm_required" | "host_review_missing"
+}) {
+  if (
+    input.trace.status !== "advisory" ||
+    input.trace.suggestion?.kind !== "request_approval" ||
+    !input.trace.suggestion.approvalRequest
+  ) {
+    return input.trace
+  }
+
+  return SmartRunnerTraceSchema.parse({
+    ...input.trace,
+    suggestion: {
+      ...input.trace.suggestion,
+      approvalRequest: {
+        ...input.trace.suggestion.approvalRequest,
+        hostAdopted: input.adopted,
+        hostAdoptionReason: input.reason,
+      },
     },
   })
 }

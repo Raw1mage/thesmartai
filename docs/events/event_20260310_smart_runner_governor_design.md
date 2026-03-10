@@ -1039,5 +1039,35 @@ Validation（high-level stop-decision helper extraction）:
 - `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
 - `bun test /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts` ✅
 - 結果：Smart Runner 在 `stop -> continue-decision` 這段的高層 orchestration 現在也已可測，已比單純 helper 更接近 runLoop 真實決策路徑。
-- Architecture Sync: Verified (No doc changes)
-  - 比對依據：此輪只做 stop-decision helper extraction 與測試，未改 runtime flow / policy / data-path contract
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 Smart Runner 的正式分層模型、proposal/adoption contract、目前 implemented flows 與 testability layering
+
+### Current Slice (request_approval proposal and host handling)
+
+需求：Smart Runner 不能只會 `ask_user` 或 `replan`；若下一步明顯落在高風險或 approval-sensitive 範圍，應能主動提出 `request_approval` proposal，讓 deterministic host 安全地把 workflow 切到 `waiting_user / approval_needed`。
+
+範圍：
+
+- IN
+  - governor decision schema 新增 `request_approval`
+  - suggestion/adoption metadata 新增 approval request path
+  - prompt host handling 新增 approval request adoption helper
+  - high-level stop-decision helper 接上 request_approval branch
+- OUT
+  - 不實作新的 approval UI
+  - 不改 workflow-runner 原本 deterministic approval gate
+
+任務清單：
+
+- [x] 在 governor schema / suggestion annotation 新增 `request_approval`
+- [x] 在 prompt 新增 `handleSmartRunnerApprovalRequest(...)`
+- [x] 讓 `handleSmartRunnerStopDecision(...)` 能處理 request_approval adopted path
+- [x] 補 governor + prompt tests
+
+Validation（request_approval proposal and host handling）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- 結果：Smart Runner 現在除了 `ask_user` / `replan` 外，也能產生並由 host 採納 `request_approval` proposal；採納後 workflow 會安全切到 `waiting_user / approval_needed`。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 `request_approval` adopted path 與 proposal surface
