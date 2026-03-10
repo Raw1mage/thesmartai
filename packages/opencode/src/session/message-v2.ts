@@ -720,6 +720,94 @@ export namespace MessageV2 {
     return status === 404 || e.isRetryable
   }
 
+  function trimErrorString(input: string | undefined) {
+    const value = input?.trim()
+    if (!value) return undefined
+    if (value === "[object Object]") return undefined
+    return value
+  }
+
+  function serializeUnknownDebug(input: unknown, seen = new WeakSet<object>(), depth = 0): unknown {
+    if (input == null) return undefined
+    if (typeof input === "string") {
+      if (depth === 0) return undefined
+      return input.length > 8000 ? input.slice(0, 8000) + "…" : input
+    }
+    if (typeof input === "number" || typeof input === "boolean") {
+      if (depth === 0) return undefined
+      return input
+    }
+    if (typeof input === "bigint") return input.toString()
+    if (typeof input === "function") return `[Function ${input.name || "anonymous"}]`
+    if (depth >= 5) return "[MaxDepth]"
+    if (typeof input !== "object") return String(input)
+
+    if (seen.has(input)) return "[Circular]"
+    seen.add(input)
+
+    if (input instanceof Error) {
+      const err = input as Error & { cause?: unknown; issues?: unknown; data?: unknown }
+      const result: Record<string, unknown> = {
+        name: err.name,
+        message: err.message,
+      }
+      if (err.stack) result.stack = err.stack
+      if (err.cause !== undefined) result.cause = serializeUnknownDebug(err.cause, seen, depth + 1)
+      if (err.issues !== undefined) result.issues = serializeUnknownDebug(err.issues, seen, depth + 1)
+      if (err.data !== undefined) result.data = serializeUnknownDebug(err.data, seen, depth + 1)
+      return result
+    }
+
+    if (Array.isArray(input)) {
+      return input.slice(0, 20).map((item) => serializeUnknownDebug(item, seen, depth + 1))
+    }
+
+    const result: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(input).slice(0, 50)) {
+      result[key] = serializeUnknownDebug(value, seen, depth + 1)
+    }
+    return result
+  }
+
+  function extractReadableUnknownMessage(input: unknown) {
+    if (input instanceof Error) {
+      const errorLike = input as Error & { cause?: unknown; data?: unknown }
+      return (
+        trimErrorString(input.message) ??
+        trimErrorString((errorLike.data as any)?.message) ??
+        trimErrorString((errorLike.cause as any)?.message) ??
+        trimErrorString((errorLike.cause as any)?.data?.message) ??
+        input.name
+      )
+    }
+
+    if (typeof input === "object" && input !== null) {
+      const obj = input as Record<string, any>
+      return (
+        trimErrorString(obj.message) ??
+        trimErrorString(obj.data?.message) ??
+        trimErrorString(obj.error?.message) ??
+        trimErrorString(obj.error?.data?.message) ??
+        trimErrorString(obj.code) ??
+        "Unexpected object error"
+      )
+    }
+
+    return String(input)
+  }
+
+  function unknownErrorData(input: unknown) {
+    const message = extractReadableUnknownMessage(input)
+    const debug = serializeUnknownDebug(input)
+    if (debug && typeof debug === "object") {
+      return {
+        message,
+        debug: debug as Record<string, unknown>,
+      }
+    }
+    return { message }
+  }
+
   export function fromError(e: unknown, ctx: { providerId: string }) {
     switch (true) {
       case e instanceof DOMException && e.name === "AbortError":
@@ -779,7 +867,7 @@ export namespace MessageV2 {
           { cause: e },
         ).toObject()
       case e instanceof Error:
-        return new NamedError.Unknown({ message: e.toString() }, { cause: e }).toObject()
+        return new NamedError.Unknown(unknownErrorData(e), { cause: e }).toObject()
       default:
         try {
           const parsed = ProviderError.parseStreamError(e)
@@ -809,7 +897,7 @@ export namespace MessageV2 {
             error: error instanceof Error ? error.message : String(error),
           })
         }
-        return new NamedError.Unknown({ message: String(e) }, { cause: e }).toObject()
+        return new NamedError.Unknown(unknownErrorData(e), { cause: e }).toObject()
     }
   }
 

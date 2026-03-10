@@ -973,4 +973,62 @@ describe("session.message-v2.fromError", () => {
       },
     })
   })
+
+  test("preserves debug payload for object-like unknown errors", () => {
+    const input = {
+      status: 400,
+      data: {
+        message: "Raw provider payload",
+        responseBody: '{"error":{"message":"raw body"}}',
+      },
+    }
+
+    const result = MessageV2.fromError(input, { providerId: "test" })
+
+    expect(result).toStrictEqual({
+      name: "UnknownError",
+      data: {
+        message: "Raw provider payload",
+        debug: {
+          status: 400,
+          data: {
+            message: "Raw provider payload",
+            responseBody: '{"error":{"message":"raw body"}}',
+          },
+        },
+      },
+    })
+  })
+
+  test("preserves debug payload for error instances with object-like causes", () => {
+    const error = new Error("[object Object]", {
+      cause: {
+        status: 429,
+        data: {
+          message: "Quota exceeded",
+          responseBody: '{"error":{"code":"insufficient_quota"}}',
+        },
+      },
+    })
+
+    const result = MessageV2.fromError(error, { providerId: "test" })
+
+    expect(result).toMatchObject({
+      name: "UnknownError",
+      data: {
+        message: "Quota exceeded",
+        debug: {
+          name: "Error",
+          message: "[object Object]",
+          cause: {
+            status: 429,
+            data: {
+              message: "Quota exceeded",
+              responseBody: '{"error":{"code":"insufficient_quota"}}',
+            },
+          },
+        },
+      },
+    })
+  })
 })
