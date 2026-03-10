@@ -1557,3 +1557,32 @@ Validation（AI intervention role distribution）:
 - 結果：session side panel 現在除了 kind distribution 與 latest role，也會顯示 role distribution，能更快看出近期 Smart Runner 在 meeting-style 語義上主要扮演哪種介入角色。
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 AI intervention role distribution contract
+
+### Current Slice (AI intervention role trend)
+
+需求：在已有 `latestRole` 與 `roleCounts` 之上，補一個短序列的 recent role trend，讓操作者快速看出最近幾次 Smart Runner 介入的會議語義流向，而不必自行從統計分布反推順序。
+
+範圍：
+
+- IN
+  - 在 Smart Runner conversation summary 中新增 `recentRoles`
+  - process summary 顯示 `AI trend: ...`
+  - side panel 顯示 `Recent AI roles`
+- OUT
+  - 不改 runtime 控制流
+  - 不改 message schema
+  - 不新增新的 suggestion / assist 類型
+
+任務清單：
+
+- [x] 在 `helpers.ts` conversation summary 加入 `recentRoles`
+- [x] 在 process summary 與 `session-side-panel.tsx` 顯示 role trend
+- [x] 擴充 `helpers.test.ts` 驗證 `AI trend`
+
+Validation（AI intervention role trend）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts --test-name-pattern "getSessionStatusSummary"` ✅
+- 結果：session summary 與 side panel 現在可直接顯示最近幾次 Smart Runner 介入角色序列，讓 meeting-style 觀測從靜態分布再往前走一步，能看見近期介入流向。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 AI intervention role trend contract

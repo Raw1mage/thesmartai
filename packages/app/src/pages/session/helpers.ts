@@ -481,6 +481,7 @@ export type SessionStatusSummary = {
     completeNarrations: number
     kindCounts: Array<{ kind: string; count: number }>
     roleCounts: Array<{ role: string; count: number }>
+    recentRoles: string[]
     latestKind?: string
     latestRole?: string
     latestLabel?: string
@@ -562,6 +563,7 @@ const summarizeSmartRunnerConversation = (input: {
   let completeNarrations = 0
   const kindCounts = new Map<string, number>()
   const roleCounts = new Map<string, number>()
+  const recentRolesNewestFirst: string[] = []
   let latestKind: string | undefined
   let latestRole: string | undefined
   let latestLabel: string | undefined
@@ -587,7 +589,10 @@ const summarizeSmartRunnerConversation = (input: {
       if (kind === "pause" || kind === "interrupt") pauseNarrations += 1
       if (kind === "complete") completeNarrations += 1
       kindCounts.set(kind ?? "unknown", (kindCounts.get(kind ?? "unknown") ?? 0) + 1)
-      if (role) roleCounts.set(role, (roleCounts.get(role) ?? 0) + 1)
+      if (role) {
+        roleCounts.set(role, (roleCounts.get(role) ?? 0) + 1)
+        if (recentRolesNewestFirst.length < 5) recentRolesNewestFirst.push(role)
+      }
       if (!latestLabel) {
         latestKind = kind
         latestRole = role
@@ -607,6 +612,7 @@ const summarizeSmartRunnerConversation = (input: {
     roleCounts: [...roleCounts.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([role, count]) => ({ role, count })),
+    recentRoles: [...recentRolesNewestFirst].reverse(),
     latestKind,
     latestRole,
     latestLabel,
@@ -989,6 +995,9 @@ export const getSessionStatusSummary = (input: {
     )
     if (smartRunnerConversation.latestKind) processLines.push(`AI latest: ${smartRunnerConversation.latestKind}`)
     if (smartRunnerConversation.latestRole) processLines.push(`AI role: ${smartRunnerConversation.latestRole}`)
+    if (smartRunnerConversation.recentRoles.length > 1) {
+      processLines.push(`AI trend: ${smartRunnerConversation.recentRoles.join(" → ")}`)
+    }
   }
   const latestTodo = [...todos].reverse().find((todo) => todo.status === "completed" || todo.status === "cancelled")
   const latestResult =

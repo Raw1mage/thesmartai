@@ -359,6 +359,7 @@ describe("getSessionStatusSummary", () => {
         pauseNarrations: 1,
         completeNarrations: 0,
         roleCounts: [{ role: "interruption", count: 1 }],
+        recentRoles: ["interruption"],
         latestKind: "pause",
         latestRole: "interruption",
         latestLabel: "Paused: a delegated subagent task is still running.",
@@ -1115,6 +1116,7 @@ describe("getSessionStatusSummary", () => {
         { role: "continuation", count: 1 },
         { role: "interruption", count: 1 },
       ],
+      recentRoles: ["interruption", "completion", "continuation"],
       latestKind: "continue",
       latestRole: "continuation",
       latestLabel: "[AI] Starting the next step now.",
@@ -1122,5 +1124,6 @@ describe("getSessionStatusSummary", () => {
     expect(summary.processLines).toContain("AI layer: 3 narrations")
     expect(summary.processLines).toContain("AI latest: continue")
     expect(summary.processLines).toContain("AI role: continuation")
+    expect(summary.processLines).toContain("AI trend: interruption → completion → continuation")
   })
 })
