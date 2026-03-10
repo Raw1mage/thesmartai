@@ -970,6 +970,8 @@ describe("session.message-v2.fromError", () => {
       name: "UnknownError",
       data: {
         message: "123",
+        summary: "Provider test returned an unknown error.",
+        hints: undefined,
       },
     })
   })
@@ -989,6 +991,8 @@ describe("session.message-v2.fromError", () => {
       name: "UnknownError",
       data: {
         message: "Raw provider payload",
+        summary: "Provider test returned an unknown error. Status 400.",
+        hints: ['Detail: {"error":{"message":"raw body"}}', "Status: 400"],
         debug: {
           status: 400,
           data: {
@@ -1017,6 +1021,8 @@ describe("session.message-v2.fromError", () => {
       name: "UnknownError",
       data: {
         message: "Quota exceeded",
+        summary: "Provider test returned an unknown error. Status 429.",
+        hints: ['Detail: {"error":{"code":"insufficient_quota"}}', "Status: 429"],
         debug: {
           name: "Error",
           message: "[object Object]",
@@ -1026,6 +1032,44 @@ describe("session.message-v2.fromError", () => {
               message: "Quota exceeded",
               responseBody: '{"error":{"code":"insufficient_quota"}}',
             },
+          },
+        },
+      },
+    })
+  })
+
+  test("extracts request id and human-readable hints for provider support errors", () => {
+    const input = {
+      type: "error",
+      sequence_number: 2,
+      error: {
+        type: "server_error",
+        code: "server_error",
+        message:
+          "An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 4e421212-c6bc-458d-9b99-c088529a08cb in your message.",
+      },
+    }
+
+    const result = MessageV2.fromError(input, { providerId: "openai" })
+
+    expect(result).toStrictEqual({
+      name: "UnknownError",
+      data: {
+        message:
+          "An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 4e421212-c6bc-458d-9b99-c088529a08cb in your message.",
+        summary: "Provider openai returned an unknown error. Request ID 4e421212-c6bc-458d-9b99-c088529a08cb.",
+        hints: [
+          "Request ID: 4e421212-c6bc-458d-9b99-c088529a08cb",
+          "Upstream provider asked for support escalation; include the request ID when reporting.",
+        ],
+        debug: {
+          type: "error",
+          sequence_number: 2,
+          error: {
+            type: "server_error",
+            code: "server_error",
+            message:
+              "An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 4e421212-c6bc-458d-9b99-c088529a08cb in your message.",
           },
         },
       },

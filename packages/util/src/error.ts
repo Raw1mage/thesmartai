@@ -50,6 +50,8 @@ export abstract class NamedError extends Error {
     z.object({
       message: z.string(),
       debug: z.record(z.string(), z.any()).optional(),
+      summary: z.string().optional(),
+      hints: z.array(z.string()).optional(),
     }),
   )
 }

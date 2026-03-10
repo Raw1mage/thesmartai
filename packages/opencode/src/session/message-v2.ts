@@ -769,6 +769,136 @@ export namespace MessageV2 {
     return result
   }
 
+  function collectUnknownStrings(input: unknown, out = new Set<string>(), seen = new WeakSet<object>(), depth = 0) {
+    if (input == null || depth >= 5) return out
+    if (typeof input === "string") {
+      const value = trimErrorString(input)
+      if (value) out.add(value)
+      return out
+    }
+    if (typeof input === "number" || typeof input === "boolean" || typeof input === "bigint") {
+      out.add(String(input))
+      return out
+    }
+    if (typeof input !== "object") return out
+    if (seen.has(input)) return out
+    seen.add(input)
+
+    if (input instanceof Error) {
+      collectUnknownStrings(input.message, out, seen, depth + 1)
+      collectUnknownStrings(
+        (input as Error & { cause?: unknown; data?: unknown; stack?: unknown }).cause,
+        out,
+        seen,
+        depth + 1,
+      )
+      collectUnknownStrings((input as Error & { data?: unknown }).data, out, seen, depth + 1)
+      return out
+    }
+
+    if (Array.isArray(input)) {
+      for (const item of input.slice(0, 20)) collectUnknownStrings(item, out, seen, depth + 1)
+      return out
+    }
+
+    for (const value of Object.values(input).slice(0, 50)) {
+      collectUnknownStrings(value, out, seen, depth + 1)
+    }
+    return out
+  }
+
+  function extractRequestIds(input: unknown, out = new Set<string>(), seen = new WeakSet<object>(), depth = 0) {
+    if (input == null || depth >= 5) return out
+    if (typeof input === "string") {
+      const matches = input.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)
+      for (const match of matches ?? []) out.add(match)
+      return out
+    }
+    if (typeof input !== "object") return out
+    if (seen.has(input)) return out
+    seen.add(input)
+
+    if (input instanceof Error) {
+      extractRequestIds(input.message, out, seen, depth + 1)
+      extractRequestIds((input as Error & { cause?: unknown; data?: unknown }).cause, out, seen, depth + 1)
+      extractRequestIds((input as Error & { data?: unknown }).data, out, seen, depth + 1)
+      return out
+    }
+
+    if (Array.isArray(input)) {
+      for (const item of input.slice(0, 20)) extractRequestIds(item, out, seen, depth + 1)
+      return out
+    }
+
+    for (const [key, value] of Object.entries(input).slice(0, 50)) {
+      if (/request.?id/i.test(key) && typeof value === "string") out.add(value)
+      extractRequestIds(value, out, seen, depth + 1)
+    }
+    return out
+  }
+
+  function extractStatusCodes(input: unknown, out = new Set<number>(), seen = new WeakSet<object>(), depth = 0) {
+    if (input == null || depth >= 5) return out
+    if (typeof input !== "object") return out
+    if (seen.has(input)) return out
+    seen.add(input)
+
+    if (input instanceof Error) {
+      extractStatusCodes(
+        (input as Error & { cause?: unknown; data?: unknown; statusCode?: unknown }).cause,
+        out,
+        seen,
+        depth + 1,
+      )
+      extractStatusCodes((input as Error & { data?: unknown; statusCode?: unknown }).data, out, seen, depth + 1)
+      const statusCode = (input as any).statusCode
+      if (typeof statusCode === "number") out.add(statusCode)
+      return out
+    }
+
+    if (Array.isArray(input)) {
+      for (const item of input.slice(0, 20)) extractStatusCodes(item, out, seen, depth + 1)
+      return out
+    }
+
+    for (const [key, value] of Object.entries(input).slice(0, 50)) {
+      if ((key === "status" || key === "statusCode") && typeof value === "number") out.add(value)
+      extractStatusCodes(value, out, seen, depth + 1)
+    }
+    return out
+  }
+
+  function summarizeUnknownError(input: unknown, providerId: string, message: string) {
+    const strings = [...collectUnknownStrings(input)].filter((value) => value !== message)
+    const requestIds = [...extractRequestIds(input)]
+    const statusCodes = [...extractStatusCodes(input)]
+    const hints: string[] = []
+
+    const headline: string[] = []
+    headline.push(`Provider ${providerId} returned an unknown error.`)
+    if (statusCodes.length > 0) headline.push(`Status ${statusCodes[0]}.`)
+    if (requestIds.length > 0) headline.push(`Request ID ${requestIds[0]}.`)
+
+    const detail = strings.find((value) => value !== "server_error" && value !== providerId && value.length > 8)
+    if (detail && detail !== message) {
+      hints.push(`Detail: ${detail}`)
+    }
+    for (const id of requestIds.slice(0, 2)) {
+      hints.push(`Request ID: ${id}`)
+    }
+    for (const status of statusCodes.slice(0, 2)) {
+      hints.push(`Status: ${status}`)
+    }
+    if (/help\.openai\.com/i.test(message) || strings.some((value) => /help\.openai\.com/i.test(value))) {
+      hints.push("Upstream provider asked for support escalation; include the request ID when reporting.")
+    }
+
+    return {
+      summary: headline.join(" ").trim(),
+      hints,
+    }
+  }
+
   function extractReadableUnknownMessage(input: unknown) {
     if (input instanceof Error) {
       const errorLike = input as Error & { cause?: unknown; data?: unknown }
@@ -796,16 +926,23 @@ export namespace MessageV2 {
     return String(input)
   }
 
-  function unknownErrorData(input: unknown) {
+  function unknownErrorData(input: unknown, ctx: { providerId: string }) {
     const message = extractReadableUnknownMessage(input)
     const debug = serializeUnknownDebug(input)
+    const extra = summarizeUnknownError(input, ctx.providerId, message)
     if (debug && typeof debug === "object") {
       return {
         message,
         debug: debug as Record<string, unknown>,
+        summary: extra.summary,
+        hints: extra.hints.length > 0 ? extra.hints : undefined,
       }
     }
-    return { message }
+    return {
+      message,
+      summary: extra.summary,
+      hints: extra.hints.length > 0 ? extra.hints : undefined,
+    }
   }
 
   export function fromError(e: unknown, ctx: { providerId: string }) {
@@ -867,7 +1004,7 @@ export namespace MessageV2 {
           { cause: e },
         ).toObject()
       case e instanceof Error:
-        return new NamedError.Unknown(unknownErrorData(e), { cause: e }).toObject()
+        return new NamedError.Unknown(unknownErrorData(e, ctx), { cause: e }).toObject()
       default:
         try {
           const parsed = ProviderError.parseStreamError(e)
@@ -897,7 +1034,7 @@ export namespace MessageV2 {
             error: error instanceof Error ? error.message : String(error),
           })
         }
-        return new NamedError.Unknown(unknownErrorData(e), { cause: e }).toObject()
+        return new NamedError.Unknown(unknownErrorData(e, ctx), { cause: e }).toObject()
     }
   }
 
