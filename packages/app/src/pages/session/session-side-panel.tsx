@@ -459,6 +459,11 @@ export function SessionSidePanel(props: {
                                     Complete proposal: {entry.completionRequest}
                                   </div>
                                 </Show>
+                                <Show when={entry.completionScope}>
+                                  <div class="text-12-regular text-text-muted break-words">
+                                    Complete scope: {entry.completionScope}
+                                  </div>
+                                </Show>
                                 <Show when={entry.pauseRequest}>
                                   <div class="text-12-regular text-text-muted break-words">
                                     Pause scope: {entry.pauseRequest}
@@ -467,6 +472,11 @@ export function SessionSidePanel(props: {
                                 <Show when={entry.replanRequest}>
                                   <div class="text-12-regular text-text-muted break-words">
                                     Replan request: {entry.replanRequest}
+                                  </div>
+                                </Show>
+                                <Show when={entry.replanTarget}>
+                                  <div class="text-12-regular text-text-muted break-words">
+                                    Replan target: {entry.replanTarget}
                                   </div>
                                 </Show>
                                 <Show when={entry.replanAdoption}>

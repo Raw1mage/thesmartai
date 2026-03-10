@@ -573,7 +573,13 @@ describe("getSessionStatusSummary", () => {
         draftQuestion: "Should we keep the current product behavior or switch to the new flow?",
         askUserHandoff: "Need a decision before continuing todo t3.",
         askUserAdoption: "ask-user:t3",
+        approvalRequest: undefined,
+        riskPauseRequest: undefined,
+        completionRequest: undefined,
+        completionScope: undefined,
+        pauseRequest: undefined,
         replanRequest: undefined,
+        replanTarget: undefined,
         replanAdoption: undefined,
         policy: "user_confirm_required · medium",
         adoptionOutcome: "not adopted · question already pending",
@@ -591,7 +597,13 @@ describe("getSessionStatusSummary", () => {
         draftQuestion: undefined,
         askUserHandoff: undefined,
         askUserAdoption: undefined,
+        approvalRequest: undefined,
+        riskPauseRequest: undefined,
+        completionRequest: undefined,
+        completionScope: undefined,
+        pauseRequest: undefined,
         replanRequest: "Re-evaluate todo t2 before continuing.",
+        replanTarget: "t2 · replan_todos",
         replanAdoption: "replan:t2 · adopted",
         policy: "host_adoptable · medium",
         adoptionOutcome: "adopted",
@@ -631,6 +643,8 @@ describe("getSessionStatusSummary", () => {
                 suggestedAction: "replan_todos",
                 replanAdoption: {
                   proposalID: "replan:t9",
+                  targetTodoID: "t9",
+                  proposedAction: "replan_todos",
                   policy: {
                     trustLevel: "medium",
                     adoptionMode: "host_adoptable",
@@ -652,6 +666,8 @@ describe("getSessionStatusSummary", () => {
                   suggestedAction: "replan_todos",
                   replanAdoption: {
                     proposalID: "replan:t9",
+                    targetTodoID: "t9",
+                    proposedAction: "replan_todos",
                     policy: {
                       trustLevel: "medium",
                       adoptionMode: "host_adoptable",
@@ -671,8 +687,11 @@ describe("getSessionStatusSummary", () => {
 
     expect(summary.debugLines).toContain("Replan proposal: replan:t9")
     expect(summary.debugLines).toContain("Replan adoption: active todo in progress")
+    expect(summary.debugLines).toContain("Replan target: t9")
+    expect(summary.debugLines).toContain("Replan action: replan_todos")
     expect(summary.smartRunnerHistory[0]).toMatchObject({
       replanAdoption: "replan:t9",
+      replanTarget: "t9 · replan_todos",
       policy: "host_adoptable · medium",
       adoptionOutcome: "not adopted · active todo in progress",
     })
@@ -692,6 +711,7 @@ describe("getSessionStatusSummary", () => {
                 suggestedAction: "continue_current",
                 completionRequest: {
                   proposalID: "complete:t5",
+                  completionScope: "Mark todo t5 complete if the current slice is truly done.",
                   policy: {
                     trustLevel: "medium",
                     adoptionMode: "host_adoptable",
@@ -760,6 +780,7 @@ describe("getSessionStatusSummary", () => {
                   suggestedAction: "continue_current",
                   completionRequest: {
                     proposalID: "complete:t5",
+                    completionScope: "Mark todo t5 complete if the current slice is truly done.",
                     policy: {
                       trustLevel: "medium",
                       adoptionMode: "host_adoptable",
@@ -779,8 +800,10 @@ describe("getSessionStatusSummary", () => {
 
     expect(summary.debugLines).toContain("Complete proposal: complete:t5")
     expect(summary.debugLines).toContain("Complete adoption: not terminal after completion")
+    expect(summary.debugLines).toContain("Complete scope: Mark todo t5 complete if the current slice is truly done.")
     expect(summary.smartRunnerHistory[0]).toMatchObject({
       completionRequest: "complete:t5",
+      completionScope: "Mark todo t5 complete if the current slice is truly done.",
       policy: "host_adoptable · medium",
       adoptionOutcome: "not adopted · not terminal after completion",
     })

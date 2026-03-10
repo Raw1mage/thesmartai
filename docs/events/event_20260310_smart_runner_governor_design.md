@@ -1387,3 +1387,32 @@ Validation（non-adopted reason aggregate statistics）:
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 non-adopted reason aggregate statistics
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 unified adoption policy evaluator contract
+
+### Current Slice (replan / complete observability detail refinement)
+
+需求：目前 replan / complete 在 side panel 已有 proposal 與 adoption outcome，但細節仍偏粗：不容易直接看出 replan 到底針對哪個 todo、想做什麼動作，或 complete 實際想完成的範圍。需要把這些 payload 細節直接浮到 debug/history。
+
+範圍：
+
+- IN
+  - debug lines 顯示 `replan target / action`
+  - debug lines 顯示 `complete scope`
+  - history row 顯示 `replanTarget` 與 `completionScope`
+  - 補 helper tests 驗證新細節欄位
+- OUT
+  - 不改 runtime schema
+  - 不改 adoption decision logic
+
+任務清單：
+
+- [x] 擴充 `helpers.ts` 映射出 replan/complete 細節欄位
+- [x] 更新 side panel 顯示新欄位
+- [x] 補 helper regression 測試
+
+Validation（replan / complete observability detail refinement）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts --test-name-pattern "getSessionStatusSummary"` ✅
+- 結果：side panel 現在能直接顯示 replan 的 target/action 與 complete 的 scope，因此不必打開原始 trace JSON 也能看出 Smart Runner 想重排或完成哪個 slice。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 replan / complete observability detail refinement

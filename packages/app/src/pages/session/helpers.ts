@@ -147,6 +147,7 @@ type WorkflowLikeSession = {
           }
           completionRequest?: {
             proposalID?: string
+            completionScope?: string
             policy?: {
               trustLevel?: string
               adoptionMode?: string
@@ -260,6 +261,7 @@ type WorkflowLikeSession = {
           }
           completionRequest?: {
             proposalID?: string
+            completionScope?: string
             policy?: {
               trustLevel?: string
               adoptionMode?: string
@@ -460,8 +462,10 @@ export type SessionStatusSummary = {
     approvalRequest?: string
     riskPauseRequest?: string
     completionRequest?: string
+    completionScope?: string
     pauseRequest?: string
     replanRequest?: string
+    replanTarget?: string
     replanAdoption?: string
     policy?: string
     adoptionOutcome?: string
@@ -775,6 +779,11 @@ export const getSessionStatusSummary = (input: {
           `Complete adoption: ${supervisor.lastGovernorTrace.suggestion.completionRequest.hostAdoptionReason.replaceAll("_", " ")}`,
         )
       }
+      if (supervisor.lastGovernorTrace.suggestion.completionRequest.completionScope) {
+        debugLines.push(
+          `Complete scope: ${supervisor.lastGovernorTrace.suggestion.completionRequest.completionScope.slice(0, 120)}`,
+        )
+      }
     }
     if (
       supervisor.lastGovernorTrace.suggestion.kind === "pause" &&
@@ -812,6 +821,12 @@ export const getSessionStatusSummary = (input: {
           `Replan adoption: ${supervisor.lastGovernorTrace.suggestion.replanAdoption.hostAdoptionReason.replaceAll("_", " ")}`,
         )
       }
+      if (supervisor.lastGovernorTrace.suggestion.replanAdoption.targetTodoID) {
+        debugLines.push(`Replan target: ${supervisor.lastGovernorTrace.suggestion.replanAdoption.targetTodoID}`)
+      }
+      if (supervisor.lastGovernorTrace.suggestion.replanAdoption.proposedAction) {
+        debugLines.push(`Replan action: ${supervisor.lastGovernorTrace.suggestion.replanAdoption.proposedAction}`)
+      }
     }
   }
   if (supervisor?.lastGovernorTraceAt)
@@ -844,8 +859,12 @@ export const getSessionStatusSummary = (input: {
     completionRequest: trace.suggestion?.completionRequest?.proposalID
       ? `${trace.suggestion.completionRequest.proposalID}${trace.suggestion.completionRequest.hostAdopted ? " · adopted" : ""}`
       : undefined,
+    completionScope: trace.suggestion?.completionRequest?.completionScope,
     pauseRequest: trace.suggestion?.pauseRequest?.pauseScope,
     replanRequest: trace.suggestion?.replanRequest?.proposedNextStep,
+    replanTarget: trace.suggestion?.replanAdoption?.targetTodoID
+      ? `${trace.suggestion.replanAdoption.targetTodoID}${trace.suggestion.replanAdoption.proposedAction ? ` · ${trace.suggestion.replanAdoption.proposedAction}` : ""}`
+      : undefined,
     replanAdoption: trace.suggestion?.replanAdoption?.proposalID
       ? `${trace.suggestion.replanAdoption.proposalID}${trace.suggestion.replanAdoption.hostAdopted ? " · adopted" : ""}`
       : undefined,
