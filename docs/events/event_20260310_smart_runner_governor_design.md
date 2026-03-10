@@ -1330,3 +1330,32 @@ Validation（pause assist summary parity）:
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 advisory pause bounded assist contract
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 advisory pause observability parity
+
+### Current Slice (unified adoption policy evaluator)
+
+需求：隨著 `ask_user / request_approval / pause_for_risk / complete` 的 adoption path 逐步增加，policy 判斷開始分散：`ask_user` 有自己的一套 user-confirm 檢查，host-adoptable 類型又有另一套。若之後再擴充 suggestion kinds，會持續重複。需要把共用 policy 骨架收斂成單一 evaluator。
+
+範圍：
+
+- IN
+  - 新增共用 adoption policy evaluator
+  - 讓 `evaluateSmartRunnerAskUserAdoption(...)` 改走共用 policy 骨架再疊加 ask-user 專屬 gates
+  - 讓 `evaluateSmartRunnerHostAdoptionPolicy(...)` 改以共用 evaluator 映射結果
+  - 補 governor tests 覆蓋 generic policy 結果
+- OUT
+  - 不改 trace schema
+  - 不改既有 adoption reason 文案對外語意
+
+任務清單：
+
+- [x] 新增 `evaluateSmartRunnerAdoptionPolicy(...)`
+- [x] 將 ask-user / host-adoptable evaluator 改為共用骨架
+- [x] 補 governor regression tests
+
+Validation（unified adoption policy evaluator）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts` ✅
+- 結果：`ask_user` 與 host-adoptable 類型現在共用同一組 policy-mode / user-confirm / host-review 判斷骨架；`ask_user` 只額外保留 question text 與 pending question 等專屬 gate，後續擴充新的 suggestion kind 時不必再複製整套 policy 邏輯。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 unified adoption policy evaluator contract

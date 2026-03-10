@@ -10,6 +10,7 @@ import {
   annotateSmartRunnerTraceAssist,
   applySmartRunnerBoundedAssist,
   evaluateSmartRunnerAskUserAdoption,
+  evaluateSmartRunnerAdoptionPolicy,
   evaluateSmartRunnerHostAdoptionPolicy,
   buildSmartRunnerGovernorContext,
   getSmartRunnerAskUserQuestionText,
@@ -508,6 +509,52 @@ describe("Smart Runner Governor", () => {
     expect(evaluateSmartRunnerHostAdoptionPolicy({ adoptionMode: "host_adoptable", requiresHostReview: false })).toBe(
       "host_review_missing",
     )
+  })
+
+  it("evaluates generic adoption policy rules for both user-confirm and host-adoptable paths", () => {
+    expect(
+      evaluateSmartRunnerAdoptionPolicy({
+        policy: {
+          adoptionMode: "user_confirm_required",
+          requiresUserConfirm: true,
+          requiresHostReview: true,
+        },
+        expectedMode: "user_confirm_required",
+        requireUserConfirm: true,
+      }),
+    ).toBe("adopted")
+    expect(
+      evaluateSmartRunnerAdoptionPolicy({
+        policy: {
+          adoptionMode: "host_adoptable",
+          requiresUserConfirm: false,
+          requiresHostReview: true,
+        },
+        expectedMode: "user_confirm_required",
+        requireUserConfirm: true,
+      }),
+    ).toBe("policy_mode_mismatch")
+    expect(
+      evaluateSmartRunnerAdoptionPolicy({
+        policy: {
+          adoptionMode: "host_adoptable",
+          requiresUserConfirm: true,
+          requiresHostReview: true,
+        },
+        expectedMode: "host_adoptable",
+        requireUserConfirm: false,
+      }),
+    ).toBe("user_confirm_required")
+    expect(
+      evaluateSmartRunnerAdoptionPolicy({
+        policy: {
+          adoptionMode: "user_confirm_required",
+          requiresHostReview: true,
+        },
+        expectedMode: "user_confirm_required",
+        requireUserConfirm: true,
+      }),
+    ).toBe("user_confirm_missing")
   })
 
   it("annotates ask-user suggestions without changing control flow", () => {

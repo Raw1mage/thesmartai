@@ -273,6 +273,15 @@ export type SmartRunnerHostAdoptionPolicyReason =
   | "user_confirm_required"
   | "host_review_missing"
 
+export type SmartRunnerAdoptionPolicyMode = "advisory_only" | "host_adoptable" | "user_confirm_required"
+
+export type SmartRunnerGenericAdoptionPolicyReason =
+  | "adopted"
+  | "policy_mode_mismatch"
+  | "user_confirm_required"
+  | "user_confirm_missing"
+  | "host_review_missing"
+
 export type SmartRunnerBoundedAssistResult = {
   decision: DeterministicContinueDecision
   narration?: string
@@ -309,14 +318,18 @@ export function evaluateSmartRunnerAskUserAdoption(input: {
   if (!input.suggestion?.askUserAdoption) return { adopted: false }
 
   const questionText = getSmartRunnerAskUserQuestionText({ suggestion: input.suggestion })
-  const policy = input.suggestion.askUserAdoption.policy
+  const policyReason = evaluateSmartRunnerAdoptionPolicy({
+    policy: input.suggestion.askUserAdoption.policy,
+    expectedMode: "user_confirm_required",
+    requireUserConfirm: true,
+  })
   const reason = !questionText
     ? ("missing_question" as const)
-    : policy?.adoptionMode !== "user_confirm_required"
+    : policyReason === "policy_mode_mismatch"
       ? ("policy_not_user_confirm_required" as const)
-      : policy?.requiresUserConfirm !== true
+      : policyReason === "user_confirm_missing"
         ? ("user_confirm_missing" as const)
-        : policy?.requiresHostReview === false
+        : policyReason === "host_review_missing"
           ? ("host_review_missing" as const)
           : input.pendingQuestions > 0
             ? ("question_already_pending" as const)
@@ -334,13 +347,36 @@ export function evaluateSmartRunnerHostAdoptionPolicy(input?: {
   requiresUserConfirm?: boolean
   requiresHostReview?: boolean
 }): SmartRunnerHostAdoptionPolicyReason {
-  return input?.adoptionMode !== "host_adoptable"
+  const result = evaluateSmartRunnerAdoptionPolicy({
+    policy: input,
+    expectedMode: "host_adoptable",
+    requireUserConfirm: false,
+  })
+  return result === "policy_mode_mismatch"
     ? "policy_not_host_adoptable"
-    : input?.requiresUserConfirm === true
+    : result === "user_confirm_missing"
       ? "user_confirm_required"
-      : input?.requiresHostReview === false
-        ? "host_review_missing"
-        : "adopted"
+      : result
+}
+
+export function evaluateSmartRunnerAdoptionPolicy(input: {
+  policy?: {
+    adoptionMode?: SmartRunnerAdoptionPolicyMode
+    requiresUserConfirm?: boolean
+    requiresHostReview?: boolean
+  }
+  expectedMode: Exclude<SmartRunnerAdoptionPolicyMode, "advisory_only">
+  requireUserConfirm: boolean
+}): SmartRunnerGenericAdoptionPolicyReason {
+  return input.policy?.adoptionMode !== input.expectedMode
+    ? "policy_mode_mismatch"
+    : input.requireUserConfirm && input.policy?.requiresUserConfirm !== true
+      ? "user_confirm_missing"
+      : !input.requireUserConfirm && input.policy?.requiresUserConfirm === true
+        ? "user_confirm_required"
+        : input.policy?.requiresHostReview === false
+          ? "host_review_missing"
+          : "adopted"
 }
 
 function buildDocsSyncAssistText(input: { todo: Todo.Info }) {
