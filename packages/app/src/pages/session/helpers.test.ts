@@ -346,7 +346,20 @@ describe("getSessionStatusSummary", () => {
         { label: "wait", tone: "info" },
         { label: "waiting: subagent", tone: "neutral" },
       ],
-      processLines: ["Workflow: Waiting", "Stop: Wait subagent", "Runtime: busy"],
+      processLines: [
+        "Workflow: Waiting",
+        "Stop: Wait subagent",
+        "Runtime: busy",
+        "AI layer: 1 narration",
+        "AI latest: pause",
+      ],
+      smartRunnerConversation: {
+        totalNarrations: 1,
+        pauseNarrations: 1,
+        completeNarrations: 0,
+        latestKind: "pause",
+        latestLabel: "Paused: a delegated subagent task is still running.",
+      },
       latestNarration: { label: "Paused: a delegated subagent task is still running.", tone: "warning" },
       latestResult: { label: "Completed: delegate API audit", tone: "success" },
     })
@@ -1092,5 +1105,7 @@ describe("getSessionStatusSummary", () => {
       latestKind: "continue",
       latestLabel: "[AI] Starting the next step now.",
     })
+    expect(summary.processLines).toContain("AI layer: 3 narrations")
+    expect(summary.processLines).toContain("AI latest: continue")
   })
 })

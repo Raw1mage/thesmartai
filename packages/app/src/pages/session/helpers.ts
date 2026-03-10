@@ -959,6 +959,12 @@ export const getSessionStatusSummary = (input: {
     messages: input.messages,
     partsByMessage: input.partsByMessage,
   })
+  if (smartRunnerConversation) {
+    processLines.push(
+      `AI layer: ${smartRunnerConversation.totalNarrations} narration${smartRunnerConversation.totalNarrations > 1 ? "s" : ""}`,
+    )
+    if (smartRunnerConversation.latestKind) processLines.push(`AI latest: ${smartRunnerConversation.latestKind}`)
+  }
   const latestTodo = [...todos].reverse().find((todo) => todo.status === "completed" || todo.status === "cancelled")
   const latestResult =
     latestTaskResult ??

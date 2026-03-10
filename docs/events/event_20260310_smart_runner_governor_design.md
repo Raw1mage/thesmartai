@@ -1441,6 +1441,32 @@ Validation（meeting-model pre-observability layer）:
 - `bun x eslint /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
 - `bun test /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts --test-name-pattern "getSessionStatusSummary"` ✅
 - 結果：session side panel 現在會把 `[AI]` autonomous narration 當成獨立 conversation layer 做摘要，能看到 AI narration 的總數、pause/complete 次數，以及最新 AI 文本，作為 meeting model 的前置觀測層。
+
+### Current Slice (AI layer activity in process summary)
+
+需求：雖然 side panel 已有 Smart Runner conversation layer 卡片，但使用者若沒展開 Smart Runner 區塊，仍不容易第一眼注意到 `[AI]` 介入活動。需要把最小摘要提升到 process summary 層，讓 AI layer 活躍度更即時可見。
+
+範圍：
+
+- IN
+  - 在 processLines 新增 `AI layer` 與 `AI latest`
+  - 補 helper test 驗證 process summary 有 AI layer 摘要
+- OUT
+  - 不新增新的 UI 區塊
+  - 不改 message schema
+
+任務清單：
+
+- [x] 將 Smart Runner conversation summary 接到 processLines
+- [x] 補 helper regression 測試
+
+Validation（AI layer activity in process summary）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts --test-name-pattern "getSessionStatusSummary"` ✅
+- 結果：process summary 現在也會直接顯示 `AI layer` 與 `AI latest`，讓使用者不進 Smart Runner 歷史卡片也能先看到 `[AI]` 介入活躍度。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 AI layer process summary hook
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 meeting-model pre-observability layer
 - Architecture Sync: Updated
