@@ -51,6 +51,7 @@ import { Provider } from "@/provider/provider"
 import { probeModelAvailability } from "../util/model-probe"
 import { Auth } from "@/auth"
 import { formatOpenAIQuotaDisplay, formatRequestMonitorQuotaDisplay, getQuotaHintsForAccounts } from "@/account/quota"
+import { shouldAutoOpenProvidersPage } from "./dialog-admin-auto-open"
 
 type DialogAdminOption = DialogSelectOption<unknown> & {
   coreId?: string
@@ -228,6 +229,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   }
   const [currentOption, setCurrentOption] = createSignal<DialogSelectOption<unknown> | null>(null)
   const [activitySort, setActivitySort] = createSignal<"usage" | "provider" | "model">("usage")
+  const [didAutoOpenProviders, setDidAutoOpenProviders] = createSignal(false)
 
   const menuLabel = () => {
     const s = step()
@@ -290,6 +292,23 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       provider: selectedProviderID(),
     })
     setPrevStep(next)
+  })
+
+  createEffect(() => {
+    const stats = activityData().stats
+    if (
+      !shouldAutoOpenProvidersPage({
+        didAutoOpenProviders: didAutoOpenProviders(),
+        targetProviderID: props.targetProviderID,
+        page: page(),
+        step: step(),
+        activityTotal: stats.total,
+      })
+    )
+      return
+    debugCheckpoint("admin", "auto open providers page", { reason: "empty activities" })
+    setDidAutoOpenProviders(true)
+    setPageLogged("providers", "empty activities auto-open")
   })
 
   const openGoogleAdd = () => {
