@@ -1586,3 +1586,32 @@ Validation（AI intervention role trend）:
 - 結果：session summary 與 side panel 現在可直接顯示最近幾次 Smart Runner 介入角色序列，讓 meeting-style 觀測從靜態分布再往前走一步，能看見近期介入流向。
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 AI intervention role trend contract
+
+### Current Slice (AI operator digest)
+
+需求：現在 session side 已有 `latestRole`、`roleCounts`、`recentRoles`，但操作者仍要自己在腦中拼裝。下一步要提供一條 compact operator digest，讓人能一眼看懂 Smart Runner 最近的會議語義狀態。
+
+範圍：
+
+- IN
+  - 在 Smart Runner conversation summary 中新增 `digest`
+  - process summary 顯示 `AI digest: ...`
+  - side panel 顯示同一條 digest
+- OUT
+  - 不改 runtime 控制流
+  - 不改 message schema
+  - 不新增新的 suggestion / assist 類型
+
+任務清單：
+
+- [x] 在 `helpers.ts` conversation summary 加入 `digest`
+- [x] 在 process summary 與 `session-side-panel.tsx` 顯示 digest
+- [x] 擴充 `helpers.test.ts` 驗證 `AI digest`
+
+Validation（AI operator digest）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts /home/pkcs12/projects/opencode/packages/app/src/pages/session/session-side-panel.tsx` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts --test-name-pattern "getSessionStatusSummary"` ✅
+- 結果：session summary 與 side panel 現在都會顯示一條 compact `AI digest`，把 latest role 與 recent role trend 壓成可快速掃讀的主持摘要。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 AI operator digest contract

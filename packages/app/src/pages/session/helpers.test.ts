@@ -353,13 +353,16 @@ describe("getSessionStatusSummary", () => {
         "AI layer: 1 narration",
         "AI latest: pause",
         "AI role: interruption",
+        "AI digest: latest interruption",
       ],
       smartRunnerConversation: {
         totalNarrations: 1,
         pauseNarrations: 1,
         completeNarrations: 0,
+        kindCounts: [{ kind: "pause", count: 1 }],
         roleCounts: [{ role: "interruption", count: 1 }],
         recentRoles: ["interruption"],
+        digest: "latest interruption",
         latestKind: "pause",
         latestRole: "interruption",
         latestLabel: "Paused: a delegated subagent task is still running.",
@@ -1117,6 +1120,7 @@ describe("getSessionStatusSummary", () => {
         { role: "interruption", count: 1 },
       ],
       recentRoles: ["interruption", "completion", "continuation"],
+      digest: "latest continuation · trend interruption → completion → continuation",
       latestKind: "continue",
       latestRole: "continuation",
       latestLabel: "[AI] Starting the next step now.",
@@ -1125,5 +1129,8 @@ describe("getSessionStatusSummary", () => {
     expect(summary.processLines).toContain("AI latest: continue")
     expect(summary.processLines).toContain("AI role: continuation")
     expect(summary.processLines).toContain("AI trend: interruption → completion → continuation")
+    expect(summary.processLines).toContain(
+      "AI digest: latest continuation · trend interruption → completion → continuation",
+    )
   })
 })

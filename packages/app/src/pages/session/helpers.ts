@@ -482,6 +482,7 @@ export type SessionStatusSummary = {
     kindCounts: Array<{ kind: string; count: number }>
     roleCounts: Array<{ role: string; count: number }>
     recentRoles: string[]
+    digest?: string
     latestKind?: string
     latestRole?: string
     latestLabel?: string
@@ -602,6 +603,12 @@ const summarizeSmartRunnerConversation = (input: {
   }
 
   if (totalNarrations === 0) return undefined
+  const recentRoles = [...recentRolesNewestFirst].reverse()
+  const digest = latestRole
+    ? recentRoles.length > 1
+      ? `latest ${latestRole} · trend ${recentRoles.join(" → ")}`
+      : `latest ${latestRole}`
+    : undefined
   return {
     totalNarrations,
     pauseNarrations,
@@ -612,7 +619,8 @@ const summarizeSmartRunnerConversation = (input: {
     roleCounts: [...roleCounts.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([role, count]) => ({ role, count })),
-    recentRoles: [...recentRolesNewestFirst].reverse(),
+    recentRoles,
+    digest,
     latestKind,
     latestRole,
     latestLabel,
@@ -998,6 +1006,7 @@ export const getSessionStatusSummary = (input: {
     if (smartRunnerConversation.recentRoles.length > 1) {
       processLines.push(`AI trend: ${smartRunnerConversation.recentRoles.join(" → ")}`)
     }
+    if (smartRunnerConversation.digest) processLines.push(`AI digest: ${smartRunnerConversation.digest}`)
   }
   const latestTodo = [...todos].reverse().find((todo) => todo.status === "completed" || todo.status === "cancelled")
   const latestResult =
