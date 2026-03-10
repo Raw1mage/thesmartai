@@ -91,6 +91,10 @@ Status: In Progress
 - 已確認純 agent 文字輸出在無 toolcall 干擾時可順暢貼底。
 - 真正問題出現在 thinking/sticky/steps/tool updates 共同存在時的 focus/anchor 搶權。
 - 已確認 `session-page resize-follow` 是主要強制力來源之一。
+- 新增使用者重現條件（phase3 後續觀察）：
+  - 在 `follow-bottom` 模式下，若較上方已有展開中的卡片，且下方持續 streaming 新內容，畫面仍可能出現快速 scroll oscillation。
+  - 使用者肉眼觀察不到具體是哪一塊在振動，但症狀符合「外層 page follow 與內層展開卡 anchoring/scroll state」互相競爭。
+  - 補充後續觀察：即使未立即復現 oscillation，只要上方有展開卡，追底也可能「追不夠底」，使最新內容局部落到可視範圍外。
 
 ### Execution
 
@@ -135,6 +139,15 @@ Status: In Progress
      - `free-reading` 仍由 `userScrolled()/mode` 硬鎖保護，因此不會重現先前「一旦被判成未脫底就整頁搶權」的問題
   4. 目標
      - 向下箭頭按鈕成為真正有效的 resume 入口：按下後不只回到底一次，而是重新進入可持續 follow-bottom 的 streaming 狀態
+- Phase 3 第二輪偵查（expanded card oscillation hypothesis）
+  1. 新假設
+     - 問題不一定只剩 sticky；更可能是上方展開卡內部的 nested scrollable region（`data-scrollable`）仍保有自己的 anchoring/scroll state，與 page-level follow-bottom 競爭。
+  2. 最小收斂方向
+     - 先關閉 `tool-output[data-scrollable]` 這類內層展開卡的 `overflow-anchor`
+     - 讓 outer session scroller 在 follow-bottom 模式下成為唯一 anchor owner
+  3. 後續補強（under-follow after late layout）
+     - 即使同一拍已執行 `resize-follow`，上方展開卡的晚到 layout 仍可能讓 page-level target 變大，造成「已追底但其實還差一截」
+     - `create-auto-scroll.tsx` 現改為在 `resize-follow` 後再排一個下一幀 `deferred-follow` 檢查；若新的 `distanceFromBottom` 仍大於 1，就再補一次 bottom lock
 
 ### Validation
 
@@ -150,5 +163,10 @@ Status: In Progress
   - working/steps 更新時，視角不應再被 sticky thinking row 拉回使用者最後輸入處
   - 一旦進入 `free-reading`，除非按下 resume button，mode 不應被底部接近、resize 或 streaming 過程隱式改回 follow-bottom
   - 按下對話中間的向下箭頭後，應重新持續追底，而不是只瞬間跳到底一次
+- 本輪程式層補強
+  - `tool-output[data-scrollable]` 現在強制 `overflow-anchor: none`
+  - 目的是避免內層展開卡與外層 session scroller 同時充當 scroll anchor owner
+  - `create-auto-scroll.tsx` 在 `resize-follow` 後新增 `deferred-follow`
+  - 目的是補上上方展開卡或晚到 reflow 造成的 page-level under-follow
 - Architecture Sync: Verified (No doc changes)
   - 依據：本輪僅收斂前端 scroll ownership 的 page-level mode 表示與 debug observability，未改變模組邊界、資料流或 runtime architecture contract。

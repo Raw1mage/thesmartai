@@ -262,6 +262,7 @@
     height: auto;
     max-height: 240px;
     overflow-y: auto;
+    overflow-anchor: none;
     scrollbar-width: none;
     -ms-overflow-style: none;
 

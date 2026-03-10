@@ -20,6 +20,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let settling = false
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let autoTimer: ReturnType<typeof setTimeout> | undefined
+  let deferredFollowFrame: number | undefined
   let cleanup: (() => void) | undefined
   let auto: { top: number; time: number } | undefined
 
@@ -112,6 +113,26 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
     // `scrollTop` assignment bypasses any CSS `scroll-behavior: smooth`.
     el.scrollTop = el.scrollHeight
+  }
+
+  const scheduleDeferredFollow = (reason: string) => {
+    if (deferredFollowFrame !== undefined) cancelAnimationFrame(deferredFollowFrame)
+    deferredFollowFrame = requestAnimationFrame(() => {
+      deferredFollowFrame = undefined
+      const el = scroll
+      if (!el) return
+      if (userScrolled()) {
+        debug("deferred-follow-blocked-user", { reason })
+        return
+      }
+      const distance = distanceFromBottom(el)
+      if (distance <= 1) {
+        debug("deferred-follow-skip", { reason, distance })
+        return
+      }
+      debug("deferred-follow", { reason, distance })
+      scrollToBottomNow("auto")
+    })
   }
 
   const scrollToBottom = (force: boolean) => {
@@ -240,6 +261,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
       // "jump up then catch up" artifacts while streaming content.
       debug("resize-follow", { distance, followThreshold: followThreshold(), resumeOnly: options.resumeOnly === true })
       scrollToBottom(false)
+      scheduleDeferredFollow("resize-follow")
     },
   )
 
@@ -275,6 +297,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   onCleanup(() => {
     if (settleTimer) clearTimeout(settleTimer)
     if (autoTimer) clearTimeout(autoTimer)
+    if (deferredFollowFrame !== undefined) cancelAnimationFrame(deferredFollowFrame)
     if (cleanup) cleanup()
   })
 
