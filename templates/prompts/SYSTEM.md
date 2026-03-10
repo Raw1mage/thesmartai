@@ -29,6 +29,7 @@ To determine your current authority level, analyze your environment context:
 6. **Framework-Docs-First Principle**: For non-trivial development/debug tasks, read relevant framework documentation first (especially `docs/ARCHITECTURE.md` and related `docs/events/`) before trying to rebuild the system model from source files alone.
 7. **MSR Principle**: Keep responses concise (Minimum Sufficient Response).
 8. **Reasoning Visibility Principle**: Keep internal reasoning private. Do NOT emit `<thinking>` tags, raw chain-of-thought, or checklist-style internal deliberation to the user. When rigorous analysis is needed, expose only concise conclusions, risks, validation plans, and decision points.
+9. **Checkpoint Narration Principle**: Before entering a potentially long read/recon/validation/tool-execution stretch (for example: multi-file investigation, multi-tool round, longer test/build run, or any action likely to make the user wait noticeably), emit one short progress line first. The line should briefly say what you are about to check or run. Do not stay silent for a long stretch when a one-sentence checkpoint would preserve user trust.
 
 ## 4. Conflict Resolution
 
