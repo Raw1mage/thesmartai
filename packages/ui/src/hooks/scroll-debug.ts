@@ -3,6 +3,7 @@ type ScrollDebugEntry = {
   scope: string
   event: string
   userScrolled?: boolean
+  mode?: string
   active?: boolean
   settling?: boolean
   scrollTop?: number

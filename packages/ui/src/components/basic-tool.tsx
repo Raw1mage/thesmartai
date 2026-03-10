@@ -1,6 +1,7 @@
 import { createEffect, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { Collapsible } from "./collapsible"
 import { Icon, IconProps } from "./icon"
+import { useI18n } from "../context/i18n"
 
 export type TriggerTitle = {
   title: string
@@ -36,6 +37,7 @@ export interface BasicToolProps {
 }
 
 export function BasicTool(props: BasicToolProps) {
+  const i18n = useI18n()
   const [open, setOpen] = createSignal(props.defaultOpen ?? false)
 
   createEffect(() => {
@@ -116,7 +118,24 @@ export function BasicTool(props: BasicToolProps) {
         </div>
       </Collapsible.Trigger>
       <Show when={props.children && !props.hideDetails}>
-        <Collapsible.Content>{props.children}</Collapsible.Content>
+        <Collapsible.Content>
+          {props.children}
+          <Show when={open() && !props.locked}>
+            <div data-slot="basic-tool-bottom-collapse">
+              <button
+                type="button"
+                data-slot="bottom-collapse-icon"
+                aria-label={i18n.t("ui.message.collapse")}
+                onClick={(event: MouseEvent) => {
+                  event.stopPropagation()
+                  handleOpenChange(false)
+                }}
+              >
+                △
+              </button>
+            </div>
+          </Show>
+        </Collapsible.Content>
       </Show>
     </Collapsible>
   )

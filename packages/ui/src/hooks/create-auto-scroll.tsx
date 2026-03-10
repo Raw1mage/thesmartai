@@ -10,7 +10,10 @@ export interface AutoScrollOptions {
   bottomThreshold?: number
   debugName?: string
   followOnResize?: boolean
+  resumeOnly?: boolean
 }
+
+type ScrollMode = "follow-bottom" | "free-reading"
 
 export function createAutoScroll(options: AutoScrollOptions) {
   let scroll: HTMLElement | undefined
@@ -26,8 +29,16 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const [store, setStore] = createStore({
     contentRef: undefined as HTMLElement | undefined,
-    userScrolled: false,
+    mode: "follow-bottom" as ScrollMode,
   })
+
+  const userScrolled = () => store.mode === "free-reading"
+
+  const setMode = (mode: ScrollMode, reason: string, extra: Record<string, unknown> = {}) => {
+    if (store.mode === mode) return
+    setStore("mode", mode)
+    debug("mode-change", { mode, reason, ...extra })
+  }
 
   const active = () => options.working() || settling
 
@@ -42,7 +53,8 @@ export function createAutoScroll(options: AutoScrollOptions) {
       time: Date.now(),
       scope: options.debugName ?? "auto-scroll",
       event,
-      userScrolled: store.userScrolled,
+      userScrolled: userScrolled(),
+      mode: store.mode,
       active: active(),
       settling,
       scrollTop: el?.scrollTop,
@@ -109,11 +121,11 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
     debug("scroll-request", { force })
 
-    if (!force && store.userScrolled) {
+    if (!force && userScrolled()) {
       debug("scroll-blocked-user", { force })
       return
     }
-    if (force && store.userScrolled) setStore("userScrolled", false)
+    if (force && userScrolled()) setMode("follow-bottom", "forced-scroll")
 
     const distance = distanceFromBottom(el)
     if (distance < 2) {
@@ -130,12 +142,12 @@ export function createAutoScroll(options: AutoScrollOptions) {
     const el = scroll
     if (!el) return
     if (!canScroll(el)) {
-      if (store.userScrolled) setStore("userScrolled", false)
+      if (userScrolled()) setMode("follow-bottom", "no-overflow")
       return
     }
-    if (store.userScrolled) return
+    if (userScrolled()) return
 
-    setStore("userScrolled", true)
+    setMode("free-reading", "user-stop")
     debug("user-stop")
     options.onUserInteracted?.()
   }
@@ -157,18 +169,18 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (!el) return
 
     if (!canScroll(el)) {
-      if (store.userScrolled) setStore("userScrolled", false)
+      if (userScrolled()) setMode("follow-bottom", "no-overflow")
       return
     }
 
     if (distanceFromBottom(el) < threshold()) {
-      if (store.userScrolled) setStore("userScrolled", false)
+      if (userScrolled() && !options.resumeOnly) setMode("follow-bottom", "bottom-zone")
       debug("handle-scroll-bottom-zone")
       return
     }
 
     // Ignore scroll events triggered by our own scrollToBottom calls.
-    if (!store.userScrolled && isAuto(el)) {
+    if (!userScrolled() && isAuto(el)) {
       debug("handle-scroll-auto")
       scrollToBottom(false)
       return
@@ -197,7 +209,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
       return
     }
 
-    el.style.overflowAnchor = store.userScrolled ? "auto" : "none"
+    el.style.overflowAnchor = userScrolled() ? "auto" : "none"
   }
 
   createResizeObserver(
@@ -205,7 +217,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     () => {
       const el = scroll
       if (el && !canScroll(el)) {
-        if (store.userScrolled) setStore("userScrolled", false)
+        if (userScrolled()) setMode("follow-bottom", "resize-no-scroll")
         debug("resize-no-scroll")
         return
       }
@@ -214,19 +226,19 @@ export function createAutoScroll(options: AutoScrollOptions) {
         debug("resize-follow-disabled")
         return
       }
-      if (store.userScrolled) {
+      if (userScrolled()) {
         debug("resize-blocked-user")
         return
       }
       const distance = el ? distanceFromBottom(el) : Infinity
-      if (!Number.isFinite(distance) || distance > followThreshold()) {
+      if (!options.resumeOnly && (!Number.isFinite(distance) || distance > followThreshold())) {
         debug("resize-blocked-distance", { distance, followThreshold: followThreshold() })
         return
       }
       // ResizeObserver fires after layout, before paint.
       // Keep the bottom locked in the same frame to avoid visible
       // "jump up then catch up" artifacts while streaming content.
-      debug("resize-follow")
+      debug("resize-follow", { distance, followThreshold: followThreshold(), resumeOnly: options.resumeOnly === true })
       scrollToBottom(false)
     },
   )
@@ -239,7 +251,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
       if (working) {
         debug("working-start")
-        if (!store.userScrolled) scrollToBottom(true)
+        if (!userScrolled()) scrollToBottom(true)
         return
       }
 
@@ -252,9 +264,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
   )
 
   createEffect(() => {
-    // Track `userScrolled` even before `scrollRef` is attached, so we can
+    // Track scroll mode even before `scrollRef` is attached, so we can
     // update overflow anchoring once the element exists.
-    store.userScrolled
+    store.mode
     const el = scroll
     if (!el) return
     updateOverflowAnchor(el)
@@ -290,12 +302,13 @@ export function createAutoScroll(options: AutoScrollOptions) {
     handleInteraction,
     pause: stop,
     resume: () => {
-      if (store.userScrolled) setStore("userScrolled", false)
+      if (userScrolled()) setMode("follow-bottom", "explicit-resume")
       debug("resume")
       scrollToBottom(true)
     },
     scrollToBottom: () => scrollToBottom(false),
     forceScrollToBottom: () => scrollToBottom(true),
-    userScrolled: () => store.userScrolled,
+    userScrolled,
+    mode: () => store.mode,
   }
 }

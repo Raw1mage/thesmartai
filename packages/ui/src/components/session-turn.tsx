@@ -449,7 +449,8 @@ export function SessionTurn(
   const response = createMemo(() => lastTextPart()?.text)
   const responsePartId = createMemo(() => lastTextPart()?.id)
   const hasDiffs = createMemo(() => (message()?.summary?.diffs?.length ?? 0) > 0)
-  const hideResponsePart = createMemo(() => !working() && !!responsePartId())
+  const hideResponsePart = createMemo(() => !working() && !props.stepsExpanded && !!responsePartId())
+  const stickyDisabled = createMemo(() => working() || props.stepsExpanded)
 
   let renderStateLog = ""
   createEffect(() => {
@@ -494,6 +495,10 @@ export function SessionTurn(
   const updateStickyHeight = (height: number) => {
     const root = rootRef()
     if (!root) return
+    if (stickyDisabled()) {
+      root.style.setProperty("--session-turn-sticky-height", "0px")
+      return
+    }
     const next = Math.ceil(height)
     root.style.setProperty("--session-turn-sticky-height", `${next}px`)
     if (isScrollDebugEnabled()) {
@@ -666,7 +671,11 @@ export function SessionTurn(
                         <Message message={msg()} parts={attachmentParts()} queued={queued()} />
                       </div>
                     </Show>
-                    <div data-slot="session-turn-sticky" ref={setStickyRef}>
+                    <div
+                      data-slot="session-turn-sticky"
+                      data-sticky-disabled={stickyDisabled() ? "true" : undefined}
+                      ref={setStickyRef}
+                    >
                       {/* User Message */}
                       <div data-slot="session-turn-message-content" aria-live="off">
                         <Message message={msg()} parts={stickyParts()} queued={queued()} />
@@ -778,6 +787,16 @@ export function SessionTurn(
                             {errorText()}
                           </Card>
                         </Show>
+                        <div data-slot="session-turn-bottom-collapse">
+                          <button
+                            type="button"
+                            data-slot="bottom-collapse-icon"
+                            aria-label={i18n.t("ui.sessionTurn.steps.hide")}
+                            onClick={props.onStepsExpandedToggle ?? (() => {})}
+                          >
+                            △
+                          </button>
+                        </div>
                       </div>
                     </Show>
                     <Show when={!props.stepsExpanded && answeredQuestionParts().length > 0}>
@@ -791,7 +810,7 @@ export function SessionTurn(
                     <div class="sr-only" aria-live="polite">
                       {!working() && response() ? response() : ""}
                     </div>
-                    <Show when={!working() && response()}>
+                    <Show when={!working() && !props.stepsExpanded && response()}>
                       <div data-slot="session-turn-summary-section">
                         <div data-slot="session-turn-summary-header">
                           <div data-slot="session-turn-summary-title-row">

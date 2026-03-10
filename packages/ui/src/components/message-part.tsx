@@ -47,7 +47,6 @@ import { getDirectory as _getDirectory, getFilename } from "@opencode-ai/util/pa
 import { checksum } from "@opencode-ai/util/encode"
 import { Tooltip } from "./tooltip"
 import { IconButton } from "./icon-button"
-import { createAutoScroll } from "../hooks"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 
 interface Diagnostic {
@@ -129,6 +128,18 @@ function BashToolOutput(props: { text: string }) {
       style={{ "overflow-anchor": "none" }}
     >
       <Markdown text={props.text} />
+      <Show when={expanded()}>
+        <div data-slot="bash-output-bottom-collapse">
+          <button
+            type="button"
+            data-slot="bottom-collapse-icon"
+            aria-label={i18n.t("ui.message.collapse")}
+            onClick={() => setExpanded(false)}
+          >
+            △
+          </button>
+        </div>
+      </Show>
       <Show when={canExpand()}>
         <button
           data-slot="bash-output-expand"
@@ -630,6 +641,21 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
           <HighlightedText text={text()} references={inlineFiles()} agents={agents()} />
           <Show when={props.queued}>
             <div data-slot="user-message-queued-indicator">{i18n.t("ui.message.queued")}</div>
+          </Show>
+          <Show when={expanded() && canExpand()}>
+            <div data-slot="user-message-bottom-collapse">
+              <button
+                type="button"
+                data-slot="bottom-collapse-icon"
+                aria-label={i18n.t("ui.message.collapse")}
+                onClick={(event: MouseEvent) => {
+                  event.stopPropagation()
+                  setExpanded(false)
+                }}
+              >
+                △
+              </button>
+            </div>
           </Show>
           <button
             data-slot="user-message-expand"
@@ -1180,11 +1206,6 @@ ToolRegistry.register({
       return getSessionToolParts(data.store, sessionId)
     })
 
-    const autoScroll = createAutoScroll({
-      working: () => true,
-      overflowAnchor: "auto",
-    })
-
     const childPermission = createMemo(() => {
       const sessionId = childSessionId()
       if (!sessionId) return undefined
@@ -1268,13 +1289,8 @@ ToolRegistry.register({
           </Match>
           <Match when={true}>
             <BasicTool icon="task" defaultOpen={true} trigger={trigger()}>
-              <div
-                ref={autoScroll.scrollRef}
-                onScroll={autoScroll.handleScroll}
-                data-component="tool-output"
-                data-scrollable
-              >
-                <div ref={autoScroll.contentRef} data-component="task-tools">
+              <div data-component="tool-output" data-scrollable style={{ "overflow-anchor": "none" }}>
+                <div data-component="task-tools">
                   <For each={childToolParts()}>
                     {(item) => {
                       const info = createMemo(() => getToolInfo(item.tool, item.state.input))

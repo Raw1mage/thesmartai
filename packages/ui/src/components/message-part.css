@@ -119,6 +119,13 @@
     &:hover [data-slot="user-message-copy-wrapper"] {
       opacity: 1;
     }
+
+    [data-slot="user-message-bottom-collapse"] {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      padding-top: 12px;
+    }
   }
 
   .text-text-strong {
@@ -268,6 +275,21 @@
   }
 }
 
+[data-slot="bottom-collapse-icon"] {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-weak);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-small);
+  line-height: 1;
+
+  &:hover {
+    color: var(--text-base);
+  }
+}
+
 [data-bash-output="true"] {
   width: 100%;
   position: relative;
@@ -290,6 +312,17 @@
 
   &[data-expanded="true"] {
     overflow: visible;
+  }
+
+  &[data-expanded="true"] [data-slot="bash-output-expand"] {
+    display: none;
+  }
+
+  [data-slot="bash-output-bottom-collapse"] {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    padding-top: 12px;
   }
 
   [data-slot="bash-output-expand"] {

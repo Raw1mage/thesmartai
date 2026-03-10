@@ -237,7 +237,7 @@ export default function Page() {
     })
   }
 
-  const isDesktop = createMediaQuery("(min-width: 1024px)")
+  const isDesktop = createMediaQuery("(min-width: 450px)")
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -1202,7 +1202,8 @@ export default function Page() {
     working: () => true,
     overflowAnchor: "dynamic",
     debugName: "session-page",
-    followOnResize: false,
+    followOnResize: true,
+    resumeOnly: true,
   })
 
   let scrollStateFrame: number | undefined
@@ -1255,6 +1256,21 @@ export default function Page() {
         if (scrolled) return
         setStore("messageId", undefined)
         clearMessageHash()
+      },
+      { defer: true },
+    ),
+  )
+
+  createEffect(
+    on(
+      autoScroll.mode,
+      (mode) => {
+        console.debug("[scroll-debug] session-page:mode", {
+          sessionID: params.id,
+          mode,
+          bottom: ui.scroll.bottom,
+          overflow: ui.scroll.overflow,
+        })
       },
       { defer: true },
     ),

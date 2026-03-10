@@ -87,6 +87,19 @@
       background: linear-gradient(to bottom, var(--background-stronger), transparent);
       pointer-events: none;
     }
+
+    &[data-sticky-disabled="true"] {
+      position: relative;
+      top: auto;
+      z-index: auto;
+      width: 100%;
+      margin-left: 0;
+      padding-left: 0;
+
+      &::after {
+        display: none;
+      }
+    }
   }
 
   [data-slot="session-turn-response-trigger"] {
@@ -572,13 +585,20 @@
     flex-direction: column;
     align-self: stretch;
     gap: 12px;
-    margin-left: 12px;
-    padding-left: 12px;
+    margin-left: 0;
+    padding-left: 8px;
     padding-right: 12px;
     border-left: 1px solid var(--border-base);
 
     > :first-child > [data-component="markdown"]:first-child {
       margin-top: 0;
+    }
+
+    [data-slot="session-turn-bottom-collapse"] {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      padding-top: 4px;
     }
   }
 
