@@ -938,6 +938,89 @@ describe("session.smart-runner-prompt", () => {
     expect(requestApproval).toHaveBeenCalledTimes(1)
   })
 
+  test("persists non-adopted request-approval reasons into the follow-up trace", async () => {
+    const getConfig = mock(async () => ({ enabled: true, assist: false }))
+    const evaluateGovernor = mock(async () => ({
+      source: "smart_runner_governor",
+      dryRun: true,
+      status: "advisory",
+      createdAt: Date.now(),
+      deterministicReason: "todo_pending",
+      suggestion: {
+        kind: "request_approval",
+        reason: "The next step changes architecture and should be approved first",
+        suggestedTodoID: "t9",
+        suggestedAction: "request_approval",
+        approvalRequest: {
+          proposalID: "approval:t9",
+          targetTodoID: "t9",
+          policy: {
+            adoptionMode: "advisory_only",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+            trustLevel: "medium",
+          },
+        },
+      },
+    }))
+    const persistTrace = mock(async () => {})
+
+    await SessionPrompt.handleSmartRunnerStopDecision({
+      sessionID: "ses_test",
+      activeModel: { providerId: "openai", modelID: "gpt-5.2" } as any,
+      autonomousRounds: 0,
+      lastUser: {
+        id: "msg_user",
+        sessionID: "ses_test",
+        role: "user",
+        time: { created: Date.now() },
+        agent: "build",
+        model: { providerId: "openai", modelID: "gpt-5.2" },
+        variant: undefined,
+        format: undefined,
+      },
+      messages: [],
+      todos: [{ id: "t9", content: "ship architecture change", status: "pending", priority: "high" }],
+      decision: {
+        continue: true,
+        reason: "todo_pending",
+        text: "Continue with the next planned step.",
+        todo: { id: "t9", content: "ship architecture change", status: "pending", priority: "high" },
+      },
+      getConfig: getConfig as any,
+      evaluateGovernor: evaluateGovernor as any,
+      listQuestions: async () => [],
+      persistTrace: persistTrace as any,
+      applyAssist: mock(() => ({
+        applied: false,
+        decision: {
+          continue: true as const,
+          reason: "todo_pending" as const,
+          text: "Continue with the next planned step.",
+          todo: { id: "t9", content: "ship architecture change", status: "pending", priority: "high" },
+        },
+      })) as any,
+      requestApproval: mock(async () => {
+        throw new Error("requestApproval should not run when policy blocks adoption")
+      }) as any,
+      replan: mock(async () => ({
+        adopted: false as const,
+        reason: undefined,
+        decision: {
+          continue: true as const,
+          reason: "todo_pending" as const,
+          text: "Continue with the next planned step.",
+          todo: { id: "t9", content: "ship architecture change", status: "pending", priority: "high" },
+        },
+      })) as any,
+    })
+
+    expect(persistTrace).toHaveBeenCalledTimes(1)
+    expect((persistTrace as any).mock.calls[0][0].trace.suggestion.approvalRequest.hostAdoptionReason).toBe(
+      "policy_not_host_adoptable",
+    )
+  })
+
   test("coordinates stop-decision pause-for-risk path", async () => {
     const getConfig = mock(async () => ({ enabled: true, assist: false }))
     const evaluateGovernor = mock(async () => ({
@@ -1008,6 +1091,89 @@ describe("session.smart-runner-prompt", () => {
       }),
     )
     expect(pauseForRisk).toHaveBeenCalledTimes(1)
+  })
+
+  test("persists non-adopted pause-for-risk reasons into the follow-up trace", async () => {
+    const getConfig = mock(async () => ({ enabled: true, assist: false }))
+    const evaluateGovernor = mock(async () => ({
+      source: "smart_runner_governor",
+      dryRun: true,
+      status: "advisory",
+      createdAt: Date.now(),
+      deterministicReason: "todo_pending",
+      suggestion: {
+        kind: "pause_for_risk",
+        reason: "The next step is risky enough that the host should pause for review first",
+        suggestedTodoID: "t7",
+        suggestedAction: "pause_for_risk",
+        riskPauseRequest: {
+          proposalID: "risk-pause:t7",
+          targetTodoID: "t7",
+          policy: {
+            adoptionMode: "advisory_only",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+            trustLevel: "medium",
+          },
+        },
+      },
+    }))
+    const persistTrace = mock(async () => {})
+
+    await SessionPrompt.handleSmartRunnerStopDecision({
+      sessionID: "ses_test",
+      activeModel: { providerId: "openai", modelID: "gpt-5.2" } as any,
+      autonomousRounds: 0,
+      lastUser: {
+        id: "msg_user",
+        sessionID: "ses_test",
+        role: "user",
+        time: { created: Date.now() },
+        agent: "build",
+        model: { providerId: "openai", modelID: "gpt-5.2" },
+        variant: undefined,
+        format: undefined,
+      },
+      messages: [],
+      todos: [{ id: "t7", content: "touch shared workflow path", status: "pending", priority: "high" }],
+      decision: {
+        continue: true,
+        reason: "todo_pending",
+        text: "Continue with the next planned step.",
+        todo: { id: "t7", content: "touch shared workflow path", status: "pending", priority: "high" },
+      },
+      getConfig: getConfig as any,
+      evaluateGovernor: evaluateGovernor as any,
+      listQuestions: async () => [],
+      persistTrace: persistTrace as any,
+      applyAssist: mock(() => ({
+        applied: false,
+        decision: {
+          continue: true as const,
+          reason: "todo_pending" as const,
+          text: "Continue with the next planned step.",
+          todo: { id: "t7", content: "touch shared workflow path", status: "pending", priority: "high" },
+        },
+      })) as any,
+      pauseForRisk: mock(async () => {
+        throw new Error("pauseForRisk should not run when policy blocks adoption")
+      }) as any,
+      replan: mock(async () => ({
+        adopted: false as const,
+        reason: undefined,
+        decision: {
+          continue: true as const,
+          reason: "todo_pending" as const,
+          text: "Continue with the next planned step.",
+          todo: { id: "t7", content: "touch shared workflow path", status: "pending", priority: "high" },
+        },
+      })) as any,
+    })
+
+    expect(persistTrace).toHaveBeenCalledTimes(1)
+    expect((persistTrace as any).mock.calls[0][0].trace.suggestion.riskPauseRequest.hostAdoptionReason).toBe(
+      "policy_not_host_adoptable",
+    )
   })
 
   test("coordinates stop-decision complete path", async () => {

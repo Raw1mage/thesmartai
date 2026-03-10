@@ -252,6 +252,12 @@ export type SmartRunnerAskUserAdoptionReason = NonNullable<
   NonNullable<NonNullable<SmartRunnerTrace["suggestion"]>["askUserAdoption"]>["hostAdoptionReason"]
 >
 
+export type SmartRunnerHostAdoptionPolicyReason =
+  | "adopted"
+  | "policy_not_host_adoptable"
+  | "user_confirm_required"
+  | "host_review_missing"
+
 export type SmartRunnerBoundedAssistResult = {
   decision: DeterministicContinueDecision
   narration?: string
@@ -306,6 +312,20 @@ export function evaluateSmartRunnerAskUserAdoption(input: {
     reason,
     questionText,
   }
+}
+
+export function evaluateSmartRunnerHostAdoptionPolicy(input?: {
+  adoptionMode?: "advisory_only" | "host_adoptable" | "user_confirm_required"
+  requiresUserConfirm?: boolean
+  requiresHostReview?: boolean
+}): SmartRunnerHostAdoptionPolicyReason {
+  return input?.adoptionMode !== "host_adoptable"
+    ? "policy_not_host_adoptable"
+    : input?.requiresUserConfirm === true
+      ? "user_confirm_required"
+      : input?.requiresHostReview === false
+        ? "host_review_missing"
+        : "adopted"
 }
 
 function buildDocsSyncAssistText(input: { todo: Todo.Info }) {

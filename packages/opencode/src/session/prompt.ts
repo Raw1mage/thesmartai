@@ -77,6 +77,7 @@ import {
   annotateSmartRunnerTraceSuggestion,
   applySmartRunnerBoundedAssist,
   evaluateSmartRunnerAskUserAdoption,
+  evaluateSmartRunnerHostAdoptionPolicy,
   evaluateSmartRunnerGovernorDryRun,
   getSmartRunnerAskUserQuestionText,
   getSmartRunnerConfig,
@@ -640,15 +641,7 @@ export namespace SessionPrompt {
     })
 
     if (suggestedTrace.suggestion?.kind === "request_approval") {
-      const policy = suggestedTrace.suggestion.approvalRequest?.policy
-      const approvalReason =
-        policy?.adoptionMode !== "host_adoptable"
-          ? ("policy_not_host_adoptable" as const)
-          : policy?.requiresUserConfirm === true
-            ? ("user_confirm_required" as const)
-            : policy?.requiresHostReview === false
-              ? ("host_review_missing" as const)
-              : ("adopted" as const)
+      const approvalReason = evaluateSmartRunnerHostAdoptionPolicy(suggestedTrace.suggestion.approvalRequest?.policy)
       const approvalTrace = annotateSmartRunnerApprovalAdoption({
         trace: suggestedTrace,
         adopted: approvalReason === "adopted",
@@ -666,18 +659,11 @@ export namespace SessionPrompt {
           trace: approvalTrace,
         }
       }
+      traceForAssist = approvalTrace
     }
 
     if (suggestedTrace.suggestion?.kind === "pause_for_risk") {
-      const policy = suggestedTrace.suggestion.riskPauseRequest?.policy
-      const riskPauseReason =
-        policy?.adoptionMode !== "host_adoptable"
-          ? ("policy_not_host_adoptable" as const)
-          : policy?.requiresUserConfirm === true
-            ? ("user_confirm_required" as const)
-            : policy?.requiresHostReview === false
-              ? ("host_review_missing" as const)
-              : ("adopted" as const)
+      const riskPauseReason = evaluateSmartRunnerHostAdoptionPolicy(suggestedTrace.suggestion.riskPauseRequest?.policy)
       const riskPauseTrace = annotateSmartRunnerRiskPauseAdoption({
         trace: suggestedTrace,
         adopted: riskPauseReason === "adopted",
@@ -695,6 +681,7 @@ export namespace SessionPrompt {
           trace: riskPauseTrace,
         }
       }
+      traceForAssist = riskPauseTrace
     }
 
     if (suggestedTrace.suggestion?.kind === "complete") {

@@ -1190,3 +1190,31 @@ Validation（Smart Runner adoption observability parity）:
 - 結果：session side panel 現在能對稱顯示 `request_approval / pause_for_risk / complete` 的 proposal、policy 與 adoptionOutcome，摘要也能統計 adopted / not adopted 數量。
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 session-side Smart Runner observability parity
+
+### Current Slice (non-adopted approval/risk trace persistence)
+
+需求：`ask_user / replan / complete` 在 proposal 未被 host 採納時，都已能把拒絕原因留在後續 trace / summary；但 `request_approval / pause_for_risk` 先前只有 adopted path 會穩定寫回 trace。這會讓後續 assist/debug/history 無法對稱看見「為何沒有採納」。
+
+範圍：
+
+- IN
+  - 將 approval/risk 的 host adoption policy 判斷抽成 helper
+  - 在未採納時也把 annotated trace 帶入後續 persist 路徑
+  - 補 governor / prompt tests 覆蓋 non-adopted policy reasons
+- OUT
+  - 不改 approval/risk 的 adopted path 行為
+  - 不改 suggestion schema
+
+任務清單：
+
+- [x] 新增可重用的 host-adoptable policy evaluation helper
+- [x] 讓 request_approval / pause_for_risk 的 non-adopted reason 進入 `traceForAssist`
+- [x] 補 prompt regression 測試，確認 persist trace 會留下 non-adopted reason
+
+Validation（non-adopted approval/risk trace persistence）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- 結果：`request_approval / pause_for_risk` 即使未被 host 採納，也會把 `policy_not_host_adoptable` 等原因保留進後續 trace；後續 Smart Runner summary/history 因而能與其他 suggestion kinds 保持對稱。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 non-adopted approval/risk trace persistence contract

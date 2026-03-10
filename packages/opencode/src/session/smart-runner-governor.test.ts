@@ -10,6 +10,7 @@ import {
   annotateSmartRunnerTraceAssist,
   applySmartRunnerBoundedAssist,
   evaluateSmartRunnerAskUserAdoption,
+  evaluateSmartRunnerHostAdoptionPolicy,
   buildSmartRunnerGovernorContext,
   getSmartRunnerAskUserQuestionText,
   prefixSmartRunnerText,
@@ -488,6 +489,25 @@ describe("Smart Runner Governor", () => {
       reason: "missing_question",
       questionText: undefined,
     })
+  })
+
+  it("evaluates host-adoptable policy outcomes for approval-like proposals", () => {
+    expect(evaluateSmartRunnerHostAdoptionPolicy({ adoptionMode: "host_adoptable", requiresHostReview: true })).toBe(
+      "adopted",
+    )
+    expect(evaluateSmartRunnerHostAdoptionPolicy({ adoptionMode: "advisory_only", requiresHostReview: true })).toBe(
+      "policy_not_host_adoptable",
+    )
+    expect(
+      evaluateSmartRunnerHostAdoptionPolicy({
+        adoptionMode: "host_adoptable",
+        requiresUserConfirm: true,
+        requiresHostReview: true,
+      }),
+    ).toBe("user_confirm_required")
+    expect(evaluateSmartRunnerHostAdoptionPolicy({ adoptionMode: "host_adoptable", requiresHostReview: false })).toBe(
+      "host_review_missing",
+    )
   })
 
   it("annotates ask-user suggestions without changing control flow", () => {
