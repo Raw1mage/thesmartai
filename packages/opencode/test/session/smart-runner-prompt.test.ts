@@ -173,7 +173,7 @@ describe("session.smart-runner-prompt", () => {
     expect(persistTrace).toHaveBeenCalledTimes(1)
     expect(updateMessage).toHaveBeenCalledTimes(1)
     expect(updatePart).toHaveBeenCalledTimes(1)
-    expect(updatePart.mock.calls[0]?.[0]).toEqual(
+    expect((updatePart as any).mock.calls.at(0)?.[0]).toEqual(
       expect.objectContaining({
         sessionID: "ses_test",
         type: "text",
@@ -183,6 +183,154 @@ describe("session.smart-runner-prompt", () => {
     )
     expect(setWorkflowState).toHaveBeenCalledTimes(0)
   })
+
+  test("integrates with real Question reject flow for ask-user adoption", async () => {
+    const question = SessionPrompt.buildSmartRunnerQuestion({
+      questionText: "Should we continue with the current product behavior?",
+    })
+    if (!question) throw new Error("expected question")
+
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const persistTrace = mock(async () => {})
+        const updateMessage = mock(async () => {})
+        const updatePart = mock(async () => {})
+        const setWorkflowState = mock(async () => ({}) as Awaited<ReturnType<typeof Session.setWorkflowState>>)
+
+        const promise = SessionPrompt.handleSmartRunnerAskUserAdoption({
+          sessionID: "ses_test",
+          question,
+          trace: {
+            source: "smart_runner_governor",
+            dryRun: true,
+            status: "advisory",
+            createdAt: Date.now(),
+            deterministicReason: "todo_pending",
+            suggestion: {
+              kind: "ask_user",
+              reason: "Need user input before continuing",
+              askUserAdoption: {
+                proposalID: "ask-user:t1",
+                hostAdopted: true,
+                hostAdoptionReason: "adopted",
+              },
+            },
+          },
+          lastUser: {
+            agent: "build",
+            model: { providerId: "openai", modelID: "gpt-5.2" },
+            variant: undefined,
+            format: undefined,
+          },
+          persistTrace,
+          updateMessage,
+          updatePart,
+          setWorkflowState,
+        })
+
+        let requestID: string | undefined
+        for (let i = 0; i < 20; i++) {
+          const pending = await QuestionModule.Question.list()
+          requestID = pending[0]?.id
+          if (requestID) break
+          await new Promise((resolve) => setTimeout(resolve, 10))
+        }
+        if (!requestID) throw new Error("expected pending question")
+
+        await QuestionModule.Question.reject(requestID)
+        const result = await promise
+
+        expect(result).toEqual({ outcome: "rejected" })
+        expect(persistTrace).toHaveBeenCalledTimes(2)
+        expect(updateMessage).toHaveBeenCalledTimes(0)
+        expect(updatePart).toHaveBeenCalledTimes(0)
+        expect(setWorkflowState).toHaveBeenCalledWith(
+          expect.objectContaining({
+            sessionID: "ses_test",
+            state: "waiting_user",
+            stopReason: "product_decision_needed",
+          }),
+        )
+      },
+    })
+  }, 15000)
+
+  test("integrates with real Question reply flow for ask-user adoption", async () => {
+    const question = SessionPrompt.buildSmartRunnerQuestion({
+      questionText: "Should we continue with the current product behavior?",
+    })
+    if (!question) throw new Error("expected question")
+
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const persistTrace = mock(async () => {})
+        const updateMessage = mock(async () => {})
+        const updatePart = mock(async () => {})
+        const setWorkflowState = mock(async () => ({}) as Awaited<ReturnType<typeof Session.setWorkflowState>>)
+
+        const promise = SessionPrompt.handleSmartRunnerAskUserAdoption({
+          sessionID: "ses_test",
+          question,
+          trace: {
+            source: "smart_runner_governor",
+            dryRun: true,
+            status: "advisory",
+            createdAt: Date.now(),
+            deterministicReason: "todo_pending",
+            suggestion: {
+              kind: "ask_user",
+              reason: "Need user input before continuing",
+              askUserAdoption: {
+                proposalID: "ask-user:t1",
+                hostAdopted: true,
+                hostAdoptionReason: "adopted",
+              },
+            },
+          },
+          lastUser: {
+            agent: "build",
+            model: { providerId: "openai", modelID: "gpt-5.2" },
+            variant: undefined,
+            format: undefined,
+          },
+          persistTrace,
+          updateMessage,
+          updatePart,
+          setWorkflowState,
+        })
+
+        let requestID: string | undefined
+        for (let i = 0; i < 20; i++) {
+          const pending = await QuestionModule.Question.list()
+          requestID = pending[0]?.id
+          if (requestID) break
+          await new Promise((resolve) => setTimeout(resolve, 10))
+        }
+        if (!requestID) throw new Error("expected pending question")
+
+        await QuestionModule.Question.reply({ requestID, answers: [["Proceed"]] })
+        const result = await promise
+
+        expect(result).toEqual({ outcome: "answered" })
+        expect(persistTrace).toHaveBeenCalledTimes(1)
+        expect(updateMessage).toHaveBeenCalledTimes(1)
+        expect(updatePart).toHaveBeenCalledTimes(1)
+        expect((updatePart as any).mock.calls.at(0)?.[0]).toEqual(
+          expect.objectContaining({
+            sessionID: "ses_test",
+            type: "text",
+            synthetic: true,
+            text: 'User answered Smart Runner question "Should we continue with the current product behavior?" with: Proceed. Continue with this answer in mind.',
+          }),
+        )
+        expect(setWorkflowState).toHaveBeenCalledTimes(0)
+      },
+    })
+  }, 15000)
 
   test("orchestrates host-adopted replan by updating todos and re-evaluating continuation", async () => {
     const todos: TodoInfo.Info[] = [

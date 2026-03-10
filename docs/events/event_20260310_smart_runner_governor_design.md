@@ -935,3 +935,55 @@ Validation（ask-user answered-path coverage）:
 - 結果：ask-user host adoption 的 answered / rejected 兩條 prompt-side orchestration 分支現在都有測試覆蓋。
 - Architecture Sync: Verified (No doc changes)
   - 比對依據：此輪只補 answered path tests，未改 runtime flow / policy / data-path contract
+
+### Current Slice (question event-flow integration regression)
+
+需求：在已有 helper-level coverage 基礎上，再補一層更高的 integration regression，確認 ask-user host adoption 不只在 stubbed ask 函式下成立，也能和真實 `Question.ask/reject` event flow 正常配合。
+
+範圍：
+
+- IN
+  - 使用真實 `Question.ask` / `Question.list` / `Question.reject`
+  - 驗證 helper 與 question pending/reject lifecycle 的整合
+- OUT
+  - 不模擬整個 prompt runLoop
+  - 不改 Smart Runner policy
+
+任務清單：
+
+- [x] 在 `smart-runner-prompt.test.ts` 新增 real Question reject integration test
+- [x] 驗證 pending question 被 reject 後，仍會切到 `waiting_user/product_decision_needed`
+
+Validation（question event-flow integration regression）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- 結果：ask-user host adoption 現在除了 helper stub coverage 外，還有一層真實 `Question` event flow regression，可驗證 pending → reject → waiting_user 的整合行為。
+- Architecture Sync: Verified (No doc changes)
+  - 比對依據：此輪只補 question integration regression，未改 runtime flow / policy / data-path contract
+
+### Current Slice (question reply/reject integration pair)
+
+需求：在已有真實 `Question.reject` regression 後，補齊對稱的 `Question.reply` integration，讓 ask-user host adoption 的 event-flow coverage 在 answered / rejected 兩邊都不只依賴 stub。
+
+範圍：
+
+- IN
+  - 使用真實 `Question.reply`
+  - 驗證 synthetic continuation text part 內容
+- OUT
+  - 不改 Smart Runner policy
+  - 不模擬整個 prompt runLoop
+
+任務清單：
+
+- [x] 在 `smart-runner-prompt.test.ts` 新增 real Question reply integration test
+- [x] 驗證 answered path 透過真實 question lifecycle 仍會生成 synthetic user continuation message
+
+Validation（question reply/reject integration pair）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- 結果：ask-user host adoption 的 answered / rejected 兩條 event-flow integration 都已有真實 `Question` lifecycle coverage。
+- Architecture Sync: Verified (No doc changes)
+  - 比對依據：此輪只補 question reply integration regression，未改 runtime flow / policy / data-path contract
