@@ -345,9 +345,19 @@ export function selectBestFallback(
     if (triedKeys?.has(key)) {
       return false
     }
+
+    // Relax health score requirement when switching providers.
+    // If we're considering a candidate from a different provider than the
+    // current one, prefer any non-rate-limited candidate regardless of
+    // its health score. This avoids situations where a provider-wide
+    // outage (e.g. github-copilot exhausted) prevents rotation to other
+    // providers because their health score hasn't reached the configured
+    // threshold yet.
+    const meetsHealth = c.providerId === current.providerId ? c.healthScore >= config.minHealthScore : true
+
     return (
       !c.isRateLimited &&
-      c.healthScore >= config.minHealthScore &&
+      meetsHealth &&
       // Don't return the exact same vector
       !(c.providerId === current.providerId && c.accountId === current.accountId && c.modelID === current.modelID)
     )
@@ -451,6 +461,7 @@ export async function buildFallbackCandidates(
   const path = await import("path")
 
   const candidates: FallbackCandidate[] = []
+  const CROSS_PROVIDER_MODELS_PER_PROVIDER = 3
   const healthTracker = getHealthTracker()
   const rateLimitTracker = getRateLimitTracker()
 
@@ -599,6 +610,34 @@ export async function buildFallbackCandidates(
     }
   } catch (e) {
     log.warn("Failed to read favorites for fallback", { error: e })
+  }
+
+  // 3b. Broaden cross-provider rescue beyond favorites.
+  // Favorites remain the strongest signal, but runtime rate-limit fallback must
+  // still be able to discover other connected providers (e.g. github-copilot -> openai)
+  // even when the operator has not explicitly favorited a model there.
+  for (const [providerId, provider] of Object.entries(providers)) {
+    if (!providerId || providerId === current.providerId) continue
+    if (hiddenProviders.has(providerId)) continue
+
+    const family = await Account.resolveFamily(providerId)
+    if (!family) continue
+
+    const accounts = await Account.list(family)
+    if (Object.keys(accounts).length === 0) continue
+
+    const models = Provider.sort(Object.values(provider.models ?? {})).filter((model) => model.status !== "deprecated")
+    for (const model of models.slice(0, CROSS_PROVIDER_MODELS_PER_PROVIDER)) {
+      for (const [accountId] of Object.entries(accounts)) {
+        const vector = {
+          providerId,
+          accountId,
+          modelID: model.id,
+        }
+        if (isHidden(vector)) continue
+        candidates.push(enrich(vector, "diff-provider"))
+      }
+    }
   }
 
   // 4. Get inherent free opencode zen models as rescue fallback

@@ -426,7 +426,11 @@ function App() {
             message: `Invalid model format: ${args.model}`,
             duration: 3000,
           })
-        local.model.set({ providerId, modelID }, { recent: true })
+        local.model.set(
+          { providerId, modelID },
+          { recent: true },
+          route.data.type === "session" ? route.data.sessionID : undefined,
+        )
       }
       if (args.sessionID && !args.fork) {
         route.navigate({
@@ -541,7 +545,7 @@ function App() {
       category: "Agent",
       hidden: true,
       onSelect: () => {
-        local.model.cycle(1)
+        local.model.cycle(1, route.data.type === "session" ? route.data.sessionID : undefined)
       },
     },
     {
@@ -551,7 +555,7 @@ function App() {
       category: "Agent",
       hidden: true,
       onSelect: () => {
-        local.model.cycle(-1)
+        local.model.cycle(-1, route.data.type === "session" ? route.data.sessionID : undefined)
       },
     },
     {
@@ -784,7 +788,7 @@ function App() {
   ])
 
   createEffect(() => {
-    const currentModel = local.model.current()
+    const currentModel = local.model.current(route.data.type === "session" ? route.data.sessionID : undefined)
     if (!currentModel) return
     if (currentModel.providerId === "openrouter" && !kv.get("openrouter_warning", false)) {
       untrack(() => {

@@ -267,7 +267,7 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                     const dotColor = monitorStatusColors[statusType] ?? theme.textMuted
                     const statusLabel = STATUS_LABELS[statusType]
                     const levelLabel = LEVEL_LABELS[info.level] ?? info.level
-                    const currentModel = local.model.current()
+                    const currentModel = local.model.current(props.sessionID)
                     const fallbackModel =
                       info.sessionID === props.sessionID && currentModel
                         ? `${currentModel.providerId}/${currentModel.modelID}`

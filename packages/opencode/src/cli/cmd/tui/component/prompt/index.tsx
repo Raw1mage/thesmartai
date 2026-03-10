@@ -84,6 +84,8 @@ export function Prompt(props: PromptProps) {
   const dialog = useDialog()
   const toast = useToast()
   const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
+  const modelSelectionKey = (input?: { providerId?: string; modelID?: string; accountId?: string }) =>
+    `${input?.providerId ?? ""}:${input?.modelID ?? ""}:${input?.accountId ?? ""}`
   const retryStatus = createMemo(() => {
     const s = status()
     if (s.type !== "retry") return
@@ -133,7 +135,7 @@ export function Prompt(props: PromptProps) {
 
   const currentQuotaFamily = createMemo(() => {
     if (disableFooterMeta) return undefined
-    const providerId = local.model.current()?.providerId
+    const providerId = local.model.current(props.sessionID)?.providerId
     if (!providerId) return undefined
     return Account.parseFamily(providerId) ?? providerId
   })
@@ -195,10 +197,10 @@ export function Prompt(props: PromptProps) {
   const [activeAccountDisplay] = createResource(
     () => {
       if (disableFooterMeta) return undefined
-      const current = local.model.current()
+      const current = local.model.current(props.sessionID)
       const providerId = current?.providerId
       if (!providerId) return ""
-      const accountId = local.model.currentAccountId() ?? ""
+      const accountId = local.model.currentAccountId(props.sessionID) ?? ""
       return `${providerId}:${accountId}:${footerTick()}`
     },
     async (key) => {
@@ -294,7 +296,7 @@ export function Prompt(props: PromptProps) {
 
     setRateLimitKey(key)
     const savedPrompt = store.prompt.input
-    const targetProvider = local.model.current()?.providerId
+    const targetProvider = local.model.current(props.sessionID)?.providerId
     dialog.replace(
       () => <DialogAdmin targetProviderID={targetProvider ?? undefined} />,
       () => {
@@ -367,8 +369,8 @@ export function Prompt(props: PromptProps) {
       const isPrimaryAgent = local.agent.list().some((x) => x.name === msg.agent)
       if (msg.agent && isPrimaryAgent) {
         local.agent.set(msg.agent)
-        if (msg.model) local.model.set(msg.model)
-        if (msg.variant) local.model.variant.set(msg.variant)
+        if (msg.model) local.model.set(msg.model, undefined, props.sessionID)
+        if (msg.variant) local.model.variant.set(msg.variant, props.sessionID)
       }
     }
   })
@@ -391,7 +393,15 @@ export function Prompt(props: PromptProps) {
     if (msg.agent && !isPrimaryAgent) return
 
     if (msg.providerId && msg.modelID) {
-      const current = local.model.current()
+      const lastUserModel = lastUserMessage()?.model
+      const lastUserModelKey = modelSelectionKey(lastUserModel)
+      const current = local.model.current(props.sessionID)
+      const currentSelectionKey = modelSelectionKey(current)
+
+      if (lastUserModelKey && currentSelectionKey && currentSelectionKey !== lastUserModelKey) {
+        return
+      }
+
       const same =
         current &&
         current.providerId === msg.providerId &&
@@ -402,6 +412,7 @@ export function Prompt(props: PromptProps) {
         local.model.set(
           { providerId: msg.providerId, modelID: msg.modelID, accountId: messageAccountId },
           { skipValidation: true, announce: false, recent: true },
+          props.sessionID,
         )
       }
     }
@@ -780,7 +791,7 @@ export function Prompt(props: PromptProps) {
       exit()
       return
     }
-    const selectedModel = local.model.current()
+    const selectedModel = local.model.current(props.sessionID)
     if (!selectedModel) {
       promptModelWarning()
       return
@@ -815,7 +826,7 @@ export function Prompt(props: PromptProps) {
 
     // Capture mode before it gets reset
     const currentMode = store.mode
-    const variant = local.model.variant.current()
+    const variant = local.model.variant.current(props.sessionID)
 
     if (store.mode === "shell") {
       sdk.client.session.shell({
@@ -824,7 +835,7 @@ export function Prompt(props: PromptProps) {
         model: {
           providerId: selectedModel.providerId,
           modelID: selectedModel.modelID,
-          accountId: local.model.currentAccountId(),
+          accountId: local.model.currentAccountId(props.sessionID),
         } as any,
         command: inputText,
       })
@@ -852,7 +863,7 @@ export function Prompt(props: PromptProps) {
         model: {
           providerId: selectedModel.providerId,
           modelID: selectedModel.modelID,
-          accountId: local.model.currentAccountId(),
+          accountId: local.model.currentAccountId(props.sessionID),
         } as any,
         messageID,
         variant,
@@ -1002,19 +1013,19 @@ export function Prompt(props: PromptProps) {
   })
 
   const variantFamily = createMemo(() => {
-    const providerId = local.model.current()?.providerId
+    const providerId = local.model.current(props.sessionID)?.providerId
     if (!providerId) return undefined
     return Account.parseFamily(providerId) ?? providerId
   })
 
   const visibleVariants = createMemo(() => {
-    return buildVariantOptions(local.model.variant.list(), variantFamily())
+    return buildVariantOptions(local.model.variant.list(props.sessionID), variantFamily())
   })
 
   const showVariant = createMemo(() => {
     return shouldShowVariantControl({
       family: variantFamily(),
-      current: local.model.variant.current(),
+      current: local.model.variant.current(props.sessionID),
       options: visibleVariants(),
     })
   })
@@ -1022,7 +1033,7 @@ export function Prompt(props: PromptProps) {
   const effectiveVariantValue = createMemo(() => {
     return getEffectiveVariantValue({
       family: variantFamily(),
-      current: local.model.variant.current(),
+      current: local.model.variant.current(props.sessionID),
       options: visibleVariants(),
     })
   })
@@ -1038,7 +1049,7 @@ export function Prompt(props: PromptProps) {
   const openVariantPicker = () => {
     const variants = visibleVariants()
     if (variants.length === 0) return
-    const current = local.model.variant.current()
+    const current = local.model.variant.current(props.sessionID)
     dialog.replace(() => (
       <DialogSelect
         title="Thinking effort"
@@ -1046,7 +1057,7 @@ export function Prompt(props: PromptProps) {
         options={variants}
         hideInput
         onSelect={(option) => {
-          local.model.variant.set(option.value)
+          local.model.variant.set(option.value, props.sessionID)
           dialog.clear()
         }}
       />
@@ -1086,7 +1097,7 @@ export function Prompt(props: PromptProps) {
 
   const quotaHint = createMemo(() => {
     if (disableFooterMeta) return undefined
-    const current = local.model.current()
+    const current = local.model.current(props.sessionID)
     if (!current) return undefined
     if (current.providerId === "openai" || Account.parseFamily(current.providerId) === "openai") {
       if (isRateLimited()) return "(5hrs:0% | week:0%)"

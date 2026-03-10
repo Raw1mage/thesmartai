@@ -10,7 +10,8 @@ import { type RateLimitReason, type ErrorWithMetadata, asErrorWithMetadata, getN
 // Backoff Constants
 // ============================================================================
 
-const QUOTA_EXHAUSTED_BACKOFFS = [3_600_000, 14_400_000, 86_400_000] as const
+const FIVE_HOUR_BACKOFF = 18_000_000
+const QUOTA_EXHAUSTED_BACKOFFS = [FIVE_HOUR_BACKOFF, FIVE_HOUR_BACKOFF, 86_400_000] as const
 const RATE_LIMIT_PROBE_BACKOFF = 60_000 // 1 minute safe bet for RPM
 const RATE_LIMIT_LONG_BACKOFF = 86_400_000 // 24 hours for RPD
 const RATE_LIMIT_EXCEEDED_BACKOFF = 300_000 // 5 minutes default
@@ -20,7 +21,7 @@ const MODEL_CAPACITY_EXHAUSTED_BASE_BACKOFF = 300_000 // 5 minutes
 const MODEL_CAPACITY_EXHAUSTED_JITTER_MAX = 30_000
 const SERVER_ERROR_BACKOFF = 20_000
 const AUTH_FAILED_BACKOFF = 3_600_000 // 1 hour
-const TOKEN_REFRESH_FAILED_BACKOFF = 18_000_000 // 5 hours
+const TOKEN_REFRESH_FAILED_BACKOFF = FIVE_HOUR_BACKOFF // 5 hours
 const UNKNOWN_BACKOFF = 300_000 // 5 minutes
 const MIN_BACKOFF_MS = 2_000
 
@@ -166,7 +167,7 @@ export function calculateBackoffMs(
       if (dailyFailures <= 1) {
         return RATE_LIMIT_PROBE_BACKOFF
       }
-      return 3_600_000 // 1 hour confirm RPD
+      return FIVE_HOUR_BACKOFF // repeated failures in same quota day: long cooldown to stop cycling
     }
     case "SERVICE_UNAVAILABLE_503":
       return SERVICE_UNAVAILABLE_503_BACKOFF

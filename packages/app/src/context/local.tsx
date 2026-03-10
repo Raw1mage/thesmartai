@@ -10,6 +10,10 @@ import { cycleModelVariant, getConfiguredAgentVariant, resolveModelVariant } fro
 
 export type ModelKey = { providerID: string; modelID: string; accountID?: string }
 
+function buildModelScopeKey(agentName: string, sessionID?: string) {
+  return `${sessionID ?? "__global__"}::${agentName}`
+}
+
 function parseConfiguredModel(input: unknown): ModelKey | undefined {
   if (!input) return undefined
   if (typeof input === "string") {
@@ -145,15 +149,18 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return resolveConfigured() ?? resolveRecent() ?? resolveDefault()
       })
 
-      const currentSelection = createMemo(() => {
+      const resolveScopedSelection = (sessionID?: string) => {
         const a = agent.current()
         if (!a) return undefined
         return getFirstValidModel(
+          () => ephemeral.model[buildModelScopeKey(a.name, sessionID)],
           () => ephemeral.model[a.name],
           () => (a.model ? { providerID: a.model.providerId, modelID: a.model.modelID } : undefined),
           fallbackModel,
         )
-      })
+      }
+
+      const currentSelection = createMemo(() => resolveScopedSelection())
 
       const current = createMemo(() => {
         const key = currentSelection()
@@ -163,9 +170,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const recent = createMemo(() => models.recent.list().map(models.find).filter(Boolean))
 
-      const cycle = (direction: 1 | -1) => {
+      const cycle = (direction: 1 | -1, sessionID?: string) => {
         const recentList = recent()
-        const currentModel = current()
+        const currentModel = sessionID
+          ? models.find(resolveScopedSelection(sessionID) ?? { providerID: "", modelID: "" })
+          : current()
         if (!currentModel) return
 
         const index = recentList.findIndex(
@@ -180,17 +189,21 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const val = recentList[next]
         if (!val) return
 
-        model.set({
-          providerID: val.provider.id,
-          modelID: val.id,
-        })
+        model.set(
+          {
+            providerID: val.provider.id,
+            modelID: val.id,
+          },
+          undefined,
+          sessionID,
+        )
       }
 
-      const set = (model: ModelKey | undefined, options?: { recent?: boolean }) => {
+      const set = (model: ModelKey | undefined, options?: { recent?: boolean }, sessionID?: string) => {
         batch(() => {
           const currentAgent = agent.current()
           const next = model ?? fallbackModel()
-          if (currentAgent) setEphemeral("model", currentAgent.name, next)
+          if (currentAgent) setEphemeral("model", buildModelScopeKey(currentAgent.name, sessionID), next)
           if (model) models.setVisibility(model, true)
           if (options?.recent && model) models.recent.push(model)
         })
@@ -200,8 +213,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       return {
         ready: models.ready,
-        current,
-        selection: currentSelection,
+        current(sessionID?: string) {
+          const key = sessionID ? resolveScopedSelection(sessionID) : currentSelection()
+          if (!key) return undefined
+          return models.find(key)
+        },
+        selection(sessionID?: string) {
+          return sessionID ? resolveScopedSelection(sessionID) : currentSelection()
+        },
         recent,
         list: models.list,
         cycle,
@@ -225,9 +244,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           models.toggleFavorite(model)
         },
         variant: {
-          configured() {
+          configured(sessionID?: string) {
             const a = agent.current()
-            const m = current()
+            const m = sessionID ? result.model.current(sessionID) : result.model.current()
             if (!a || !m) return undefined
             const agentModel = a.model as
               | {
@@ -245,38 +264,39 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               model: { providerID: m.provider.id, modelID: m.id, variants: m.variants },
             })
           },
-          selected() {
-            const m = current()
+          selected(sessionID?: string) {
+            const m = sessionID ? result.model.current(sessionID) : result.model.current()
             if (!m) return undefined
             return models.variant.get({ providerID: m.provider.id, modelID: m.id })
           },
-          current() {
+          current(sessionID?: string) {
             return resolveModelVariant({
-              variants: this.list(),
-              selected: this.selected(),
-              configured: this.configured(),
+              variants: this.list(sessionID),
+              selected: this.selected(sessionID),
+              configured: this.configured(sessionID),
             })
           },
-          list() {
-            const m = current()
+          list(sessionID?: string) {
+            const m = sessionID ? result.model.current(sessionID) : result.model.current()
             if (!m) return []
             if (!m.variants) return []
             return Object.keys(m.variants)
           },
-          set(value: string | undefined) {
-            const m = current()
+          set(value: string | undefined, sessionID?: string) {
+            const m = sessionID ? result.model.current(sessionID) : result.model.current()
             if (!m) return
             models.variant.set({ providerID: m.provider.id, modelID: m.id }, value)
           },
-          cycle() {
-            const variants = this.list()
+          cycle(sessionID?: string) {
+            const variants = this.list(sessionID)
             if (variants.length === 0) return
             this.set(
               cycleModelVariant({
                 variants,
-                selected: this.selected(),
-                configured: this.configured(),
+                selected: this.selected(sessionID),
+                configured: this.configured(sessionID),
               }),
+              sessionID,
             )
           },
         },

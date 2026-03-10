@@ -33,6 +33,21 @@ import { RequestMonitor } from "./monitor"
 import { debugCheckpoint } from "../util/debug"
 
 const log = Log.create({ service: "rate-limit-judge" })
+const PROVIDER_COOLDOWN_MIN_MS = 5 * 60 * 60 * 1000
+
+export function shouldPromoteToProviderCooldown(reason: RateLimitReason, backoffMs: number): boolean {
+  switch (reason) {
+    case "QUOTA_EXHAUSTED":
+    case "RATE_LIMIT_LONG":
+    case "TOKEN_REFRESH_FAILED":
+      return true
+    case "RATE_LIMIT_EXCEEDED":
+    case "UNKNOWN":
+      return backoffMs >= PROVIDER_COOLDOWN_MIN_MS
+    default:
+      return false
+  }
+}
 
 function serializeErrorForDebug(error: unknown): Record<string, unknown> {
   const obj = error && typeof error === "object" ? (error as Record<string, unknown>) : undefined
@@ -447,6 +462,10 @@ export namespace RateLimitJudge {
 
     // Mark in tracker
     rateLimitTracker.markRateLimited(accountId, providerId, reason, backoffMs, modelId)
+
+    if (shouldPromoteToProviderCooldown(reason, backoffMs)) {
+      rateLimitTracker.markRateLimited(accountId, providerId, reason, Math.max(backoffMs, PROVIDER_COOLDOWN_MIN_MS))
+    }
 
     log.info("Marked current vector as rate-limited", {
       providerId,

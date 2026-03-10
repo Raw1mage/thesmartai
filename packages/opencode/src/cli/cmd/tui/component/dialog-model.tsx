@@ -5,6 +5,7 @@ import { DialogSelect, type DialogSelectRef } from "@tui/ui/dialog-select"
 import { useDialog } from "@tui/ui/dialog"
 import { useTheme } from "@tui/context/theme"
 import { useToast } from "@tui/ui/toast"
+import { useRoute } from "@tui/context/route"
 import { Account } from "@/account"
 import { Keybind } from "@/util/keybind"
 import { debugCheckpoint } from "@/util/debug"
@@ -23,6 +24,7 @@ type OptionValue = SectionOptionValue | ProviderOptionValue | ModelOptionValue
 
 export function DialogModel(props: { providerId?: string }) {
   const local = useLocal()
+  const route = useRoute()
   const sync = useSync()
   const dialog = useDialog()
   const toast = useToast()
@@ -93,6 +95,7 @@ export function DialogModel(props: { providerId?: string }) {
     local.model.set(
       { providerId: normalizedProviderId, modelID },
       { recent: true, skipValidation: true, announce: true },
+      route.data.type === "session" ? route.data.sessionID : undefined,
     )
     dialog.clear()
   }
@@ -261,7 +264,7 @@ export function DialogModel(props: { providerId?: string }) {
   })
 
   const currentOption = createMemo(() => {
-    const current = local.model.current()
+    const current = local.model.current(route.data.type === "session" ? route.data.sessionID : undefined)
     if (!current) return undefined
 
     const fam = normalizeProviderForRotation(current.providerId)

@@ -52,6 +52,7 @@ import { probeModelAvailability } from "../util/model-probe"
 import { Auth } from "@/auth"
 import { formatOpenAIQuotaDisplay, formatRequestMonitorQuotaDisplay, getQuotaHintsForAccounts } from "@/account/quota"
 import { shouldAutoOpenProvidersPage } from "./dialog-admin-auto-open"
+import { useRoute } from "@tui/context/route"
 
 type DialogAdminOption = DialogSelectOption<unknown> & {
   coreId?: string
@@ -110,6 +111,7 @@ export type DialogAdminProps = {
 export function DialogAdmin(props: DialogAdminProps = {}) {
   debugCheckpoint("admin", "DialogAdmin init")
   const MIN_DIALOG_WIDTH = 85
+  const route = useRoute()
   const local = useLocal()
   const sync = useSync()
   const sdk = useSDK()
@@ -654,6 +656,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     local.model.set(
       { providerId: providerId, modelID: modelID },
       { recent: true, skipValidation: true, announce: true },
+      route.data.type === "session" ? route.data.sessionID : undefined,
     )
     dialog.clear()
   }
@@ -884,8 +887,10 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     widths.model = Math.min(widths.model, ACTIVITY_MODEL_COL_MAX)
     widths.account = Math.min(widths.account, ACTIVITY_ACCOUNT_COL_MAX)
 
-    const currentModel = local.model.current()
-    const currentAccountId = local.model.currentAccountId()
+    const currentModel = local.model.current(route.data.type === "session" ? route.data.sessionID : undefined)
+    const currentAccountId = local.model.currentAccountId(
+      route.data.type === "session" ? route.data.sessionID : undefined,
+    )
 
     for (const entryModel of sortedModels) {
       const providerId = entryModel.providerId
@@ -1024,8 +1029,10 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     // Check if selecting an already-selected model (triggers auto-exit)
     // @event_20260208_double_enter_model_exit
     const fam = family(providerId) || providerId
-    const current = local.model.current()
-    const currentAccountId = local.model.currentAccountId()
+    const current = local.model.current(route.data.type === "session" ? route.data.sessionID : undefined)
+    const currentAccountId = local.model.currentAccountId(
+      route.data.type === "session" ? route.data.sessionID : undefined,
+    )
     const isAlreadySelected =
       current?.providerId === resolvedProvider && current?.modelID === modelID && currentAccountId === accountId
 
@@ -1041,6 +1048,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     local.model.set(
       { providerId: resolvedProvider, modelID, accountId: accountId !== "-" ? accountId : undefined },
       { recent: true, announce: false },
+      route.data.type === "session" ? route.data.sessionID : undefined,
     )
     try {
       const providerInfo = sync.data.provider.find((x) => x.id === resolvedProvider)
@@ -1075,9 +1083,11 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   }
 
   const activityValue = createMemo(() => {
-    const cur = local.model.current()
+    const cur = local.model.current(route.data.type === "session" ? route.data.sessionID : undefined)
     if (!cur) return undefined
-    const currentAccountId = local.model.currentAccountId()
+    const currentAccountId = local.model.currentAccountId(
+      route.data.type === "session" ? route.data.sessionID : undefined,
+    )
     // @event_20260217_cursor_follow_fix - Fallback to "-" account if none active
     return `${currentAccountId ?? "-"}:${cur.providerId}:${cur.modelID}`
   })
@@ -1625,7 +1635,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       })
       if (first) return first.value
     }
-    return local.model.current()
+    return local.model.current(route.data.type === "session" ? route.data.sessionID : undefined)
   })
 
   onMount(() => {

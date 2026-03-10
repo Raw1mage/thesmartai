@@ -147,7 +147,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       }
     }
 
-    const currentModel = local.model.current()
+    const currentModel = local.model.current(params.id)
     const currentAgent = local.agent.current()
     if (!currentModel || !currentAgent) {
       showToast({
@@ -240,10 +240,10 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     const model = {
       modelID: currentModel.id,
       providerId: currentModel.provider.id,
-      accountId: local.model.selection()?.accountID,
+      accountId: local.model.selection(params.id)?.accountID,
     }
     const agent = currentAgent.name
-    const variant = local.model.variant.current()
+    const variant = local.model.variant.current(params.id)
 
     const clearInput = () => {
       prompt.reset()

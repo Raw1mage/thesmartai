@@ -298,7 +298,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const imageAttachments = createMemo(() =>
     prompt.current().filter((part): part is ImageAttachmentPart => part.type === "image"),
   )
-  const currentModel = createMemo(() => local.model.current())
+  const currentModel = createMemo(() => local.model.current(params.id))
   const activeFamily = createMemo(() => {
     const providerID = currentModel()?.provider?.id
     if (!providerID) return
@@ -354,7 +354,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       accountFamilies: globalSync.data.account_families,
       formatCooldown: (minutes) => language.t("settings.models.recommendations.cooldown", { minutes }),
     })
-    const selected = local.model.selection()?.accountID
+    const selected = local.model.selection(params.id)?.accountID
     return (
       rows.find((row) => row.id === selected)?.label ?? rows.find((row) => row.active)?.label ?? rows[0]?.label ?? "--"
     )
@@ -389,7 +389,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     const providerId = effectiveProviderFamily() ?? model.provider.id
     const modelID = model.id
-    const accountId = local.model.selection()?.accountID
+    const accountId = local.model.selection(params.id)?.accountID
     const requestVersion = ++quotaHintRequestVersion
     const cached = peekQuotaHint({
       baseURL: globalSDK.url,
@@ -428,7 +428,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   type VariantOption = { value: string; label: string }
   const variantOptions = createMemo<VariantOption[]>(() => {
     const family = activeFamily()
-    let values = local.model.variant.list()
+    let values = local.model.variant.list(params.id)
     if (family === "openai") {
       const preferred = ["low", "medium", "high", "xhigh", "extra"]
       const set = new Set(values)
@@ -447,7 +447,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return result
   })
   const currentVariantOption = createMemo<VariantOption | undefined>(() => {
-    const value = local.model.variant.current()
+    const value = local.model.variant.current(params.id)
     if (!value) return undefined
     const exact = variantOptions().find((item) => item.value === value)
     if (exact) return exact
@@ -1362,11 +1362,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     class="min-w-0 max-w-[240px]"
                     onClick={() => dialog.show(() => <DialogSelectModel />)}
                   >
-                    <Show when={local.model.current()?.provider?.id}>
-                      <ProviderIcon id={local.model.current()!.provider.id as IconName} class="size-4 shrink-0" />
+                    <Show when={local.model.current(params.id)?.provider?.id}>
+                      <ProviderIcon
+                        id={local.model.current(params.id)!.provider.id as IconName}
+                        class="size-4 shrink-0"
+                      />
                     </Show>
                     <span class="truncate">
-                      {local.model.current()?.name ?? language.t("dialog.model.select.title")}
+                      {local.model.current(params.id)?.name ?? language.t("dialog.model.select.title")}
                     </span>
                     <Icon name="chevron-down" size="small" class="shrink-0" />
                   </Button>
@@ -1382,7 +1385,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       current={currentVariantOption()}
                       value={(item) => item.value}
                       label={(item) => item.label}
-                      onSelect={(value) => local.model.variant.set(value?.value)}
+                      onSelect={(value) => local.model.variant.set(value?.value, params.id)}
                       class="max-w-[150px]"
                       valueClass="truncate"
                       variant="ghost"

@@ -461,7 +461,7 @@ export function Session() {
       keybind: "session_compact",
       category: "Session",
       onSelect: (dialog) => {
-        const selectedModel = local.model.current()
+        const selectedModel = local.model.current(route.sessionID)
         if (!selectedModel) {
           toast.show({
             variant: "warning",

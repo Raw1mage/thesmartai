@@ -253,7 +253,7 @@ export const useSessionCommands = (input: SessionCommandContext) => {
       description: input.language.t("command.model.variant.cycle.description"),
       keybind: "shift+mod+d",
       onSelect: () => {
-        input.local.model.variant.cycle()
+        input.local.model.variant.cycle(input.params.id)
       },
     }),
   ])
@@ -356,7 +356,7 @@ export const useSessionCommands = (input: SessionCommandContext) => {
       onSelect: async () => {
         const sessionID = input.params.id
         if (!sessionID) return
-        const model = input.local.model.current()
+        const model = input.local.model.current(sessionID)
         if (!model) {
           showToast({
             title: input.language.t("toast.model.none.title"),

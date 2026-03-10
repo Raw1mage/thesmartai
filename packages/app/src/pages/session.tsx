@@ -581,11 +581,15 @@ export default function Page() {
         if (msg.agent) local.agent.set(msg.agent)
         if (msg.model) {
           const sessionModel = msg.model as { providerId: string; modelID: string; accountId?: string }
-          local.model.set({
-            providerID: sessionModel.providerId,
-            modelID: sessionModel.modelID,
-            accountID: sessionModel.accountId,
-          })
+          local.model.set(
+            {
+              providerID: sessionModel.providerId,
+              modelID: sessionModel.modelID,
+              accountID: sessionModel.accountId,
+            },
+            undefined,
+            params.id,
+          )
         }
       },
     ),
@@ -1227,6 +1231,21 @@ export default function Page() {
     const overflow = max > 1
     const bottom = !overflow || el.scrollTop >= max - 2
 
+    if (typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") !== "0") {
+      console.debug("[scroll-debug]", {
+        time: Date.now(),
+        scope: "session-page-state",
+        event: "update-scroll-state",
+        scrollTop: el.scrollTop,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        maxScrollTop: max,
+        distanceFromBottom: el.scrollHeight - el.clientHeight - el.scrollTop,
+        overflow,
+        bottom,
+      })
+    }
+
     if (ui.scroll.overflow === overflow && ui.scroll.bottom === bottom) return
     setUi("scroll", { overflow, bottom })
   }
@@ -1404,6 +1423,22 @@ export default function Page() {
       const el = scroller
       const delta = next - store.promptHeight
       const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 + Math.max(0, delta) : false
+
+      if (typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") !== "0") {
+        console.debug("[scroll-debug]", {
+          time: Date.now(),
+          scope: "session-page-state",
+          event: "prompt-dock-resize",
+          promptHeightBefore: store.promptHeight,
+          promptHeightAfter: next,
+          promptHeightDelta: delta,
+          stick,
+          scrollTop: el?.scrollTop,
+          scrollHeight: el?.scrollHeight,
+          clientHeight: el?.clientHeight,
+          distanceFromBottom: el ? el.scrollHeight - el.clientHeight - el.scrollTop : undefined,
+        })
+      }
 
       setStore("promptHeight", next)
 

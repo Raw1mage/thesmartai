@@ -175,6 +175,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     })
 
     const model = iife(() => {
+      const buildModelScopeKey = (agentName: string, sessionID?: string) => `${sessionID ?? "__global__"}::${agentName}`
       const [modelStore, setModelStore] = createStore<{
         ready: boolean
         model: Record<
@@ -371,23 +372,30 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         }
       })
 
-      const currentModel = createMemo(() => {
+      const resolveScopedModel = (sessionID?: string) => {
         const a = agent.current()
         if (!a) return fallbackModel()
         return (
           getFirstValidModel(
+            () => modelStore.model[buildModelScopeKey(a.name, sessionID)],
             () => modelStore.model[a.name],
             () => a.model,
             fallbackModel,
           ) ?? undefined
         )
-      })
+      }
+
+      const currentModel = createMemo(() => resolveScopedModel())
 
       const currentAccountId = createMemo(() => currentModel()?.accountId)
 
       return {
-        current: currentModel,
-        currentAccountId,
+        current(sessionID?: string) {
+          return sessionID ? resolveScopedModel(sessionID) : currentModel()
+        },
+        currentAccountId(sessionID?: string) {
+          return sessionID ? resolveScopedModel(sessionID)?.accountId : currentAccountId()
+        },
         get ready() {
           return modelStore.ready
         },
@@ -422,8 +430,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             reasoning: info?.capabilities?.reasoning ?? false,
           }
         }),
-        cycle(direction: 1 | -1) {
-          const current = currentModel()
+        cycle(direction: 1 | -1, sessionID?: string) {
+          const current = sessionID ? resolveScopedModel(sessionID) : currentModel()
           if (!current) return
           const recent = modelStore.recent
           const index = recent.findIndex(
@@ -438,7 +446,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (next >= recent.length) next = 0
           const val = recent[next]
           if (!val) return
-          setModelStore("model", agent.current().name, { ...val })
+          setModelStore("model", buildModelScopeKey(agent.current().name, sessionID), { ...val })
         },
         cycleFavorite(direction: 1 | -1) {
           const favorites = modelStore.favorite.filter((item) => isModelAvailable(item))
@@ -464,7 +472,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
           const next = favorites[index]
           if (!next) return
-          setModelStore("model", agent.current().name, { ...next })
+          setModelStore("model", buildModelScopeKey(agent.current().name), { ...next })
           const uniq = uniqueBy(
             [next, ...modelStore.recent],
             (x) => `${x.providerId}/${x.modelID}/${getModelAccountId(x) ?? ""}`,
@@ -479,6 +487,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         set(
           model: { providerId: string; modelID: string; accountId?: string },
           options?: { recent?: boolean; skipValidation?: boolean; announce?: boolean },
+          sessionID?: string,
         ) {
           batch(() => {
             if (!options?.skipValidation && !isModelAvailable(model)) {
@@ -489,7 +498,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               })
               return
             }
-            setModelStore("model", agent.current().name, model)
+            setModelStore("model", buildModelScopeKey(agent.current().name, sessionID), model)
             if (options?.recent) {
               const uniq = uniqueBy(
                 [model, ...modelStore.recent],
@@ -608,41 +617,41 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           })
         },
         variant: {
-          current() {
-            const m = currentModel()
+          current(sessionID?: string) {
+            const m = sessionID ? resolveScopedModel(sessionID) : currentModel()
             if (!m) return undefined
             const key = `${m.providerId}/${m.modelID}`
             return modelStore.variant[key]
           },
-          list() {
-            const m = currentModel()
+          list(sessionID?: string) {
+            const m = sessionID ? resolveScopedModel(sessionID) : currentModel()
             if (!m) return []
             const provider = sync.data.provider.find((x) => x.id === m.providerId)
             const info = provider?.models[m.modelID]
             if (!info?.variants) return []
             return Object.keys(info.variants)
           },
-          set(value: string | undefined) {
-            const m = currentModel()
+          set(value: string | undefined, sessionID?: string) {
+            const m = sessionID ? resolveScopedModel(sessionID) : currentModel()
             if (!m) return
             const key = `${m.providerId}/${m.modelID}`
             setModelStore("variant", key, value)
             save()
           },
-          cycle() {
-            const variants = this.list()
+          cycle(sessionID?: string) {
+            const variants = this.list(sessionID)
             if (variants.length === 0) return
-            const current = this.current()
+            const current = this.current(sessionID)
             if (!current) {
-              this.set(variants[0])
+              this.set(variants[0], sessionID)
               return
             }
             const index = variants.indexOf(current)
             if (index === -1 || index === variants.length - 1) {
-              this.set(undefined)
+              this.set(undefined, sessionID)
               return
             }
-            this.set(variants[index + 1])
+            this.set(variants[index + 1], sessionID)
           },
         },
       }

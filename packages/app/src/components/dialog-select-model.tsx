@@ -31,6 +31,7 @@ import { DialogConnectProvider } from "./dialog-connect-provider"
 import { DialogManageModels } from "./dialog-manage-models"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
+import { useParams } from "@solidjs/router"
 import { useModels } from "@/context/models"
 import { Icon } from "@opencode-ai/ui/icon"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
@@ -392,6 +393,7 @@ const ModelList: Component<{
 }> = (props) => {
   const local = useLocal()
   const language = useLanguage()
+  const params = useParams()
 
   const models = createMemo(() =>
     local.model
@@ -406,7 +408,7 @@ const ModelList: Component<{
       emptyMessage={language.t("dialog.model.empty")}
       key={(x) => `${x.provider.id}:${x.id}`}
       items={models}
-      current={local.model.current()}
+      current={local.model.current(params.id)}
       filterKeys={["provider.name", "name", "id"]}
       sortBy={(a, b) => a.name.localeCompare(b.name)}
       groupBy={(x) => x.provider.name}
@@ -428,9 +430,13 @@ const ModelList: Component<{
         </Tooltip>
       )}
       onSelect={(x) => {
-        local.model.set(x ? { modelID: x.id, providerID: x.provider.id } : undefined, {
-          recent: true,
-        })
+        local.model.set(
+          x ? { modelID: x.id, providerID: x.provider.id } : undefined,
+          {
+            recent: true,
+          },
+          params.id,
+        )
         props.onSelect()
       }}
     >
@@ -642,6 +648,7 @@ export const DialogSelectModel: Component<{
   const dialog = useDialog()
   const language = useLanguage()
   const local = useLocal()
+  const params = useParams()
   const globalSync = useGlobalSync()
   const sdk = useSDK()
 
@@ -1021,7 +1028,7 @@ export const DialogSelectModel: Component<{
     return map
   })
 
-  const currentModel = createMemo(() => local.model.current())
+  const currentModel = createMemo(() => local.model.current(params.id))
   const preferredProviderId = createMemo(() => props.provider || familyOf(currentModel()?.provider.id ?? ""))
 
   const providers = createMemo(() => {
@@ -1217,7 +1224,7 @@ export const DialogSelectModel: Component<{
     return getFilteredModelsForSelection({
       models: local.model.list(),
       selectedProviderFamily: selectedProviderId(),
-      currentProviderID: local.model.current()?.provider?.id,
+      currentProviderID: local.model.current(params.id)?.provider?.id,
       mode: mode(),
       isVisible: (key) => local.model.visible(key),
     })
@@ -1273,9 +1280,9 @@ export const DialogSelectModel: Component<{
     setSelectedAccountId(row.id)
     setSwitchingAccountId(row.id)
     try {
-      const currentSelection = local.model.selection()
+      const currentSelection = local.model.selection(params.id)
       if (currentSelection) {
-        local.model.set({ ...currentSelection, accountID: row.id })
+        local.model.set({ ...currentSelection, accountID: row.id }, undefined, params.id)
       }
       showToast({
         variant: "success",
@@ -1606,6 +1613,7 @@ export const DialogSelectModel: Component<{
                     {
                       recent: true,
                     },
+                    params.id,
                   )
                   showToast({
                     variant: "success",

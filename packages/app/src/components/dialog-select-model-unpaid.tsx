@@ -13,9 +13,11 @@ import { DialogConnectProvider } from "./dialog-connect-provider"
 import { DialogSelectProvider } from "./dialog-select-provider"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
+import { useParams } from "@solidjs/router"
 
 export const DialogSelectModelUnpaid: Component = () => {
   const local = useLocal()
+  const params = useParams()
   const dialog = useDialog()
   const providers = useProviders()
   const language = useLanguage()
@@ -37,7 +39,7 @@ export const DialogSelectModelUnpaid: Component = () => {
           class="[&_[data-slot=list-scroll]]:overflow-visible"
           ref={(ref) => (listRef = ref)}
           items={local.model.list}
-          current={local.model.current()}
+          current={local.model.current(params.id)}
           key={(x) => `${x.provider.id}:${x.id}`}
           itemWrapper={(item, node) => (
             <Tooltip
@@ -56,9 +58,13 @@ export const DialogSelectModelUnpaid: Component = () => {
             </Tooltip>
           )}
           onSelect={(x) => {
-            local.model.set(x ? { modelID: x.id, providerID: x.provider.id } : undefined, {
-              recent: true,
-            })
+            local.model.set(
+              x ? { modelID: x.id, providerID: x.provider.id } : undefined,
+              {
+                recent: true,
+              },
+              params.id,
+            )
             dialog.close()
           }}
         >
