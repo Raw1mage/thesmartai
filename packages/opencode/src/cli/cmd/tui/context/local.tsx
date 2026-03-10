@@ -375,6 +375,15 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const resolveScopedModel = (sessionID?: string) => {
         const a = agent.current()
         if (!a) return fallbackModel()
+        if (sessionID) {
+          return (
+            getFirstValidModel(
+              () => modelStore.model[buildModelScopeKey(a.name, sessionID)],
+              () => a.model,
+              fallbackModel,
+            ) ?? undefined
+          )
+        }
         return (
           getFirstValidModel(
             () => modelStore.model[buildModelScopeKey(a.name, sessionID)],

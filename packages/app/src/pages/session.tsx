@@ -1232,6 +1232,46 @@ export default function Page() {
     const bottom = !overflow || el.scrollTop >= max - 2
 
     if (typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") !== "0") {
+      const viewportTop = el.getBoundingClientRect().top
+      const viewportBottom = viewportTop + el.clientHeight
+      const blockCandidates = Array.from(
+        el.querySelectorAll<HTMLElement>(
+          [
+            '[data-slot="session-turn-sticky"]',
+            '[data-slot="session-turn-collapsible-content-inner"]',
+            '[data-slot="session-turn-summary-section"]',
+            '[data-component="user-message"]',
+          ].join(","),
+        ),
+      )
+        .map((node) => {
+          const rect = node.getBoundingClientRect()
+          return {
+            slot: node.dataset.slot ?? node.dataset.component ?? "unknown",
+            top: rect.top,
+            bottom: rect.bottom,
+            height: rect.height,
+            visible: rect.bottom > viewportTop && rect.top < viewportBottom,
+            topDistance: Math.abs(rect.top - viewportTop),
+          }
+        })
+        .filter((node) => node.visible)
+        .sort((a, b) => a.topDistance - b.topDistance)
+        .slice(0, 3)
+
+      console.debug("[scroll-debug]", {
+        time: Date.now(),
+        scope: "session-page",
+        event: "viewport-blocks",
+        scrollTop: el.scrollTop,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        distanceFromBottom: el.scrollHeight - el.clientHeight - el.scrollTop,
+        blocks: blockCandidates,
+      })
+    }
+
+    if (typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") !== "0") {
       console.debug("[scroll-debug]", {
         time: Date.now(),
         scope: "session-page-state",

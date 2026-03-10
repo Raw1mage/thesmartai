@@ -85,6 +85,9 @@
 5. **Secondary root cause: TUI working-turn overwrite**
    - TUI prompt 會從 `lastAssistantMessage` 同步當前執行中的 provider/model/account 回 local selection。
    - 若使用者在這個 working turn 期間手動切 model，該 selection 是給「下一輪」使用；但舊邏輯仍會被正在執行中的 assistant sync 覆回上一輪/當前輪模型。
+6. **殘留 root cause：session-scoped read path 仍會 fallback 到 legacy per-agent slot**
+   - 即使已把 state key 改成 `sessionID + agent`，Web/TUI local context 的 `resolveScopedSelection/resolveScopedModel` 仍保留 `ephemeral.model[a.name]` / `modelStore.model[a.name]` 作為次要 fallback。
+   - 這導致某些 session 在 scoped slot 缺失、尚未 hydrate、或重新計算時，仍可能吃到另一個 session 先前寫入的 legacy global agent slot，最後再次收斂成同一個 model。
 
 ## Execution / Decisions
 
@@ -115,6 +118,9 @@
    - `current/set/cycle/selection/variant/currentAccountId` 等 helper 都補上可選 `sessionID` scope。
 7. Web/TUI session surfaces
    - session page hydrate、prompt input、submit、session commands、model dialogs、TUI prompt/sidebar/session route/admin/model dialog，改為顯式傳入當前 `sessionID`。
+8. Web/TUI local context follow-up hardening
+   - 對於 **有 `sessionID` 的 read path**，移除 fallback 到 legacy per-agent slot 的邏輯。
+   - legacy global per-agent slot 只保留給未進入 session scope 的首頁 / 全域 UI 使用。
 
 ## Validation
 
@@ -126,6 +132,10 @@
   - `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/account/rotation/backoff.ts /home/pkcs12/projects/opencode/packages/opencode/src/account/rotation/rate-limit-tracker.ts /home/pkcs12/projects/opencode/packages/opencode/src/account/rate-limit-judge.ts /home/pkcs12/projects/opencode/packages/opencode/src/account/rotation/backoff.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/account/rotation/rate-limit-tracker.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/account/rate-limit-judge.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/account/rotation3d.test.ts` ✅
 - Scoped session model validation:
   - `bunx eslint` on touched Web/TUI local-state and session-surface files ✅
+  - `bun run typecheck` in `packages/app` ✅
+  - `bun run typecheck` in `packages/opencode` ✅
+- Legacy fallback removal validation:
+  - `bunx eslint /home/pkcs12/projects/opencode/packages/app/src/context/local.tsx /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/context/local.tsx` ✅
   - `bun run typecheck` in `packages/app` ✅
   - `bun run typecheck` in `packages/opencode` ✅
 - Architecture Sync: Verified (No doc changes)
