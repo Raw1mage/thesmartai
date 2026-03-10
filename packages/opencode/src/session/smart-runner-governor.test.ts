@@ -3,6 +3,7 @@ import { Session } from "."
 import {
   annotateSmartRunnerApprovalAdoption,
   annotateSmartRunnerAskUserAdoption,
+  annotateSmartRunnerCompletionAdoption,
   annotateSmartRunnerRiskPauseAdoption,
   annotateSmartRunnerReplanAdoption,
   annotateSmartRunnerTraceSuggestion,
@@ -705,6 +706,89 @@ describe("Smart Runner Governor", () => {
 
     expect(trace.suggestion?.riskPauseRequest?.hostAdopted).toBe(true)
     expect(trace.suggestion?.riskPauseRequest?.hostAdoptionReason).toBe("adopted")
+  })
+
+  it("annotates complete suggestions without changing control flow", () => {
+    const trace = annotateSmartRunnerTraceSuggestion({
+      trace: {
+        source: "smart_runner_governor",
+        dryRun: true,
+        status: "advisory",
+        createdAt: 1,
+        deterministicReason: "todo_in_progress",
+        decision: {
+          situation: "completed",
+          assessment: "The current slice looks finished",
+          decision: "complete",
+          reason: "The active todo appears done and no follow-up work looks actionable",
+          nextAction: {
+            kind: "continue_current",
+            todoID: "t5",
+            skillHints: [],
+            narration: "Marking the current slice complete.",
+          },
+          needsUserInput: false,
+          confidence: "high",
+        },
+      },
+    })
+
+    expect(trace.suggestion).toEqual(
+      expect.objectContaining({
+        kind: "complete",
+        reason: "The active todo appears done and no follow-up work looks actionable",
+        suggestedTodoID: "t5",
+        suggestedAction: "continue_current",
+        completionRequest: {
+          proposalID: "complete:t5",
+          targetTodoID: "t5",
+          proposedAction: "mark_todo_complete",
+          rationale: "The active todo appears done and no follow-up work looks actionable",
+          completionScope: "Mark todo t5 complete if the current slice is truly done.",
+          adoptionNote:
+            "Host may adopt this proposal into a real todo completion only if re-evaluation confirms the workflow is terminal.",
+          policy: {
+            trustLevel: "medium",
+            adoptionMode: "host_adoptable",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+          },
+        },
+      }),
+    )
+  })
+
+  it("marks when a complete proposal was host-adopted", () => {
+    const trace = annotateSmartRunnerCompletionAdoption({
+      trace: annotateSmartRunnerTraceSuggestion({
+        trace: {
+          source: "smart_runner_governor",
+          dryRun: true,
+          status: "advisory",
+          createdAt: 1,
+          deterministicReason: "todo_in_progress",
+          decision: {
+            situation: "completed",
+            assessment: "The current slice looks finished",
+            decision: "complete",
+            reason: "The active todo appears done and no follow-up work looks actionable",
+            nextAction: {
+              kind: "continue_current",
+              todoID: "t5",
+              skillHints: [],
+              narration: "Marking the current slice complete.",
+            },
+            needsUserInput: false,
+            confidence: "high",
+          },
+        },
+      }),
+      adopted: true,
+      reason: "adopted",
+    })
+
+    expect(trace.suggestion?.completionRequest?.hostAdopted).toBe(true)
+    expect(trace.suggestion?.completionRequest?.hostAdoptionReason).toBe("adopted")
   })
 
   it("turns docs sync assist into an explicit preflight continuation", () => {

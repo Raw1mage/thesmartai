@@ -70,6 +70,7 @@ import {
 import {
   annotateSmartRunnerApprovalAdoption,
   annotateSmartRunnerAskUserAdoption,
+  annotateSmartRunnerCompletionAdoption,
   annotateSmartRunnerRiskPauseAdoption,
   annotateSmartRunnerReplanAdoption,
   annotateSmartRunnerTraceAssist,
@@ -435,6 +436,96 @@ export namespace SessionPrompt {
     }
   }
 
+  export async function handleSmartRunnerCompletionAdoption(input: {
+    sessionID: string
+    todos: Todo.Info[]
+    suggestion?: NonNullable<ReturnType<typeof annotateSmartRunnerTraceSuggestion>["suggestion"]>
+    roundCount: number
+    updateTodos?: typeof Todo.update
+    decideContinuation?: typeof decideAutonomousContinuation
+    setWorkflowState?: typeof Session.setWorkflowState
+    persistTrace?: typeof persistSmartRunnerGovernorTrace
+    trace?: ReturnType<typeof annotateSmartRunnerTraceSuggestion>
+  }) {
+    const adoptedCompletion = Todo.applyHostAdoptedCompletion(input.todos, input.suggestion?.completionRequest)
+    const updateTodos = input.updateTodos ?? Todo.update
+    const decideContinuation = input.decideContinuation ?? decideAutonomousContinuation
+    const setWorkflowState = input.setWorkflowState ?? Session.setWorkflowState
+    const persistTrace = input.persistTrace ?? persistSmartRunnerGovernorTrace
+
+    let completionReason:
+      | "adopted"
+      | "missing_target"
+      | "unsupported_action"
+      | "policy_not_host_adoptable"
+      | "user_confirm_required"
+      | "host_review_missing"
+      | "target_not_active"
+      | "approval_gate"
+      | "waiting_gate"
+      | "not_terminal_after_completion" = adoptedCompletion.adopted ? "adopted" : adoptedCompletion.reason
+
+    let trace =
+      input.trace && input.suggestion?.kind === "complete"
+        ? annotateSmartRunnerCompletionAdoption({
+            trace: input.trace,
+            adopted: adoptedCompletion.adopted,
+            reason: completionReason,
+          })
+        : input.trace
+
+    if (!adoptedCompletion.adopted) {
+      if (trace) await persistTrace({ sessionID: input.sessionID, trace })
+      return { adopted: false as const, reason: completionReason, trace }
+    }
+
+    await updateTodos({ sessionID: input.sessionID, todos: adoptedCompletion.todos })
+    const nextDecision = await decideContinuation({
+      sessionID: input.sessionID,
+      roundCount: input.roundCount,
+    })
+    if (nextDecision.continue || nextDecision.reason !== "todo_complete") {
+      completionReason = "not_terminal_after_completion"
+      trace =
+        input.trace && input.suggestion?.kind === "complete"
+          ? annotateSmartRunnerCompletionAdoption({
+              trace: input.trace,
+              adopted: false,
+              reason: completionReason,
+            })
+          : trace
+      if (trace) await persistTrace({ sessionID: input.sessionID, trace })
+      return {
+        adopted: false as const,
+        reason: completionReason,
+        trace,
+        todos: adoptedCompletion.todos,
+      }
+    }
+
+    if (trace) {
+      trace = annotateSmartRunnerCompletionAdoption({
+        trace: trace,
+        adopted: true,
+        reason: "adopted",
+      })
+      await persistTrace({ sessionID: input.sessionID, trace })
+    }
+    await setWorkflowState({
+      sessionID: input.sessionID,
+      state: "completed",
+      stopReason: "todo_complete",
+      lastRunAt: Date.now(),
+    })
+    return {
+      adopted: true as const,
+      reason: "adopted" as const,
+      outcome: "completed" as const,
+      todos: adoptedCompletion.todos,
+      trace,
+    }
+  }
+
   export async function handleSmartRunnerContinuationSideEffects(input: {
     sessionID: string
     user: MessageV2.User
@@ -479,6 +570,7 @@ export namespace SessionPrompt {
     sessionID: string
     user: MessageV2.User
     text?: string
+    kind?: "pause" | "complete"
     emitNarration?: typeof emitAutonomousNarration
   }) {
     const narrationText = input.text?.trim()
@@ -491,7 +583,7 @@ export namespace SessionPrompt {
       variant: input.user.variant,
       model: input.user.model,
       text: prefixSmartRunnerText(narrationText),
-      kind: "pause",
+      kind: input.kind ?? "pause",
     })
     return { emitted: true as const }
   }
@@ -510,6 +602,7 @@ export namespace SessionPrompt {
     askUser?: typeof handleSmartRunnerAskUserAdoption
     requestApproval?: typeof handleSmartRunnerApprovalRequest
     pauseForRisk?: typeof handleSmartRunnerRiskPause
+    completePath?: typeof handleSmartRunnerCompletionAdoption
     replan?: typeof handleSmartRunnerReplanAdoption
     persistTrace?: typeof persistSmartRunnerGovernorTrace
     applyAssist?: typeof applySmartRunnerBoundedAssist
@@ -520,6 +613,7 @@ export namespace SessionPrompt {
     const askUser = input.askUser ?? handleSmartRunnerAskUserAdoption
     const requestApproval = input.requestApproval ?? handleSmartRunnerApprovalRequest
     const pauseForRisk = input.pauseForRisk ?? handleSmartRunnerRiskPause
+    const completePath = input.completePath ?? handleSmartRunnerCompletionAdoption
     const replan = input.replan ?? handleSmartRunnerReplanAdoption
     const persistTrace = input.persistTrace ?? persistSmartRunnerGovernorTrace
     const applyAssist = input.applyAssist ?? applySmartRunnerBoundedAssist
@@ -601,6 +695,25 @@ export namespace SessionPrompt {
           trace: riskPauseTrace,
         }
       }
+    }
+
+    if (suggestedTrace.suggestion?.kind === "complete") {
+      const completionResult = await completePath({
+        sessionID: input.sessionID,
+        todos: input.todos,
+        suggestion: suggestedTrace.suggestion,
+        roundCount: input.autonomousRounds,
+        trace: suggestedTrace,
+      })
+      if (completionResult.adopted) {
+        return {
+          kind: "complete" as const,
+          adopted: true,
+          outcome: completionResult.outcome,
+          trace: completionResult.trace,
+        }
+      }
+      traceForAssist = completionResult.trace ?? traceForAssist
     }
 
     if (suggestedTrace.suggestion?.kind === "ask_user" && askUserAdoption.reason) {
@@ -1177,6 +1290,15 @@ export namespace SessionPrompt {
               sessionID,
               user: lastUser,
               text: stopResult.trace?.decision?.nextAction.narration,
+            })
+            break
+          }
+          if (stopResult.kind === "complete") {
+            await handleSmartRunnerAdoptedStopNarration({
+              sessionID,
+              user: lastUser,
+              text: stopResult.trace?.decision?.nextAction.narration,
+              kind: "complete",
             })
             break
           }

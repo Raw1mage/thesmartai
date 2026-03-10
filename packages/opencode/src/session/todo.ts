@@ -119,7 +119,8 @@ export namespace Todo {
     },
   ) {
     if (!proposal?.targetTodoID) return { adopted: false as const, reason: "missing_target" as const, todos }
-    if (proposal.proposedAction !== "replan_todos") return { adopted: false as const, reason: "unsupported_action" as const, todos }
+    if (proposal.proposedAction !== "replan_todos")
+      return { adopted: false as const, reason: "unsupported_action" as const, todos }
     if (proposal.policy?.adoptionMode !== "host_adoptable")
       return { adopted: false as const, reason: "policy_not_host_adoptable" as const, todos }
     if (proposal.policy?.requiresUserConfirm)
@@ -137,8 +138,7 @@ export namespace Todo {
       return { adopted: false as const, reason: "dependencies_not_ready" as const, todos: enriched }
     if (target.action?.needsApproval)
       return { adopted: false as const, reason: "approval_gate" as const, todos: enriched }
-    if (target.action?.waitingOn)
-      return { adopted: false as const, reason: "waiting_gate" as const, todos: enriched }
+    if (target.action?.waitingOn) return { adopted: false as const, reason: "waiting_gate" as const, todos: enriched }
     if (target.action?.kind && target.action.kind !== "implement")
       return { adopted: false as const, reason: "unsupported_todo_kind" as const, todos: enriched }
 
@@ -147,6 +147,49 @@ export namespace Todo {
       adoptedTodoID: target.id,
       reason: "adopted" as const,
       todos: enriched.map((todo) => (todo.id === target.id ? { ...todo, status: "in_progress" } : todo)),
+    }
+  }
+
+  export function applyHostAdoptedCompletion(
+    todos: Info[],
+    proposal?: {
+      targetTodoID?: string
+      proposedAction?: string
+      policy?: {
+        adoptionMode?: string
+        requiresUserConfirm?: boolean
+        requiresHostReview?: boolean
+      }
+    },
+  ) {
+    if (!proposal?.targetTodoID) return { adopted: false as const, reason: "missing_target" as const, todos }
+    if (proposal.proposedAction !== "mark_todo_complete")
+      return { adopted: false as const, reason: "unsupported_action" as const, todos }
+    if (proposal.policy?.adoptionMode !== "host_adoptable")
+      return { adopted: false as const, reason: "policy_not_host_adoptable" as const, todos }
+    if (proposal.policy?.requiresUserConfirm)
+      return { adopted: false as const, reason: "user_confirm_required" as const, todos }
+    if (proposal.policy?.requiresHostReview === false)
+      return { adopted: false as const, reason: "host_review_missing" as const, todos }
+
+    const enriched = enrichAll(todos)
+    const target = enriched.find((todo) => todo.id === proposal.targetTodoID)
+    if (!target) return { adopted: false as const, reason: "missing_target" as const, todos: enriched }
+    if (target.status === "completed" || target.status === "cancelled")
+      return { adopted: false as const, reason: "target_not_active" as const, todos: enriched }
+    if (target.action?.needsApproval)
+      return { adopted: false as const, reason: "approval_gate" as const, todos: enriched }
+    if (target.action?.waitingOn) return { adopted: false as const, reason: "waiting_gate" as const, todos: enriched }
+
+    const current = nextActionableTodo(enriched)
+    if (!current || current.id !== target.id)
+      return { adopted: false as const, reason: "target_not_active" as const, todos: enriched }
+
+    return {
+      adopted: true as const,
+      adoptedTodoID: target.id,
+      reason: "adopted" as const,
+      todos: enriched.map((todo) => (todo.id === target.id ? { ...todo, status: "completed" } : todo)),
     }
   }
 

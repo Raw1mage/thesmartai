@@ -78,7 +78,7 @@ const SmartRunnerTraceSchema = z.object({
     .optional(),
   suggestion: z
     .object({
-      kind: z.enum(["replan", "ask_user", "request_approval", "pause_for_risk"]),
+      kind: z.enum(["replan", "ask_user", "request_approval", "pause_for_risk", "complete"]),
       reason: z.string(),
       suggestedTodoID: z.string().optional(),
       suggestedAction: z.string().optional(),
@@ -160,6 +160,39 @@ const SmartRunnerTraceSchema = z.object({
           hostAdopted: z.boolean().optional(),
           hostAdoptionReason: z
             .enum(["adopted", "policy_not_host_adoptable", "user_confirm_required", "host_review_missing"])
+            .optional(),
+        })
+        .optional(),
+      completionRequest: z
+        .object({
+          proposalID: z.string().optional(),
+          targetTodoID: z.string().optional(),
+          proposedAction: z.string().optional(),
+          rationale: z.string().optional(),
+          completionScope: z.string().optional(),
+          adoptionNote: z.string().optional(),
+          policy: z
+            .object({
+              trustLevel: z.enum(["low", "medium", "high"]).optional(),
+              adoptionMode: z.enum(["advisory_only", "host_adoptable", "user_confirm_required"]).optional(),
+              requiresUserConfirm: z.boolean().optional(),
+              requiresHostReview: z.boolean().optional(),
+            })
+            .optional(),
+          hostAdopted: z.boolean().optional(),
+          hostAdoptionReason: z
+            .enum([
+              "adopted",
+              "missing_target",
+              "unsupported_action",
+              "policy_not_host_adoptable",
+              "user_confirm_required",
+              "host_review_missing",
+              "target_not_active",
+              "approval_gate",
+              "waiting_gate",
+              "not_terminal_after_completion",
+            ])
             .optional(),
         })
         .optional(),
@@ -430,7 +463,7 @@ export function annotateSmartRunnerTraceAssist(input: {
 
 export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTrace }) {
   if (input.trace.status !== "advisory" || !input.trace.decision) return input.trace
-  if (!["replan", "ask_user", "request_approval", "pause_for_risk"].includes(input.trace.decision.decision))
+  if (!["replan", "ask_user", "request_approval", "pause_for_risk", "complete"].includes(input.trace.decision.decision))
     return input.trace
 
   const draftQuestion =
@@ -521,6 +554,28 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
           },
         }
       : undefined
+  const completionRequest =
+    input.trace.decision.decision === "complete"
+      ? {
+          proposalID: input.trace.decision.nextAction.todoID
+            ? `complete:${input.trace.decision.nextAction.todoID}`
+            : "complete:unspecified",
+          targetTodoID: input.trace.decision.nextAction.todoID,
+          proposedAction: "mark_todo_complete",
+          rationale: input.trace.decision.reason,
+          completionScope: input.trace.decision.nextAction.todoID
+            ? `Mark todo ${input.trace.decision.nextAction.todoID} complete if the current slice is truly done.`
+            : "Mark the current todo complete if the current slice is truly done.",
+          adoptionNote:
+            "Host may adopt this proposal into a real todo completion only if re-evaluation confirms the workflow is terminal.",
+          policy: {
+            trustLevel: "medium",
+            adoptionMode: "host_adoptable",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+          },
+        }
+      : undefined
   const replanAdoption =
     input.trace.decision.decision === "replan"
       ? {
@@ -557,8 +612,45 @@ export function annotateSmartRunnerTraceSuggestion(input: { trace: SmartRunnerTr
       askUserAdoption,
       approvalRequest,
       riskPauseRequest,
+      completionRequest,
       replanRequest,
       replanAdoption,
+    },
+  })
+}
+
+export function annotateSmartRunnerCompletionAdoption(input: {
+  trace: SmartRunnerTrace
+  adopted: boolean
+  reason?:
+    | "adopted"
+    | "missing_target"
+    | "unsupported_action"
+    | "policy_not_host_adoptable"
+    | "user_confirm_required"
+    | "host_review_missing"
+    | "target_not_active"
+    | "approval_gate"
+    | "waiting_gate"
+    | "not_terminal_after_completion"
+}) {
+  if (
+    input.trace.status !== "advisory" ||
+    input.trace.suggestion?.kind !== "complete" ||
+    !input.trace.suggestion.completionRequest
+  ) {
+    return input.trace
+  }
+
+  return SmartRunnerTraceSchema.parse({
+    ...input.trace,
+    suggestion: {
+      ...input.trace.suggestion,
+      completionRequest: {
+        ...input.trace.suggestion.completionRequest,
+        hostAdopted: input.adopted,
+        hostAdoptionReason: input.reason,
+      },
     },
   })
 }

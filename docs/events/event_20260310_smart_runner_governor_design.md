@@ -1130,3 +1130,34 @@ Validation（adopted stop-path narration）:
 - 結果：host-adopted `request_approval` / `pause_for_risk` 現在都會在真正停下前寫入 transcript-visible pause narration，且沿用 `[AI]` 前綴，不再只依賴 workflow/debug state 才看得出為何暫停。
 - Architecture Sync: Updated
   - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 adopted stop-path transcript narration contract
+
+### Current Slice (complete-path adoption)
+
+需求：Smart Runner 目前已能提議 replan / ask-user / request_approval / pause_for_risk，但仍缺少安全收尾能力。若 governor 判斷目前 slice 已完成，應能提出 bounded `complete` proposal；不過 host 只能在重新驗證後確定 workflow 真正 terminal 時才採納，不能讓 governor 單方面結案。
+
+範圍：
+
+- IN
+  - governor suggestion/adoption metadata 新增 `complete` path
+  - todo 層新增 host-adopted completion helper
+  - prompt host handling 新增 complete adoption helper
+  - stop-decision orchestration 接上 `complete` branch
+- OUT
+  - 不讓 Smart Runner 直接 mutate todo 或直接宣告完成
+  - 不允許仍有後續 actionable todo 時提前結案
+
+任務清單：
+
+- [x] 在 governor schema / suggestion annotation 新增 `complete`
+- [x] 在 todo 層新增 `applyHostAdoptedCompletion(...)`
+- [x] 在 prompt 新增 `handleSmartRunnerCompletionAdoption(...)`
+- [x] 讓 `handleSmartRunnerStopDecision(...)` 能處理 complete adopted path
+- [x] 補 governor / todo / prompt tests
+
+Validation（complete-path adoption）:
+
+- `bun x eslint /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/todo.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/todo.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/session/smart-runner-governor.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/todo.test.ts /home/pkcs12/projects/opencode/packages/opencode/test/session/smart-runner-prompt.test.ts` ✅
+- 結果：Smart Runner 現在可提出 bounded `complete` proposal，但 host 只會在標記目標 todo 完成後重新驗證確定 workflow 進入 `todo_complete` 時才採納；若仍有後續 actionable todo，則拒絕 adoption 並留下 `not_terminal_after_completion` observability 原因。
+- Architecture Sync: Updated
+  - 已於 `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md` 補記 conservative complete-path adoption contract

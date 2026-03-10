@@ -174,33 +174,27 @@ describe("Session todo action metadata", () => {
 
   it("refuses host-adopted replans that would bypass user confirmation or gated work", () => {
     expect(
-      Todo.applyHostAdoptedReplan(
-        [{ id: "a", content: "push release", status: "pending", priority: "high" }],
-        {
-          targetTodoID: "a",
-          proposedAction: "replan_todos",
-          policy: {
-            adoptionMode: "host_adoptable",
-            requiresUserConfirm: false,
-            requiresHostReview: true,
-          },
+      Todo.applyHostAdoptedReplan([{ id: "a", content: "push release", status: "pending", priority: "high" }], {
+        targetTodoID: "a",
+        proposedAction: "replan_todos",
+        policy: {
+          adoptionMode: "host_adoptable",
+          requiresUserConfirm: false,
+          requiresHostReview: true,
         },
-      ).reason,
+      }).reason,
     ).toBe("approval_gate")
 
     expect(
-      Todo.applyHostAdoptedReplan(
-        [{ id: "a", content: "safe next step", status: "pending", priority: "high" }],
-        {
-          targetTodoID: "a",
-          proposedAction: "replan_todos",
-          policy: {
-            adoptionMode: "host_adoptable",
-            requiresUserConfirm: true,
-            requiresHostReview: true,
-          },
+      Todo.applyHostAdoptedReplan([{ id: "a", content: "safe next step", status: "pending", priority: "high" }], {
+        targetTodoID: "a",
+        proposedAction: "replan_todos",
+        policy: {
+          adoptionMode: "host_adoptable",
+          requiresUserConfirm: true,
+          requiresHostReview: true,
         },
-      ).reason,
+      }).reason,
     ).toBe("user_confirm_required")
 
     expect(
@@ -220,5 +214,55 @@ describe("Session todo action metadata", () => {
         },
       ).reason,
     ).toBe("active_todo_in_progress")
+  })
+
+  it("can adopt a host-proposed todo completion for the current actionable todo", () => {
+    const result = Todo.applyHostAdoptedCompletion(
+      [{ id: "a", content: "finish current slice", status: "in_progress", priority: "high" }],
+      {
+        targetTodoID: "a",
+        proposedAction: "mark_todo_complete",
+        policy: {
+          adoptionMode: "host_adoptable",
+          requiresUserConfirm: false,
+          requiresHostReview: true,
+        },
+      },
+    )
+
+    expect(result).toEqual({
+      adopted: true,
+      adoptedTodoID: "a",
+      reason: "adopted",
+      todos: [
+        {
+          id: "a",
+          content: "finish current slice",
+          status: "completed",
+          priority: "high",
+          action: { kind: "implement", canDelegate: undefined },
+        },
+      ],
+    })
+  })
+
+  it("refuses host-proposed todo completion when the target is not the current actionable work", () => {
+    expect(
+      Todo.applyHostAdoptedCompletion(
+        [
+          { id: "a", content: "current work", status: "in_progress", priority: "high" },
+          { id: "b", content: "other pending work", status: "pending", priority: "high" },
+        ],
+        {
+          targetTodoID: "b",
+          proposedAction: "mark_todo_complete",
+          policy: {
+            adoptionMode: "host_adoptable",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+          },
+        },
+      ).reason,
+    ).toBe("target_not_active")
   })
 })

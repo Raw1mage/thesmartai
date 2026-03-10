@@ -260,6 +260,144 @@ describe("session.smart-runner-prompt", () => {
     )
   })
 
+  test("orchestrates host-adopted completion into completed workflow state", async () => {
+    const updateTodos = mock(async () => {})
+    const decideContinuation = mock(async () => ({ continue: false as const, reason: "todo_complete" as const }))
+    const setWorkflowState = mock(async () => ({}) as Awaited<ReturnType<typeof Session.setWorkflowState>>)
+    const persistTrace = mock(async () => {})
+
+    const result = await SessionPrompt.handleSmartRunnerCompletionAdoption({
+      sessionID: "ses_test",
+      todos: [{ id: "t5", content: "finish current slice", status: "in_progress", priority: "high" }],
+      suggestion: {
+        kind: "complete",
+        reason: "The active todo appears done",
+        completionRequest: {
+          proposalID: "complete:t5",
+          targetTodoID: "t5",
+          proposedAction: "mark_todo_complete",
+          policy: {
+            adoptionMode: "host_adoptable",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+          },
+        },
+      },
+      roundCount: 0,
+      updateTodos: updateTodos as any,
+      decideContinuation: decideContinuation as any,
+      setWorkflowState,
+      persistTrace: persistTrace as any,
+      trace: {
+        source: "smart_runner_governor",
+        dryRun: true,
+        status: "advisory",
+        createdAt: Date.now(),
+        deterministicReason: "todo_in_progress",
+        suggestion: {
+          kind: "complete",
+          reason: "The active todo appears done",
+          completionRequest: {
+            proposalID: "complete:t5",
+            targetTodoID: "t5",
+            proposedAction: "mark_todo_complete",
+            policy: {
+              adoptionMode: "host_adoptable",
+              requiresUserConfirm: false,
+              requiresHostReview: true,
+            },
+          },
+        },
+      } as any,
+    })
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        adopted: true,
+        reason: "adopted",
+        outcome: "completed",
+      }),
+    )
+    expect(updateTodos).toHaveBeenCalledTimes(1)
+    expect(decideContinuation).toHaveBeenCalledWith({ sessionID: "ses_test", roundCount: 0 })
+    expect(setWorkflowState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionID: "ses_test",
+        state: "completed",
+        stopReason: "todo_complete",
+      }),
+    )
+  })
+
+  test("refuses host-adopted completion when re-evaluation is not terminal", async () => {
+    const updateTodos = mock(async () => {})
+    const decideContinuation = mock(async () => ({
+      continue: true as const,
+      reason: "todo_pending" as const,
+      text: "Continue with the next planned step.",
+      todo: { id: "t6", content: "follow-up", status: "pending", priority: "high" },
+    }))
+    const setWorkflowState = mock(async () => ({}) as Awaited<ReturnType<typeof Session.setWorkflowState>>)
+    const persistTrace = mock(async () => {})
+
+    const result = await SessionPrompt.handleSmartRunnerCompletionAdoption({
+      sessionID: "ses_test",
+      todos: [
+        { id: "t5", content: "finish current slice", status: "in_progress", priority: "high" },
+        { id: "t6", content: "follow-up", status: "pending", priority: "high" },
+      ],
+      suggestion: {
+        kind: "complete",
+        reason: "The active todo appears done",
+        completionRequest: {
+          proposalID: "complete:t5",
+          targetTodoID: "t5",
+          proposedAction: "mark_todo_complete",
+          policy: {
+            adoptionMode: "host_adoptable",
+            requiresUserConfirm: false,
+            requiresHostReview: true,
+          },
+        },
+      },
+      roundCount: 0,
+      updateTodos: updateTodos as any,
+      decideContinuation: decideContinuation as any,
+      setWorkflowState,
+      persistTrace: persistTrace as any,
+      trace: {
+        source: "smart_runner_governor",
+        dryRun: true,
+        status: "advisory",
+        createdAt: Date.now(),
+        deterministicReason: "todo_in_progress",
+        suggestion: {
+          kind: "complete",
+          reason: "The active todo appears done",
+          completionRequest: {
+            proposalID: "complete:t5",
+            targetTodoID: "t5",
+            proposedAction: "mark_todo_complete",
+            policy: {
+              adoptionMode: "host_adoptable",
+              requiresUserConfirm: false,
+              requiresHostReview: true,
+            },
+          },
+        },
+      } as any,
+    })
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        adopted: false,
+        reason: "not_terminal_after_completion",
+      }),
+    )
+    expect(setWorkflowState).toHaveBeenCalledTimes(0)
+    expect(persistTrace).toHaveBeenCalledTimes(1)
+  })
+
   test("integrates with real Question reject flow for ask-user adoption", async () => {
     const question = SessionPrompt.buildSmartRunnerQuestion({
       questionText: "Should we continue with the current product behavior?",
@@ -534,6 +672,37 @@ describe("session.smart-runner-prompt", () => {
         parentID: "msg_user",
         kind: "pause",
         text: "[AI] Approval needed before continuing.",
+      }),
+    )
+  })
+
+  test("emits complete narration when the adopted stop path finishes the workflow", async () => {
+    const emitNarration = mock(async () => {})
+
+    const result = await SessionPrompt.handleSmartRunnerAdoptedStopNarration({
+      sessionID: "ses_test",
+      user: {
+        id: "msg_user",
+        sessionID: "ses_test",
+        role: "user",
+        time: { created: Date.now() },
+        agent: "build",
+        model: { providerId: "openai", modelID: "gpt-5.2" },
+        variant: undefined,
+        format: undefined,
+      },
+      text: "Current slice complete.",
+      kind: "complete",
+      emitNarration,
+    })
+
+    expect(result).toEqual({ emitted: true })
+    expect(emitNarration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionID: "ses_test",
+        parentID: "msg_user",
+        kind: "complete",
+        text: "[AI] Current slice complete.",
       }),
     )
   })
@@ -839,5 +1008,80 @@ describe("session.smart-runner-prompt", () => {
       }),
     )
     expect(pauseForRisk).toHaveBeenCalledTimes(1)
+  })
+
+  test("coordinates stop-decision complete path", async () => {
+    const getConfig = mock(async () => ({ enabled: true, assist: false }))
+    const evaluateGovernor = mock(async () => ({
+      source: "smart_runner_governor",
+      dryRun: true,
+      status: "advisory",
+      createdAt: Date.now(),
+      deterministicReason: "todo_in_progress",
+      decision: {
+        situation: "completed",
+        assessment: "Current slice looks finished",
+        decision: "complete",
+        reason: "The active todo appears done and no follow-up work looks actionable",
+        nextAction: {
+          kind: "continue_current",
+          todoID: "t5",
+          skillHints: [],
+          narration: "Current slice complete.",
+        },
+        needsUserInput: false,
+        confidence: "high",
+      },
+    }))
+    const completePath = mock(async () => ({ outcome: "completed" as const, adopted: true as const }))
+
+    const result = await SessionPrompt.handleSmartRunnerStopDecision({
+      sessionID: "ses_test",
+      activeModel: { providerId: "openai", modelID: "gpt-5.2" } as any,
+      autonomousRounds: 0,
+      lastUser: {
+        id: "msg_user",
+        sessionID: "ses_test",
+        role: "user",
+        time: { created: Date.now() },
+        agent: "build",
+        model: { providerId: "openai", modelID: "gpt-5.2" },
+        variant: undefined,
+        format: undefined,
+      },
+      messages: [],
+      todos: [{ id: "t5", content: "finish current slice", status: "in_progress", priority: "high" }],
+      decision: {
+        continue: true,
+        reason: "todo_in_progress",
+        text: "Continue the task already in progress.",
+        todo: { id: "t5", content: "finish current slice", status: "in_progress", priority: "high" },
+      },
+      getConfig: getConfig as any,
+      evaluateGovernor: evaluateGovernor as any,
+      listQuestions: async () => [],
+      completePath: completePath as any,
+      askUser: mock(async () => {
+        throw new Error("askUser should not run in complete path")
+      }) as any,
+      requestApproval: mock(async () => {
+        throw new Error("requestApproval should not run in complete path")
+      }) as any,
+      pauseForRisk: mock(async () => {
+        throw new Error("pauseForRisk should not run in complete path")
+      }) as any,
+      replan: mock(async () => {
+        throw new Error("replan should not run in complete path")
+      }) as any,
+    })
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        kind: "complete",
+        adopted: true,
+        outcome: "completed",
+      }),
+    )
+    expect(completePath).toHaveBeenCalledTimes(1)
   })
 })
