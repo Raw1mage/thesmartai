@@ -9,6 +9,15 @@ import { z } from "zod/v4"
 import type { OpenAIResponsesInput, OpenAIResponsesReasoning } from "./openai-responses-api-types"
 import { localShellInputSchema, localShellOutputSchema } from "./tool/local-shell"
 
+const OPENAI_RESPONSES_MAX_ID_LENGTH = 64
+
+function sanitizeResponsesId(id: unknown): string | undefined {
+  if (typeof id !== "string") return undefined
+  if (id.length === 0) return undefined
+  if (id.length > OPENAI_RESPONSES_MAX_ID_LENGTH) return undefined
+  return id
+}
+
 /**
  * Check if a string is a file ID based on the given prefixes
  * Returns false if prefixes is undefined (disables file ID detection)
@@ -123,10 +132,17 @@ export async function convertToOpenAIResponsesInput({
         for (const part of content) {
           switch (part.type) {
             case "text": {
+              const itemId = sanitizeResponsesId(part.providerOptions?.openai?.itemId)
+              if (!itemId && part.providerOptions?.openai?.itemId) {
+                warnings.push({
+                  type: "other",
+                  message: `Skipping assistant item id longer than ${OPENAI_RESPONSES_MAX_ID_LENGTH} characters.`,
+                })
+              }
               input.push({
                 role: "assistant",
                 content: [{ type: "output_text", text: part.text }],
-                id: (part.providerOptions?.openai?.itemId as string) ?? undefined,
+                id: itemId,
               })
               break
             }
@@ -139,10 +155,18 @@ export async function convertToOpenAIResponsesInput({
 
               if (hasLocalShellTool && part.toolName === "local_shell") {
                 const parsedInput = localShellInputSchema.parse(part.input)
+                const itemId = sanitizeResponsesId(part.providerOptions?.openai?.itemId)
+                if (!itemId) {
+                  warnings.push({
+                    type: "other",
+                    message: `Skipping local shell call item id longer than ${OPENAI_RESPONSES_MAX_ID_LENGTH} characters.`,
+                  })
+                  break
+                }
                 input.push({
                   type: "local_shell_call",
                   call_id: part.toolCallId,
-                  id: (part.providerOptions?.openai?.itemId as string) ?? undefined,
+                  id: itemId,
                   action: {
                     type: "exec",
                     command: parsedInput.action.command,
@@ -156,12 +180,13 @@ export async function convertToOpenAIResponsesInput({
                 break
               }
 
+              const itemId = sanitizeResponsesId(part.providerOptions?.openai?.itemId)
               input.push({
                 type: "function_call",
                 call_id: part.toolCallId,
                 name: part.toolName,
                 arguments: JSON.stringify(part.input),
-                id: (part.providerOptions?.openai?.itemId as string) ?? undefined,
+                id: itemId,
               })
               break
             }
@@ -170,7 +195,15 @@ export async function convertToOpenAIResponsesInput({
             case "tool-result": {
               if (store) {
                 // use item references to refer to tool results from built-in tools
-                input.push({ type: "item_reference", id: part.toolCallId })
+                const itemId = sanitizeResponsesId(part.toolCallId)
+                if (itemId) {
+                  input.push({ type: "item_reference", id: itemId })
+                } else {
+                  warnings.push({
+                    type: "other",
+                    message: `Skipping tool result item_reference id longer than ${OPENAI_RESPONSES_MAX_ID_LENGTH} characters.`,
+                  })
+                }
               } else {
                 warnings.push({
                   type: "other",
@@ -188,7 +221,7 @@ export async function convertToOpenAIResponsesInput({
                 schema: openaiResponsesReasoningProviderOptionsSchema,
               })
 
-              const reasoningId = providerOptions?.itemId
+              const reasoningId = sanitizeResponsesId(providerOptions?.itemId)
 
               if (reasoningId != null) {
                 const reasoningMessage = reasoningMessages[reasoningId]
@@ -224,6 +257,13 @@ export async function convertToOpenAIResponsesInput({
                   }
 
                   if (reasoningMessage === undefined) {
+                    if (!reasoningId) {
+                      warnings.push({
+                        type: "other",
+                        message: `Skipping reasoning item id longer than ${OPENAI_RESPONSES_MAX_ID_LENGTH} characters.`,
+                      })
+                      break
+                    }
                     reasoningMessages[reasoningId] = {
                       type: "reasoning",
                       id: reasoningId,
@@ -238,7 +278,10 @@ export async function convertToOpenAIResponsesInput({
               } else {
                 warnings.push({
                   type: "other",
-                  message: `Non-OpenAI reasoning parts are not supported. Skipping reasoning part: ${JSON.stringify(part)}.`,
+                  message:
+                    providerOptions?.itemId && typeof providerOptions.itemId === "string"
+                      ? `Skipping reasoning item id longer than ${OPENAI_RESPONSES_MAX_ID_LENGTH} characters.`
+                      : `Non-OpenAI reasoning parts are not supported. Skipping reasoning part: ${JSON.stringify(part)}.`,
                 })
               }
               break
