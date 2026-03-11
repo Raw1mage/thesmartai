@@ -1585,21 +1585,26 @@ export namespace Provider {
         })
         await Promise.all(accountLoaderPromises)
 
-        // FIX: Inherit custom fetch from first account to base provider if base has none
-        // This ensures base provider (e.g., "claude-cli") works when account provider
-        // (e.g., "claude-cli-subscription-xxx") has the actual auth/fetch configured
-        // @event_20260209_base_provider_fetch_inheritance
+        // Inherit custom fetch from the active account only.
+        // Never use object insertion order as an execution policy.
         if (providers[family] && !providers[family].options?.fetch) {
-          for (const accountId of Object.keys(familyData.accounts)) {
-            if (providers[accountId]?.options?.fetch) {
-              log.info("inheriting custom fetch from account to base provider", { family, accountId })
-              providers[family].options = mergeDeep(providers[family].options, {
-                fetch: providers[accountId].options.fetch,
-                apiKey: providers[accountId].options.apiKey,
-                isClaudeCode: providers[accountId].options.isClaudeCode,
-              }) as Info["options"]
-              break
-            }
+          const activeAccountId = familyData.activeAccount
+          if (activeAccountId && providers[activeAccountId]?.options?.fetch) {
+            log.info("inheriting custom fetch from active account to base provider", {
+              family,
+              accountId: activeAccountId,
+            })
+            providers[family].options = mergeDeep(providers[family].options, {
+              fetch: providers[activeAccountId].options.fetch,
+              apiKey: providers[activeAccountId].options.apiKey,
+              isClaudeCode: providers[activeAccountId].options.isClaudeCode,
+            }) as Info["options"]
+          } else {
+            log.warn("base provider fetch inheritance skipped: no active account fetch", {
+              family,
+              activeAccountId,
+              accountCount: Object.keys(familyData.accounts).length,
+            })
           }
         }
       }
@@ -2149,6 +2154,26 @@ export namespace Provider {
       throw new ModelNotFoundError({ providerId, modelID, suggestions })
     }
     return info
+  }
+
+  export async function resolveExecutionModel(input: { model: Model; accountId?: string }) {
+    if (!input.accountId) return input.model
+    const accountProviderId = input.accountId
+    const parseAccountProvider =
+      (Account as any).parseProvider ??
+      (Account as any).parseFamily ??
+      ((accountId: string) => accountId.split(/-(?:api|subscription)-/)[0])
+    const accountFamily = parseAccountProvider(accountProviderId)
+    const resolveFamily =
+      (Account as any).resolveFamilyOrSelf ??
+      (Account as any).resolveFamily ??
+      (async (providerId: string) => providerId)
+    const modelFamily = await resolveFamily(input.model.providerId)
+    if (!accountFamily || accountFamily !== modelFamily) return input.model
+    const provider = await getProvider(accountProviderId)
+    if (!provider) return input.model
+    const resolved = await getModel(accountProviderId, input.model.id).catch(() => undefined)
+    return resolved ?? { ...input.model, providerId: accountProviderId }
   }
 
   export async function getLanguage(model: Model): Promise<LanguageModelV2> {

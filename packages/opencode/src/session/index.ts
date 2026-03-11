@@ -209,6 +209,15 @@ export namespace Session {
   })
   export type WorkflowInfo = z.output<typeof WorkflowInfo>
 
+  export const ExecutionIdentity = z.object({
+    providerId: z.string(),
+    modelID: z.string(),
+    accountId: z.string().optional(),
+    revision: z.number().int().nonnegative(),
+    updatedAt: z.number(),
+  })
+  export type ExecutionIdentity = z.output<typeof ExecutionIdentity>
+
   export const Info = z
     .object({
       id: Identifier.schema("session"),
@@ -247,6 +256,7 @@ export namespace Session {
         })
         .optional(),
       stats: Stats.optional(),
+      execution: ExecutionIdentity.optional(),
       workflow: WorkflowInfo.optional(),
     })
     .meta({
@@ -264,6 +274,31 @@ export namespace Session {
       state: "waiting_user",
       updatedAt: now,
       supervisor: {},
+    }
+  }
+
+  function sameExecutionIdentity(
+    left?: Pick<ExecutionIdentity, "providerId" | "modelID" | "accountId">,
+    right?: Pick<ExecutionIdentity, "providerId" | "modelID" | "accountId">,
+  ) {
+    return (
+      left?.providerId === right?.providerId && left?.modelID === right?.modelID && left?.accountId === right?.accountId
+    )
+  }
+
+  export function nextExecutionIdentity(input: {
+    current?: ExecutionIdentity
+    model: { providerId: string; modelID: string; accountId?: string }
+    now?: number
+  }): ExecutionIdentity {
+    const now = input.now ?? Date.now()
+    const unchanged = sameExecutionIdentity(input.current, input.model)
+    return {
+      providerId: input.model.providerId,
+      modelID: input.model.modelID,
+      accountId: input.model.accountId,
+      revision: unchanged ? (input.current?.revision ?? 0) : (input.current?.revision ?? 0) + 1,
+      updatedAt: now,
     }
   }
 
@@ -585,6 +620,22 @@ export namespace Session {
           supervisor,
           updatedAt: Date.now(),
         }
+      },
+      { touch: false },
+    )
+  }
+
+  export async function pinExecutionIdentity(input: {
+    sessionID: string
+    model: { providerId: string; modelID: string; accountId?: string }
+  }) {
+    return update(
+      input.sessionID,
+      (draft) => {
+        draft.execution = nextExecutionIdentity({
+          current: draft.execution,
+          model: input.model,
+        })
       },
       { touch: false },
     )

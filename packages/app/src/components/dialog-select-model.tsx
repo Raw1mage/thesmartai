@@ -451,6 +451,8 @@ const ModelList: Component<{
             : undefined,
           {
             recent: true,
+            interrupt: true,
+            syncSessionExecution: true,
           },
           params.id,
         )
@@ -1301,7 +1303,11 @@ export const DialogSelectModel: Component<{
     try {
       const currentSelection = local.model.selection(params.id)
       if (currentSelection) {
-        local.model.set({ ...currentSelection, accountID: row.id }, undefined, params.id)
+        local.model.set(
+          { ...currentSelection, accountID: row.id },
+          { interrupt: true, syncSessionExecution: true },
+          params.id,
+        )
       }
       showToast({
         variant: "success",
@@ -1631,6 +1637,8 @@ export const DialogSelectModel: Component<{
                     { modelID: x.id, providerID: providerIDForSelection, accountID: accountId },
                     {
                       recent: true,
+                      interrupt: true,
+                      syncSessionExecution: true,
                     },
                     params.id,
                   )

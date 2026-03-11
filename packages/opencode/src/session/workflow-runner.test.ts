@@ -8,6 +8,7 @@ import {
   describeAutonomousNextAction,
   detectApprovalRequiredForTodos,
   enqueuePendingContinuation,
+  enqueueAutonomousContinue,
   evaluateAutonomousContinuation,
   getPendingContinuation,
   planAutonomousNextAction,
@@ -825,6 +826,46 @@ describe("Session workflow runner", () => {
     })
 
     expect(picked.map((item) => item.pending.sessionID)).toEqual(["session_openai_a", "session_google_a"])
+  })
+
+  it("pins autonomous synthetic turns to persisted session execution identity", async () => {
+    const session = await Session.createNext({
+      id: "session_execution_pin",
+      title: "execution pin test",
+      directory: "/tmp",
+    })
+    await Session.pinExecutionIdentity({
+      sessionID: session.id,
+      model: {
+        providerId: "github-copilot",
+        modelID: "gpt-5.4",
+        accountId: "acct-copilot",
+      },
+    })
+
+    const message = await enqueueAutonomousContinue({
+      sessionID: session.id,
+      user: {
+        id: "msg_user_prev",
+        role: "user",
+        sessionID: session.id,
+        time: { created: 1 },
+        agent: "coding",
+        model: {
+          providerId: "openai",
+          modelID: "gpt-5",
+          accountId: "acct-openai",
+        },
+        format: { type: "text" },
+      },
+      text: "Continue",
+    })
+
+    expect(message.model).toEqual({
+      providerId: "github-copilot",
+      modelID: "gpt-5.4",
+      accountId: "acct-copilot",
+    })
   })
 
   it("prefers lower-failure resumptions when budget readiness is otherwise equal", () => {

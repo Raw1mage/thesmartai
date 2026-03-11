@@ -473,6 +473,13 @@ export const SessionRoutes = lazy(() =>
         "json",
         z.object({
           title: z.string().optional(),
+          execution: z
+            .object({
+              providerId: z.string(),
+              modelID: z.string(),
+              accountId: z.string().optional(),
+            })
+            .optional(),
           time: z
             .object({
               archived: z.number().optional(),
@@ -508,6 +515,12 @@ export const SessionRoutes = lazy(() =>
           (session) => {
             if (updates.title !== undefined) {
               session.title = updates.title
+            }
+            if (updates.execution) {
+              session.execution = Session.nextExecutionIdentity({
+                current: session.execution,
+                model: updates.execution,
+              })
             }
             if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
             if (updates.workflow) {

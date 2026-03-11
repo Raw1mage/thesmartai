@@ -8,6 +8,7 @@ import { base64Encode } from "@opencode-ai/util/encode"
 import { useProviders } from "@/hooks/use-providers"
 import { useModels } from "@/context/models"
 import { cycleModelVariant, getConfiguredAgentVariant, resolveModelVariant } from "./model-variant"
+import { normalizeProviderFamily } from "@/components/model-selector-state"
 
 export type ModelKey = { providerID: string; modelID: string; accountID?: string }
 
@@ -48,14 +49,18 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const providers = useProviders()
     const connected = createMemo(() => new Set(providers.connected().map((provider) => provider.id)))
 
+    function resolveFamily(providerID: string) {
+      return normalizeProviderFamily(providerID) || providerID
+    }
+
     function availableAccountIds(providerID: string) {
-      const family = providerID
+      const family = resolveFamily(providerID)
       const families = globalSync.data.account_families
       return Object.keys(families[family]?.accounts ?? {})
     }
 
     function replacementAccountID(providerID: string, currentAccountID?: string) {
-      const family = providerID
+      const family = resolveFamily(providerID)
       const familyData = globalSync.data.account_families[family]
       const active = familyData?.activeAccount
       const ids = Object.keys(familyData?.accounts ?? {})
@@ -235,7 +240,26 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         )
       }
 
-      const set = (model: ModelKey | undefined, options?: { recent?: boolean }, sessionID?: string) => {
+      const syncSessionExecution = async (sessionID: string, model: ModelKey | undefined) => {
+        if (!model) return
+        await (sdk.client.session.update as any)({
+          sessionID,
+          execution: {
+            providerId: model.providerID,
+            modelID: model.modelID,
+            accountId: model.accountID,
+          },
+        })
+      }
+
+      const set = async (
+        model: ModelKey | undefined,
+        options?: { recent?: boolean; interrupt?: boolean; syncSessionExecution?: boolean },
+        sessionID?: string,
+      ) => {
+        if (sessionID && options?.interrupt) {
+          await sdk.client.session.abort({ sessionID }).catch(() => {})
+        }
         batch(() => {
           const currentAgent = agent.current()
           const next = model ?? fallbackModel()
@@ -243,9 +267,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (model) models.setVisibility(model, true)
           if (options?.recent && model) models.recent.push(model)
         })
+        if (sessionID && options?.syncSessionExecution) {
+          await syncSessionExecution(sessionID, model ?? fallbackModel())
+        }
       }
 
-      setModel = set
+      setModel = ((model: ModelKey | undefined, options?: { recent?: boolean }, sessionID?: string) => {
+        void set(model, options, sessionID)
+      }) as typeof setModel
 
       return {
         ready: models.ready,

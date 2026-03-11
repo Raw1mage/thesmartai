@@ -63,6 +63,7 @@ import { emitSessionNarration, isNarrationAssistantMessage } from "./narration"
 import {
   decideAutonomousContinuation,
   describeAutonomousNextAction,
+  clearPendingContinuation,
   enqueueAutonomousContinue,
   getPendingContinuation,
   shouldInterruptAutonomousRun,
@@ -252,7 +253,14 @@ export namespace SessionPrompt {
 
   export function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
-    return cancelRuntime(sessionID)
+    cancelRuntime(sessionID)
+    void clearPendingContinuation(sessionID).catch(() => undefined)
+    void Session.setWorkflowState({
+      sessionID,
+      state: "waiting_user",
+      stopReason: "manual_interrupt",
+      lastRunAt: Date.now(),
+    }).catch(() => undefined)
   }
 
   const emitAutonomousNarration = emitSessionNarration
@@ -323,13 +331,21 @@ export namespace SessionPrompt {
         sessionID: input.sessionID,
         questions: [input.question],
       })
+      const session = await Session.get(input.sessionID).catch(() => undefined)
+      const executionModel = session?.execution
+        ? {
+            providerId: session.execution.providerId,
+            modelID: session.execution.modelID,
+            accountId: session.execution.accountId,
+          }
+        : input.lastUser.model
       const userMsg: MessageV2.User = {
         id: Identifier.ascending("message"),
         sessionID: input.sessionID,
         role: "user",
         time: { created: Date.now() },
         agent: input.lastUser.agent,
-        model: input.lastUser.model,
+        model: executionModel,
         variant: input.lastUser.variant,
         format: input.lastUser.format,
       }

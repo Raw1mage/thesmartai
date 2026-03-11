@@ -81,6 +81,8 @@ export const DialogSelectModelUnpaid: Component = () => {
                 : undefined,
               {
                 recent: true,
+                interrupt: true,
+                syncSessionExecution: true,
               },
               params.id,
             )

@@ -179,6 +179,19 @@
    - 若框架文件不足，應在本次任務中補齊，而不是接受知識缺口常態化。
 
 8. **Web Runtime 單一啟動入口（Fail-Fast）**
-   - 本 repo 的 web runtime **只允許**透過 `./webctl.sh dev-start`（或 `dev-refresh`）啟動。
-   - 禁止直接使用 `bun ... opencode ... web` / `opencode web` 手動啟動，避免載入錯誤前端 bundle 或錯誤 env。
-   - 所有 server runtime 參數（含 `OPENCODE_FRONTEND_PATH`）必須集中定義於 `/etc/opencode/opencode.cfg`，作為單一事實來源。
+
+- 本 repo 的 web runtime **只允許**透過 `./webctl.sh dev-start`（或 `dev-refresh`）啟動。
+- 禁止直接使用 `bun ... opencode ... web` / `opencode web` 手動啟動，避免載入錯誤前端 bundle 或錯誤 env。
+- 所有 server runtime 參數（含 `OPENCODE_FRONTEND_PATH`）必須集中定義於 `/etc/opencode/opencode.cfg`，作為單一事實來源。
+
+9. **禁止新增 fallback mechanism（使用者天條）**
+   - 實作、重構、除錯時，**不允許主動新增任何 fallback mechanism**，除非使用者明確批准。
+   - 尤其禁止以下行為：
+     - 在 account / provider / model / session identity 不一致時，以 silent fallback 掩蓋問題
+     - 用預設值、第一個可用項、插入順序第一筆、global active account、cross-provider rescue 等方式偷偷續跑
+     - 在沒有 request-level evidence 前，以 fallback 當作「先讓系統能跑」的修補
+   - 預設策略應為：**fail fast、顯式報錯、保留證據、要求決策**，而不是自動 fallback。
+   - 若現有程式已存在 fallback，新的任務預設應優先評估：
+     1. 是否能刪除
+     2. 是否能改成 explicit decision gate
+     3. 是否能縮到單一可觀測且經使用者批准的例外

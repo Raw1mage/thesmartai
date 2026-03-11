@@ -192,6 +192,7 @@ The `cms` branch is the primary product line for this environment, featuring sig
    - Sticky header participation is disabled for this inline-steps path; the session scroller remains the intended outer scroll owner.
    - Working tool cards (`part.state.status !== "completed"`) bypass the `BasicTool` collapsible route and render via a flat inline container.
    - `packages/ui/src/components/basic-tool.css` must not use `content-visibility: auto` on tool triggers, because deferred layout/paint on long streaming mobile sessions can destabilize scroll-follow behavior.
+   - Mobile scroll repair: while a session is actively working on mobile (`!isDesktop()`), prompt dock resize no longer continuously redefines layout padding or triggers prompt-dock-driven auto-follow. The page freezes a `mobilePromptHeightLock` until the session returns to idle, reducing iOS/mobile viewport chrome induced oscillation.
 
 #### Capability registry contract
 
@@ -205,29 +206,48 @@ Historical change logs belong in `docs/events/`; this document keeps the current
 
 #### A) cms Provider Graph (authoritative coordinates)
 
-The runtime must treat identities as explicit coordinates:
+The runtime must treat identities as explicit coordinates, with a strict hierarchy:
 
-1. **Provider Family** (canonical): e.g. `nvidia`, `openai`, `gemini-cli`
-2. **Account** (family-scoped): active + candidates in `accounts.json`
-3. **Model** (provider-scoped): from models.dev/snapshot + config/plugin/custom loader overlays
+1. **Provider** (canonical runtime/vendor key)
+   - This is the account-bearing boundary.
+   - Provider decides auth, account binding, quota/cooldown tracking, routing, and execution ownership.
+   - Examples: `openai`, `github-copilot`, `gemini-cli`, `google-api`.
+2. **Account** (provider-scoped)
+   - Active + candidate accounts under a provider in `accounts.json`.
+   - Account selection must never be inferred from model-family labels.
+3. **Model / Model family**
+   - Model family is only the catalog/grouping layer for model lists and capabilities.
+   - A provider may expose one or many model families.
+   - Example: provider `openai` exposes OpenAI families; provider `github-copilot` may expose OpenAI / Claude / Gemini families through one provider account boundary.
 
-No runtime decision should depend on "guessing" family from an arbitrary dashed provider string without canonical family inventory.
+Architectural rule: **provider and model family are not synonyms**.
+The system must prioritize provider as the operational identity boundary, while model family remains a model-catalog concept.
+No runtime decision should depend on guessing provider/account ownership from an arbitrary model-family-like string.
 
 #### A.1) Session execution identity contract
 
 - Session execution identity is now a persisted 3D coordinate: `{ providerId, modelID, accountId? }`.
+- Session-level SSOT is now additionally persisted on the session record itself as `session.execution = { providerId, modelID, accountId?, revision, updatedAt }`.
 - Persistence surfaces that can now carry `accountId`:
   - `MessageV2.User.model`
   - `MessageV2.SubtaskPart.model`
   - `MessageV2.Assistant`
+- Session-level execution pinning rules:
+  - real user-message persistence pins `session.execution`
+  - manual Web/TUI session model/account switches now also PATCH `session.execution` immediately through `session.update`, instead of waiting for the next real user turn
+  - `lastModel()` now prefers `session.execution` before scanning latest user message history
+  - autonomous/synthetic user turns (continuations, Smart Runner ask-user resume) must prefer `session.execution` over stale last-user snapshots
+  - processor write-back paths (`assistant-persist`, fallback-applied assistant metadata) also sync the resolved runtime identity back into `session.execution`
+- `revision` is the persisted session execution-identity epoch for detecting real selection changes over time; `updatedAt` records the latest authoritative write-back.
 - Runtime propagation path is:
   - prompt / shell / command input
   - `user-message-context`
   - session processor preflight
   - LLM/provider transform options
   - assistant message update after actual execution / fallback
-- Rule: runtime must prefer the session-carried `accountId` when present. Family-level active account is only a fallback for legacy/default execution paths that did not pin a session account.
-- Result: two sessions using the same provider family may now execute with different accounts without mutating each other's execution identity.
+- Operational goal: session execution identity should no longer depend solely on whichever latest user/assistant message happened to survive hydration; the session record itself is now the canonical pin.
+- Rule: runtime must prefer the session-carried `accountId` when present. Provider-level active account is only a fallback for legacy/default execution paths that did not pin a session account.
+- Result: two sessions using the same provider may now execute with different accounts without mutating each other's execution identity, even if they happen to use models from the same model family.
 
 #### B) TUI `/admin` provider operation pipeline (cms)
 
@@ -238,18 +258,23 @@ No runtime decision should depend on "guessing" family from an arbitrary dashed 
 | Add API key (models.dev family) | `DialogApiKeyAdd`                                                             | `Account.add(family, accountId, apiKey)` under canonical family scope |
 | Add Google API account          | `DialogGoogleApiAdd`                                                          | Adds `google-api` account with explicit family key                    |
 | OAuth account connect           | `DialogProvider` → `/provider/:id/oauth/*`                                    | Stores auth via `Auth.set(...)` / account module                      |
-| Active account switch           | `/account/:family/active`                                                     | Rotation and model availability read new active account               |
+| Active account switch           | `/account/:family/active` (legacy route name; operationally provider-scoped)  | Rotation and model availability read new active account               |
 
 #### B.0) Control-plane vs session-local selection boundary
 
-- **Global active account** remains a control-plane/admin concept. It is still changed through explicit account-management actions such as `/account/:family/active` and is used as the default account when no session-local override exists.
+- **Global active account** remains a control-plane/admin concept. It is still changed through explicit account-management actions such as `/account/:provider/active` and is used as the default account when no session-local override exists.
 - **Session model selection** in TUI/Web is a separate execution-state layer. Selecting a provider/model/account for the current session must update local session state first and must not require `setActive()` merely to choose the session's execution identity.
+- Manual session model/account selection now has a two-write contract:
+  1. update local session selection immediately for UI responsiveness
+  2. PATCH `session.execution` immediately on the server so background/autonomous/runtime paths see the same pinned identity before the next prompt is submitted
 - TUI `/admin` activity/model selection and Web model selection therefore operate on session-local `{ providerId, modelID, accountId? }` state, while explicit account-management screens continue to own true global active-account changes.
 - Rotation/fallback may still change the effective execution account, but that change is recorded back into session/assistant metadata instead of silently rewriting the global active account.
+- Manual runtime interruption now has a workflow contract too: `SessionPrompt.cancel()` aborts the in-flight runtime, clears pending autonomous continuation queue state for that session, and moves workflow state to `waiting_user` with stop reason `manual_interrupt`.
 - **Same-provider rotate cooldown contract:** when rate-limit fallback performs a same-provider rotate (provider unchanged, account/model changed), runtime arms a provider-level cooldown window (default 5 minutes).
 - While that cooldown is active, rotation candidate selection blocks further same-provider rotate candidates for the same provider and forces cross-provider rescue (or no-rotation if none are available).
 - The cooldown is cross-process and persisted in unified rotation state as `sameProviderRotationCooldowns`.
 - Rotation observability now exposes explicit checkpoints for this guard: `Same-provider rotate guard armed`, `Same-provider rotate quota consumed; forcing cross-provider fallback`, and `No cross-provider fallback available; rotation stopped`.
+- Terminology rule for future work: account-binding logic, routing, cooldowns, and execution identity should be reasoned about in **provider** terms first, not in model-family terms.
 
 #### B.1) Prompt footer quota/runtime metadata pipeline (TUI + Web)
 
@@ -264,14 +289,15 @@ This subsection documents how prompt footer usage/account metadata stays fresh w
      - **initial on-demand hydrate**: entering an OpenAI-backed footer can trigger one refresh if the last refresh is older than 60 seconds
      - **turn completion signal**: when `lastCompletedAssistant` changes, TUI refreshes quota only if the previous refresh is older than 60 seconds
    - Footer account label and footer OpenAI quota both resolve from the same effective account snapshot.
-   - Effective account precedence is:
-     1. current session-local `accountId`
-     2. family active account fallback
-   - This keeps footer identity/usage paired with the session's real execution identity instead of always reflecting the family-global active account.
-   - The low-frequency footer timer (default 15s via `OPENCODE_TUI_FOOTER_REFRESH_MS`) is retained for lightweight elapsed/account display updates only; it does **not** poll OpenAI quota in the background.
-   - Result: footer usage stays fresh during real OpenAI usage while avoiding idle quota polling.
 
-1.1 **TUI `/admin` quota display behavior**
+- Effective account precedence is:
+  1.  current session-local `accountId`
+  2.  provider active account fallback
+- This keeps footer identity/usage paired with the session's real execution identity instead of always reflecting the provider-global active account.
+  - The low-frequency footer timer (default 15s via `OPENCODE_TUI_FOOTER_REFRESH_MS`) is retained for lightweight elapsed/account display updates only; it does **not** poll OpenAI quota in the background.
+  - Result: footer usage stays fresh during real OpenAI usage while avoiding idle quota polling.
+
+    1.1 **TUI `/admin` quota display behavior**
 
 - Entry point: `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
 - Opening `/admin` is treated as a legitimate quota display request.
@@ -286,13 +312,36 @@ This subsection documents how prompt footer usage/account metadata stays fresh w
      1. the latest visible user message model (initial/pinned session identity)
      2. the latest completed non-narration assistant message model/account (post-`rotation3d` effective execution identity)
    - Guard rule: Web must not treat autonomous narration-only assistant messages as execution-identity updates, and it must not overwrite a session-local selection that the operator has already manually changed away from the last user-pinned model.
-   - Effective account precedence mirrors TUI: prefer session-local selected `accountId`, then fall back to the family active account.
-   - The web quota resource key is gated by `quotaRefresh` and only becomes active for `openai`.
-   - Refresh policy is event-driven, not interval-driven:
-     - wait for a **new completed assistant turn**
-     - require **more than 60 seconds** since the previous quota refresh
-     - require effective provider family = `openai`
-   - Non-OpenAI providers do not participate in this refresh path.
+
+- Effective account precedence mirrors TUI: prefer session-local selected `accountId`, then fall back to the provider active account.
+- The web quota resource key is gated by `quotaRefresh` and only becomes active for `openai`.
+- Observability contract for turn-level execution identity now includes explicit `audit.identity` checkpoints in debug log:
+  - `requestPhase=preflight`: processor selected the current turn's provider/model/account before API call
+  - `requestPhase=llm-start`: `LLM.stream()` started with the resolved execution identity
+  - `requestPhase=fallback-switch`: rate-limit / temporary / permanent failure switched to another provider-account-model vector
+  - `requestPhase=assistant-persist`: resolved execution identity was written back into assistant metadata
+- Required audit fields:
+  - `sessionID`
+  - `userMessageID`
+  - `assistantMessageID?`
+  - `providerId`
+  - `modelID`
+  - `accountId`
+  - `source` (`session-pinned`, `user-message`, `active-account-fallback`, `rate-limit-fallback`, `temporary-error-fallback`, `permanent-error-fallback`, `assistant-persist`)
+- Purpose: allow operators to grep one assistant turn end-to-end and answer "which account actually paid for this request, and why was it chosen?" without reconstructing the whole fallback chain from generic logs.
+- Under the newer strict session policy, provider/account fallback is now blocked once session execution identity is pinned:
+  - runtime may still persist a model change that stays on the same provider/account
+  - runtime must not silently jump to a different provider/account inside the same session
+  - when rotation proposes a different provider/account, `LLM.handleRateLimitFallback()` now emits `Session identity blocked provider/account fallback` and returns no fallback switch
+- Request-layer hardening rules:
+  - if session execution identity includes `accountId`, `LLM.stream()` must resolve the outbound `executionModel` to that **account provider** before calling `Provider.getLanguage(...)`
+  - base providers (for example `openai`) may inherit custom fetch only from the **active account**, never from insertion-order first account
+  - insertion order is not a valid account-routing policy in multi-account systems
+    - Refresh policy is event-driven, not interval-driven:
+      - wait for a **new completed assistant turn**
+      - require **more than 60 seconds** since the previous quota refresh
+    - require effective provider family = `openai`
+- Non-OpenAI providers do not participate in this refresh path.
 
 3. **Shared OpenAI quota source-of-truth**
    - Canonical implementation: `packages/opencode/src/account/quota/openai.ts`
@@ -320,35 +369,37 @@ This subsection documents how prompt footer usage/account metadata stays fresh w
 6. Apply plugin/custom loaders.
 7. Apply model/provider filtering (ignored/deprecated/disabled/rate-limit aware checks).
 
-This order guarantees models are family-owned first, then account- and plugin-specific behavior is overlaid.
+This order guarantees provider-owned model catalogs are assembled first, then account- and plugin-specific behavior is overlaid.
 
-#### D) Family resolution and identity boundaries
+#### D) Provider resolution and identity boundaries
 
 To enforce 3D identity boundaries:
 
-- Auth family resolution now uses canonical family inventory
-  (`Account.PROVIDERS` + models.dev providers + existing account families), with deterministic resolution order:
-  - exact family match
-  - account-id pattern (`{family}-{api|subscription}-...`)
-  - longest known family prefix
-- Account load now normalizes legacy/non-canonical family keys (example: `nvidia-work` → `nvidia`) and preserves data during merge.
-- Deprecated fallback behavior that treated arbitrary dashed IDs as valid family IDs was reduced.
-- Canonical resolver API is now the primary runtime path:
+- Auth/account resolution must treat the canonical **provider** as the first operational key.
+- Some legacy helper/API names still use `family`, but in current cms architecture that layer should be interpreted as a provider-resolution compatibility shim, not as the primary business concept.
+- Resolution order remains deterministic for backward compatibility:
+  - exact provider match
+  - account-id pattern-derived provider
+  - longest known provider prefix
+- Account load now normalizes legacy/non-canonical provider keys (example: `nvidia-work` → `nvidia`) and preserves data during merge.
+- Deprecated fallback behavior that treated arbitrary dashed IDs as valid provider IDs was reduced.
+- Canonical resolver API is still the primary runtime path:
   - `Account.resolveFamily(providerId)`
   - `Account.resolveFamilyOrSelf(providerId)`
-- Family-level UI inventory is now separated from runtime account-scoped providers:
-  - canonical UI family source: `packages/opencode/src/provider/canonical-family-source.ts`
+- Despite the historical method names above, new logic should conceptually read them as **provider resolution APIs**.
+- Provider-level UI inventory is now separated from runtime account-scoped provider entries:
+  - canonical UI provider source: `packages/opencode/src/provider/canonical-family-source.ts`
   - current first consumer: TUI `/admin` root/provider list in `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
-  - rule: UI provider lists consume canonical families only; account-scoped provider IDs remain internal runtime coordinates for account/model execution paths.
-  - backend `/provider` route (`packages/opencode/src/server/routes/provider.ts`) now emits family-level provider rows from the same canonical source so web consumers can converge on the same provider family inventory.
+  - rule: UI provider lists consume canonical provider rows only; account-scoped provider IDs remain internal runtime coordinates for account/model execution paths.
+  - backend `/provider` route (`packages/opencode/src/server/routes/provider.ts`) now emits provider rows from the same canonical source so web consumers can converge on the same provider inventory.
 
 #### D.1) Identity invariants (must hold)
 
-1. **No fuzzy family parsing in runtime decisions**
+1. **No fuzzy provider parsing in runtime decisions**
    - Model routing, fallback, health checks, and provider route composition must use canonical resolver API.
-2. **Family is canonical, account is scoped**
-   - `provider-family` and `account-id` are distinct coordinates; account suffix strings are never treated as family source-of-truth.
-3. **Storage self-heals legacy family keys**
+2. **Provider is operational; account is scoped; model family is descriptive**
+   - `provider-id` and `account-id` are execution coordinates; model family is catalog metadata and must not override provider/account truth.
+3. **Storage self-heals legacy provider keys**
    - On account load and explicit migration, non-canonical keys are normalized and merged without silent data loss.
 4. **Operational migration is explicit**
    - `opencode auth migrate-identities` provides a reportable/manual path to normalize identity drift.

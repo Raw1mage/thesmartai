@@ -158,20 +158,20 @@ describe("session model orchestration", () => {
     })
   })
 
-  it("preserves accountId in explicit and fallback arbitration traces", async () => {
+  it("preserves accountId in explicit arbitration traces when provider/account stay pinned", async () => {
     await expect(
       orchestrateModelSelection({
         agentName: "coding",
         explicitModel: { providerId: "openai", modelID: "gpt-5", accountId: "acct-explicit" },
-        fallbackModel: { providerId: "anthropic", modelID: "claude-sonnet-4-5", accountId: "acct-fallback" },
+        fallbackModel: { providerId: "openai", modelID: "gpt-5.4", accountId: "acct-session" },
       }),
     ).resolves.toEqual({
-      model: { providerId: "openai", modelID: "gpt-5", accountId: "acct-explicit" },
+      model: { providerId: "openai", modelID: "gpt-5", accountId: "acct-session" },
       trace: {
         agentName: "coding",
         domain: "coding",
-        selected: { providerId: "openai", modelID: "gpt-5", accountId: "acct-explicit", source: "explicit" },
-        candidates: [{ providerId: "openai", modelID: "gpt-5", accountId: "acct-explicit", source: "explicit" }],
+        selected: { providerId: "openai", modelID: "gpt-5", accountId: "acct-session", source: "explicit" },
+        candidates: [{ providerId: "openai", modelID: "gpt-5", accountId: "acct-session", source: "explicit" }],
       },
     })
   })
@@ -200,15 +200,43 @@ describe("session model orchestration", () => {
         agentName: "coding",
         explicitModel: { providerId: "github-copilot", modelID: "gpt-5" },
         fallbackModel: { providerId: "openai", modelID: "gpt-5.4", accountId: "acct-session" },
+        isOperationalModel: async () => true,
       }),
     ).resolves.toEqual({
-      model: { providerId: "github-copilot", modelID: "gpt-5" },
+      model: { providerId: "openai", modelID: "gpt-5.4", accountId: "acct-session" },
       trace: {
         agentName: "coding",
         domain: "coding",
-        selected: { providerId: "github-copilot", modelID: "gpt-5", source: "explicit" },
-        candidates: [{ providerId: "github-copilot", modelID: "gpt-5", source: "explicit" }],
+        selected: { providerId: "openai", modelID: "gpt-5.4", accountId: "acct-session", source: "fallback" },
+        candidates: [
+          {
+            providerId: "openai",
+            modelID: "gpt-5.4",
+            accountId: "acct-session",
+            source: "fallback",
+            operational: true,
+          },
+        ],
       },
+    })
+  })
+
+  it("refuses cross-provider scored candidates when session account is pinned", async () => {
+    await expect(
+      selectOrchestratedModel({
+        agentName: "docs",
+        fallbackModel: { providerId: "openai", modelID: "gpt-5", accountId: "acct-session" },
+        selectModel: async () => ({
+          providerId: "anthropic",
+          modelID: "claude-opus-4-5",
+          accountId: "team-a",
+        }),
+        isOperationalModel: async () => true,
+      }),
+    ).resolves.toEqual({
+      providerId: "openai",
+      modelID: "gpt-5",
+      accountId: "acct-session",
     })
   })
 

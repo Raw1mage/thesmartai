@@ -430,7 +430,11 @@ function App() {
         const targetSessionID = args.sessionID ?? (route.data.type === "session" ? route.data.sessionID : undefined)
         const targetFamily = Account.parseFamily(providerId) ?? providerId
         void Account.getActive(targetFamily).then((accountId: string | undefined) => {
-          local.model.set({ providerId, modelID, accountId: accountId ?? undefined }, { recent: true }, targetSessionID)
+          local.model.set(
+            { providerId, modelID, accountId: accountId ?? undefined },
+            { recent: true, interrupt: true, syncSessionExecution: true },
+            targetSessionID,
+          )
         })
       }
       if (args.sessionID && !args.fork) {

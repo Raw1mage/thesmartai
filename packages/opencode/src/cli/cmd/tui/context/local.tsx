@@ -538,13 +538,22 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           )
           save()
         },
-        set(
+        async set(
           model: { providerId: string; modelID: string; accountId?: string },
-          options?: { recent?: boolean; skipValidation?: boolean; announce?: boolean },
+          options?: {
+            recent?: boolean
+            skipValidation?: boolean
+            announce?: boolean
+            interrupt?: boolean
+            syncSessionExecution?: boolean
+          },
           sessionID?: string,
         ) {
+          if (sessionID && options?.interrupt) {
+            await sdk.client.session.abort({ sessionID }).catch(() => {})
+          }
+          const normalized = normalizeModelIdentity(model)
           batch(() => {
-            const normalized = normalizeModelIdentity(model)
             if (!options?.skipValidation && !isModelAvailable(normalized)) {
               toast.show({
                 message: `Model ${normalized.providerId}/${normalized.modelID} is not valid`,
@@ -574,6 +583,16 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               })
             }
           })
+          if (sessionID && options?.syncSessionExecution) {
+            await (sdk.client.session.update as any)({
+              sessionID,
+              execution: {
+                providerId: normalized.providerId,
+                modelID: normalized.modelID,
+                accountId: normalized.accountId,
+              },
+            })
+          }
         },
         toggleFavorite(model: { providerId: string; modelID: string }, options?: { skipValidation?: boolean }) {
           batch(() => {

@@ -678,7 +678,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     })
     local.model.set(
       { providerId: providerId, modelID: modelID, accountId },
-      { recent: true, skipValidation: true, announce: true },
+      { recent: true, skipValidation: true, announce: true, interrupt: true, syncSessionExecution: true },
       currentSessionID(),
     )
     dialog.clear()
@@ -1067,7 +1067,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     // Build toast from the selected row/accountId to avoid misleading account labels.
     local.model.set(
       { providerId: resolvedProvider, modelID, accountId: accountId !== "-" ? accountId : undefined },
-      { recent: true, announce: false },
+      { recent: true, announce: false, interrupt: true, syncSessionExecution: true },
       route.data.type === "session" ? route.data.sessionID : undefined,
     )
     try {
@@ -1555,7 +1555,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       if (current && currentFamily === fam) {
         local.model.set(
           { providerId: fam, modelID: current.modelID, accountId },
-          { skipValidation: true, announce: false },
+          { skipValidation: true, announce: false, interrupt: true, syncSessionExecution: true },
           currentSessionID(),
         )
       }

@@ -25,6 +25,8 @@ let sniffing = false
 const flowKeys = [
   "sessionID",
   "messageID",
+  "userMessageID",
+  "assistantMessageID",
   "callID",
   "providerId",
   "modelID",
@@ -32,6 +34,8 @@ const flowKeys = [
   "tool",
   "accountId",
   "accountID",
+  "requestPhase",
+  "source",
   "projectId",
 ]
 

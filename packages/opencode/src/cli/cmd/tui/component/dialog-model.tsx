@@ -107,7 +107,7 @@ export function DialogModel(props: { providerId?: string }) {
     })
     local.model.set(
       { providerId: normalizedProviderId, modelID, accountId },
-      { recent: true, skipValidation: true, announce: true },
+      { recent: true, skipValidation: true, announce: true, interrupt: true, syncSessionExecution: true },
       route.data.type === "session" ? route.data.sessionID : undefined,
     )
     dialog.clear()

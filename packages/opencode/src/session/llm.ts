@@ -34,6 +34,7 @@ import { RateLimitJudge, isRateLimitError, isAuthError, formatRateLimitReason } 
 
 import { RequestMonitor } from "@/account/monitor"
 import ENABLEMENT from "./prompt/enablement.json"
+import { logSessionAccountAudit, resolveAccountAuditSource } from "./account-audit"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -137,6 +138,9 @@ export namespace LLM {
     // Get account ID for rate limit tracking and provider options
     const sessionPinnedAccountId = input.accountId ?? input.user.model.accountId
     const currentAccountId = sessionPinnedAccountId ?? (await getAccountIdForProvider(input.model.providerId))
+    if (!input.accountId && currentAccountId) {
+      input.accountId = currentAccountId
+    }
     if (!sessionPinnedAccountId && currentAccountId) {
       debugCheckpoint("llm", "LLM.stream fell back to global active account", {
         providerId: input.model.providerId,
@@ -145,16 +149,36 @@ export namespace LLM {
         sessionID: input.sessionID,
       })
     }
+    logSessionAccountAudit({
+      requestPhase: "llm-start",
+      sessionID: input.sessionID,
+      userMessageID: input.user.id,
+      providerId: input.model.providerId,
+      modelID: input.model.id,
+      accountId: currentAccountId,
+      source: resolveAccountAuditSource({
+        explicitAccountId: input.accountId,
+        userMessageAccountId: input.user.model.accountId,
+        resolvedAccountId: currentAccountId,
+      }),
+      note: "llm stream starting with resolved execution identity",
+    })
+
+    const executionModel = await Provider.resolveExecutionModel({
+      model: input.model,
+      accountId: currentAccountId,
+    })
 
     const [language, cfg, provider, auth] = await Promise.all([
-      Provider.getLanguage(input.model),
+      Provider.getLanguage(executionModel),
       Config.get(),
-      Provider.getProvider(input.model.providerId),
-      Auth.get(input.model.providerId),
+      Provider.getProvider(executionModel.providerId),
+      Auth.get(executionModel.providerId),
     ])
 
     debugCheckpoint("llm", "Provider and auth loaded", {
       providerId: input.model.providerId,
+      executionProviderId: executionModel.providerId,
       providerSource: provider?.source,
       hasCustomFetch: typeof provider?.options?.fetch === "function",
       accountId: currentAccountId,
@@ -655,6 +679,18 @@ export namespace LLM {
 
     if (!fallback) {
       // If no fallback, return current tried vectors for next attempt
+      return null
+    }
+
+    if (fallback.providerId !== currentModel.providerId || fallback.accountId !== currentAccountId) {
+      debugCheckpoint("rotation3d", "Session identity blocked provider/account fallback", {
+        providerId: currentModel.providerId,
+        accountId: currentAccountId,
+        modelID: currentModel.id,
+        blockedProviderId: fallback.providerId,
+        blockedAccountId: fallback.accountId,
+        blockedModelID: fallback.modelID,
+      })
       return null
     }
 

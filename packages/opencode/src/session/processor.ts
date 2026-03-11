@@ -23,6 +23,7 @@ import path from "path"
 import { materializeToolAttachments } from "./attachment-ownership"
 import { clearPendingContinuation } from "./workflow-runner"
 import { describeTaskNarration, emitSessionNarration } from "./narration"
+import { logSessionAccountAudit, resolveAccountAuditSource } from "./account-audit"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -178,6 +179,23 @@ export namespace SessionProcessor {
                 })
               }
               if (accountId) {
+                logSessionAccountAudit({
+                  requestPhase: "preflight",
+                  sessionID: input.sessionID,
+                  userMessageID: streamInput.user.id,
+                  assistantMessageID: input.assistantMessage.id,
+                  providerId: streamInput.model.providerId,
+                  modelID: streamInput.model.id,
+                  accountId,
+                  source: resolveAccountAuditSource({
+                    explicitAccountId: streamInput.accountId ?? input.accountId ?? input.assistantMessage.accountId,
+                    userMessageAccountId: streamInput.user.model.accountId,
+                    resolvedAccountId: accountId,
+                  }),
+                  note: "processor preflight selected execution identity",
+                })
+              }
+              if (accountId) {
                 const vector = {
                   providerId: streamInput.model.providerId,
                   accountId,
@@ -224,6 +242,29 @@ export namespace SessionProcessor {
                       input.assistantMessage.providerId = fallback.model.providerId
                       input.assistantMessage.accountId = fallback.accountId
                       await Session.updateMessage(input.assistantMessage)
+                      await Session.pinExecutionIdentity({
+                        sessionID: input.sessionID,
+                        model: {
+                          providerId: input.assistantMessage.providerId,
+                          modelID: input.assistantMessage.modelID,
+                          accountId: input.assistantMessage.accountId,
+                        },
+                      })
+                      logSessionAccountAudit({
+                        requestPhase: "fallback-switch",
+                        sessionID: input.sessionID,
+                        userMessageID: streamInput.user.id,
+                        assistantMessageID: input.assistantMessage.id,
+                        providerId: fallback.model.providerId,
+                        modelID: fallback.model.id,
+                        accountId: fallback.accountId,
+                        previousProviderId: vector.providerId,
+                        previousModelID: vector.modelID,
+                        previousAccountId: vector.accountId,
+                        source: "rate-limit-fallback",
+                        fallbackAttempts,
+                        note: "preflight switched away from rate-limited vector",
+                      })
                     }
                   }
                 }
@@ -233,6 +274,30 @@ export namespace SessionProcessor {
             let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
             const stream = await LLM.stream(streamInput)
+            if (streamInput.accountId && input.assistantMessage.accountId !== streamInput.accountId) {
+              input.accountId = streamInput.accountId
+              input.assistantMessage.accountId = streamInput.accountId
+              await Session.updateMessage(input.assistantMessage)
+              await Session.pinExecutionIdentity({
+                sessionID: input.sessionID,
+                model: {
+                  providerId: input.assistantMessage.providerId,
+                  modelID: input.assistantMessage.modelID,
+                  accountId: input.assistantMessage.accountId,
+                },
+              })
+              logSessionAccountAudit({
+                requestPhase: "assistant-persist",
+                sessionID: input.sessionID,
+                userMessageID: streamInput.user.id,
+                assistantMessageID: input.assistantMessage.id,
+                providerId: input.assistantMessage.providerId,
+                modelID: input.assistantMessage.modelID,
+                accountId: input.assistantMessage.accountId,
+                source: "assistant-persist",
+                note: "persisted resolved execution identity onto assistant message",
+              })
+            }
 
             for await (const value of stream.fullStream) {
               input.abort.throwIfAborted()
@@ -677,6 +742,34 @@ export namespace SessionProcessor {
                   input.assistantMessage.accountId = fallback.accountId
                   // Persist the updated modelID immediately so TUI can display the correct model
                   await Session.updateMessage(input.assistantMessage)
+                  await Session.pinExecutionIdentity({
+                    sessionID: input.sessionID,
+                    model: {
+                      providerId: input.assistantMessage.providerId,
+                      modelID: input.assistantMessage.modelID,
+                      accountId: input.assistantMessage.accountId,
+                    },
+                  })
+                  logSessionAccountAudit({
+                    requestPhase: "fallback-switch",
+                    sessionID: input.sessionID,
+                    userMessageID: streamInput.user.id,
+                    assistantMessageID: input.assistantMessage.id,
+                    providerId: fallback.model.providerId,
+                    modelID: fallback.model.id,
+                    accountId: fallback.accountId,
+                    previousProviderId: streamInput.model.providerId,
+                    previousModelID: streamInput.model.id,
+                    previousAccountId:
+                      streamInput.accountId ??
+                      input.accountId ??
+                      input.assistantMessage.accountId ??
+                      streamInput.user.model.accountId,
+                    source: "temporary-error-fallback",
+                    fallbackAttempts,
+                    error: e?.message,
+                    note: "temporary error triggered fallback switch",
+                  })
                   attempt = 0
                   await new Promise((resolve) => setTimeout(resolve, 100))
                   continue
@@ -729,6 +822,34 @@ export namespace SessionProcessor {
                   input.assistantMessage.accountId = fallback.accountId
                   // Persist the updated modelID immediately so TUI can display the correct model
                   await Session.updateMessage(input.assistantMessage)
+                  await Session.pinExecutionIdentity({
+                    sessionID: input.sessionID,
+                    model: {
+                      providerId: input.assistantMessage.providerId,
+                      modelID: input.assistantMessage.modelID,
+                      accountId: input.assistantMessage.accountId,
+                    },
+                  })
+                  logSessionAccountAudit({
+                    requestPhase: "fallback-switch",
+                    sessionID: input.sessionID,
+                    userMessageID: streamInput.user.id,
+                    assistantMessageID: input.assistantMessage.id,
+                    providerId: fallback.model.providerId,
+                    modelID: fallback.model.id,
+                    accountId: fallback.accountId,
+                    previousProviderId: streamInput.model.providerId,
+                    previousModelID: streamInput.model.id,
+                    previousAccountId:
+                      streamInput.accountId ??
+                      input.accountId ??
+                      input.assistantMessage.accountId ??
+                      streamInput.user.model.accountId,
+                    source: "permanent-error-fallback",
+                    fallbackAttempts,
+                    error: e?.message,
+                    note: "permanent error triggered fallback switch",
+                  })
                   attempt = 0
                   await new Promise((resolve) => setTimeout(resolve, 100))
                   continue

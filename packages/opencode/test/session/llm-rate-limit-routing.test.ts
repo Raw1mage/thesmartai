@@ -35,6 +35,23 @@ function waitRequest(pathname: string, response: Response) {
   return pending.promise
 }
 
+function createChatStream(text: string) {
+  const payload =
+    [
+      `data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ delta: { role: "assistant" } }] })}`,
+      `data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ delta: { content: text } }] })}`,
+      `data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ delta: {}, finish_reason: "stop" }] })}`,
+      "data: [DONE]",
+    ].join("\n\n") + "\n\n"
+  const encoder = new TextEncoder()
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(payload))
+      controller.close()
+    },
+  })
+}
+
 beforeAll(() => {
   state.server = Bun.serve({
     port: 0,
@@ -53,6 +70,7 @@ beforeAll(() => {
 beforeEach(() => {
   state.queue.length = 0
   mock.restore()
+  Provider.reset()
 })
 
 afterAll(() => {
@@ -151,8 +169,7 @@ describe("session.llm rate limit routing", () => {
         try {
           for await (const _ of stream.fullStream) {
           }
-        } catch {
-        }
+        } catch {}
       },
     })
 
@@ -164,5 +181,251 @@ describe("session.llm rate limit routing", () => {
       accountId: "openai-subscription-pincyluo-gmail-com",
       modelId: "gpt-5.4",
     })
+  })
+
+  test("backfills resolved active account onto stream input when session account is missing", async () => {
+    const server = state.server
+    if (!server) throw new Error("Server not initialized")
+
+    mock.module("@/account", () => ({
+      Account: {
+        FAMILIES: ["openai"],
+        parseProvider(accountId: string) {
+          return accountId.startsWith("openai-") ? "openai" : undefined
+        },
+        parseFamily(accountId: string) {
+          return accountId.startsWith("openai-") ? "openai" : undefined
+        },
+        async listAll() {
+          return {}
+        },
+        async resolveFamily(providerId: string) {
+          return providerId === "openai" || providerId.startsWith("openai-") ? "openai" : undefined
+        },
+        async resolveFamilyOrSelf(providerId: string) {
+          return providerId === "openai" || providerId.startsWith("openai-") ? "openai" : providerId
+        },
+        async getActive(family: string) {
+          return family === "openai" ? "openai-subscription-miatlab-api-gmail-com" : undefined
+        },
+        getDisplayName(id: string) {
+          return id
+        },
+      },
+    }))
+    mock.module("@/auth", () => ({
+      Auth: {
+        async all() {
+          return {}
+        },
+        async get() {
+          return undefined
+        },
+      },
+    }))
+
+    const { LLM } = await import("../../src/session/llm")
+
+    const request = waitRequest(
+      "/chat/completions",
+      new Response(createChatStream("Hello"), {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    )
+
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "opencode.json"),
+          JSON.stringify({
+            $schema: "https://opencode.ai/config.json",
+            disabled_providers: [],
+            enabled_providers: ["openai"],
+            provider: {
+              openai: {
+                options: {
+                  apiKey: "test-key",
+                  baseURL: `${server.url.origin}/v1`,
+                },
+              },
+            },
+          }),
+        )
+      },
+    })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const resolved = await Provider.getModel("openai", "gpt-5.4")
+        const session = await Session.create({})
+        const sessionID = session.id
+        const agent = {
+          name: "test",
+          mode: "primary",
+          options: {},
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        } satisfies Agent.Info
+
+        const user = {
+          id: "user-active-fallback",
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerId: "openai", modelID: resolved.id },
+        } satisfies MessageV2.User
+
+        const input: Parameters<typeof LLM.stream>[0] = {
+          user,
+          sessionID,
+          model: resolved,
+          agent,
+          system: ["You are a helpful assistant."],
+          abort: new AbortController().signal,
+          messages: [{ role: "user" as const, content: "Hello" }],
+          tools: {},
+        }
+
+        const stream = await LLM.stream(input)
+        expect(input.accountId).toBe("openai-subscription-miatlab-api-gmail-com")
+
+        for await (const _ of stream.fullStream) {
+        }
+      },
+    })
+
+    const capture = await request
+    expect(capture.headers.get("x-opencode-account-id")).toBe("openai-subscription-miatlab-api-gmail-com")
+  })
+
+  test("uses account-scoped provider config when session account is pinned on base provider model", async () => {
+    const server = state.server
+    if (!server) throw new Error("Server not initialized")
+
+    mock.module("@/account", () => ({
+      Account: {
+        FAMILIES: ["openai"],
+        parseProvider(accountId: string) {
+          return accountId.startsWith("openai-") ? "openai" : undefined
+        },
+        parseFamily(accountId: string) {
+          return accountId.startsWith("openai-") ? "openai" : undefined
+        },
+        async listAll() {
+          return {}
+        },
+        async resolveFamily(providerId: string) {
+          return providerId === "openai" || providerId.startsWith("openai-") ? "openai" : undefined
+        },
+        async resolveFamilyOrSelf(providerId: string) {
+          return providerId === "openai" || providerId.startsWith("openai-") ? "openai" : providerId
+        },
+        async getActive() {
+          return undefined
+        },
+        async getActiveInfo() {
+          return undefined
+        },
+        async getById() {
+          return undefined
+        },
+        getDisplayName(id: string) {
+          return id
+        },
+      },
+    }))
+
+    const { LLM } = await import("../../src/session/llm")
+
+    const request = waitRequest(
+      "/chat/completions",
+      new Response(createChatStream("Hello"), {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    )
+
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "opencode.json"),
+          JSON.stringify({
+            $schema: "https://opencode.ai/config.json",
+            disabled_providers: [],
+            enabled_providers: [
+              "openai",
+              "openai-subscription-ivon0829-gmail-com",
+              "openai-subscription-pincyluo-gmail-com",
+            ],
+            provider: {
+              openai: {
+                options: {
+                  apiKey: "wrong-base-key",
+                  baseURL: `${server.url.origin}/wrong-base-v1`,
+                },
+              },
+              "openai-subscription-ivon0829-gmail-com": {
+                options: {
+                  apiKey: "ivon-key",
+                  baseURL: `${server.url.origin}/ivon-v1`,
+                },
+              },
+              "openai-subscription-pincyluo-gmail-com": {
+                options: {
+                  apiKey: "pincy-key",
+                  baseURL: `${server.url.origin}/v1`,
+                },
+              },
+            },
+          }),
+        )
+      },
+    })
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const resolved = await Provider.getModel("openai", "gpt-5.4")
+        const session = await Session.create({})
+        const sessionID = session.id
+        const accountId = "openai-subscription-pincyluo-gmail-com"
+        const agent = {
+          name: "test",
+          mode: "primary",
+          options: {},
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        } satisfies Agent.Info
+
+        const user = {
+          id: "user-account-provider-resolution",
+          sessionID,
+          role: "user",
+          time: { created: Date.now() },
+          agent: agent.name,
+          model: { providerId: "openai", modelID: resolved.id, accountId },
+        } satisfies MessageV2.User
+
+        const stream = await LLM.stream({
+          user,
+          sessionID,
+          model: resolved,
+          accountId,
+          agent,
+          system: ["You are a helpful assistant."],
+          abort: new AbortController().signal,
+          messages: [{ role: "user", content: "Hello" }],
+          tools: {},
+        })
+
+        for await (const _ of stream.fullStream) {
+        }
+      },
+    })
+
+    const capture = await request
+    expect(capture.url.pathname).toBe("/v1/responses")
+    expect(capture.headers.get("authorization")).toBe("Bearer pincy-key")
   })
 })

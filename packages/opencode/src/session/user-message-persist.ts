@@ -10,6 +10,7 @@ export async function persistUserMessage(input: {
   model?: {
     providerId: string
     modelID: string
+    accountId?: string
   }
   messageID?: string
   variant?: string
@@ -30,6 +31,12 @@ export async function persistUserMessage(input: {
   )
 
   await Session.updateMessage(input.info)
+  if (input.info.role === "user" && input.info.model) {
+    await Session.pinExecutionIdentity({
+      sessionID: input.sessionID,
+      model: input.info.model,
+    })
+  }
   for (const part of input.parts) {
     await Session.updatePart(part)
   }

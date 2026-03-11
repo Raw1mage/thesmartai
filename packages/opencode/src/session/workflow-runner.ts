@@ -664,6 +664,13 @@ export async function enqueueAutonomousContinue(input: {
   const now = Date.now()
   const text = input.text ?? AUTONOMOUS_CONTINUE_TEXT
   const session = await Session.get(input.sessionID)
+  const pinnedModel = session.execution
+    ? {
+        providerId: session.execution.providerId,
+        modelID: session.execution.modelID,
+        accountId: session.execution.accountId,
+      }
+    : input.user.model
   const messageID = Identifier.ascending("message")
   const textPart: MessageV2.TextPart = {
     id: Identifier.ascending("part"),
@@ -684,15 +691,15 @@ export async function enqueueAutonomousContinue(input: {
     ? await orchestrateModelSelection({
         agentName: input.user.agent,
         agentModel: (await Agent.get(input.user.agent))?.model,
-        fallbackModel: input.user.model,
+        fallbackModel: pinnedModel,
       })
     : {
-        model: input.user.model,
+        model: pinnedModel,
         trace: {
           agentName: input.user.agent,
           domain: "manual",
-          selected: { ...input.user.model, source: "session_previous" },
-          candidates: [{ ...input.user.model, source: "session_previous", operational: true }],
+          selected: { ...pinnedModel, source: "session_previous" },
+          candidates: [{ ...pinnedModel, source: "session_previous", operational: true }],
         },
       }
   const nextModel = arbitration.model
