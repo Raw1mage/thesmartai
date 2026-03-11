@@ -269,6 +269,43 @@
 - Operational value:
   - operators can grep one assistant turn in `debug.log` and answer which provider/account/model actually executed, plus whether that identity came from pinned session state or a fallback path.
 
+## Follow-up Audit: display path vs actual request path
+
+### Confirmed mostly aligned
+
+- Main dialog request path
+  - `packages/opencode/src/session/llm.ts`
+  - `packages/opencode/src/provider/provider.ts`
+  - request-layer now resolves `executionModel` from `{ model, accountId }` before SDK creation
+- Session identity persistence path
+  - `session.execution`
+  - manual selection write-back
+  - assistant persist write-back
+  - autonomous/synthetic continue
+
+### Still separate / previously drift-prone display paths
+
+- Web footer
+  - `packages/app/src/components/prompt-input.tsx`
+  - derives account/quota request from local session selection, not raw request trace
+- TUI footer
+  - `packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx`
+  - pre-fix would show/query active account when session account missing
+- TUI admin
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
+  - intentionally mixes selected account / current session account / global active account for control-plane display
+- quota hint route
+  - `packages/opencode/src/server/routes/account.ts`
+  - pre-fix would silently fall back to family active account when request `accountId` was absent or invalid
+
+### Hardening applied
+
+- `packages/opencode/src/server/routes/account.ts`
+  - `/account/quota` no longer falls back to active account when request `accountId` is absent/invalid; it now fail-soft returns no account/hint
+- `packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx`
+  - TUI footer account label/quota no longer falls back to `Account.getActive(...)` when the session has no selected account
+- intent: display paths should prefer explicit session account and fail soft when identity is missing, instead of silently showing another account's quota
+
 ## Validation
 
 - `bun test /home/pkcs12/projects/opencode/packages/opencode/test/session/llm-rate-limit-routing.test.ts` ✅
@@ -293,6 +330,9 @@
   - updated `/home/pkcs12/projects/opencode/AGENTS.md`
   - updated `/home/pkcs12/projects/opencode/templates/AGENTS.md`
   - added hard rule: do not add fallback mechanism without explicit user approval
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/src/account/quota/hint.test.ts` ✅
+- `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/server/routes/account.ts /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx /home/pkcs12/projects/opencode/packages/opencode/src/account/quota/hint.test.ts` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (quota/footer fail-fast hardening)
 - `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/server/routes/session.ts /home/pkcs12/projects/opencode/packages/app/src/context/local.tsx /home/pkcs12/projects/opencode/packages/app/src/components/dialog-select-model.tsx /home/pkcs12/projects/opencode/packages/app/src/components/dialog-select-model-unpaid.tsx /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/context/local.tsx /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-model.tsx /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/app.tsx /home/pkcs12/projects/opencode/packages/opencode/src/session/index.test.ts` ✅
 - `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit && bunx tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit` ✅
 - Architecture Sync: Updated

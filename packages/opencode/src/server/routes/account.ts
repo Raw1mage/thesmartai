@@ -50,10 +50,7 @@ export const AccountRoutes = lazy(() =>
         const family = Account.parseFamily(providerId) ?? providerId
         const families = await Account.listAll()
         const familyAccounts = families[family]?.accounts ?? {}
-        const accountId =
-          requestedAccountId && familyAccounts[requestedAccountId]
-            ? requestedAccountId
-            : families[family]?.activeAccount
+        const accountId = requestedAccountId && familyAccounts[requestedAccountId] ? requestedAccountId : undefined
 
         if (!accountId) {
           return c.json({

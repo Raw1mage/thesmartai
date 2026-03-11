@@ -207,20 +207,19 @@ export function Prompt(props: PromptProps) {
     async (key) => {
       const [providerId, selectedAccountId] = key.split(":")
       if (!providerId) return undefined
+      if (!selectedAccountId) return undefined
       try {
         const fam = Account.parseFamily(providerId) || providerId
-        const activeId = selectedAccountId || (await Account.getActive(fam))
-        if (!activeId) return undefined
-        const info = await Account.get(fam, activeId)
+        const info = await Account.get(fam, selectedAccountId)
         if (!info) {
           return {
-            id: activeId,
-            label: activeId,
+            id: selectedAccountId,
+            label: selectedAccountId,
           }
         }
         return {
-          id: activeId,
-          label: Account.getDisplayName(activeId, info, providerId) || activeId,
+          id: selectedAccountId,
+          label: Account.getDisplayName(selectedAccountId, info, providerId) || selectedAccountId,
         }
       } catch {
         return undefined
