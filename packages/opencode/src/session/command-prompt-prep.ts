@@ -34,6 +34,8 @@ export async function prepareCommandPrompt(input: CommandPromptPrepInput) {
   const command = input.commandInfo
   const agentName = command.agent ?? input.inputAgent ?? (await Agent.defaultAgent())
 
+  const sessionExecution = (await Session.get(input.sessionID).catch(() => undefined))?.execution
+
   const taskModel = await (async () => {
     if (command.model) {
       return Provider.parseModel(command.model)
@@ -46,6 +48,13 @@ export async function prepareCommandPrompt(input: CommandPromptPrepInput) {
     }
     const parsedInputModel = parseInputModel(input.inputModel)
     if (parsedInputModel) return parsedInputModel
+    if (sessionExecution) {
+      return {
+        providerId: sessionExecution.providerId,
+        modelID: sessionExecution.modelID,
+        accountId: sessionExecution.accountId,
+      }
+    }
     return await lastModel(input.sessionID)
   })()
 
@@ -104,7 +113,16 @@ export async function prepareCommandPrompt(input: CommandPromptPrepInput) {
     : [...templateParts, ...(input.inputParts ?? [])]
 
   const userAgent = isSubtask ? (input.inputAgent ?? (await Agent.defaultAgent())) : agentName
-  const userModel = isSubtask ? (parseInputModel(input.inputModel) ?? (await lastModel(input.sessionID))) : taskModel
+  const userModel = isSubtask
+    ? (parseInputModel(input.inputModel) ??
+      (sessionExecution
+        ? {
+            providerId: sessionExecution.providerId,
+            modelID: sessionExecution.modelID,
+            accountId: sessionExecution.accountId,
+          }
+        : await lastModel(input.sessionID)))
+    : taskModel
   const userModelAccountId = "accountId" in userModel ? userModel.accountId : undefined
   const subtaskParts = isSubtask
     ? parts.map((part) =>

@@ -703,6 +703,8 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         subSessionID = session.id
         const msg = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
         if (msg.info.role !== "assistant") throw new Error("Not an assistant message")
+        const parentSession = await Session.get(ctx.sessionID).catch(() => undefined)
+        const pinnedExecution = parentSession?.execution
 
         const modelArg = params.model
           ? {
@@ -715,9 +717,9 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           explicitModel: modelArg,
           agentModel: agent.model,
           fallbackModel: {
-            modelID: msg.info.modelID,
-            providerId: msg.info.providerId,
-            accountId: "accountId" in msg.info ? msg.info.accountId : undefined,
+            modelID: pinnedExecution?.modelID ?? msg.info.modelID,
+            providerId: pinnedExecution?.providerId ?? msg.info.providerId,
+            accountId: pinnedExecution?.accountId ?? ("accountId" in msg.info ? msg.info.accountId : undefined),
           },
         })
         const model = arbitration.model
@@ -729,6 +731,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           modelArg,
           agentModel: agent.model,
           parentModel: { modelID: msg.info.modelID, providerId: msg.info.providerId },
+          pinnedExecution,
           finalModel: model,
         })
         mark("model_resolved", { providerId: model.providerId, modelID: model.modelID })

@@ -895,8 +895,11 @@ export namespace SessionPrompt {
       if (task?.type === "subtask") {
         const taskTool = await TaskTool.init()
         const taskModel = task.model ? await Provider.getModel(task.model.providerId, task.model.modelID) : model
+        const sessionExecution = (await Session.get(sessionID).catch(() => undefined))?.execution
         const taskAccountId =
-          task.model?.providerId === lastUser.model.providerId ? lastUser.model.accountId : task.model?.accountId
+          task.model?.providerId === (sessionExecution?.providerId ?? lastUser.model.providerId)
+            ? (sessionExecution?.accountId ?? lastUser.model.accountId)
+            : task.model?.accountId
         const assistantMessage = (await Session.updateMessage({
           id: Identifier.ascending("message"),
           role: "assistant",
