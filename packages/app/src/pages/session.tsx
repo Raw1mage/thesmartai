@@ -66,6 +66,7 @@ import { SessionPromptDock } from "@/pages/session/session-prompt-dock"
 import { SessionSidePanel } from "@/pages/session/session-side-panel"
 import { useSessionHashScroll } from "@/pages/session/use-session-hash-scroll"
 import { sessionPermissionRequest, sessionQuestionRequest } from "@/pages/session/session-request-tree"
+import { getAssistantSyncedSessionModel } from "@/pages/session/session-model-sync"
 
 type HandoffSession = {
   prompt: string
@@ -563,6 +564,9 @@ export default function Page() {
     },
   )
   const lastUserMessage = createMemo(() => visibleUserMessages().at(-1))
+  const lastCompletedAssistantMessage = createMemo(() =>
+    messages().findLast((item) => item.role === "assistant" && item.time?.completed),
+  )
   const arbitrationChips = createMemo(() => {
     const user = lastUserMessage()
     if (!user) return []
@@ -594,6 +598,26 @@ export default function Page() {
       },
     ),
   )
+
+  createEffect(() => {
+    const sessionID = params.id
+    const assistant = lastCompletedAssistantMessage()
+    if (!sessionID || !assistant) return
+    const synced = getAssistantSyncedSessionModel({
+      assistant: assistant as { id: string; role: string; providerId?: string; modelID?: string; accountId?: string },
+      parts: (sync.data.part[assistant.id] ?? []) as Array<{
+        type?: string
+        synthetic?: boolean
+        metadata?: { autonomousNarration?: boolean; excludeFromModel?: boolean }
+      }>,
+      lastUserModel: lastUserMessage()?.model as
+        | { providerId?: string; modelID?: string; accountId?: string }
+        | undefined,
+      currentSelection: local.model.selection(sessionID),
+    })
+    if (!synced) return
+    local.model.set(synced, undefined, sessionID)
+  })
 
   const [store, setStore] = createStore({
     activeDraggable: undefined as string | undefined,

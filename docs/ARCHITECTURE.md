@@ -185,6 +185,14 @@ The `cms` branch is the primary product line for this environment, featuring sig
    - Server persists this retained slot at `${Global.Path.log}/scroll-capture-latest.json` with `latest` plus bounded `recent` history.
    - Goal: when an operator reports「發生了」, debugging can inspect a fixed capture slot instead of scanning generic debug.log output.
 
+9. **Session turn rendering contract (web session UI)**
+   - Session turn steps/tool/reasoning output no longer depend on a collapsible trigger to be visible.
+   - The working trace is rendered inline in normal document flow inside `packages/ui/src/components/session-turn.tsx`.
+   - The transient working/status row (`thinking` / retry / duration) is rendered as a separate bottom status line _after_ the inline steps block, so growing tool/reasoning output stays above it.
+   - Sticky header participation is disabled for this inline-steps path; the session scroller remains the intended outer scroll owner.
+   - Working tool cards (`part.state.status !== "completed"`) bypass the `BasicTool` collapsible route and render via a flat inline container.
+   - `packages/ui/src/components/basic-tool.css` must not use `content-visibility: auto` on tool triggers, because deferred layout/paint on long streaming mobile sessions can destabilize scroll-follow behavior.
+
 #### Capability registry contract
 
 - Capability discovery source-of-truth is `packages/opencode/src/session/prompt/enablement.json` with template mirror at `templates/prompts/enablement.json`.
@@ -273,6 +281,11 @@ This subsection documents how prompt footer usage/account metadata stays fresh w
 2. **Web prompt footer orchestration**
    - Entry point: `packages/app/src/components/prompt-input.tsx`
    - Web prompt footer also derives metadata from current provider/account state, but OpenAI quota refresh is stricter than TUI for browser efficiency.
+   - The footer's model/account identity is backed by session-local Web selection state from `packages/app/src/context/local.tsx`.
+   - `packages/app/src/pages/session.tsx` must therefore synchronize that session-local selection from both:
+     1. the latest visible user message model (initial/pinned session identity)
+     2. the latest completed non-narration assistant message model/account (post-`rotation3d` effective execution identity)
+   - Guard rule: Web must not treat autonomous narration-only assistant messages as execution-identity updates, and it must not overwrite a session-local selection that the operator has already manually changed away from the last user-pinned model.
    - Effective account precedence mirrors TUI: prefer session-local selected `accountId`, then fall back to the family active account.
    - The web quota resource key is gated by `quotaRefresh` and only becomes active for `openai`.
    - Refresh policy is event-driven, not interval-driven:
@@ -691,18 +704,18 @@ In addition to the standard `packages/` directory, these top-level folders serve
 
 The root directory is kept minimal, containing only essential configuration and orchestration files.
 
-| File            | Description                                                                                                                                                                                                                                                   |
-| :-------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `.env`          | **Runtime Secrets.** Local environment variables for API keys and database URLs.                                                                                                                                                                              |
-| `package.json`  | **Monorepo Manifest.** Defines project dependencies, workspace structure, and core scripts.                                                                                                                                                                   |
-| `bun.lock`      | **Lockfile.** Ensures consistent dependency versions across environments.                                                                                                                                                                                     |
-| `turbo.json`    | **TurboRepo Config.** Orchestrates build, lint, and test tasks across the monorepo.                                                                                                                                                                           |
-| `sst.config.ts` | **SST Entry.** Main entry point for serverless infrastructure deployment.                                                                                                                                                                                     |
-| `flake.nix`     | **Nix Shell.** Defines a reproducible development environment with all required system tools.                                                                                                                                                                 |
-| `tsconfig.json` | **TypeScript Config.** Global compiler options and path aliases.                                                                                                                                                                                              |
-| `README.md`     | **Documentation Entry.** The primary project overview and quickstart guide.                                                                                                                                                                                   |
-| `LICENSE`       | **License Information.** MIT License terms for the project.                                                                                                                                                                                                   |
-| `webctl.sh`     | **Web Control Entry Point.** Unified command surface for bootstrap install (`install`), development runtime (`dev-*` / `dev-refresh`), and production systemd control (`web-*` / `web-refresh`), with non-interactive sudo preflight for privileged commands. |
+| File            | Description                                                                                                                                                                                                                                                                                                                                            |
+| :-------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.env`          | **Runtime Secrets.** Local environment variables for API keys and database URLs.                                                                                                                                                                                                                                                                       |
+| `package.json`  | **Monorepo Manifest.** Defines project dependencies, workspace structure, and core scripts.                                                                                                                                                                                                                                                            |
+| `bun.lock`      | **Lockfile.** Ensures consistent dependency versions across environments.                                                                                                                                                                                                                                                                              |
+| `turbo.json`    | **TurboRepo Config.** Orchestrates build, lint, and test tasks across the monorepo.                                                                                                                                                                                                                                                                    |
+| `sst.config.ts` | **SST Entry.** Main entry point for serverless infrastructure deployment.                                                                                                                                                                                                                                                                              |
+| `flake.nix`     | **Nix Shell.** Defines a reproducible development environment with all required system tools.                                                                                                                                                                                                                                                          |
+| `tsconfig.json` | **TypeScript Config.** Global compiler options and path aliases.                                                                                                                                                                                                                                                                                       |
+| `README.md`     | **Documentation Entry.** The primary project overview and quickstart guide.                                                                                                                                                                                                                                                                            |
+| `LICENSE`       | **License Information.** MIT License terms for the project.                                                                                                                                                                                                                                                                                            |
+| `webctl.sh`     | **Web Control Entry Point.** Unified command surface for bootstrap install (`install`), development runtime (`dev-*` / `dev-refresh`), production systemd control (`web-*` / `web-refresh`), plus mode-aware `restart` refresh semantics (`dev-refresh` for dev, `web-refresh` for prod), with non-interactive sudo preflight for privileged commands. |
 
 ---
 
@@ -1710,6 +1723,7 @@ Canonical launch paths:
 
 - **Dev**: `./webctl.sh dev-start` (reads `/etc/opencode/opencode.cfg`, injects `OPENCODE_LAUNCH_MODE=webctl`)
 - **Prod**: `./webctl.sh web-start` (systemd service with `EnvironmentFile=/etc/opencode/opencode.cfg`, injects `OPENCODE_LAUNCH_MODE=systemd`)
+- **Mode-aware refresh shortcut**: `./webctl.sh restart` resolves to `dev-refresh` for active dev runtime, `web-refresh` for active production runtime, and refreshes both when both modes are active.
 
 Direct manual `opencode web` launch is guarded by launch-mode checks to prevent configuration drift.
 
