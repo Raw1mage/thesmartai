@@ -75,7 +75,7 @@ export namespace Auth {
 
   /**
    * Get auth for a provider ID
-   * Looks up the ACTIVE account for the provider family in Account module
+   * Looks up the ACTIVE account for the provider key in Account module
    * Note: auth.json is no longer read - all data comes from accounts.json
    */
   export async function get(providerId: string): Promise<Info | undefined> {
@@ -91,20 +91,20 @@ export namespace Auth {
       return accountToAuth(exactMatch.info)
     }
 
-    // 2. Get active account for this provider family
-    const family = await Account.resolveFamilyOrSelf(providerId)
-    debugCheckpoint("auth", "Parsed family", { providerId, family })
+    // 2. Get active account for this provider key
+    const providerKey = await Account.resolveProviderOrSelf(providerId)
+    debugCheckpoint("auth", "Parsed provider key", { providerId, providerKey })
 
-    const activeInfo = await Account.getActiveInfo(family)
+    const activeInfo = await Account.getActiveInfo(providerKey)
     debugCheckpoint("auth", "Active info result", {
       providerId,
-      family,
+      providerKey,
       hasActiveInfo: !!activeInfo,
       activeInfoType: activeInfo?.type,
     })
 
     if (activeInfo) {
-      if (family === "gemini-cli" && activeInfo.type === "subscription") {
+      if (providerKey === "gemini-cli" && activeInfo.type === "subscription") {
         return undefined
       }
       return accountToAuth(activeInfo)
@@ -114,7 +114,7 @@ export namespace Auth {
   }
 
   /**
-   * Get all auth entries (returns active account for each family)
+   * Get all auth entries (returns active account for each provider key)
    * Note: auth.json is no longer read - all data comes from accounts.json
    */
   export async function all(): Promise<Record<string, Info>> {
@@ -122,11 +122,10 @@ export namespace Auth {
     const allAccounts = await Account.listAll()
     const result: Record<string, Info> = {}
 
-    for (const [family, familyData] of Object.entries(allAccounts)) {
-      const activeId = familyData.activeAccount
-      if (activeId && familyData.accounts[activeId]) {
-        // Use family name as key for backward compatibility
-        result[family] = accountToAuth(familyData.accounts[activeId])
+    for (const [providerKey, providerData] of Object.entries(allAccounts)) {
+      const activeId = providerData.activeAccount
+      if (activeId && providerData.accounts[activeId]) {
+        result[providerKey] = accountToAuth(providerData.accounts[activeId])
       }
     }
 
@@ -159,13 +158,13 @@ export namespace Auth {
    */
   export async function set(providerId: string, info: Info) {
     const { Account } = await import("../account")
-    const family = await Account.resolveFamilyOrSelf(providerId)
+    const providerKey = await Account.resolveProviderOrSelf(providerId)
 
     if (info.type === "api") {
-      const raw = providerId.startsWith(`${family}-`) ? providerId.slice(family.length + 1) : providerId
+      const raw = providerId.startsWith(`${providerKey}-`) ? providerId.slice(providerKey.length + 1) : providerId
       const label = raw || providerId
-      const accountId = Account.generateId(family, "api", label)
-      await Account.add(family, accountId, {
+      const accountId = Account.generateId(providerKey, "api", label)
+      await Account.add(providerKey, accountId, {
         type: "api",
         name: label,
         apiKey: info.key,
@@ -192,10 +191,10 @@ export namespace Auth {
       // Check for existing account with same base token to avoid duplicates
       const parts = parseRefreshParts(info.refresh)
       const baseToken = parts.refreshToken || parseBaseToken(info.refresh)
-      const hasProjectParts = family === "gemini-cli"
+      const hasProjectParts = providerKey === "gemini-cli"
       const projectId = hasProjectParts ? parts.projectId : undefined
       const managedProjectId = hasProjectParts ? parts.managedProjectId : undefined
-      const existingAccounts = await Account.list(family)
+      const existingAccounts = await Account.list(providerKey)
       let existingAccountId: string | undefined
 
       for (const [id, acc] of Object.entries(existingAccounts)) {
@@ -209,7 +208,7 @@ export namespace Auth {
 
       if (existingAccountId) {
         // Update existing account instead of creating duplicate
-        await Account.update(family, existingAccountId, {
+        await Account.update(providerKey, existingAccountId, {
           email: email,
           refreshToken: baseToken, // Store base token without projectId suffix
           accessToken: info.access,
@@ -222,8 +221,8 @@ export namespace Auth {
         // Unified slug resolution: email > username > token-hash (never falls back to providerId)
         const tokenHash = createHash("sha256").update(baseToken).digest("hex").slice(0, 8)
         const slug = email || username || `${providerId}-${tokenHash}`
-        const accountId = Account.generateId(family, "subscription", slug)
-        await Account.add(family, accountId, {
+        const accountId = Account.generateId(providerKey, "subscription", slug)
+        await Account.add(providerKey, accountId, {
           type: "subscription",
           name: email || username || providerId,
           email: email,
@@ -262,26 +261,26 @@ export namespace Auth {
   }
 
   /**
-   * List all account IDs for a provider family
+   * List all account IDs for a provider key
    */
   export async function listAccounts(providerPrefix: string): Promise<string[]> {
     const { Account } = await import("../account")
-    const family = await Account.resolveFamilyOrSelf(providerPrefix)
-    const accounts = await Account.list(family)
+    const providerKey = await Account.resolveProviderOrSelf(providerPrefix)
+    const accounts = await Account.list(providerKey)
     return Object.keys(accounts).sort()
   }
 
   /**
-   * Get default (active) account for provider family
+   * Get default (active) account for provider key
    */
   export async function getDefaultAccount(providerPrefix: string): Promise<string | undefined> {
     const { Account } = await import("../account")
-    const family = await Account.resolveFamilyOrSelf(providerPrefix)
-    return Account.getActive(family)
+    const providerKey = await Account.resolveProviderOrSelf(providerPrefix)
+    return Account.getActive(providerKey)
   }
 
   /**
-   * Check if any account exists for this provider family
+   * Check if any account exists for this provider key
    */
   export async function hasAccount(providerId: string): Promise<boolean> {
     const { Account } = await import("../account")
@@ -292,9 +291,9 @@ export namespace Auth {
       return true
     }
 
-    // Otherwise, check if family has any accounts
-    const family = await Account.resolveFamilyOrSelf(providerId)
-    const accounts = await Account.list(family)
+    // Otherwise, check if provider key has any accounts
+    const providerKey = await Account.resolveProviderOrSelf(providerId)
+    const accounts = await Account.list(providerKey)
     return Object.keys(accounts).length > 0
   }
 }

@@ -591,12 +591,13 @@ export namespace LLM {
   async function getAccountIdForProvider(providerId: string): Promise<string | undefined> {
     const { Account } = await import("@/account")
 
-    // Parse family from provider ID
-    const family = await Account.resolveFamily(providerId)
-    if (!family) return undefined
+    // Resolve canonical provider key from provider ID
+    const resolveProviderKey = (Account as any).resolveProvider ?? (Account as any).resolveFamily
+    const providerKey = await resolveProviderKey(providerId)
+    if (!providerKey) return undefined
 
     // Get active account
-    return Account.getActive(family)
+    return Account.getActive(providerKey)
   }
 
   /**
@@ -652,11 +653,12 @@ export namespace LLM {
   ): Promise<{ model: Provider.Model; accountId?: string } | null> {
     const { Account } = await import("@/account")
 
-    const family = await Account.resolveFamily(currentModel.providerId)
-    if (!family) return null
+    const resolveProviderKey = (Account as any).resolveProvider ?? (Account as any).resolveFamily
+    const providerKey = await resolveProviderKey(currentModel.providerId)
+    if (!providerKey) return null
 
     // Get current account
-    const currentAccountId = currentAccountIdInput ?? (await Account.getActive(family))
+    const currentAccountId = currentAccountIdInput ?? (await Account.getActive(providerKey))
     if (!currentAccountId) return null
 
     // Build current vector key and add to tried set

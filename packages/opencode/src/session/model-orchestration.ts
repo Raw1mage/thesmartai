@@ -65,9 +65,10 @@ function constrainToSessionIdentity<T extends { providerId: string; modelID: str
 }
 
 async function activeAccountIdForProvider(providerId: string) {
-  const family = await Account.resolveFamily(providerId)
-  if (!family) return undefined
-  return (await Account.getActive(family)) ?? undefined
+  const resolveProviderKey = (Account as any).resolveProvider ?? (Account as any).resolveFamily
+  const providerKey = await resolveProviderKey(providerId)
+  if (!providerKey) return undefined
+  return (await Account.getActive(providerKey)) ?? undefined
 }
 
 async function isOperationalModel(model: { providerId: string; modelID: string; accountId?: string }) {

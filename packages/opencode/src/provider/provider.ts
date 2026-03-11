@@ -1311,18 +1311,19 @@ export namespace Provider {
       }
     }
 
-    // Inherit models for account/provider instances via canonical family resolver.
+    // Inherit models for account/provider instances via canonical provider-key resolver.
     // This replaces legacy regex-based `provider-accountname` guessing.
     for (const [providerId, provider] of Object.entries(database)) {
       if (Object.keys(provider.models).length > 0) continue
 
-      const family = await Account.resolveFamily(providerId)
-      if (!family || family === providerId) continue
+      const resolveProviderKey = (Account as any).resolveProvider ?? (Account as any).resolveFamily
+      const providerKey = await resolveProviderKey(providerId)
+      if (!providerKey || providerKey === providerId) continue
 
-      const baseProvider = database[family]
+      const baseProvider = database[providerKey]
       if (!baseProvider || Object.keys(baseProvider.models).length === 0) continue
 
-      log.info("inheriting models", { from: family, to: providerId })
+      log.info("inheriting models", { from: providerKey, to: providerId })
       database[providerId] = {
         ...provider,
         name: provider.name || `${baseProvider.name} (${providerId.split("-").pop()})`,
