@@ -895,7 +895,15 @@ export function Prompt(props: PromptProps) {
             })),
           ],
         })
-        .catch(() => {})
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : String(error)
+          console.error("Failed to submit prompt:", error)
+          toast.show({
+            variant: "error",
+            message: `Send failed: ${message}`,
+            duration: 4000,
+          })
+        })
     }
     history.append({
       ...store.prompt,

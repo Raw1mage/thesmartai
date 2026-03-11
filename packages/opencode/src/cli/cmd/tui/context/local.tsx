@@ -112,11 +112,22 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       return "accountId" in model ? model.accountId : undefined
     }
 
+    function normalizeModelIdentity(model: { providerId: string; modelID: string; accountId?: string }) {
+      const normalizedProviderId = Account.parseProvider(model.providerId) ?? Account.parseFamily(model.providerId) ?? model.providerId
+      return {
+        providerId: normalizedProviderId,
+        modelID: model.modelID,
+        accountId: getModelAccountId(model),
+      }
+    }
+
     function getFirstValidModel(
       ...modelFns: (() => { providerId: string; modelID: string; accountId?: string } | undefined)[]
     ) {
       for (const modelFn of modelFns) {
-        const model = modelFn()
+        const raw = modelFn()
+        if (!raw) continue
+        const model = normalizeModelIdentity(raw)
         if (!model) continue
         if (isModelAvailable(model)) return model
       }
@@ -263,7 +274,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
                   .json()
                   .then((x) => {
                     batch(() => {
-                      if (Array.isArray(x.recent)) setModelStore("recent", x.recent)
+                      if (Array.isArray(x.recent)) {
+                        setModelStore("recent", x.recent.map(normalizeModelIdentity))
+                      }
                       if (Array.isArray(x.favorite)) setModelStore("favorite", x.favorite)
                       if (Array.isArray(x.hidden)) setModelStore("hidden", x.hidden)
                       if (Array.isArray(x.hiddenProviders)) setModelStore("hiddenProviders", x.hiddenProviders)
@@ -312,7 +325,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           file
             .json()
             .then((x) => {
-              if (Array.isArray(x.recent)) setModelStore("recent", x.recent)
+              if (Array.isArray(x.recent)) setModelStore("recent", x.recent.map(normalizeModelIdentity))
               if (Array.isArray(x.favorite)) setModelStore("favorite", x.favorite)
               if (Array.isArray(x.hidden)) setModelStore("hidden", x.hidden)
               if (Array.isArray(x.hiddenProviders)) setModelStore("hiddenProviders", x.hiddenProviders)
@@ -499,18 +512,19 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           sessionID?: string,
         ) {
           batch(() => {
-            if (!options?.skipValidation && !isModelAvailable(model)) {
+            const normalized = normalizeModelIdentity(model)
+            if (!options?.skipValidation && !isModelAvailable(normalized)) {
               toast.show({
-                message: `Model ${model.providerId}/${model.modelID} is not valid`,
+                message: `Model ${normalized.providerId}/${normalized.modelID} is not valid`,
                 variant: "warning",
                 duration: 3000,
               })
               return
             }
-            setModelStore("model", buildModelScopeKey(agent.current().name, sessionID), model)
+            setModelStore("model", buildModelScopeKey(agent.current().name, sessionID), normalized)
             if (options?.recent) {
               const uniq = uniqueBy(
-                [model, ...modelStore.recent],
+                [normalized, ...modelStore.recent.map(normalizeModelIdentity)],
                 (x) => `${x.providerId}/${x.modelID}/${x.accountId ?? ""}`,
               )
               if (uniq.length > 10) uniq.pop()
@@ -523,7 +537,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             if (options?.announce) {
               toast.show({
                 variant: "info",
-                message: formatModelAnnouncement(model),
+                message: formatModelAnnouncement(normalized),
                 duration: 3000,
               })
             }
