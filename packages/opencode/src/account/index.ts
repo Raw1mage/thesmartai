@@ -82,9 +82,15 @@ export namespace Account {
   /** @deprecated Use ProviderData instead */
   export type FamilyData = ProviderData
 
+  // Provider-first compatibility aliases
+  export const knownProviders = knownFamilies
+  export const resolveProvider = resolveFamily
+  export const resolveProviderOrSelf = resolveFamilyOrSelf
+  export const parseProviderKey = parseProvider
+
   // Storage schema
-  // NOTE: Uses "families" key for backward compatibility with existing accounts.json files
-  // Conceptually this is "providers" - each key is a provider ID
+  // NOTE: Uses "families" key for backward compatibility with existing accounts.json files.
+  // Conceptually this is provider-keyed storage: each top-level key is an account-bearing provider boundary.
   export const Storage = z.object({
     version: z.number(),
     families: z.record(z.string(), ProviderData),
@@ -112,7 +118,7 @@ export namespace Account {
     if (_storage) {
       const mtime = await getDiskMtime()
       if (mtime === _mtime) {
-        debugCheckpoint("Account.state", "Using cached state", { families: Object.keys(_storage.families) })
+        debugCheckpoint("Account.state", "Using cached state", { providerKeys: Object.keys(_storage.families) })
         return _storage
       }
       debugCheckpoint("Account.state", "Loading from disk", { reason: "mtime-changed" })
@@ -122,7 +128,7 @@ export namespace Account {
 
     _storage = await load()
     _mtime = await getDiskMtime()
-    debugCheckpoint("Account.state", "Loaded", { families: Object.keys(_storage.families) })
+    debugCheckpoint("Account.state", "Loaded", { providerKeys: Object.keys(_storage.families) })
     return _storage
   }
 

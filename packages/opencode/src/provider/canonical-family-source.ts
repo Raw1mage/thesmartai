@@ -1,6 +1,6 @@
 import { Account } from "../account"
 
-export type CanonicalProviderFamilyRow = {
+export type CanonicalProviderKeyRow = {
   family: string
   label: string
   accountCount: number
@@ -12,17 +12,23 @@ export type CanonicalProviderFamilyRow = {
   inModelsDev: boolean
 }
 
+/** @deprecated Use CanonicalProviderKeyRow instead */
+export type CanonicalProviderFamilyRow = CanonicalProviderKeyRow
+
 type RuntimeProviderLike = {
   id: string
 }
 
-type BuildCanonicalProviderFamilyRowsInput = {
+type BuildCanonicalProviderKeyRowsInput = {
   accountFamilies?: Record<string, Account.ProviderData>
   connectedProviderIds?: string[]
   modelsDevProviderIds?: string[]
   disabledProviderIds?: string[]
   excludedFamilies?: string[]
 }
+
+/** @deprecated Use BuildCanonicalProviderKeyRowsInput instead */
+type BuildCanonicalProviderFamilyRowsInput = BuildCanonicalProviderKeyRowsInput
 
 const LEGACY_BLOCKLIST = new Set(["google"])
 const GENERIC_RUNTIME_FAMILIES = new Set(["claude-cli", "github-copilot", "github-copilot-enterprise", "opencode"])
@@ -101,10 +107,14 @@ export function buildCanonicalProviderFamilyRows(
         inAccounts,
         inConnectedProviders,
         inModelsDev,
-      } satisfies CanonicalProviderFamilyRow
+      } satisfies CanonicalProviderKeyRow
     })
     .sort((a, b) => a.family.localeCompare(b.family))
 }
+
+export const buildCanonicalProviderKeyRows = buildCanonicalProviderFamilyRows
+export const normalizeCanonicalProviderKey = normalizeCanonicalProviderFamily
+export const resolveCanonicalRuntimeProviderKey = resolveCanonicalRuntimeProviderId
 
 export function resolveCanonicalRuntimeProviderId(input: {
   family: string

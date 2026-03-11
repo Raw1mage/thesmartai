@@ -3,13 +3,13 @@
  *
  * Generalizes rotation across three dimensions:
  * - Provider: Different API providers (openai, anthropic, google, etc.)
- * - Account: Different accounts within a provider family
+ * - Account: Different accounts within a provider boundary
  * - Model: Different models within a provider
  *
  * When a rate limit is hit on (P1, A1, M1), the system can:
  * 1. Try same model with different account: (P1, A2, M1)
  * 2. Try different model with same account: (P1, A1, M2)
- * 3. Try different provider entirely: (P2, A1, M1-equivalent)
+ * 3. Try different provider entirely: (P2, A?, M1-equivalent)
  *
  * The rotation strategy is configurable and can prioritize any dimension.
  */
@@ -77,7 +77,7 @@ export type RotationPurpose = "coding" | "reasoning" | "image" | "docs" | "audio
  * Strategy for fallback selection
  */
 export type FallbackStrategy =
-  | "account-first" // Try other accounts first, then other models, then other providers
+  | "account-first" // Try other accounts within the same provider first, then other models, then other providers
   | "model-first" // Try other models first, then other accounts, then other providers
   | "provider-first" // Try other providers first (maximizes diversity)
   | "any-available" // Take first available regardless of dimension
