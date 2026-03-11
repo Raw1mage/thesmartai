@@ -3,6 +3,7 @@ import { batch, createMemo } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useSDK } from "./sdk"
 import { useSync } from "./sync"
+import { useGlobalSync } from "./global-sync"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { useProviders } from "@/hooks/use-providers"
 import { useModels } from "@/context/models"
@@ -43,8 +44,35 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   init: () => {
     const sdk = useSDK()
     const sync = useSync()
+    const globalSync = useGlobalSync()
     const providers = useProviders()
     const connected = createMemo(() => new Set(providers.connected().map((provider) => provider.id)))
+
+    function availableAccountIds(providerID: string) {
+      const family = providerID
+      const families = globalSync.data.account_families
+      return Object.keys(families[family]?.accounts ?? {})
+    }
+
+    function replacementAccountID(providerID: string, currentAccountID?: string) {
+      const family = providerID
+      const familyData = globalSync.data.account_families[family]
+      const active = familyData?.activeAccount
+      const ids = Object.keys(familyData?.accounts ?? {})
+      if (active && active !== currentAccountID && ids.includes(active)) return active
+      return ids.find((id) => id !== currentAccountID) ?? ids[0]
+    }
+
+    function sanitizeModel(model: ModelKey): ModelKey | undefined {
+      if (!isModelValid(model)) return undefined
+      if (!model.accountID) return model
+      const ids = availableAccountIds(model.providerID)
+      if (ids.length === 0) return { providerID: model.providerID, modelID: model.modelID }
+      if (ids.includes(model.accountID)) return model
+      const nextAccountID = replacementAccountID(model.providerID, model.accountID)
+      if (!nextAccountID) return undefined
+      return { ...model, accountID: nextAccountID }
+    }
 
     function isModelValid(model: ModelKey) {
       const provider = providers.all().find((x) => x.id === model.providerID)
@@ -55,7 +83,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       for (const modelFn of modelFns) {
         const model = modelFn()
         if (!model) continue
-        if (isModelValid(model)) return model
+        const sanitized = sanitizeModel(model)
+        if (sanitized) return sanitized
       }
     }
 

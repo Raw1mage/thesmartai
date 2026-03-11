@@ -93,6 +93,38 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       return fallback
     }
 
+    function availableAccountIds(providerId: string) {
+      const families = accountFamilies()
+      const family = Account.parseProvider(providerId) ?? providerId
+      return Object.keys(families?.[family]?.accounts ?? {})
+    }
+
+    function replacementAccountId(providerId: string, currentAccountId?: string) {
+      const families = accountFamilies()
+      const family = Account.parseProvider(providerId) ?? providerId
+      const familyData = families?.[family]
+      const active = familyData?.activeAccount
+      const ids = Object.keys(familyData?.accounts ?? {})
+      if (active && active !== currentAccountId && ids.includes(active)) return active
+      return ids.find((id) => id !== currentAccountId) ?? ids[0]
+    }
+
+    function sanitizeModelIdentity(model: {
+      providerId: string
+      modelID: string
+      accountId?: string
+    }): { providerId: string; modelID: string; accountId?: string } | undefined {
+      const normalized = normalizeModelIdentity(model)
+      if (!isModelAvailable(normalized)) return undefined
+      if (!normalized.accountId) return normalized
+      const ids = availableAccountIds(normalized.providerId)
+      if (ids.length === 0) return { providerId: normalized.providerId, modelID: normalized.modelID }
+      if (ids.includes(normalized.accountId)) return normalized
+      const nextAccountId = replacementAccountId(normalized.providerId, normalized.accountId)
+      if (!nextAccountId) return undefined
+      return { ...normalized, accountId: nextAccountId }
+    }
+
     function formatModelAnnouncement(model: { providerId: string; modelID: string; accountId?: string }) {
       const providerInfo = sync.data.provider.find((x) => x.id === model.providerId)
       const familyId = Account.parseProvider(model.providerId) ?? model.providerId
@@ -113,7 +145,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     }
 
     function normalizeModelIdentity(model: { providerId: string; modelID: string; accountId?: string }) {
-      const normalizedProviderId = Account.parseProvider(model.providerId) ?? Account.parseFamily(model.providerId) ?? model.providerId
+      const normalizedProviderId =
+        Account.parseProvider(model.providerId) ?? Account.parseFamily(model.providerId) ?? model.providerId
       return {
         providerId: normalizedProviderId,
         modelID: model.modelID,
@@ -127,9 +160,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       for (const modelFn of modelFns) {
         const raw = modelFn()
         if (!raw) continue
-        const model = normalizeModelIdentity(raw)
-        if (!model) continue
-        if (isModelAvailable(model)) return model
+        const model = sanitizeModelIdentity(raw)
+        if (model) return model
       }
     }
 
