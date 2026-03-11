@@ -239,6 +239,7 @@ export default function Page() {
   }
 
   const isDesktop = createMediaQuery("(min-width: 450px)")
+  const mobileScrollRepair = createMemo(() => !isDesktop())
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -298,6 +299,21 @@ export default function Page() {
   })
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const sessionExecutionModel = createMemo(() => {
+    const execution = (
+      info() as
+        | {
+            execution?: { providerId?: string; modelID?: string; accountId?: string }
+          }
+        | undefined
+    )?.execution
+    if (!execution?.providerId || !execution?.modelID) return undefined
+    return {
+      providerID: execution.providerId,
+      modelID: execution.modelID,
+      accountID: execution.accountId,
+    }
+  })
   const workflowChips = createMemo(() => getSessionWorkflowChips(info() as any))
   const revertMessageID = createMemo(() => info()?.revert?.messageID)
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
@@ -578,8 +594,13 @@ export default function Page() {
 
   createEffect(
     on(
-      () => lastUserMessage()?.id,
+      () => [params.id, sessionExecutionModel(), lastUserMessage()?.id] as const,
       () => {
+        const executionModel = sessionExecutionModel()
+        if (params.id && executionModel) {
+          local.model.set(executionModel, undefined, params.id)
+          return
+        }
         const msg = lastUserMessage()
         if (!msg) return
         if (msg.agent) local.agent.set(msg.agent)
@@ -601,6 +622,7 @@ export default function Page() {
 
   createEffect(() => {
     const sessionID = params.id
+    if (sessionExecutionModel()) return
     const assistant = lastCompletedAssistantMessage()
     if (!sessionID || !assistant) return
     const synced = getAssistantSyncedSessionModel({
@@ -627,6 +649,7 @@ export default function Page() {
     turnStart: 0,
     newSessionWorktree: "main",
     promptHeight: 0,
+    mobilePromptHeightLock: undefined as number | undefined,
   })
 
   const reviewDiffKey = createMemo(() => params.id)
@@ -884,6 +907,30 @@ export default function Page() {
 
   createEffect(
     on(
+      () => [mobileScrollRepair(), status().type !== "idle"] as const,
+      ([mobile, active]) => {
+        if (!mobile) {
+          if (store.mobilePromptHeightLock !== undefined) setStore("mobilePromptHeightLock", undefined)
+          return
+        }
+
+        if (active) {
+          const measured = promptDock ? Math.ceil(promptDock.getBoundingClientRect().height) : store.promptHeight
+          const next = measured || store.promptHeight || undefined
+          if (next !== undefined) setStore("mobilePromptHeightLock", next)
+          return
+        }
+
+        if (store.mobilePromptHeightLock !== undefined) setStore("mobilePromptHeightLock", undefined)
+        const measured = promptDock ? Math.ceil(promptDock.getBoundingClientRect().height) : undefined
+        if (measured && measured !== store.promptHeight) setStore("promptHeight", measured)
+      },
+      { defer: true },
+    ),
+  )
+
+  createEffect(
+    on(
       sessionKey,
       () => {
         setStore("messageId", undefined)
@@ -1035,6 +1082,15 @@ export default function Page() {
   )
 
   const mobileChanges = createMemo(() => !isDesktop() && view().filePane.opened())
+  const viewportMetrics = () => {
+    if (typeof window === "undefined") return {}
+    return {
+      innerHeight: window.innerHeight,
+      visualViewportHeight: window.visualViewport?.height,
+      visualViewportOffsetTop: window.visualViewport?.offsetTop,
+      visualViewportPageTop: window.visualViewport?.pageTop,
+    }
+  }
   const reviewTab = createMemo(() => isDesktop())
 
   const showAllFiles = () => {
@@ -1480,7 +1536,10 @@ export default function Page() {
   createResizeObserver(
     () => promptDock,
     ({ height }) => {
-      const next = Math.ceil(height)
+      const measured = Math.ceil(height)
+      const mobileLocked =
+        mobileScrollRepair() && status().type !== "idle" && store.mobilePromptHeightLock !== undefined
+      const next = mobileLocked ? store.mobilePromptHeightLock! : measured
 
       if (next === store.promptHeight) return
 
@@ -1495,18 +1554,22 @@ export default function Page() {
           event: "prompt-dock-resize",
           promptHeightBefore: store.promptHeight,
           promptHeightAfter: next,
+          promptHeightMeasured: measured,
           promptHeightDelta: delta,
+          mobileLocked,
+          mobileScrollRepair: mobileScrollRepair(),
           stick,
           scrollTop: el?.scrollTop,
           scrollHeight: el?.scrollHeight,
           clientHeight: el?.clientHeight,
           distanceFromBottom: el ? el.scrollHeight - el.clientHeight - el.scrollTop : undefined,
+          ...viewportMetrics(),
         })
       }
 
       setStore("promptHeight", next)
 
-      if (stick) autoScroll.scrollToBottom()
+      if (stick && !(mobileScrollRepair() && status().type !== "idle")) autoScroll.scrollToBottom()
 
       if (el) scheduleScrollState(el)
       scrollSpy.markDirty()
