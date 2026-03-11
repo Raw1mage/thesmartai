@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import { calculateBackoffMs } from "./backoff"
+import { calculateBackoffMs, parseRateLimitReason } from "./backoff"
 
 describe("rotation backoff guardrails", () => {
   it("gives quota exhausted vectors at least five hours of cooldown", () => {
@@ -10,5 +10,11 @@ describe("rotation backoff guardrails", () => {
   it("extends repeated same-day generic rate limits to five hours", () => {
     expect(calculateBackoffMs("RATE_LIMIT_EXCEEDED", 0, undefined, 2)).toBeGreaterThanOrEqual(18_000_000)
     expect(calculateBackoffMs("UNKNOWN", 0, undefined, 2)).toBeGreaterThanOrEqual(18_000_000)
+  })
+
+  it("treats OpenAI usage_limit_reached as quota exhaustion", () => {
+    expect(parseRateLimitReason("usage_limit_reached", "The usage limit has been reached", 429)).toBe(
+      "QUOTA_EXHAUSTED",
+    )
   })
 })

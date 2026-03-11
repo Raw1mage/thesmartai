@@ -401,7 +401,7 @@ export namespace LLM {
         // tracker updates, and Bus event broadcasting — all in one call.
 
         if (isAuthError(error)) {
-          await RateLimitJudge.recordAuthFailure(accountId, input.model.providerId, input.model.id, error)
+          await RateLimitJudge.recordAuthFailure(input.model.providerId, accountId, input.model.id, error)
 
           // Show persistent error toast
           Bus.publish(TuiEvent.ToastShow, {
@@ -414,7 +414,7 @@ export namespace LLM {
         }
 
         if (isRateLimitError(error)) {
-          const result = await RateLimitJudge.judge(accountId, input.model.providerId, input.model.id, error)
+          const result = await RateLimitJudge.judge(input.model.providerId, accountId, input.model.id, error)
 
           // Publish toast notification (debounced)
           const now = Date.now()

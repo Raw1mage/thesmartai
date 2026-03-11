@@ -50,6 +50,8 @@ export function parseRateLimitReason(
   if (reason) {
     switch (reason.toUpperCase()) {
       case "QUOTA_EXHAUSTED":
+      case "USAGE_LIMIT_REACHED":
+      case "INSUFFICIENT_QUOTA":
         return "QUOTA_EXHAUSTED"
       case "RATE_LIMIT_EXCEEDED":
         return "RATE_LIMIT_EXCEEDED"

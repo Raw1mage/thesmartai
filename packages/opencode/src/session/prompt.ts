@@ -1202,6 +1202,7 @@ export namespace SessionPrompt {
         agent,
         abort,
         sessionID,
+        accountId: lastUser.model.accountId,
         system: [
           await getPreloadedContext(sessionID),
           ...environmentPrompts,
