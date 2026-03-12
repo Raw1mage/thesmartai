@@ -208,6 +208,7 @@ export function providerKeyOf(providerId: string) {
 
 // Compatibility alias for older local call sites/tests that still use `family` wording.
 export const familyOf = providerKeyOf
+export const normalizeProviderKey = providerKeyOf
 
 export function isAccountLikeProviderId(id: string) {
   return id.includes("@")

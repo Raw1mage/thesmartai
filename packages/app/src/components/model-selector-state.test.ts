@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { buildAccountRows, buildProviderRows, filterModelsForMode, pickSelectedAccount } from "./model-selector-state"
+import {
+  buildAccountRows,
+  buildProviderRows,
+  filterModelsForMode,
+  normalizeProviderKey,
+  pickSelectedAccount,
+} from "./model-selector-state"
 
 describe("model selector state", () => {
   test("provider rows are built from provider universe and account families", () => {
@@ -158,5 +164,10 @@ describe("model selector state", () => {
     })
 
     expect(rows.map((row) => row.id)).toEqual(["m1", "m2"])
+  })
+
+  test("normalizeProviderKey keeps provider-key normalization behavior", () => {
+    expect(normalizeProviderKey("openai-api-primary")).toBe("openai")
+    expect(normalizeProviderKey("google-api")).toBe("google-api")
   })
 })

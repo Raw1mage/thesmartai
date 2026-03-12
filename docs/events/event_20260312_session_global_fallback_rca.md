@@ -781,3 +781,16 @@
     - updated local call site/variable naming to use `providerKey`
 - Architecture Sync: Verified (No doc changes)
   - L2 helper-alias adoption only; no runtime behavior or public contract changed
+
+## Follow-up Fix: provider-key terminology cleanup batch 13
+
+- Goal:
+  - finish step-1 helper alias adoption with another app-side provider-key alias and matching test coverage
+- Updated files:
+  - `packages/app/src/components/model-selector-state.ts`
+  - `packages/app/src/components/model-selector-state.test.ts`
+- Applied changes:
+  - added `normalizeProviderKey` as a provider-first alias of `providerKeyOf`
+  - added a selector-state test that exercises the provider-key alias directly
+- Architecture Sync: Verified (No doc changes)
+  - L2 helper-alias adoption only; no runtime behavior or compatibility contract changed
