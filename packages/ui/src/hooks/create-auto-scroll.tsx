@@ -233,20 +233,14 @@ export function createAutoScroll(options: AutoScrollOptions) {
     stop()
   }
 
-  const updateOverflowAnchor = (el: HTMLElement) => {
-    const mode = options.overflowAnchor ?? "dynamic"
-
-    if (mode === "none") {
-      el.style.overflowAnchor = "none"
-      return
-    }
-
-    if (mode === "auto") {
-      el.style.overflowAnchor = "auto"
-      return
-    }
-
-    el.style.overflowAnchor = userScrolled() ? "auto" : "none"
+  const updateOverflowAnchor = (_el: HTMLElement) => {
+    // overflow-anchor must be set on the scroller's CHILDREN (not the scroll
+    // container itself) to suppress browser scroll anchoring.
+    // Always disable: browser anchoring fights with both follow-bottom
+    // (ResizeObserver scrollToBottom) and free-reading (anchor snaps to
+    // wrong element), causing oscillation in both modes.
+    const content = store.contentRef
+    if (content) content.style.overflowAnchor = "none"
   }
 
   createResizeObserver(
@@ -309,9 +303,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
   )
 
   createEffect(() => {
-    // Track scroll mode even before `scrollRef` is attached, so we can
-    // update overflow anchoring once the element exists.
+    // Track scroll mode and contentRef so we can update overflow anchoring
+    // on the content wrapper (not the scroller itself) once both exist.
     store.mode
+    store.contentRef // re-run when contentRef is set
     const el = scroll
     if (!el) return
     updateOverflowAnchor(el)

@@ -239,7 +239,7 @@ export default function Page() {
   }
 
   const isDesktop = createMediaQuery("(min-width: 450px)")
-  const mobileScrollRepair = createMemo(() => !isDesktop())
+  // mobileScrollRepair removed: overflow-anchor fix eliminates the need
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -649,7 +649,7 @@ export default function Page() {
     turnStart: 0,
     newSessionWorktree: "main",
     promptHeight: 0,
-    mobilePromptHeightLock: undefined as number | undefined,
+    mobilePromptHeightLock: undefined as number | undefined, // deprecated: kept for store shape
   })
 
   const reviewDiffKey = createMemo(() => params.id)
@@ -905,23 +905,14 @@ export default function Page() {
 
   const status = createMemo(() => sync.data.session_status[params.id ?? ""] ?? idle)
 
+  // mobilePromptHeightLock effect removed: overflow-anchor: none on contentRef
+  // eliminates browser anchoring, so prompt-dock height locking is no longer needed.
   createEffect(
     on(
-      () => [mobileScrollRepair(), status().type !== "idle"] as const,
-      ([mobile, active]) => {
-        if (!mobile) {
-          if (store.mobilePromptHeightLock !== undefined) setStore("mobilePromptHeightLock", undefined)
-          return
-        }
-
-        if (active) {
-          const measured = promptDock ? Math.ceil(promptDock.getBoundingClientRect().height) : store.promptHeight
-          const next = measured || store.promptHeight || undefined
-          if (next !== undefined) setStore("mobilePromptHeightLock", next)
-          return
-        }
-
-        if (store.mobilePromptHeightLock !== undefined) setStore("mobilePromptHeightLock", undefined)
+      () => status().type !== "idle",
+      (active) => {
+        if (active) return
+        // When session goes idle, re-measure prompt dock in case it changed
         const measured = promptDock ? Math.ceil(promptDock.getBoundingClientRect().height) : undefined
         if (measured && measured !== store.promptHeight) setStore("promptHeight", measured)
       },
@@ -1537,14 +1528,11 @@ export default function Page() {
     () => promptDock,
     ({ height }) => {
       const measured = Math.ceil(height)
-      const mobileLocked =
-        mobileScrollRepair() && status().type !== "idle" && store.mobilePromptHeightLock !== undefined
-      const next = mobileLocked ? store.mobilePromptHeightLock! : measured
 
-      if (next === store.promptHeight) return
+      if (measured === store.promptHeight) return
 
       const el = scroller
-      const delta = next - store.promptHeight
+      const delta = measured - store.promptHeight
       const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 + Math.max(0, delta) : false
 
       if (typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") !== "0") {
@@ -1553,11 +1541,8 @@ export default function Page() {
           scope: "session-page-state",
           event: "prompt-dock-resize",
           promptHeightBefore: store.promptHeight,
-          promptHeightAfter: next,
-          promptHeightMeasured: measured,
+          promptHeightAfter: measured,
           promptHeightDelta: delta,
-          mobileLocked,
-          mobileScrollRepair: mobileScrollRepair(),
           stick,
           scrollTop: el?.scrollTop,
           scrollHeight: el?.scrollHeight,
@@ -1567,9 +1552,9 @@ export default function Page() {
         })
       }
 
-      setStore("promptHeight", next)
+      setStore("promptHeight", measured)
 
-      if (stick && !(mobileScrollRepair() && status().type !== "idle")) autoScroll.scrollToBottom()
+      if (stick) autoScroll.scrollToBottom()
 
       if (el) scheduleScrollState(el)
       scrollSpy.markDirty()
