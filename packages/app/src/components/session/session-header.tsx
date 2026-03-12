@@ -521,7 +521,7 @@ export function SessionHeader() {
                 }
               >
                 <div class="flex items-center gap-3 ml-2 shrink-0">
-                  <div class="hidden lg:block shrink-0">
+                  <div class="shrink-0">
                     <TooltipKeybind
                       title={language.t("command.review.toggle")}
                       keybind={command.keybind("review.toggle")}
