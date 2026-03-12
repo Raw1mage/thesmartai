@@ -11,7 +11,6 @@ import { useSDK } from "../context/sdk"
 import { DialogSessionRename } from "./dialog-session-rename"
 import { useKV } from "../context/kv"
 import { createDebouncedSignal } from "../util/signal"
-import path from "path"
 import "opentui-spinner/solid"
 
 export function DialogSessionList() {
@@ -38,17 +37,6 @@ export function DialogSessionList() {
 
   const sessions = createMemo(() => searchResults() ?? sync.data.session)
 
-  const projectName = (session: any) => {
-    const name = session?.project?.name
-    if (typeof name === "string" && name.trim()) return name.trim()
-    const directory = session?.project?.worktree ?? session?.directory
-    if (typeof directory === "string" && directory) {
-      const base = path.basename(path.resolve(directory))
-      if (base && base !== path.sep && base !== ".") return base
-    }
-    return ""
-  }
-
   const sessionLabel = (
     session: {
       title: string
@@ -58,12 +46,9 @@ export function DialogSessionList() {
     },
     childCount = 0,
     titlePrefix = "",
-    showProject = true,
   ) => {
-    const project = projectName(session)
     const childSuffix = childCount > 0 ? ` [${childCount}]` : ""
-    const projectPrefix = showProject && project ? `[${project}] ` : ""
-    return `${projectPrefix}${titlePrefix}${session.title}${childSuffix}`
+    return `${titlePrefix}${session.title}${childSuffix}`
   }
 
   const options = createMemo(() => {
@@ -101,7 +86,7 @@ export function DialogSessionList() {
       const isWorking = status?.type === "busy"
       const children = childrenMap.get(root.id) ?? []
 
-      // Add root session with child count indicator and project label
+      // Add root session with child count indicator
       result.push({
         title: sessionLabel(root, children.length),
         value: root.id,
@@ -117,7 +102,7 @@ export function DialogSessionList() {
         ) : undefined,
       })
 
-      // Add children with tree prefix and project labels
+      // Add children with tree prefix
       const sortedChildren = children.toSorted((a, b) => a.time.created - b.time.created)
       for (let i = 0; i < sortedChildren.length; i++) {
         const child = sortedChildren[i]
@@ -127,7 +112,7 @@ export function DialogSessionList() {
         const childWorking = childStatus?.type === "busy"
 
         result.push({
-          title: sessionLabel(child, 0, prefix, false),
+          title: sessionLabel(child, 0, prefix),
           value: child.id,
           category, // Same category as parent
           footer: Locale.time(child.time.updated),
