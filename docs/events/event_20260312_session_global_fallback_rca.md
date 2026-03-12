@@ -738,6 +738,192 @@
 - Updated files:
   - `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
   - `packages/app/src/components/model-selector-state.test.ts`
+
+## L3 Policy Proposal: OpenAPI / SDK regeneration policy (providerKey-first)
+
+- Goal:
+  - define the non-breaking source-of-truth policy for moving public/generated contracts from legacy `family` naming toward `providerKey` naming
+  - separate "new canonical contract" from "legacy compatibility/deprecation" so future regeneration work does not drift
+
+- Canonical naming policy:
+  - single provider identity field: `providerKey`
+  - plural provider collection field: `providers`
+  - legacy compatibility aliases remain:
+    - `family` -> deprecated alias of `providerKey`
+    - `families` -> deprecated alias/mirror of `providers`
+
+- OpenAPI policy:
+  - OpenAPI descriptions/examples should present `providerKey` / `providers` as the primary contract language
+  - legacy `family` / `families` fields and params remain documented during transition, but must be marked deprecated in the spec narrative/metadata where supported
+  - existing family-named path params/routes remain in place during this phase; route removal or path replacement is explicitly out of scope for the non-breaking phase
+
+- SDK generation policy:
+  - generated request/response types should prefer `providerKey` / `providers` as the primary surfaced names where additive support exists
+  - legacy family-based fields may remain as deprecated compatibility aliases while the wire/runtime contract still accepts them
+  - duplicated alias methods generated during the compatibility phase should not become permanent product surface; they are transitional parity debt and should be revisited once OpenAPI becomes fully providerKey-first
+
+- Regeneration sequence:
+  1. update OpenAPI/source annotations and descriptions first
+  2. regenerate spec artifacts
+  3. regenerate SDK artifacts from that spec
+  4. diff generated outputs for duplicate alias methods/types
+  5. only then move downstream app/console call sites to the new canonical names where additive support exists
+
+- Validation sequence:
+  - spec diff confirms no path removals or required-field removals
+  - `packages/sdk/js` typecheck/build passes after regeneration
+  - representative request/response fixtures validate both canonical `providerKey` and legacy `family` acceptance
+  - docs/examples must prefer `providerKey` only, even while compatibility aliases remain available
+
+- Explicit non-goals in this policy phase:
+  - no removal of legacy family paths
+  - no removal of legacy family/families request parsing
+  - no persistence/storage schema migration
+  - no breaking runtime contract changes
+
+- Repo-specific implementation checklist:
+  - OpenAPI/spec sources and generated artifacts to review/update:
+    - `packages/sdk/openapi.json`
+    - `packages/sdk/js/openapi.json`
+    - `packages/sdk/js/src/v2/gen/sdk.gen.ts`
+    - `packages/sdk/js/src/v2/gen/types.gen.ts`
+    - generation entrypoints under `scripts/` / SDK build scripts as applicable
+  - runtime/schema surfaces to keep aligned during additive transition:
+    - `packages/opencode/src/server/routes/account.ts`
+    - `packages/opencode/src/server/user-daemon/manager.ts`
+    - downstream consumers such as `packages/app/**` and `packages/console/app/**`
+
+- Decision gate before deeper migration:
+  - once additive parity is complete, the next decision is whether to:
+    1. keep legacy family paths indefinitely as deprecated compatibility routes, or
+    2. begin a formal deprecation/removal timeline for those paths and generated alias methods
+
+## L3 Policy Proposal: legacy deprecation strategy
+
+- Goal:
+  - define how legacy `family` / `families` naming should be retained, deprecated, or eventually removed without breaking current consumers
+
+- Legacy names in scope:
+  - runtime/domain wording: `family`, `families`, provider-family/group-family naming
+  - API contract/path naming: `:family` params and family-named route segments
+  - generated SDK alias methods/types derived from those paths/schemas
+  - app/console/UI labels, filters, and field names still teaching `family` as the primary concept
+  - tests/docs/examples/fixtures using legacy family-first wording
+
+- Retain indefinitely for compatibility (until an explicit major-version removal decision exists):
+  - currently shipped runtime/API request/response fields that external consumers may send/read
+  - currently shipped HTTP paths/params
+  - generated SDK aliases matching shipped OpenAPI
+  - persisted config/state/storage keys where rename would break existing local installs
+
+- Mark deprecated now:
+  - docs/examples/UI copy that still teaches `family` as the primary concept
+  - new helper names, new route additions, new SDK method names, and new UI labels that would otherwise extend legacy naming debt
+  - duplicate alias methods/types that exist only for compatibility
+
+- Explicitly do NOT deprecate yet:
+  - live runtime/API wire contracts
+  - persisted state/config/storage keys
+  - family-based request parsing still required for compatibility
+  - existing CLI/TUI commands or routes whose removal would be user-visible breaking change
+  - compatibility tests that intentionally protect those surfaces
+
+- Proposed phases:
+  - Phase 0 (now / current patch line): inventory + policy + freeze new legacy naming
+  - Phase 1 (next minor): canonical `providerKey`/`providers` naming becomes primary in docs, OpenAPI descriptions, SDK docs, and UI copy; legacy aliases remain fully functional
+  - Phase 2 (following minor): add soft deprecation signals in comments/JSDoc/docs/console presentation where safe; still no runtime removal
+  - Phase 3 (future major only): consider actual alias/path removal if telemetry and compatibility gates pass
+
+- Removal gates before any future breaking deprecation:
+  - request telemetry/log evidence for legacy family-named endpoint/param usage
+  - SDK/app/console usage confirmation for remaining alias methods
+  - config/state corpus scan showing persisted legacy keys are either migrated or still intentionally supported
+  - contract tests proving canonical + legacy paths behaved identically through at least one stable release cycle
+  - published migration guidance with no unresolved blocker reports
+
+- Recommended migration order:
+  1. docs + architecture/event policy alignment
+  2. runtime internal canonical naming behind compatibility adapters
+  3. OpenAPI descriptions and deprecated metadata without path removal
+  4. SDK canonical naming first, legacy aliases documented as deprecated compatibility shims
+  5. app/console/UI copy and call sites prefer canonical names
+  6. tests gradually prefer canonical naming while retaining compatibility coverage
+  7. only then discuss actual runtime/path removal in a major-version plan
+
+- Current gate conclusion:
+  - no removal/deprecation execution should begin yet
+  - the immediate next Phase 0 task is to produce a legacy-name inventory mapped by layer (runtime / OpenAPI / SDK / app / tests / docs)
+
+## Phase 0 inventory: layered legacy-name map
+
+- Goal:
+  - map the remaining migration-relevant legacy `family` / `families` surfaces by layer so future deprecation/removal work can proceed without guessing
+
+- Runtime / server contract:
+  - `packages/opencode/src/server/routes/account.ts`
+    - quota response still emits legacy `family` alongside canonical `providerKey`
+    - account list response still emits legacy `families` alongside canonical `providers`
+    - legacy `/:family/...` account paths remain the live compatibility route surface and must be kept for now
+    - daemon bridge account list still expects/returns `families`
+  - Status:
+    - `family` / `families` here are compatibility aliases or must-keep live contract, not yet removable
+
+- OpenAPI / spec:
+  - `packages/sdk/openapi.json`
+  - `packages/sdk/js/openapi.json`
+    - schemas still expose `family` / `families`
+    - account paths still use `{family}` params
+  - Status:
+    - authoritative source of legacy alias propagation; Phase 0/1 should add explicit deprecated metadata/narrative before any removal discussion
+
+- SDK / generated clients:
+  - `packages/sdk/js/src/v2/gen/types.gen.ts`
+    - generated request/response types still carry `family` / `families` compatibility fields
+  - `packages/sdk/js/src/v2/gen/sdk.gen.ts`
+    - generated methods still reflect `{family}` URLs and legacy-compat request shapes
+  - Status:
+    - must keep until spec-first migration and regeneration policy are fully applied; duplicate alias methods are transitional debt, not yet removable
+
+- App / console / UI consumers:
+  - `packages/app/src/components/dialog-select-model.tsx`
+  - `packages/app/src/components/status-popover.tsx`
+  - `packages/app/src/context/global-sync/bootstrap.ts`
+  - `packages/app/src/components/settings-accounts.tsx`
+  - `packages/console/app/src/routes/accounts.tsx`
+    - first-party consumers still read `providers ?? families`
+    - some mutation paths still use SDK request shapes carrying `family` compatibility naming
+  - `packages/app/src/components/model-selector-state.ts`
+    - compatibility helper aliases such as `familyOf` / `getActiveAccountForFamily` remain as transitional local API
+  - Status:
+    - read-side legacy alias tolerance must remain until all upstream runtime/spec surfaces are canonicalized; write-side migration to canonical request names can proceed once additive support exists
+
+- Tests / fixtures:
+  - `packages/opencode/test/account/account-cache.test.ts`
+    - persisted `accounts.json` fixture still uses top-level `families`
+  - `packages/opencode/src/account/quota/hint.test.ts`
+    - quota expectations still assert `family`
+  - `packages/app/src/components/model-selector-state.test.ts`
+    - local helper fixtures still use `accountFamilies`
+  - `packages/opencode/src/session/workflow-runner.test.ts`
+    - fairness budget objects still use `budget.family`
+  - Status:
+    - some are must-keep compatibility tests; others are future-cleanup candidates after runtime/spec policy stabilizes
+
+- Docs / examples:
+  - `README.md`
+  - `docs/ARCHITECTURE.md`
+    - still contain family-first or mixed wording in some user-facing explanations
+  - Status:
+    - docs-only legacy naming should be the earliest surface to mark deprecated or rewrite toward provider-key-first language
+
+- Phase 0 recommended next slice:
+  - update OpenAPI/spec descriptions and generated SDK comments to make `providerKey` / `providers` the canonical documented names while keeping `family` / `families` as explicit deprecated aliases
+  - add representative compatibility tests for canonical writes + legacy reads
+
+- Phase 0 risks / blockers:
+  - user-daemon account list still appears `families`-first, so spec/client cleanup cannot assume runtime payloads are fully canonical yet
+  - storage `accounts.json` intentionally remains `families`-based for compatibility and is not a Phase 0 rename target
+  - `{family}` path segments are still the live public route shape and therefore outside the safe non-breaking cleanup window
 - Applied changes:
   - `dialog-admin.tsx`
     - renamed local helper `family(...)` to `providerKeyFromId(...)`
@@ -1118,6 +1304,36 @@
   - `/home/pkcs12/projects/opencode/packages/opencode/src/provider/canonical-family-source.ts`
   - `/home/pkcs12/projects/opencode/packages/app/src/components/model-selector-state.ts`
   - `/home/pkcs12/projects/opencode/packages/app/src/components/prompt-input/quota-refresh.ts`
+
+## Follow-up Fix: provider-key migration batch 22 (source-of-truth spec deprecation metadata)
+
+- Goal:
+  - execute the agreed `source-of-truth + regenerate` path for non-breaking OpenAPI/SDK deprecation wording
+  - keep runtime contracts additive and preserve legacy family/families compatibility fields and paths
+- Updated files:
+  - `packages/opencode/src/server/routes/account.ts`
+  - `packages/sdk/js/openapi.json`
+- Applied changes:
+  - `server/routes/account.ts`
+    - OpenAPI schema annotations now explicitly describe canonical fields:
+      - `providerKey` is canonical provider identity
+      - `providers` is canonical provider-keyed account map
+    - legacy compatibility fields now carry explicit deprecated metadata/descriptions:
+      - `family` (alias of `providerKey`)
+      - `families` (alias of `providers`)
+    - family-named path params now include explicit description as deprecated alias of providerKey in OpenAPI metadata
+    - runtime route behavior/path shape unchanged (no removals, no breaking changes)
+  - regenerated spec artifact:
+    - `packages/sdk/js/openapi.json`
+    - refreshed from source annotations via generation flow
+- Validation:
+  - `bun run lint -- packages/opencode/src/server/routes/account.ts` ✅
+  - JSON parse check for regenerated spec:
+    - `bun -e "JSON.parse(await Bun.file('/home/pkcs12/projects/opencode/packages/sdk/js/openapi.json').text()); console.log('openapi.json parse ok')"` ✅
+  - Note:
+    - full workspace typecheck remains intentionally excluded for this slice due to long-running global checks unrelated to the touched contract files; this slice used scoped validation only
+- Architecture Sync: Verified (No doc changes)
+  - OpenAPI metadata clarification only; runtime data flow and persistence contract unchanged
 
 ### Critical notes / edge cases
 

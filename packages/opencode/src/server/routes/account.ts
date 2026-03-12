@@ -25,10 +25,13 @@ export const AccountRoutes = lazy(() =>
               "application/json": {
                 schema: resolver(
                   z.object({
-                    providerId: z.string(),
-                    providerKey: z.string(),
+                    providerId: z.string().meta({ description: "Resolved runtime provider ID" }),
+                    providerKey: z.string().meta({ description: "Canonical provider identity key" }),
                     // legacy compatibility field; operationally this is the canonical provider key
-                    family: z.string(),
+                    family: z.string().meta({
+                      description: "Deprecated alias of providerKey kept for compatibility",
+                      deprecated: true,
+                    }),
                     accountId: z.string().optional(),
                     hint: z.string().optional(),
                   }),
@@ -88,9 +91,14 @@ export const AccountRoutes = lazy(() =>
               "application/json": {
                 schema: resolver(
                   z.object({
-                    providers: z.record(z.string(), Account.ProviderData),
+                    providers: z.record(z.string(), Account.ProviderData).meta({
+                      description: "Canonical provider-keyed account map",
+                    }),
                     // legacy compatibility field; mirrors providers
-                    families: z.record(z.string(), Account.FamilyData),
+                    families: z.record(z.string(), Account.FamilyData).meta({
+                      description: "Deprecated alias of providers kept for compatibility",
+                      deprecated: true,
+                    }),
                   }),
                 ),
               },
@@ -164,7 +172,12 @@ export const AccountRoutes = lazy(() =>
           ...errors(400, 404),
         },
       }),
-      validator("param", z.object({ family: z.string() })),
+      validator(
+        "param",
+        z.object({
+          family: z.string().meta({ description: "Deprecated path param alias of providerKey" }),
+        }),
+      ),
       validator("json", z.object({ accountId: z.string(), providerKey: z.string().optional() })),
       async (c) => {
         const providerKey = c.req.valid("param").family
@@ -207,7 +220,12 @@ export const AccountRoutes = lazy(() =>
           200: { description: "Login URL info" },
         },
       }),
-      validator("param", z.object({ family: z.string() })),
+      validator(
+        "param",
+        z.object({
+          family: z.string().meta({ description: "Deprecated path param alias of providerKey" }),
+        }),
+      ),
       validator("query", z.object({ providerKey: z.string().optional() })),
       async (c) => {
         const providerKey = c.req.valid("param").family
@@ -251,7 +269,13 @@ export const AccountRoutes = lazy(() =>
           ...errors(400, 404),
         },
       }),
-      validator("param", z.object({ family: z.string(), accountId: z.string() })),
+      validator(
+        "param",
+        z.object({
+          family: z.string().meta({ description: "Deprecated path param alias of providerKey" }),
+          accountId: z.string(),
+        }),
+      ),
       validator("query", z.object({ providerKey: z.string().optional() })),
       async (c) => {
         const { family: providerKey, accountId } = c.req.valid("param")
@@ -302,7 +326,13 @@ export const AccountRoutes = lazy(() =>
           ...errors(400, 404),
         },
       }),
-      validator("param", z.object({ family: z.string(), accountId: z.string() })),
+      validator(
+        "param",
+        z.object({
+          family: z.string().meta({ description: "Deprecated path param alias of providerKey" }),
+          accountId: z.string(),
+        }),
+      ),
       validator(
         "json",
         z.object({

@@ -7409,12 +7409,16 @@
                   "type": "object",
                   "properties": {
                     "providerId": {
+                      "description": "Resolved runtime provider ID",
                       "type": "string"
                     },
                     "providerKey": {
+                      "description": "Canonical provider identity key",
                       "type": "string"
                     },
                     "family": {
+                      "description": "Deprecated alias of providerKey kept for compatibility",
+                      "deprecated": true,
                       "type": "string"
                     },
                     "accountId": {
@@ -7459,6 +7463,7 @@
                   "type": "object",
                   "properties": {
                     "providers": {
+                      "description": "Canonical provider-keyed account map",
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -7591,6 +7596,8 @@
                       }
                     },
                     "families": {
+                      "description": "Deprecated alias of providers kept for compatibility",
+                      "deprecated": true,
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -7751,11 +7758,12 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           }
         ],
         "summary": "Set active account",
-        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Active account set successfully",
@@ -7796,6 +7804,9 @@
                 "properties": {
                   "accountId": {
                     "type": "string"
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -7824,11 +7835,19 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Trigger login",
-        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Login URL info"
@@ -7853,7 +7872,8 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -7862,10 +7882,17 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Remove account",
-        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account removed successfully",
@@ -7915,7 +7942,8 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -7927,7 +7955,7 @@
           }
         ],
         "summary": "Update account metadata",
-        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account updated successfully",
@@ -7969,6 +7997,9 @@
                   "name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -8036,12 +8067,16 @@
                   "type": "object",
                   "properties": {
                     "providerId": {
+                      "description": "Resolved runtime provider ID",
                       "type": "string"
                     },
                     "providerKey": {
+                      "description": "Canonical provider identity key",
                       "type": "string"
                     },
                     "family": {
+                      "description": "Deprecated alias of providerKey kept for compatibility",
+                      "deprecated": true,
                       "type": "string"
                     },
                     "accountId": {
@@ -8086,6 +8121,7 @@
                   "type": "object",
                   "properties": {
                     "providers": {
+                      "description": "Canonical provider-keyed account map",
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -8218,6 +8254,8 @@
                       }
                     },
                     "families": {
+                      "description": "Deprecated alias of providers kept for compatibility",
+                      "deprecated": true,
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -8378,11 +8416,12 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           }
         ],
         "summary": "Set active account",
-        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Active account set successfully",
@@ -8423,6 +8462,9 @@
                 "properties": {
                   "accountId": {
                     "type": "string"
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -8451,11 +8493,19 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Trigger login",
-        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Login URL info"
@@ -8480,7 +8530,8 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -8489,10 +8540,17 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Remove account",
-        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account removed successfully",
@@ -8542,7 +8600,8 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -8554,7 +8613,7 @@
           }
         ],
         "summary": "Update account metadata",
-        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account updated successfully",
@@ -8596,6 +8655,9 @@
                   "name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -17361,12 +17423,16 @@
                   "type": "object",
                   "properties": {
                     "providerId": {
+                      "description": "Resolved runtime provider ID",
                       "type": "string"
                     },
                     "providerKey": {
+                      "description": "Canonical provider identity key",
                       "type": "string"
                     },
                     "family": {
+                      "description": "Deprecated alias of providerKey kept for compatibility",
+                      "deprecated": true,
                       "type": "string"
                     },
                     "accountId": {
@@ -17411,6 +17477,7 @@
                   "type": "object",
                   "properties": {
                     "providers": {
+                      "description": "Canonical provider-keyed account map",
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -17543,6 +17610,8 @@
                       }
                     },
                     "families": {
+                      "description": "Deprecated alias of providers kept for compatibility",
+                      "deprecated": true,
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -17703,11 +17772,12 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           }
         ],
         "summary": "Set active account",
-        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Active account set successfully",
@@ -17748,6 +17818,9 @@
                 "properties": {
                   "accountId": {
                     "type": "string"
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -17776,11 +17849,19 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Trigger login",
-        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Login URL info"
@@ -17805,7 +17886,8 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -17814,10 +17896,17 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Remove account",
-        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account removed successfully",
@@ -17867,7 +17956,8 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -17879,7 +17969,7 @@
           }
         ],
         "summary": "Update account metadata",
-        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account updated successfully",
@@ -17921,6 +18011,9 @@
                   "name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -17988,12 +18081,16 @@
                   "type": "object",
                   "properties": {
                     "providerId": {
+                      "description": "Resolved runtime provider ID",
                       "type": "string"
                     },
                     "providerKey": {
+                      "description": "Canonical provider identity key",
                       "type": "string"
                     },
                     "family": {
+                      "description": "Deprecated alias of providerKey kept for compatibility",
+                      "deprecated": true,
                       "type": "string"
                     },
                     "accountId": {
@@ -18038,6 +18135,7 @@
                   "type": "object",
                   "properties": {
                     "providers": {
+                      "description": "Canonical provider-keyed account map",
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -18170,6 +18268,8 @@
                       }
                     },
                     "families": {
+                      "description": "Deprecated alias of providers kept for compatibility",
+                      "deprecated": true,
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -18330,11 +18430,12 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           }
         ],
         "summary": "Set active account",
-        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Active account set successfully",
@@ -18375,6 +18476,9 @@
                 "properties": {
                   "accountId": {
                     "type": "string"
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -18403,11 +18507,19 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Trigger login",
-        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Login URL info"
@@ -18432,7 +18544,8 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -18441,10 +18554,17 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Remove account",
-        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account removed successfully",
@@ -18494,7 +18614,8 @@
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -18506,7 +18627,7 @@
           }
         ],
         "summary": "Update account metadata",
-        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account updated successfully",
@@ -18548,6 +18669,9 @@
                   "name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
