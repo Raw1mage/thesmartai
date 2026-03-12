@@ -6331,9 +6331,10 @@ export type AccountListAll2Response = AccountListAll2Responses[keyof AccountList
 export type AccountSetActive2Data = {
   body?: {
     accountId: string
+    providerKey?: string
   }
   path: {
-    family: string
+    family?: string
   }
   query?: {
     directory?: string
@@ -6366,10 +6367,11 @@ export type AccountSetActive2Response = AccountSetActive2Responses[keyof Account
 export type AccountLogin2Data = {
   body?: never
   path: {
-    family: string
+    family?: string
   }
   query?: {
     directory?: string
+    providerKey?: string
   }
   url: "/api/v2/accounts/auth/{family}/login"
 }
@@ -6384,11 +6386,12 @@ export type AccountLogin2Responses = {
 export type AccountRemove2Data = {
   body?: never
   path: {
-    family: string
+    family?: string
     accountId: string
   }
   query?: {
     directory?: string
+    providerKey?: string
   }
   url: "/api/v2/accounts/{family}/{accountId}"
 }
@@ -6418,9 +6421,10 @@ export type AccountRemove2Response = AccountRemove2Responses[keyof AccountRemove
 export type AccountUpdate2Data = {
   body?: {
     name: string
+    providerKey?: string
   }
   path: {
-    family: string
+    family?: string
     accountId: string
   }
   query?: {
@@ -10275,6 +10279,7 @@ export type AccountQuotaHint3Responses = {
    */
   200: {
     providerId: string
+    providerKey: string
     family: string
     accountId?: string
     hint?: string
@@ -10294,9 +10299,42 @@ export type AccountListAll3Data = {
 
 export type AccountListAll3Responses = {
   /**
-   * List of accounts by family
+   * List of accounts by provider key, with legacy families alias
    */
   200: {
+    providers: {
+      [key: string]: {
+        activeAccount?: string
+        accounts: {
+          [key: string]:
+            | {
+                type: "api"
+                name: string
+                apiKey: string
+                addedAt: number
+                projectId?: string
+                metadata?: { [key: string]: unknown }
+              }
+            | {
+                type: "subscription"
+                name: string
+                email?: string
+                refreshToken: string
+                accessToken?: string
+                expiresAt?: number
+                projectId?: string
+                managedProjectId?: string
+                accountId?: string
+                addedAt: number
+                metadata?: { [key: string]: unknown }
+                rateLimitResetTimes?: { [key: string]: number }
+                coolingDownUntil?: number
+                cooldownReason?: string
+                fingerprint?: { [key: string]: unknown }
+              }
+        }
+      }
+    }
     families: {
       [key: string]: {
         activeAccount?: string
@@ -10346,9 +10384,10 @@ export type AccountListAll3Response = AccountListAll3Responses[keyof AccountList
 export type AccountSetActive3Data = {
   body?: {
     accountId: string
+    providerKey?: string
   }
   path: {
-    family: string
+    family?: string
   }
   query?: {
     directory?: string
@@ -10381,10 +10420,11 @@ export type AccountSetActive3Response = AccountSetActive3Responses[keyof Account
 export type AccountLogin3Data = {
   body?: never
   path: {
-    family: string
+    family?: string
   }
   query?: {
     directory?: string
+    providerKey?: string
   }
   url: "/account/auth/{family}/login"
 }
@@ -10399,11 +10439,12 @@ export type AccountLogin3Responses = {
 export type AccountRemove3Data = {
   body?: never
   path: {
-    family: string
+    family?: string
     accountId: string
   }
   query?: {
     directory?: string
+    providerKey?: string
   }
   url: "/account/{family}/{accountId}"
 }
@@ -10433,9 +10474,10 @@ export type AccountRemove3Response = AccountRemove3Responses[keyof AccountRemove
 export type AccountUpdate3Data = {
   body?: {
     name: string
+    providerKey?: string
   }
   path: {
-    family: string
+    family?: string
     accountId: string
   }
   query?: {
@@ -10485,6 +10527,7 @@ export type AccountQuotaHint4Responses = {
    */
   200: {
     providerId: string
+    providerKey: string
     family: string
     accountId?: string
     hint?: string
@@ -10504,9 +10547,42 @@ export type AccountListAll4Data = {
 
 export type AccountListAll4Responses = {
   /**
-   * List of accounts by family
+   * List of accounts by provider key, with legacy families alias
    */
   200: {
+    providers: {
+      [key: string]: {
+        activeAccount?: string
+        accounts: {
+          [key: string]:
+            | {
+                type: "api"
+                name: string
+                apiKey: string
+                addedAt: number
+                projectId?: string
+                metadata?: { [key: string]: unknown }
+              }
+            | {
+                type: "subscription"
+                name: string
+                email?: string
+                refreshToken: string
+                accessToken?: string
+                expiresAt?: number
+                projectId?: string
+                managedProjectId?: string
+                accountId?: string
+                addedAt: number
+                metadata?: { [key: string]: unknown }
+                rateLimitResetTimes?: { [key: string]: number }
+                coolingDownUntil?: number
+                cooldownReason?: string
+                fingerprint?: { [key: string]: unknown }
+              }
+        }
+      }
+    }
     families: {
       [key: string]: {
         activeAccount?: string
@@ -10556,9 +10632,10 @@ export type AccountListAll4Response = AccountListAll4Responses[keyof AccountList
 export type AccountSetActive4Data = {
   body?: {
     accountId: string
+    providerKey?: string
   }
   path: {
-    family: string
+    family?: string
   }
   query?: {
     directory?: string

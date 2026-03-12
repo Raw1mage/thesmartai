@@ -403,6 +403,18 @@
   - quota response typing now exposes canonical `providerKey` while preserving legacy `family`
   - `/api/v2/accounts` list response typing now exposes canonical `providers` while preserving legacy `families`
   - app model-manager account payload read now uses a single provider-first compatibility extraction path for readability and lower migration drift risk
+
+## Follow-up Slice: generated v2 account alias parity
+
+- Scope:
+  - finish additive providerKey/providers parity across the remaining generated v2 account alias surfaces (`/api/v2/accounts`, `/account`, `/accounts`)
+  - keep all legacy `family`/`families` fields and paths intact
+- Updated files:
+  - `packages/sdk/js/src/v2/gen/sdk.gen.ts`
+  - `packages/sdk/js/src/v2/gen/types.gen.ts`
+- Notes:
+  - duplicated account alias methods/types (`*2`, `*3`, `*4`) now match the additive provider-key request/response compatibility already added to the primary account surface
+  - this appears to be the practical end of safe additive parity work inside checked-in generated SDK artifacts; any further cleanup would likely want a broader OpenAPI/SDK regeneration policy decision rather than more manual drift edits
 - `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (provider-key storage helper migration)
 - `bunx eslint /home/pkcs12/projects/opencode/packages/app/src/components/dialog-select-model.tsx /home/pkcs12/projects/opencode/packages/app/src/components/prompt-input.tsx /home/pkcs12/projects/opencode/packages/app/src/context/global-sync/bootstrap.ts /home/pkcs12/projects/opencode/packages/app/src/context/global-sync.tsx` ✅
 - `bunx tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit` ✅ (web provider-first compatibility read cleanup)
