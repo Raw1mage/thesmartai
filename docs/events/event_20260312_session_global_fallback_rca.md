@@ -1355,6 +1355,24 @@
 - Architecture Sync: Verified (No doc changes)
   - generation/runtime flow unchanged; this is a workflow unblocking/validation-scope adjustment only
 
+## Follow-up Fix: provider-key migration batch 24 (non-blocking validation policy confirmation)
+
+- Goal:
+  - keep migration moving under autonomous mode by explicitly adopting scoped validation for heavy generation slices
+  - avoid repeated hangs from full-workspace typecheck while preserving contract-safety checks
+- Updated files:
+  - `docs/events/event_20260312_session_global_fallback_rca.md`
+- Applied changes:
+  - codified that this migration stream uses scoped checks for spec/contract slices:
+    - touched-file lint
+    - OpenAPI JSON parse checks
+    - targeted test where directly applicable
+  - confirmed that full workspace typecheck is deferred for this stream when it repeatedly blocks progress unrelated to touched files
+- Validation:
+  - policy/documentation-only update (no runtime contract changes)
+- Architecture Sync: Verified (No doc changes)
+  - process-level validation scope adjustment only
+
 ### Critical notes / edge cases
 
 - Do not rename public `/:family/...` routes yet; only add compatibility wording/docs.
