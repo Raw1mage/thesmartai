@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from "@solidjs/router"
-import { createEffect, createMemo, For, Show, type Accessor, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Show, type Accessor, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createSortable } from "@thisbeyond/solid-dnd"
 import { createMediaQuery } from "@solid-primitives/media"
@@ -18,6 +18,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 import { NewSessionItem, SessionItem, SessionSkeleton } from "./sidebar-items"
 import { childMapByParent, sortedRootSessions } from "./helpers"
+import { Persist, persisted } from "@/utils/persist"
 
 type InlineEditorComponent = (props: {
   id: string
@@ -250,6 +251,21 @@ const WorkspaceSessionList = (props: {
   loadMore: () => Promise<void>
   language: ReturnType<typeof useLanguage>
 }): JSX.Element => {
+  // Persisted state for date group collapsing
+  const [dateGroupExpanded, setDateGroupExpanded] = persisted(
+    Persist.global("sidebar.dateGroups.expanded"),
+    createStore<Record<string, boolean>>({}),
+  )
+
+  // Persisted state for session children collapsing
+  const [sessionExpanded, setSessionExpanded] = persisted(
+    Persist.global("sidebar.sessions.expanded"),
+    createStore<Record<string, boolean>>({}),
+  )
+
+  // Management mode toggle
+  const [managementMode, setManagementMode] = createSignal(false)
+
   const sessionGroups = createMemo(() => {
     const sessions = props.sessions()
     const byID = new Map(props.allSessions().map((session) => [session.id, session]))
@@ -293,46 +309,173 @@ const WorkspaceSessionList = (props: {
     return groups
   })
 
+  const toggleDateGroup = (key: string) => {
+    const currentValue = dateGroupExpanded[key] ?? true
+    setDateGroupExpanded(key, !currentValue)
+  }
+
+  const toggleSessionChildren = (sessionId: string) => {
+    const currentValue = sessionExpanded[sessionId] ?? true
+    console.log("[toggleSessionChildren]", sessionId, "current:", currentValue, "new:", !currentValue)
+    setSessionExpanded(sessionId, !currentValue)
+  }
+
+  const isDateGroupExpanded = (key: string) => {
+    // Default to expanded (true) if not set
+    return dateGroupExpanded[key] ?? true
+  }
+
+  const isSessionExpanded = (sessionId: string) => {
+    // Default to expanded (true) if not set
+    return sessionExpanded[sessionId] ?? true
+  }
+
   return (
     <nav class="flex flex-col gap-1 px-2">
-      <Show when={props.showNew()}>
-        <NewSessionItem
-          slug={props.slug()}
-          mobile={props.mobile}
-          sidebarExpanded={props.ctx.sidebarExpanded}
-          clearHoverProjectSoon={props.ctx.clearHoverProjectSoon}
-          setHoverSession={props.ctx.setHoverSession}
-        />
-      </Show>
+      <div class="flex items-center justify-end gap-2 px-2 pt-1 pb-2">
+        <Show when={props.showNew()}>
+          <div class="flex-1 min-w-0">
+            <NewSessionItem
+              slug={props.slug()}
+              mobile={props.mobile}
+              sidebarExpanded={props.ctx.sidebarExpanded}
+              clearHoverProjectSoon={props.ctx.clearHoverProjectSoon}
+              setHoverSession={props.ctx.setHoverSession}
+            />
+          </div>
+        </Show>
+        <div class="shrink-0">
+          <Tooltip value={props.language.t("common.edit")} placement="top">
+            <div classList={{ "rounded-md bg-surface-interactive-base": managementMode() }}>
+              <IconButton
+                icon="pencil-line"
+                variant="ghost"
+                size="small"
+                onClick={() => {
+                  console.log("[Edit button clicked]", managementMode())
+                  setManagementMode(!managementMode())
+                }}
+              />
+            </div>
+          </Tooltip>
+        </div>
+      </div>
       <Show when={props.loading()}>
         <SessionSkeleton />
       </Show>
       <For each={sessionGroups()}>
-        {(group) => (
-          <div class="flex flex-col gap-0.5">
-            <div class="px-2 pt-2 pb-1 text-12-medium tracking-wide text-text-weak uppercase">{group.label}</div>
-            <For each={group.rows}>
-              {(row) => (
-                <SessionItem
-                  session={row.session}
-                  labelOverride={row.label}
-                  child={row.child}
-                  slug={props.slug()}
-                  mobile={props.mobile}
-                  dense
-                  children={props.children()}
-                  sidebarExpanded={props.ctx.sidebarExpanded}
-                  sidebarHovering={props.ctx.sidebarHovering}
-                  nav={props.ctx.nav}
-                  hoverSession={props.ctx.hoverSession}
-                  setHoverSession={props.ctx.setHoverSession}
-                  clearHoverProjectSoon={props.ctx.clearHoverProjectSoon}
-                  prefetchSession={props.ctx.prefetchSession}
-                />
-              )}
-            </For>
-          </div>
-        )}
+        {(group) => {
+          const expanded = () => isDateGroupExpanded(group.key)
+          return (
+            <div class="flex flex-col gap-0.5">
+              <button
+                type="button"
+                class="flex items-center gap-1 pl-1 pr-2 pt-2 pb-1 text-12-medium tracking-wide text-text-weak uppercase hover:text-text-base transition-colors cursor-pointer"
+                onClick={() => toggleDateGroup(group.key)}
+              >
+                <Icon name={expanded() ? "chevron-down" : "chevron-right"} size="small" class="shrink-0" />
+                <span>{group.label}</span>
+              </button>
+              <Show when={expanded()}>
+                <For each={group.rows}>
+                  {(row, index) => {
+                    // Check if this is a main session (not a child)
+                    if (row.child) {
+                      // This is a child session - find its parent
+                      // Look backwards to find the parent session
+                      let parentId: string | undefined
+                      for (let i = index() - 1; i >= 0; i--) {
+                        const potentialParent = group.rows[i]
+                        if (!potentialParent.child) {
+                          parentId = potentialParent.session.id
+                          break
+                        }
+                      }
+
+                      // Only show if parent is expanded
+                      const parentExpanded = () => parentId ? isSessionExpanded(parentId) : true
+
+                      return (
+                        <Show when={parentExpanded()}>
+                          <div class="pl-6">
+                            <SessionItem
+                              session={row.session}
+                              labelOverride={row.label}
+                              child={row.child}
+                              slug={props.slug()}
+                              mobile={props.mobile}
+                              dense
+                              popover={managementMode()}
+                              children={props.children()}
+                              sidebarExpanded={props.ctx.sidebarExpanded}
+                              sidebarHovering={props.ctx.sidebarHovering}
+                              nav={props.ctx.nav}
+                              hoverSession={props.ctx.hoverSession}
+                              setHoverSession={props.ctx.setHoverSession}
+                              clearHoverProjectSoon={props.ctx.clearHoverProjectSoon}
+                              prefetchSession={props.ctx.prefetchSession}
+                            />
+                          </div>
+                        </Show>
+                      )
+                    }
+
+                    // This is a main session
+                    const hasChildren = (props.children().get(row.session.id)?.length ?? 0) > 0
+                    const childrenExpanded = () => isSessionExpanded(row.session.id)
+
+                    return (
+                      <div class="flex items-center gap-0">
+                        <Show when={hasChildren}>
+                          <button
+                            type="button"
+                            class="shrink-0 flex items-center justify-center w-5 h-8 text-text-weak hover:text-text-base transition-colors cursor-pointer"
+                            aria-label={childrenExpanded() ? "Collapse" : "Expand"}
+                            onClick={(e: MouseEvent) => {
+                              console.log("[Chevron clicked]", row.session.id, row.session.title)
+                              e.preventDefault()
+                              e.stopPropagation()
+                              toggleSessionChildren(row.session.id)
+                            }}
+                          >
+                            <Icon
+                              name={childrenExpanded() ? "chevron-down" : "chevron-right"}
+                              size="small"
+                            />
+                          </button>
+                        </Show>
+                        <div
+                          class="flex-1 min-w-0"
+                          classList={{
+                            "pl-5": !hasChildren,
+                          }}
+                        >
+                          <SessionItem
+                            session={row.session}
+                            labelOverride={row.session.title}
+                            child={row.child}
+                            slug={props.slug()}
+                            mobile={props.mobile}
+                            dense
+                            popover={managementMode()}
+                            children={props.children()}
+                            sidebarExpanded={props.ctx.sidebarExpanded}
+                            sidebarHovering={props.ctx.sidebarHovering}
+                            nav={props.ctx.nav}
+                            hoverSession={props.ctx.hoverSession}
+                            setHoverSession={props.ctx.setHoverSession}
+                            clearHoverProjectSoon={props.ctx.clearHoverProjectSoon}
+                            prefetchSession={props.ctx.prefetchSession}
+                          />
+                        </div>
+                      </div>
+                    )
+                  }}
+                </For>
+              </Show>
+            </div>
+          )
+        }}
       </For>
       <Show when={props.hasMore()}>
         <div class="relative w-full py-1">
@@ -390,7 +533,7 @@ export const SortableWorkspace = (props: {
   const touch = createMediaQuery("(hover: none)")
   const showNew = createMemo(() => !loading() && (touch() || sessions().length === 0 || (active() && !params.id)))
   const loadMore = async () => {
-    setWorkspaceStore("limit", (limit) => (limit ?? 0) + 5)
+    setWorkspaceStore("limit", (limit) => (limit ?? 0) + 25)
     await globalSync.project.loadSessions(props.directory)
   }
 
@@ -540,7 +683,7 @@ export const LocalWorkspace = (props: {
   const loading = createMemo(() => !booted() && sessions().length === 0)
   const hasMore = createMemo(() => workspace().store.sessionTotal > sessions().length)
   const loadMore = async () => {
-    workspace().setStore("limit", (limit) => (limit ?? 0) + 5)
+    workspace().setStore("limit", (limit) => (limit ?? 0) + 25)
     await globalSync.project.loadSessions(props.project.worktree)
   }
 

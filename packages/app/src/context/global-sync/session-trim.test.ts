@@ -28,6 +28,23 @@ describe("trimSessions", () => {
     expect(result.map((x) => x.id)).toEqual(["a", "b", "c", "d"])
   })
 
+  test("base slots prioritize most recently updated sessions", () => {
+    const now = 100_000_000
+    // SESSION_RECENT_WINDOW = 14_400_000 (4 hours)
+    const list = [
+      session({ id: "old-1", created: now - 20_000_000 }), // >4h ago, ID sorts first
+      session({ id: "old-2", created: now - 18_000_000 }), // >4h ago
+      session({ id: "today-1", created: now - 10_000, updated: now - 5_000 }), // recent
+      session({ id: "today-2", created: now - 8_000, updated: now - 3_000 }), // recent
+      session({ id: "today-3", created: now - 6_000, updated: now - 1_000 }), // most recent
+    ]
+
+    // With limit=3, base should pick the 3 most recent (today-3, today-2, today-1)
+    // remaining old-1 and old-2 are outside the 4h window, so NOT picked by takeRecentSessions
+    const result = trimSessions(list, { limit: 3, permission: {}, now })
+    expect(result.map((x) => x.id)).toEqual(["today-1", "today-2", "today-3"])
+  })
+
   test("keeps children when root is kept, permission exists, or child is recent", () => {
     const now = 1_000_000
     const list = [
