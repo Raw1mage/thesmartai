@@ -6,9 +6,9 @@ export type VariantOption = {
 
 const OPENAI_PREFERRED_ORDER = ["low", "medium", "high", "extra", "xhigh"]
 
-function formatVariantLabel(value: string, family?: string) {
+function formatVariantLabel(value: string, providerKey?: string) {
   const normalized = value.toLowerCase()
-  if (family === "openai" && (normalized === "xhigh" || normalized === "extra")) return "Extra"
+  if (providerKey === "openai" && (normalized === "xhigh" || normalized === "extra")) return "Extra"
   return value
     .replaceAll("_", " ")
     .replaceAll("-", " ")
@@ -18,10 +18,10 @@ function formatVariantLabel(value: string, family?: string) {
     .join(" ")
 }
 
-export function buildVariantOptions(values: string[], family?: string): VariantOption[] {
+export function buildVariantOptions(values: string[], providerKey?: string): VariantOption[] {
   let normalized = [...values]
 
-  if (family === "openai") {
+  if (providerKey === "openai") {
     const set = new Set(normalized)
     const narrowed = OPENAI_PREFERRED_ORDER.filter((value) => set.has(value))
     if (narrowed.length > 0) normalized = narrowed
@@ -31,7 +31,7 @@ export function buildVariantOptions(values: string[], family?: string): VariantO
   const usedTitles = new Set<string>()
   const result: VariantOption[] = []
   for (const value of normalized) {
-    const title = formatVariantLabel(value, family)
+    const title = formatVariantLabel(value, providerKey)
     if (usedTitles.has(title)) continue
     usedTitles.add(title)
     result.push({ value, title, description: `Raw: ${value}` })
@@ -40,23 +40,23 @@ export function buildVariantOptions(values: string[], family?: string): VariantO
 }
 
 export function getEffectiveVariantValue(input: {
-  family?: string
+  providerKey?: string
   current?: string
   options: VariantOption[]
 }): string | undefined {
   if (input.current) return input.current
-  if (input.family === "openai") {
+  if (input.providerKey === "openai") {
     return input.options.find((item) => item.value === "medium")?.value ?? input.options[0]?.value
   }
   return undefined
 }
 
 export function shouldShowVariantControl(input: {
-  family?: string
+  providerKey?: string
   current?: string
   options: VariantOption[]
 }): boolean {
   if (input.options.length === 0) return false
-  if (input.family === "openai") return true
+  if (input.providerKey === "openai") return true
   return !!input.current
 }

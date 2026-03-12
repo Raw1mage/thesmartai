@@ -49,8 +49,8 @@ export function DialogModel(props: { providerId?: string }) {
   }
 
   const providerLabel = (name: string, id: string) => {
-    const fam = providerKey(id)
-    if (!fam) return name
+    const normalizedProviderKey = providerKey(id)
+    if (!normalizedProviderKey) return name
     const map: Record<string, string> = {
       "claude-cli": "Claude CLI",
       openai: "OpenAI",
@@ -59,17 +59,17 @@ export function DialogModel(props: { providerId?: string }) {
       gitlab: "GitLab",
       opencode: "OpenCode",
     }
-    return map[fam] ?? name
+    return map[normalizedProviderKey] ?? name
   }
 
   const normalizeProviderForRotation = (providerId: string) => {
-    const fam = providerKey(providerId)
-    // Fix: if family is an email (e.g. from legacy account ID), map to known provider
-    if (fam && fam.includes("@")) {
-      if (fam.endsWith("gmail.com")) return "google-api"
+    const normalizedProviderKey = providerKey(providerId)
+    // Fix: if provider key is an email (e.g. from legacy account ID), map to known provider
+    if (normalizedProviderKey && normalizedProviderKey.includes("@")) {
+      if (normalizedProviderKey.endsWith("gmail.com")) return "google-api"
       // Default fallback for other emails if needed
     }
-    return fam ?? providerId
+    return normalizedProviderKey ?? providerId
   }
 
   const resolveSessionAccountIdForProvider = async (providerId: string) => {
@@ -115,13 +115,13 @@ export function DialogModel(props: { providerId?: string }) {
 
   const connected = useConnected()
 
-  const groupedProviders = createMemo(() => {
+  const providersByKey = createMemo(() => {
     const map = new Map<string, typeof sync.data.provider>()
     for (const p of sync.data.provider) {
-      const fam = providerKey(p.id) ?? p.id
-      const list = map.get(fam)
+      const normalizedProviderKey = providerKey(p.id) ?? p.id
+      const list = map.get(normalizedProviderKey)
       if (list) list.push(p)
-      else map.set(fam, [p])
+      else map.set(normalizedProviderKey, [p])
     }
     return map
   })
@@ -130,32 +130,35 @@ export function DialogModel(props: { providerId?: string }) {
     const favoritesRaw = connected() ? local.model.favorite() : []
     const hidden = local.model.hidden()
     const hiddenProviders = new Set(local.model.hiddenProviders())
-    const providerGroups = groupedProviders()
+    const providersByGroup = providersByKey()
 
-    const isHiddenInFamily = (fam: string, modelID: string) => {
-      const members = providerGroups.get(fam) ?? []
+    const isHiddenForProviderKey = (providerGroupKey: string, modelID: string) => {
+      const members = providersByGroup.get(providerGroupKey) ?? []
       return hidden.some((h) => {
         if (h.modelID !== modelID) return false
-        if (h.providerId === fam) return true
+        if (h.providerId === providerGroupKey) return true
         return members.some((m) => m.id === h.providerId)
       })
     }
 
     const dedupFavorites = new Map<string, { providerId: string; modelID: string }>()
     for (const item of favoritesRaw) {
-      const fam = normalizeProviderForRotation(item.providerId)
-      dedupFavorites.set(`${fam}:${item.modelID}`, { providerId: fam, modelID: item.modelID })
+      const normalizedProviderId = normalizeProviderForRotation(item.providerId)
+      dedupFavorites.set(`${normalizedProviderId}:${item.modelID}`, {
+        providerId: normalizedProviderId,
+        modelID: item.modelID,
+      })
     }
 
     const favorites = [...dedupFavorites.values()]
       .map((item) => {
-        const members = providerGroups.get(item.providerId) ?? []
+        const members = providersByGroup.get(item.providerId) ?? []
         const found = members
           .map((p) => ({ provider: p, model: p.models[item.modelID] }))
           .find(({ model }) => !!model && model.status !== "deprecated")
         if (!found) return undefined
         if (!showHiddenProviders() && hiddenProviders.has(item.providerId)) return undefined
-        if (!showHiddenModels() && isHiddenInFamily(item.providerId, item.modelID)) return undefined
+        if (!showHiddenModels() && isHiddenForProviderKey(item.providerId, item.modelID)) return undefined
         return {
           providerId: item.providerId,
           modelID: item.modelID,
@@ -214,14 +217,14 @@ export function DialogModel(props: { providerId?: string }) {
 
     if (!providersExpanded()) return list
 
-    const families = [...providerGroups.entries()]
+    const providerGroups = [...providersByGroup.entries()]
       .filter(([_, members]) => members.some((p) => Object.keys(p.models).length > 0))
       .sort(([a], [b]) => providerLabel(a, a).localeCompare(providerLabel(b, b)))
 
-    for (const [fam, members] of families) {
-      if (!showHiddenProviders() && hiddenProviders.has(fam)) continue
-      const expanded = expandedProviders().has(fam)
-      const providerHidden = hiddenProviders.has(fam)
+    for (const [providerGroupKey, members] of providerGroups) {
+      if (!showHiddenProviders() && hiddenProviders.has(providerGroupKey)) continue
+      const expanded = expandedProviders().has(providerGroupKey)
+      const providerHidden = hiddenProviders.has(providerGroupKey)
 
       const modelMap = new Map<string, { name: string; blocked?: string; cooldownUntil?: number }>()
       for (const p of members) {
@@ -242,23 +245,23 @@ export function DialogModel(props: { providerId?: string }) {
       if (modelCount === 0) continue
 
       list.push({
-        value: { kind: "provider", providerId: fam } as ProviderOptionValue,
-        title: `  ${expanded ? "▼" : "▶"} ${providerLabel(fam, fam)}`,
+        value: { kind: "provider", providerId: providerGroupKey } as ProviderOptionValue,
+        title: `  ${expanded ? "▼" : "▶"} ${providerLabel(providerGroupKey, providerGroupKey)}`,
         description: providerHidden ? `${modelCount} models · hidden` : `${modelCount} models`,
-        onSelect: () => toggleProviderExpanded(fam),
+        onSelect: () => toggleProviderExpanded(providerGroupKey),
       })
 
       if (!expanded) continue
 
       const models = [...modelMap.entries()]
-        .filter(([mid]) => (showHiddenModels() ? true : !isHiddenInFamily(fam, mid)))
+        .filter(([mid]) => (showHiddenModels() ? true : !isHiddenForProviderKey(providerGroupKey, mid)))
         .sort((a, b) => a[1].name.localeCompare(b[1].name))
 
       for (const [index, [mid, meta]] of models.entries()) {
-        const favorite = favorites.some((f) => f.providerId === fam && f.modelID === mid)
+        const favorite = favorites.some((f) => f.providerId === providerGroupKey && f.modelID === mid)
         const branch = index === models.length - 1 ? "└─" : "├─"
         list.push({
-          value: { kind: "model", providerId: fam, modelID: mid } as ModelOptionValue,
+          value: { kind: "model", providerId: providerGroupKey, modelID: mid } as ModelOptionValue,
           title: `      ${branch} ${meta.name} ${favorite ? "★" : " "}`,
           gutter: undefined,
           description:
@@ -267,8 +270,9 @@ export function DialogModel(props: { providerId?: string }) {
               : meta.blocked
                 ? `⛔ ${meta.blocked}`
                 : undefined,
-          disabled: (fam === "opencode" && mid.includes("-nano")) || (meta.blocked?.includes("blocked") ?? false),
-          onSelect: () => probeAndSelectModel(fam, mid),
+          disabled:
+            (providerGroupKey === "opencode" && mid.includes("-nano")) || (meta.blocked?.includes("blocked") ?? false),
+          onSelect: () => probeAndSelectModel(providerGroupKey, mid),
         })
       }
     }
@@ -280,11 +284,11 @@ export function DialogModel(props: { providerId?: string }) {
     const current = local.model.current(route.data.type === "session" ? route.data.sessionID : undefined)
     if (!current) return undefined
 
-    const fam = normalizeProviderForRotation(current.providerId)
-    const members = groupedProviders().get(fam) ?? []
+    const normalizedProviderId = normalizeProviderForRotation(current.providerId)
+    const members = providersByKey().get(normalizedProviderId) ?? []
     const exists = members.some((p) => !!p.models[current.modelID])
     if (exists) {
-      return { kind: "model", providerId: fam, modelID: current.modelID } as ModelOptionValue
+      return { kind: "model", providerId: normalizedProviderId, modelID: current.modelID } as ModelOptionValue
     }
 
     return { kind: "model", providerId: current.providerId, modelID: current.modelID } as ModelOptionValue

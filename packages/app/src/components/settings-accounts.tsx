@@ -104,7 +104,7 @@ export const SettingsAccounts: Component = () => {
           icon: "circle-check",
           title: language.t("settings.accounts.toast.updated.title"),
           description: language.t("settings.accounts.toast.updated.description", {
-            family: providerName(providerKey),
+            provider: providerName(providerKey),
             account: accountId,
           }),
         })
@@ -120,7 +120,7 @@ export const SettingsAccounts: Component = () => {
   }
 
   const totalAccounts = createMemo(() =>
-    (accounts.latest ?? []).reduce((sum, family) => sum + family.accounts.length, 0),
+    (accounts.latest ?? []).reduce((sum, providerGroup) => sum + providerGroup.accounts.length, 0),
   )
 
   return (

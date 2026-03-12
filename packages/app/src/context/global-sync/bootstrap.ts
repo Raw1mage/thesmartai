@@ -103,7 +103,8 @@ function globalRefreshTasks(input: {
     account_families: () =>
       retry(() =>
         input.globalSDK.account.listAll().then((x) => {
-          input.setGlobalStore("account_families", x.data?.families ?? {})
+          const payload = x.data as { providers?: Record<string, any>; families?: Record<string, any> } | undefined
+          input.setGlobalStore("account_families", payload?.providers ?? payload?.families ?? {})
         }),
       ),
   } satisfies Record<GlobalRefreshSlice, () => Promise<void>>

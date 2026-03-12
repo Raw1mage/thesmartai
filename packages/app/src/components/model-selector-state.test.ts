@@ -14,9 +14,9 @@ describe("model selector state", () => {
       disabledProviders: ["google-api"],
     })
 
-    expect(rows.some((row) => row.family === "openai")).toBe(true)
-    expect(rows.some((row) => row.family === "claude-cli")).toBe(true)
-    expect(rows.find((row) => row.family === "google-api")?.enabled).toBe(false)
+    expect(rows.some((row) => row.providerKey === "openai")).toBe(true)
+    expect(rows.some((row) => row.providerKey === "claude-cli")).toBe(true)
+    expect(rows.find((row) => row.providerKey === "google-api")?.enabled).toBe(false)
   })
 
   test("account rows keep stable label ordering and include cooldown reason", () => {

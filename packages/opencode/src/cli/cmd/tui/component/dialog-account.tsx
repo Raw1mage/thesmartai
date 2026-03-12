@@ -12,7 +12,7 @@ import { DialogConfirm } from "../ui/dialog-confirm"
 
 interface AccountOption {
   accountId: string
-  family: string
+  providerKey: string
   type: string
 }
 
@@ -24,7 +24,7 @@ export function DialogAccount() {
   const toast = useToast()
   const sdk = useSDK()
 
-  const [families, setFamilies] = createSignal<Record<string, Account.FamilyData>>({})
+  const [providerAccounts, setProviderAccounts] = createSignal<Record<string, Account.ProviderData>>({})
 
   onMount(() => {
     loadAccounts()
@@ -33,7 +33,7 @@ export function DialogAccount() {
   const loadAccounts = async () => {
     try {
       const all = await Account.listAll()
-      setFamilies(all)
+      setProviderAccounts(all)
 
       // Auto-switch away from invalid gemini-cli accounts
       if (all["gemini-cli"]) {
@@ -52,13 +52,13 @@ export function DialogAccount() {
     }
   }
 
-  const setActive = async (family: string, accountId: string) => {
-    await Account.setActive(family, accountId)
+  const setActive = async (providerKey: string, accountId: string) => {
+    await Account.setActive(providerKey, accountId)
     await loadAccounts()
   }
 
-  const remove = async (family: string, accountId: string) => {
-    await Account.remove(family, accountId)
+  const remove = async (providerKey: string, accountId: string) => {
+    await Account.remove(providerKey, accountId)
     await loadAccounts()
   }
 
@@ -76,44 +76,46 @@ export function DialogAccount() {
   }
 
   const options = createMemo(() => {
-    const data = families()
+    const data = providerAccounts()
     if (Object.keys(data).length === 0) return []
 
     const result: DialogSelectOption<AccountOption>[] = []
 
-    // Use predefined order but include any extra families found
-    const knownFamilies = [...Account.FAMILIES] as string[]
-    const allFamilies = Array.from(new Set([...knownFamilies, ...Object.keys(data)]))
+    // Use predefined order but include any extra provider keys found
+    const knownProviders = [...Account.PROVIDERS] as string[]
+    const allProviders = Array.from(new Set([...knownProviders, ...Object.keys(data)]))
 
-    for (const family of allFamilies) {
-      const familyData = data[family]
-      if (!familyData || !familyData.accounts) continue
+    for (const providerKey of allProviders) {
+      const providerData = data[providerKey]
+      if (!providerData || !providerData.accounts) continue
 
-      const accounts = Object.entries(familyData.accounts)
+      const accounts = Object.entries(providerData.accounts)
       if (accounts.length === 0) continue
 
       // Sort: active first, then API vs Subscription, then Name
-      const sorted = accounts.filter(([id, acc]) => {
-        // Filter out subscription accounts for gemini-cli
-        if (family === "gemini-cli" && acc.type === "subscription") return false
-        return true
-      }).sort(([idA, a], [idB, b]) => {
-        const activeId = familyData.activeAccount
-        const isActiveA = idA === activeId
-        const isActiveB = idB === activeId
+      const sorted = accounts
+        .filter(([id, acc]) => {
+          // Filter out subscription accounts for gemini-cli
+          if (providerKey === "gemini-cli" && acc.type === "subscription") return false
+          return true
+        })
+        .sort(([idA, a], [idB, b]) => {
+          const activeId = providerData.activeAccount
+          const isActiveA = idA === activeId
+          const isActiveB = idB === activeId
 
-        if (isActiveA && !isActiveB) return -1
-        if (!isActiveA && isActiveB) return 1
-        if (a.type === "api" && b.type === "subscription") return 1
-        if (a.type === "subscription" && b.type === "api") return -1
-        return (a.name || "").localeCompare(b.name || "")
-      })
+          if (isActiveA && !isActiveB) return -1
+          if (!isActiveA && isActiveB) return 1
+          if (a.type === "api" && b.type === "subscription") return 1
+          if (a.type === "subscription" && b.type === "api") return -1
+          return (a.name || "").localeCompare(b.name || "")
+        })
 
       for (const [accountId, info] of sorted) {
-        const isActive = accountId === familyData.activeAccount
+        const isActive = accountId === providerData.activeAccount
 
-        // Family Display Name
-        const familyDisplayName = family.charAt(0).toUpperCase() + family.slice(1)
+        // Provider Display Name
+        const providerDisplayName = providerKey.charAt(0).toUpperCase() + providerKey.slice(1)
 
         // Type Label
         let typeLabel = "Free"
@@ -128,10 +130,10 @@ export function DialogAccount() {
           typeLabel = "Subscription"
         }
 
-        const categoryLabel = `${familyDisplayName} (${typeLabel})`
+        const categoryLabel = `${providerDisplayName} (${typeLabel})`
         const status = getAccountStatus(info)
 
-        const displayName = Account.getDisplayName(accountId, info, family)
+        const displayName = Account.getDisplayName(accountId, info, providerKey)
 
         let description: string | undefined
         if (info.type === "subscription" && info.email && info.email !== displayName) {
@@ -149,7 +151,7 @@ export function DialogAccount() {
         result.push({
           value: {
             accountId: accountId,
-            family: family,
+            providerKey,
             type: info.type,
           },
           title: displayName,
@@ -162,7 +164,7 @@ export function DialogAccount() {
             <text fg={status.color}>{status.icon}</text>
           ) : undefined,
           onSelect: async () => {
-            await setActive(family, accountId)
+            await setActive(providerKey, accountId)
             toast.show({ message: `Switched to ${displayName}`, variant: "success" })
             // Reload the provider state
             await sdk.client.instance.dispose()
@@ -186,7 +188,7 @@ export function DialogAccount() {
     )
 
     if (confirmed) {
-      await remove(selected.family, selected.accountId)
+      await remove(selected.providerKey, selected.accountId)
       toast.show({ message: "Account deleted", variant: "info" })
       await sdk.client.instance.dispose()
       await sync.bootstrap()

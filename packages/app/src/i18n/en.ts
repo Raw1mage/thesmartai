@@ -614,7 +614,7 @@ export const dict = {
   "settings.accounts.type.oauth": "OAuth",
   "settings.accounts.type.api": "API",
   "settings.accounts.toast.updated.title": "Active account updated",
-  "settings.accounts.toast.updated.description": "{{family}} → {{account}}",
+  "settings.accounts.toast.updated.description": "{{provider}} → {{account}}",
   "settings.accounts.toast.switchFailed": "Failed to switch account",
   "settings.desktop.section.wsl": "WSL",
   "settings.desktop.wsl.title": "WSL integration",

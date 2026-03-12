@@ -44,11 +44,11 @@ import {
   getActiveAccountForFamily,
   getFilteredModelsForSelection,
   getModelUnavailableReason,
-  familyOf,
   isAccountLikeProviderId,
   normalizeProviderFamily,
   pickSelectedAccount,
   pickSelectedProvider,
+  providerKeyOf,
 } from "./model-selector-state"
 import { loadQuotaHint, peekQuotaHint } from "@/utils/quota-hint-cache"
 import "./dialog-select-model.css"
@@ -68,7 +68,7 @@ const MODEL_MANAGER_DEFAULT_COLUMN_LAYOUT = { providerRatio: 0.31, accountRatio:
 
 type AccountRecord = {
   id: string
-  family: string
+  providerKey: string
   name: string
   type: "api" | "subscription" | "oauth"
   active: boolean
@@ -108,7 +108,7 @@ function preserveScrollPosition(getElement: () => HTMLElement | undefined, actio
 }
 
 function normalizeAccountRecord(
-  family: string,
+  providerKey: string,
   accountId: string,
   raw: Record<string, unknown> | undefined,
   activeAccount?: string,
@@ -118,7 +118,7 @@ function normalizeAccountRecord(
     typeValue === "subscription" || typeValue === "oauth" || typeValue === "api" ? typeValue : "api"
   return {
     id: accountId,
-    family,
+    providerKey,
     name: typeof raw?.name === "string" && raw.name.trim() ? raw.name : accountId,
     type,
     active: activeAccount === accountId,
@@ -198,7 +198,7 @@ const AccountViewDialog: Component<{ account: AccountRecord }> = (props) => {
 
   const details = createMemo(() =>
     [
-      ["Family", props.account.family],
+      ["Provider", props.account.providerKey],
       ["Account ID", props.account.id],
       ["Name", props.account.name],
       ["Type", accountTypeLabel(props.account.type)],
@@ -264,7 +264,7 @@ const AccountRenameDialog: Component<{ account: AccountRecord; onSaved: () => Pr
     setError(undefined)
     try {
       const response = await sdk.fetch(
-        `${sdk.url}/api/v2/account/${encodeURIComponent(props.account.family)}/${encodeURIComponent(props.account.id)}`,
+        `${sdk.url}/api/v2/account/${encodeURIComponent(props.account.providerKey)}/${encodeURIComponent(props.account.id)}`,
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
@@ -278,7 +278,7 @@ const AccountRenameDialog: Component<{ account: AccountRecord; onSaved: () => Pr
       showToast({
         variant: "success",
         title: "Account name updated",
-        description: `${props.account.family} → ${nextName}`,
+        description: `${props.account.providerKey} → ${nextName}`,
       })
       dialog.close()
     } catch (err) {
@@ -292,7 +292,7 @@ const AccountRenameDialog: Component<{ account: AccountRecord; onSaved: () => Pr
     <Dialog title="Edit account name">
       <div class="flex flex-col gap-4 px-2.5 pb-3">
         <div class="text-14-regular text-text-base">
-          Update the display name for <span class="font-medium text-text-strong">{props.account.family}</span> /{" "}
+          Update the display name for <span class="font-medium text-text-strong">{props.account.providerKey}</span> /{" "}
           {props.account.id}.
         </div>
         <TextField
@@ -333,7 +333,7 @@ const AccountDeleteDialog: Component<{ account: AccountRecord; onDeleted: () => 
     setError(undefined)
     try {
       const response = await sdk.fetch(
-        `${sdk.url}/api/v2/account/${encodeURIComponent(props.account.family)}/${encodeURIComponent(props.account.id)}`,
+        `${sdk.url}/api/v2/account/${encodeURIComponent(props.account.providerKey)}/${encodeURIComponent(props.account.id)}`,
         {
           method: "DELETE",
         },
@@ -345,7 +345,7 @@ const AccountDeleteDialog: Component<{ account: AccountRecord; onDeleted: () => 
       showToast({
         variant: "success",
         title: "Account deleted",
-        description: `${props.account.family} → ${props.account.name}`,
+        description: `${props.account.providerKey} → ${props.account.name}`,
       })
       dialog.close()
     } catch (err) {
@@ -361,7 +361,7 @@ const AccountDeleteDialog: Component<{ account: AccountRecord; onDeleted: () => 
         <div class="rounded-lg border border-border-base bg-surface-base p-4 text-14-regular text-text-base">
           <div>Are you sure you want to delete this account?</div>
           <div class="mt-2 font-medium text-text-strong">
-            {props.account.family} / {props.account.name}
+            {props.account.providerKey} / {props.account.name}
           </div>
           <div class="mt-1 text-12-regular text-text-weak">Account ID: {props.account.id}</div>
         </div>
@@ -397,13 +397,17 @@ const ModelList: Component<{
   const params = useParams()
 
   const resolveSelectionAccountId = (providerId: string) => {
-    const targetFamily = familyOf(providerId)
+    const targetProviderKey = providerKeyOf(providerId)
     const currentSelection = local.model.selection(params.id)
-    if (currentSelection && familyOf(currentSelection.providerID) === targetFamily && currentSelection.accountID) {
+    if (
+      currentSelection &&
+      providerKeyOf(currentSelection.providerID) === targetProviderKey &&
+      currentSelection.accountID
+    ) {
       return currentSelection.accountID
     }
-    const familyRow = globalSync.data.account_families?.[targetFamily]
-    return typeof familyRow?.activeAccount === "string" ? familyRow.activeAccount : undefined
+    const providerRow = globalSync.data.account_families?.[targetProviderKey]
+    return typeof providerRow?.activeAccount === "string" ? providerRow.activeAccount : undefined
   }
 
   const models = createMemo(() =>
@@ -1021,15 +1025,23 @@ export const DialogSelectModel: Component<{
 
   const effectiveDisabledProviders = createMemo(() => globalSync.configActions.disabledProviders())
 
+  const accountProviders = createMemo(
+    () =>
+      ((accountInfo.latest as { providers?: Record<string, unknown>; families?: Record<string, unknown> } | undefined)
+        ?.providers ??
+        (accountInfo.latest as { providers?: Record<string, unknown>; families?: Record<string, unknown> } | undefined)
+          ?.families ??
+        {}) as Record<string, { activeAccount?: string; accounts?: Record<string, Record<string, unknown>> }>,
+  )
+
   const providerStatus = createMemo(() => {
     const map = new Map<string, string>()
     const disabled = new Set<string>(effectiveDisabledProviders())
     for (const id of disabled) map.set(id, language.t("dialog.model.activity.providerDisabled"))
 
-    const families = accountInfo.latest?.families
-    if (!families || typeof families !== "object") return map
+    const providerMap = accountProviders()
 
-    for (const [family, value] of Object.entries(families as Record<string, unknown>)) {
+    for (const [providerKey, value] of Object.entries(providerMap)) {
       const row = value as { activeAccount?: unknown; accounts?: Record<string, unknown> }
       const activeAccount = typeof row?.activeAccount === "string" ? row.activeAccount : undefined
       if (!activeAccount) continue
@@ -1041,7 +1053,7 @@ export const DialogSelectModel: Component<{
       if (!until || until <= Date.now()) continue
       const reason = typeof account?.cooldownReason === "string" ? account.cooldownReason : undefined
       const minutes = Math.max(1, Math.ceil((until - Date.now()) / 60000))
-      map.set(family, reason || language.t("settings.models.recommendations.cooldown", { minutes }))
+      map.set(providerKey, reason || language.t("settings.models.recommendations.cooldown", { minutes }))
     }
 
     return map
@@ -1049,14 +1061,13 @@ export const DialogSelectModel: Component<{
 
   const currentModel = createMemo(() => local.model.current(params.id))
   const currentSelection = createMemo(() => local.model.selection(params.id))
-  const preferredProviderId = createMemo(() => props.provider || familyOf(currentModel()?.provider.id ?? ""))
+  const preferredProviderId = createMemo(() => props.provider || providerKeyOf(currentModel()?.provider.id ?? ""))
 
   const providers = createMemo(() => {
     const allProviders = globalSync.data.provider.all ?? []
-    const families = accountInfo.latest?.families as Record<string, { accounts?: Record<string, unknown> }> | undefined
     return buildProviderRows({
       providers: allProviders,
-      accountFamilies: families,
+      accountFamilies: accountProviders(),
       disabledProviders: effectiveDisabledProviders(),
     })
   })
@@ -1080,12 +1091,7 @@ export const DialogSelectModel: Component<{
     if (!selectedProviderId()) setAccountManagementMode(false)
   })
 
-  const accountFamilies = createMemo(
-    () =>
-      (accountInfo.latest?.families as
-        | Record<string, { activeAccount?: string; accounts?: Record<string, Record<string, unknown>> }>
-        | undefined) ?? {},
-  )
+  const accountFamilies = accountProviders
 
   const providerAccountKey = (providerId: string) => normalizeProviderFamily(providerId) || providerId
   const activeAccountForProvider = (providerId: string) =>
@@ -1119,12 +1125,9 @@ export const DialogSelectModel: Component<{
   const accountsForSelectedProvider = createMemo(() => {
     const providerId = selectedProviderId()
     if (!providerId) return [] as Array<{ id: string; label: string; active: boolean; unavailable?: string }>
-    const families = accountInfo.latest?.families as
-      | Record<string, { accounts?: Record<string, unknown>; activeAccount?: string }>
-      | undefined
     return buildAccountRows({
       selectedProviderFamily: providerAccountKey(providerId),
-      accountFamilies: families,
+      accountFamilies: accountFamilies(),
       formatCooldown: (minutes) => language.t("settings.models.recommendations.cooldown", { minutes }),
     })
   })
@@ -1240,9 +1243,9 @@ export const DialogSelectModel: Component<{
   }
 
   const openAddAccount = () => {
-    const family = selectedProviderId()
-    if (!family) return
-    dialog.show(() => <DialogConnectProvider provider={family} onBack={reopenModelSelector} />, reopenModelSelector)
+    const providerId = selectedProviderId()
+    if (!providerId) return
+    dialog.show(() => <DialogConnectProvider provider={providerId} onBack={reopenModelSelector} />, reopenModelSelector)
   }
 
   const filteredModels = createMemo(() => {
@@ -1261,11 +1264,11 @@ export const DialogSelectModel: Component<{
     return filteredModels().find((item) => item.provider.id === current.provider.id && item.id === current.id)
   })
 
-  const toggleProviderEnabled = (e: MouseEvent, family: string) => {
+  const toggleProviderEnabled = (e: MouseEvent, providerId: string) => {
     e.stopPropagation()
     e.preventDefault()
     const current = new Set(effectiveDisabledProviders())
-    const normalized = normalizeProviderFamily(family)
+    const normalized = normalizeProviderFamily(providerId)
     if (!normalized) return
     if (current.has(normalized)) {
       current.delete(normalized)
@@ -1289,8 +1292,8 @@ export const DialogSelectModel: Component<{
   const switchActiveAccount = (row: { id: string; label: string; unavailable?: string }) => {
     const providerId = selectedProviderId()
     if (!providerId) return
-    const family = familyOf(providerId)
-    if (!family) return
+    const providerKey = providerAccountKey(providerId)
+    if (!providerKey) return
 
     if (row.unavailable) {
       showToast({
@@ -1316,7 +1319,7 @@ export const DialogSelectModel: Component<{
       showToast({
         variant: "success",
         title: language.t("settings.accounts.toast.updated.title"),
-        description: `${family}: ${row.label} selected for this session`,
+        description: `${providerKey}: ${row.label} selected for this session`,
       })
     } catch (err) {
       setSelectedAccountId(previous)

@@ -134,16 +134,16 @@ export function Prompt(props: PromptProps) {
     return messages.findLast((m) => m.role === "assistant" && m.time?.completed)
   })
 
-  const currentQuotaFamily = createMemo(() => {
+  const currentQuotaProviderKey = createMemo(() => {
     if (disableFooterMeta) return undefined
     const providerId = local.model.current(props.sessionID)?.providerId
     if (!providerId) return undefined
-    return Account.parseFamily(providerId) ?? providerId
+    return Account.parseProvider(providerId) ?? Account.parseFamily(providerId) ?? providerId
   })
 
   const requestOpenAIQuotaRefresh = (options?: { force?: boolean }) => {
     if (disableFooterMeta) return
-    if (currentQuotaFamily() !== "openai") return
+    if (currentQuotaProviderKey() !== "openai") return
     const now = Date.now()
     if (!options?.force && now - lastQuotaRefreshAt() < OPENAI_QUOTA_DISPLAY_TTL_MS) return
     setLastQuotaRefreshAt(now)
@@ -151,7 +151,7 @@ export function Prompt(props: PromptProps) {
   }
 
   createEffect(() => {
-    if (currentQuotaFamily() !== "openai") return
+    if (currentQuotaProviderKey() !== "openai") return
     requestOpenAIQuotaRefresh()
   })
 
@@ -209,8 +209,8 @@ export function Prompt(props: PromptProps) {
       if (!providerId) return undefined
       if (!selectedAccountId) return undefined
       try {
-        const fam = Account.parseFamily(providerId) || providerId
-        const info = await Account.get(fam, selectedAccountId)
+        const providerKey = Account.parseProvider(providerId) || Account.parseFamily(providerId) || providerId
+        const info = await Account.get(providerKey, selectedAccountId)
         if (!info) {
           return {
             id: selectedAccountId,
@@ -232,7 +232,7 @@ export function Prompt(props: PromptProps) {
   const [codexQuota] = createResource(
     () => {
       if (disableFooterMeta) return undefined
-      if (currentQuotaFamily() !== "openai") return undefined
+      if (currentQuotaProviderKey() !== "openai") return undefined
       const activeId = activeAccountDisplay()?.id
       if (!activeId) return undefined
       return `${activeId}:${quotaRefresh()}`
@@ -1030,19 +1030,19 @@ export function Prompt(props: PromptProps) {
     return local.agent.color(local.agent.current()?.name || "agent")
   })
 
-  const variantFamily = createMemo(() => {
+  const variantProviderKey = createMemo(() => {
     const providerId = local.model.current(props.sessionID)?.providerId
     if (!providerId) return undefined
-    return Account.parseFamily(providerId) ?? providerId
+    return Account.parseProvider(providerId) ?? Account.parseFamily(providerId) ?? providerId
   })
 
   const visibleVariants = createMemo(() => {
-    return buildVariantOptions(local.model.variant.list(props.sessionID), variantFamily())
+    return buildVariantOptions(local.model.variant.list(props.sessionID), variantProviderKey())
   })
 
   const showVariant = createMemo(() => {
     return shouldShowVariantControl({
-      family: variantFamily(),
+      providerKey: variantProviderKey(),
       current: local.model.variant.current(props.sessionID),
       options: visibleVariants(),
     })
@@ -1050,7 +1050,7 @@ export function Prompt(props: PromptProps) {
 
   const effectiveVariantValue = createMemo(() => {
     return getEffectiveVariantValue({
-      family: variantFamily(),
+      providerKey: variantProviderKey(),
       current: local.model.variant.current(props.sessionID),
       options: visibleVariants(),
     })
@@ -1117,7 +1117,11 @@ export function Prompt(props: PromptProps) {
     if (disableFooterMeta) return undefined
     const current = local.model.current(props.sessionID)
     if (!current) return undefined
-    if (current.providerId === "openai" || Account.parseFamily(current.providerId) === "openai") {
+    if (
+      current.providerId === "openai" ||
+      Account.parseProvider(current.providerId) === "openai" ||
+      Account.parseFamily(current.providerId) === "openai"
+    ) {
       if (isRateLimited()) return "(5hrs:0% | week:0%)"
       const quota = codexQuota()
       return formatOpenAIQuotaDisplay(quota, "footer")

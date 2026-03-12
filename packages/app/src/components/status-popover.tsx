@@ -215,7 +215,7 @@ export function StatusPopover() {
       accountInfo.latest?.families
     if (!providers || typeof providers !== "object")
       return [] as Array<{
-        family: string
+        providerKey: string
         accountId: string
         name: string
         type: string
@@ -224,7 +224,7 @@ export function StatusPopover() {
         cooldownReason?: string
       }>
     const out: Array<{
-      family: string
+      providerKey: string
       accountId: string
       name: string
       type: string
@@ -232,7 +232,7 @@ export function StatusPopover() {
       coolingDownUntil?: number
       cooldownReason?: string
     }> = []
-    for (const [family, value] of Object.entries(providers as Record<string, unknown>)) {
+    for (const [providerKey, value] of Object.entries(providers as Record<string, unknown>)) {
       const valueRecord = value as { accounts?: unknown; activeAccount?: unknown }
       const activeAccount =
         typeof valueRecord?.activeAccount === "string" ? (valueRecord.activeAccount as string) : undefined
@@ -243,7 +243,7 @@ export function StatusPopover() {
       for (const [accountId, accountValue] of Object.entries(accounts)) {
         const account = accountValue as Record<string, unknown>
         out.push({
-          family,
+          providerKey,
           accountId,
           name:
             (typeof account?.name === "string" && account.name) ||
@@ -259,8 +259,8 @@ export function StatusPopover() {
     return out.sort((a, b) => {
       if (a.active && !b.active) return -1
       if (!a.active && b.active) return 1
-      const fam = a.family.localeCompare(b.family)
-      if (fam !== 0) return fam
+      const providerCompare = a.providerKey.localeCompare(b.providerKey)
+      if (providerCompare !== 0) return providerCompare
       return a.name.localeCompare(b.name)
     })
   })
@@ -531,7 +531,7 @@ export function StatusPopover() {
                                 "bg-border-weak-base": !row.active,
                               }}
                             />
-                            <span class="text-12-regular text-text-base truncate">{row.family}</span>
+                            <span class="text-12-regular text-text-base truncate">{row.providerKey}</span>
                             <span class="text-11-regular text-text-weak">{row.type}</span>
                             <span class="text-12-regular text-text-weak truncate">{row.name}</span>
                           </div>

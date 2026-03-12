@@ -15,7 +15,7 @@ import { DialogSelectProvider } from "./dialog-select-provider"
 import { ModelTooltip } from "./model-tooltip"
 import { useLanguage } from "@/context/language"
 import { useParams } from "@solidjs/router"
-import { familyOf } from "./model-selector-state"
+import { providerKeyOf } from "./model-selector-state"
 
 export const DialogSelectModelUnpaid: Component = () => {
   const local = useLocal()
@@ -27,13 +27,13 @@ export const DialogSelectModelUnpaid: Component = () => {
 
   let listRef: ListRef | undefined
   const resolveSelectionAccountId = (providerId: string) => {
-    const targetFamily = familyOf(providerId)
+    const providerKey = providerKeyOf(providerId)
     const currentSelection = local.model.selection(params.id)
-    if (currentSelection && familyOf(currentSelection.providerID) === targetFamily && currentSelection.accountID) {
+    if (currentSelection && providerKeyOf(currentSelection.providerID) === providerKey && currentSelection.accountID) {
       return currentSelection.accountID
     }
-    const familyRow = globalSync.data.account_families?.[targetFamily]
-    return typeof familyRow?.activeAccount === "string" ? familyRow.activeAccount : undefined
+    const providerRow = globalSync.data.account_families?.[providerKey]
+    return typeof providerRow?.activeAccount === "string" ? providerRow.activeAccount : undefined
   }
 
   const handleKeyDown = (e: KeyboardEvent) => {

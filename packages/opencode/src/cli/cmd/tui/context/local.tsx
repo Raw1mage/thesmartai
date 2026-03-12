@@ -26,12 +26,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const accountDisplayNames = createMemo(() => {
       const families = accountFamilies()
       if (!families) return {}
-      const map: Record<string, { label: string; family: string }> = {}
-      for (const [family, data] of Object.entries(families)) {
+      const map: Record<string, { label: string; providerKey: string }> = {}
+      for (const [providerKey, data] of Object.entries(families)) {
         for (const [id, info] of Object.entries(data.accounts)) {
           map[id] = {
-            label: Account.getDisplayName(id, info, family),
-            family,
+            label: Account.getDisplayName(id, info, providerKey),
+            providerKey,
           }
         }
       }
@@ -85,9 +85,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       if (accountId && labels[accountId]) return labels[accountId].label
       if (labels[providerId]) return labels[providerId].label
       const families = accountFamilies()
-      const family = Account.parseProvider(providerId)
-      if (family && families?.[family]?.activeAccount) {
-        const active = families[family]!.activeAccount
+      const providerKey = Account.parseProvider(providerId)
+      if (providerKey && families?.[providerKey]?.activeAccount) {
+        const active = families[providerKey]!.activeAccount
         if (active && labels[active]) return labels[active].label
       }
       return fallback
@@ -95,16 +95,16 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     function availableAccountIds(providerId: string) {
       const families = accountFamilies()
-      const family = Account.parseProvider(providerId) ?? providerId
-      return Object.keys(families?.[family]?.accounts ?? {})
+      const providerKey = Account.parseProvider(providerId) ?? providerId
+      return Object.keys(families?.[providerKey]?.accounts ?? {})
     }
 
     function replacementAccountId(providerId: string, currentAccountId?: string) {
       const families = accountFamilies()
-      const family = Account.parseProvider(providerId) ?? providerId
-      const familyData = families?.[family]
-      const active = familyData?.activeAccount
-      const ids = Object.keys(familyData?.accounts ?? {})
+      const providerKey = Account.parseProvider(providerId) ?? providerId
+      const providerData = families?.[providerKey]
+      const active = providerData?.activeAccount
+      const ids = Object.keys(providerData?.accounts ?? {})
       if (active && active !== currentAccountId && ids.includes(active)) return active
       return ids.find((id) => id !== currentAccountId) ?? ids[0]
     }
@@ -127,9 +127,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     function formatModelAnnouncement(model: { providerId: string; modelID: string; accountId?: string }) {
       const providerInfo = sync.data.provider.find((x) => x.id === model.providerId)
-      const familyId = Account.parseProvider(model.providerId) ?? model.providerId
-      const familyProviderInfo = sync.data.provider.find((x) => x.id === familyId)
-      const providerLabel = familyProviderInfo?.name ?? providerInfo?.name ?? familyId
+      const providerKey = Account.parseProvider(model.providerId) ?? model.providerId
+      const providerKeyInfo = sync.data.provider.find((x) => x.id === providerKey)
+      const providerLabel = providerKeyInfo?.name ?? providerInfo?.name ?? providerKey
       const modelLabel = providerInfo?.models[model.modelID]?.name ?? model.modelID
       const accountLabel = getAccountLabel(model.providerId, "default account", model.accountId)
       return `《${providerLabel}, ${accountLabel}, ${modelLabel}》`
@@ -475,11 +475,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             }
           }
           const provider = sync.data.provider.find((x) => x.id === value.providerId)
-          const familyId = Account.parseProvider(value.providerId) ?? value.providerId
-          const familyProvider = sync.data.provider.find((x) => x.id === familyId)
+          const providerKey = Account.parseProvider(value.providerId) ?? value.providerId
+          const providerKeyInfo = sync.data.provider.find((x) => x.id === providerKey)
           const info = provider?.models[value.modelID]
           return {
-            provider: familyProvider?.name ?? provider?.name ?? familyId,
+            provider: providerKeyInfo?.name ?? provider?.name ?? providerKey,
             model: info?.name ?? value.modelID,
             reasoning: info?.capabilities?.reasoning ?? false,
           }
@@ -668,18 +668,18 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             })
           })
         },
-        toggleHiddenProvider(family: string) {
+        toggleHiddenProvider(providerKey: string) {
           batch(() => {
-            const exists = modelStore.hiddenProviders.includes(family)
+            const exists = modelStore.hiddenProviders.includes(providerKey)
             const next = exists
-              ? modelStore.hiddenProviders.filter((x) => x !== family)
-              : [family, ...modelStore.hiddenProviders]
+              ? modelStore.hiddenProviders.filter((x) => x !== providerKey)
+              : [providerKey, ...modelStore.hiddenProviders]
             setModelStore("hiddenProviders", next)
             save()
           })
         },
-        isProviderHidden(family: string) {
-          return modelStore.hiddenProviders.includes(family)
+        isProviderHidden(providerKey: string) {
+          return modelStore.hiddenProviders.includes(providerKey)
         },
         removeFromRecent(model: { providerId: string; modelID: string }) {
           batch(() => {

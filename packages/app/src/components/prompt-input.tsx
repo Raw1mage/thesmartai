@@ -317,10 +317,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     if (identities.length === 0) return normalized ?? model.provider.id
 
-    const accountFamilies = globalSync.data.account_families as
+    const accountProviders = globalSync.data.account_families as
       | Record<string, { accounts?: Record<string, unknown> }>
       | undefined
-    if (!accountFamilies) return normalized ?? model.provider.id
+    if (!accountProviders) return normalized ?? model.provider.id
 
     const availableFamilies = new Set(
       providers
@@ -329,17 +329,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         .map((provider) => normalizeProviderFamily(provider.id) || provider.id),
     )
 
-    for (const [familyKey, familyRow] of Object.entries(accountFamilies)) {
-      const family = normalizeProviderFamily(familyKey) || familyKey
-      if (availableFamilies.size > 0 && !availableFamilies.has(family)) continue
-      const accounts = familyRow?.accounts && typeof familyRow.accounts === "object" ? familyRow.accounts : {}
+    for (const [providerKey, providerRow] of Object.entries(accountProviders)) {
+      const canonicalProviderKey = normalizeProviderFamily(providerKey) || providerKey
+      if (availableFamilies.size > 0 && !availableFamilies.has(canonicalProviderKey)) continue
+      const accounts = providerRow?.accounts && typeof providerRow.accounts === "object" ? providerRow.accounts : {}
       for (const account of Object.values(accounts)) {
         const row = account as { name?: unknown; email?: unknown; accountId?: unknown }
         const values = [row.name, row.email, row.accountId]
           .filter((value): value is string => typeof value === "string")
           .map((value) => value.toLowerCase())
         if (values.some((value) => identities.includes(value))) {
-          return family
+          return canonicalProviderKey
         }
       }
     }
@@ -347,10 +347,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return normalized ?? model.provider.id
   })
   const activeAccountLabel = createMemo(() => {
-    const family = activeFamily()
-    if (!family) return "--"
+    const providerKey = activeFamily()
+    if (!providerKey) return "--"
     const rows = buildAccountRows({
-      selectedProviderFamily: family,
+      selectedProviderFamily: providerKey,
       accountFamilies: globalSync.data.account_families,
       formatCooldown: (minutes) => language.t("settings.models.recommendations.cooldown", { minutes }),
     })
@@ -362,18 +362,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const providerLabel = createMemo(() => {
     const model = currentModel()
     if (!model) return "--"
-    const family = effectiveProviderFamily()
-    if (family === "openai") return "OpenAI"
-    if (family === "claude-cli") return "Claude CLI"
-    if (family === "google-api") return "Google-API"
-    if (family === "gemini-cli") return "Gemini CLI"
-    if (family === "github-copilot") return "GitHub Copilot"
-    if (family === "gmicloud") return "GMICloud"
-    if (family === "openrouter") return "OpenRouter"
-    if (family === "vercel") return "Vercel"
-    if (family === "gitlab") return "GitLab"
-    if (family === "opencode") return "OpenCode"
-    return model.provider.name ?? family ?? model.provider.id
+    const providerKey = effectiveProviderFamily()
+    if (providerKey === "openai") return "OpenAI"
+    if (providerKey === "claude-cli") return "Claude CLI"
+    if (providerKey === "google-api") return "Google-API"
+    if (providerKey === "gemini-cli") return "Gemini CLI"
+    if (providerKey === "github-copilot") return "GitHub Copilot"
+    if (providerKey === "gmicloud") return "GMICloud"
+    if (providerKey === "openrouter") return "OpenRouter"
+    if (providerKey === "vercel") return "Vercel"
+    if (providerKey === "gitlab") return "GitLab"
+    if (providerKey === "opencode") return "OpenCode"
+    return model.provider.name ?? providerKey ?? model.provider.id
   })
   const [quotaHint, setQuotaHint] = createSignal<string | undefined>()
   let quotaHintRequestVersion = 0
@@ -414,9 +414,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       setQuotaHint(hint)
     })()
   })
-  const formatVariantLabel = (value: string, family?: string) => {
+  const formatVariantLabel = (value: string, providerKey?: string) => {
     const normalized = value.toLowerCase()
-    if (family === "openai" && (normalized === "xhigh" || normalized === "extra")) return "extra"
+    if (providerKey === "openai" && (normalized === "xhigh" || normalized === "extra")) return "extra"
     return value
       .replaceAll("_", " ")
       .replaceAll("-", " ")
@@ -427,9 +427,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
   type VariantOption = { value: string; label: string }
   const variantOptions = createMemo<VariantOption[]>(() => {
-    const family = activeFamily()
+    const providerKey = activeFamily()
     let values = local.model.variant.list(params.id)
-    if (family === "openai") {
+    if (providerKey === "openai") {
       const preferred = ["low", "medium", "high", "xhigh", "extra"]
       const set = new Set(values)
       const narrowed = preferred.filter((value) => set.has(value))
@@ -439,7 +439,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const used = new Set<string>()
     const result: VariantOption[] = []
     for (const value of values) {
-      const label = formatVariantLabel(value, family)
+      const label = formatVariantLabel(value, providerKey)
       if (used.has(label)) continue
       used.add(label)
       result.push({ value, label })
@@ -451,8 +451,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!value) return undefined
     const exact = variantOptions().find((item) => item.value === value)
     if (exact) return exact
-    const family = activeFamily()
-    const targetLabel = formatVariantLabel(value, family)
+    const providerKey = activeFamily()
+    const targetLabel = formatVariantLabel(value, providerKey)
     return variantOptions().find((item) => item.label === targetLabel)
   })
   const promptMeta = createMemo(() => {

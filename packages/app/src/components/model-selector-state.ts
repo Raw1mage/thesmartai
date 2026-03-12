@@ -46,7 +46,7 @@ export type AccountFamilyMap = Record<string, { accounts?: Record<string, unknow
 
 export type ProviderRow = {
   id: string
-  family: string
+  providerKey: string
   name: string
   accounts: number
   enabled: boolean
@@ -97,58 +97,58 @@ export function buildProviderRows(input: {
 }): ProviderRow[] {
   const popularProviderOrder = input.popularProviderOrder ?? DEFAULT_POPULAR_PROVIDER_ORDER
   const out = new Map<string, ProviderRow>()
-  const familyUniverse = new Set<string>()
+  const providerUniverse = new Set<string>()
 
   for (const provider of input.providers) {
     const normalized = normalizeProviderFamily(provider.id)
     if (!normalized) continue
-    familyUniverse.add(normalized)
+    providerUniverse.add(normalized)
   }
 
   if (input.accountFamilies) {
-    for (const family of Object.keys(input.accountFamilies)) {
-      const normalized = normalizeProviderFamily(family)
+    for (const providerKey of Object.keys(input.accountFamilies)) {
+      const normalized = normalizeProviderFamily(providerKey)
       if (!normalized) continue
-      familyUniverse.add(normalized)
+      providerUniverse.add(normalized)
     }
   }
 
   for (const id of input.disabledProviders ?? []) {
     const normalized = normalizeProviderFamily(id)
     if (!normalized) continue
-    familyUniverse.add(normalized)
+    providerUniverse.add(normalized)
   }
 
   for (const id of popularProviderOrder) {
     const normalized = normalizeProviderFamily(id)
     if (!normalized) continue
-    familyUniverse.add(normalized)
+    providerUniverse.add(normalized)
   }
 
   const disabledFamilies = new Set(
     (input.disabledProviders ?? []).map((id) => normalizeProviderFamily(id)).filter((id): id is string => !!id),
   )
 
-  for (const family of familyUniverse) {
-    const familyAccounts = input.accountFamilies?.[family]
-    const accountsCount = familyAccounts?.accounts ? Object.keys(familyAccounts.accounts).length : 0
-    const providersInFamily = input.providers.filter(
-      (provider) => (normalizeProviderFamily(provider.id) || provider.id) === family,
+  for (const providerKey of providerUniverse) {
+    const providerAccounts = input.accountFamilies?.[providerKey]
+    const accountsCount = providerAccounts?.accounts ? Object.keys(providerAccounts.accounts).length : 0
+    const providersInGroup = input.providers.filter(
+      (provider) => (normalizeProviderFamily(provider.id) || provider.id) === providerKey,
     )
-    const familyProvider = providersInFamily.find((provider) => provider.id === family) ?? providersInFamily[0]
+    const canonicalProvider = providersInGroup.find((provider) => provider.id === providerKey) ?? providersInGroup[0]
 
-    out.set(family, {
-      id: family,
-      family,
-      name: familyProvider?.name ?? PROVIDER_LABEL_MAP[family] ?? family,
+    out.set(providerKey, {
+      id: providerKey,
+      providerKey,
+      name: canonicalProvider?.name ?? PROVIDER_LABEL_MAP[providerKey] ?? providerKey,
       accounts: accountsCount,
-      enabled: !disabledFamilies.has(family),
+      enabled: !disabledFamilies.has(providerKey),
     })
   }
 
   return Array.from(out.values()).sort((a, b) => {
-    const aIdx = popularProviderOrder.indexOf(a.family)
-    const bIdx = popularProviderOrder.indexOf(b.family)
+    const aIdx = popularProviderOrder.indexOf(a.providerKey)
+    const bIdx = popularProviderOrder.indexOf(b.providerKey)
     if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
     if (aIdx !== -1) return -1
     if (bIdx !== -1) return 1
@@ -164,10 +164,10 @@ export function buildAccountRows(input: {
 }): AccountRow[] {
   if (!input.selectedProviderFamily) return []
   const now = input.now ?? Date.now()
-  const family = normalizeProviderFamily(input.selectedProviderFamily) ?? input.selectedProviderFamily
-  const familyRow = input.accountFamilies?.[family]
-  const activeAccount = typeof familyRow?.activeAccount === "string" ? familyRow.activeAccount : undefined
-  const accounts = familyRow?.accounts && typeof familyRow.accounts === "object" ? familyRow.accounts : {}
+  const providerKey = normalizeProviderFamily(input.selectedProviderFamily) ?? input.selectedProviderFamily
+  const providerRow = input.accountFamilies?.[providerKey]
+  const activeAccount = typeof providerRow?.activeAccount === "string" ? providerRow.activeAccount : undefined
+  const accounts = providerRow?.accounts && typeof providerRow.accounts === "object" ? providerRow.accounts : {}
 
   const rows = Object.entries(accounts).map(([id, value]) => {
     const item = value as Record<string, unknown>
@@ -202,9 +202,11 @@ export function filterModelsForMode<T extends { id: string; provider: { id: stri
     })
 }
 
-export function familyOf(providerId: string) {
+export function providerKeyOf(providerId: string) {
   return normalizeProviderFamily(providerId) || providerId
 }
+
+export const familyOf = providerKeyOf
 
 export function isAccountLikeProviderId(id: string) {
   return id.includes("@")
@@ -212,10 +214,10 @@ export function isAccountLikeProviderId(id: string) {
 
 export function getActiveAccountForFamily(
   families: Record<string, { activeAccount?: unknown }> | undefined,
-  family: string,
+  providerKey: string,
 ) {
-  const familyRow = families?.[family]
-  return typeof familyRow?.activeAccount === "string" ? familyRow.activeAccount : undefined
+  const providerRow = families?.[providerKey]
+  return typeof providerRow?.activeAccount === "string" ? providerRow.activeAccount : undefined
 }
 
 export function getModelUnavailableReason(input: {
@@ -229,14 +231,14 @@ export function getModelUnavailableReason(input: {
   const direct = input.providerStatus.get(input.providerId)
   if (direct) return direct
 
-  const family = familyOf(input.providerId)
-  const familyStatus = input.providerStatus.get(family)
-  if (familyStatus) return familyStatus
+  const providerKey = providerKeyOf(input.providerId)
+  const providerStatus = input.providerStatus.get(providerKey)
+  if (providerStatus) return providerStatus
   if (!input.accountId) return
 
   const now = input.now ?? Date.now()
-  const familyRow = input.accountFamilies?.[family]
-  const account = familyRow?.accounts?.[input.accountId] as Record<string, unknown> | undefined
+  const providerRow = input.accountFamilies?.[providerKey]
+  const account = providerRow?.accounts?.[input.accountId] as Record<string, unknown> | undefined
   const until = typeof account?.coolingDownUntil === "number" ? account.coolingDownUntil : undefined
   if (!until || until <= now) return
   const reason = typeof account?.cooldownReason === "string" ? account.cooldownReason : undefined
@@ -281,20 +283,22 @@ export function getFilteredModelsForSelection<T extends { id: string; provider: 
 }) {
   if (!input.selectedProviderFamily) return [] as T[]
 
-  const inFamily = input.models.filter((model) => familyOf(model.provider.id) === input.selectedProviderFamily)
-  if (inFamily.length === 0) return [] as T[]
+  const providerScopedModels = input.models.filter(
+    (model) => providerKeyOf(model.provider.id) === input.selectedProviderFamily,
+  )
+  if (providerScopedModels.length === 0) return [] as T[]
 
   const resolvedProviderID =
-    inFamily.find((model) => model.provider.id === input.selectedProviderFamily)?.provider.id ??
-    (input.currentProviderID && inFamily.some((model) => model.provider.id === input.currentProviderID)
+    providerScopedModels.find((model) => model.provider.id === input.selectedProviderFamily)?.provider.id ??
+    (input.currentProviderID && providerScopedModels.some((model) => model.provider.id === input.currentProviderID)
       ? input.currentProviderID
       : undefined) ??
-    inFamily.find((model) => !isAccountLikeProviderId(model.provider.id))?.provider.id ??
-    inFamily[0]?.provider.id
+    providerScopedModels.find((model) => !isAccountLikeProviderId(model.provider.id))?.provider.id ??
+    providerScopedModels[0]?.provider.id
 
   const scopedModels = resolvedProviderID
-    ? inFamily.filter((model) => model.provider.id === resolvedProviderID)
-    : inFamily
+    ? providerScopedModels.filter((model) => model.provider.id === resolvedProviderID)
+    : providerScopedModels
 
   return filterModelsForMode({
     models: scopedModels,

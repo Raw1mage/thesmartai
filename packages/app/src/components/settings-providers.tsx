@@ -49,9 +49,9 @@ export const SettingsProviders: Component = () => {
   })
 
   const accountCount = (providerID: string) => {
-    const family = globalSync.data.account_families[providerID]
-    if (!family) return 0
-    return Object.keys(family.accounts).length
+    const providerRow = globalSync.data.account_families[providerID]
+    if (!providerRow) return 0
+    return Object.keys(providerRow.accounts).length
   }
 
   const disabledIDs = createMemo(() => new Set(globalSync.configActions.disabledProviders()))

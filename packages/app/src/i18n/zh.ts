@@ -837,6 +837,6 @@ export const dict = {
   "settings.accounts.type.oauth": "OAuth",
   "settings.accounts.type.api": "API",
   "settings.accounts.toast.updated.title": "当前账户已更新",
-  "settings.accounts.toast.updated.description": "{{family}} → {{account}}",
+  "settings.accounts.toast.updated.description": "{{provider}} → {{account}}",
   "settings.accounts.toast.switchFailed": "切换账户失败",
 } satisfies Partial<Record<Keys, string>>

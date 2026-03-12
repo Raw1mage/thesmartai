@@ -49,21 +49,21 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const providers = useProviders()
     const connected = createMemo(() => new Set(providers.connected().map((provider) => provider.id)))
 
-    function resolveFamily(providerID: string) {
+    function resolveProviderKey(providerID: string) {
       return normalizeProviderFamily(providerID) || providerID
     }
 
     function availableAccountIds(providerID: string) {
-      const family = resolveFamily(providerID)
-      const families = globalSync.data.account_families
-      return Object.keys(families[family]?.accounts ?? {})
+      const providerKey = resolveProviderKey(providerID)
+      const providers = globalSync.data.account_families
+      return Object.keys(providers[providerKey]?.accounts ?? {})
     }
 
     function replacementAccountID(providerID: string, currentAccountID?: string) {
-      const family = resolveFamily(providerID)
-      const familyData = globalSync.data.account_families[family]
-      const active = familyData?.activeAccount
-      const ids = Object.keys(familyData?.accounts ?? {})
+      const providerKey = resolveProviderKey(providerID)
+      const providerData = globalSync.data.account_families[providerKey]
+      const active = providerData?.activeAccount
+      const ids = Object.keys(providerData?.accounts ?? {})
       if (active && active !== currentAccountID && ids.includes(active)) return active
       return ids.find((id) => id !== currentAccountID) ?? ids[0]
     }

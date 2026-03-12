@@ -69,8 +69,8 @@ export const DialogSelectProvider: Component = () => {
         }}
       >
         {(i) => {
-          const sync = globalSync.data.account_families[i.id]
-          const count = sync ? Object.keys(sync.accounts).length : 0
+          const providerRow = globalSync.data.account_families[i.id]
+          const count = providerRow ? Object.keys(providerRow.accounts).length : 0
           return (
             <div class="px-1.25 w-full flex items-center gap-x-3">
               <ProviderIcon data-slot="list-item-extra-icon" id={icon(i.id)} />

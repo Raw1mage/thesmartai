@@ -142,6 +142,21 @@
   - `packages/opencode/src/session/llm.ts`
     - runtime now resolves `executionModel` from `{ input.model, currentAccountId }` before `Provider.getLanguage(...)`
     - debug checkpoint now records both requested `providerId` and actual `executionProviderId`
+- Implemented provider-first migration (compatibility phase):
+  - `packages/app/src/components/dialog-select-model.tsx`
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-model.tsx`
+  - `packages/opencode/src/server/routes/account.ts`
+    - account lookup / selection paths now prefer canonical provider-key resolution instead of treating `family` as the primary routing concept
+    - response payloads now expose provider-oriented compatibility fields (`providerKey`, `providers`) while keeping legacy fields for compatibility
+  - `packages/opencode/src/account/index.ts`
+  - `packages/opencode/src/provider/canonical-family-source.ts`
+  - `packages/opencode/src/account/rotation3d.ts`
+    - added provider-first aliases and internal provider-key helpers while preserving storage compatibility
+  - `packages/opencode/src/auth/index.ts`
+  - `packages/opencode/src/provider/provider.ts`
+  - `packages/opencode/src/session/llm.ts`
+  - `packages/opencode/src/session/model-orchestration.ts`
+    - high-frequency runtime call sites now prefer provider-first account helpers, with compatibility fallback to legacy family helpers where tests/mocks still depend on them
 
 ## Root Cause
 
@@ -333,6 +348,206 @@
 - `bun test /home/pkcs12/projects/opencode/packages/opencode/src/account/quota/hint.test.ts` ✅
 - `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/server/routes/account.ts /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx /home/pkcs12/projects/opencode/packages/opencode/src/account/quota/hint.test.ts` ✅
 - `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (quota/footer fail-fast hardening)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/server/routes/account.ts /home/pkcs12/projects/opencode/packages/app/src/components/dialog-select-model.tsx /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-model.tsx` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit && bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (provider-first selection key migration)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/account/index.ts /home/pkcs12/projects/opencode/packages/opencode/src/provider/canonical-family-source.ts /home/pkcs12/projects/opencode/packages/opencode/src/account/rotation3d.ts` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (provider-first core alias migration)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/auth/index.ts /home/pkcs12/projects/opencode/packages/opencode/src/provider/provider.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/llm.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/model-orchestration.ts` ✅
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/test/session/llm-rate-limit-routing.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/session/model-orchestration.test.ts` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (provider-first runtime helper migration)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/server/routes/account.ts /home/pkcs12/projects/opencode/packages/app/src/components/settings-accounts.tsx /home/pkcs12/projects/opencode/packages/app/src/components/status-popover.tsx` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit && bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (provider-key response compatibility)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/account/index.ts` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (provider-key storage helper migration)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/app/src/components/dialog-select-model.tsx /home/pkcs12/projects/opencode/packages/app/src/components/prompt-input.tsx /home/pkcs12/projects/opencode/packages/app/src/context/global-sync/bootstrap.ts /home/pkcs12/projects/opencode/packages/app/src/context/global-sync.tsx` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit` ✅ (web provider-first compatibility read cleanup)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (TUI admin compile-safe provider-key rename batch)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (TUI admin root/account providerKey naming cleanup)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (TUI admin model/activity provider-key naming cleanup)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/app/src/components/dialog-select-provider.tsx /home/pkcs12/projects/opencode/packages/app/src/components/dialog-select-model-unpaid.tsx /home/pkcs12/projects/opencode/packages/app/src/context/local.tsx /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit && bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (continuous web+tui provider-key terminology cleanup)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/app/src/components/status-popover.tsx /home/pkcs12/projects/opencode/packages/app/src/components/settings-accounts.tsx /home/pkcs12/projects/opencode/packages/app/src/components/settings-providers.tsx /home/pkcs12/projects/opencode/packages/app/src/components/prompt-input.tsx /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/context/local.tsx /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit && bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (continuous provider-key terminology cleanup batch 2)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/app/src/components/model-selector-state.ts /home/pkcs12/projects/opencode/packages/app/src/components/model-selector-state.test.ts /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-account.tsx` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit && bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (provider-row type cleanup + dialog-account provider-key rename)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/app/src/components/model-selector-state.ts /home/pkcs12/projects/opencode/packages/app/src/components/settings-accounts.tsx /home/pkcs12/projects/opencode/packages/app/src/i18n/en.ts /home/pkcs12/projects/opencode/packages/app/src/i18n/zht.ts /home/pkcs12/projects/opencode/packages/app/src/i18n/zh.ts` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit` ✅ (app selector helper + provider locale payload cleanup)
+- `bunx eslint /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/util/model-variant.ts /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/app.tsx /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/context/local.tsx /home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-account.tsx` ✅
+- `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (TUI prompt/variant/app/local provider-key cleanup)
+
+## Follow-up Fix: web provider-first compatibility reads
+
+- Goal:
+  - finish the previously interrupted Web cleanup batch so account payload consumption prefers provider-key compatibility fields (`providers`) while still tolerating legacy `families`
+  - remove half-migrated `family` wording in the current model manager/account dialogs where the operational key is already provider-scoped
+- Updated files:
+  - `packages/app/src/components/dialog-select-model.tsx`
+  - `packages/app/src/components/prompt-input.tsx`
+  - `packages/app/src/context/global-sync/bootstrap.ts`
+- Applied changes:
+  - `dialog-select-model.tsx`
+    - completed `AccountRecord.family -> providerKey`
+    - account detail / rename / delete dialogs now consistently address account routes and labels with provider key wording
+    - account payload reads now prefer `accountInfo.latest.providers ?? accountInfo.latest.families`
+    - provider cooldown/status map now keys by provider key compatibility payloads instead of directly assuming legacy `families`
+    - session account-switch success toast now reports provider key, not family wording
+  - `prompt-input.tsx`
+    - local identity matching loop now uses provider-oriented variable names and returns canonical provider key terminology when inferring effective provider family from account payloads
+  - `global-sync/bootstrap.ts`
+    - global bootstrap now hydrates `account_families` from `providers ?? families`, aligning first-load behavior with the newer compatibility contract
+- Architecture Sync: Verified (No doc changes)
+  - existing `docs/ARCHITECTURE.md` provider-first compatibility section already states that account APIs may expose both `providers` and legacy `families`, and that Web account-selection paths bind/rout via provider keys
+
+## Follow-up Fix: TUI admin compile-safe provider-key rename batch
+
+- Goal:
+  - start shrinking the largest remaining `dialog-admin.tsx` provider/family naming debt without destabilizing the current control-plane behavior
+  - keep this batch compile-safe and intentionally small before broader behavioral cleanup
+- Updated files:
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
+- Applied changes:
+  - switched canonical helper imports to provider-key aliases:
+    - `buildCanonicalProviderKeyRows`
+    - `resolveCanonicalRuntimeProviderKey`
+  - `ProviderSelectionValue` now accepts provider-oriented `providerKey` and still tolerates legacy `family` payload shape for compatibility parsing
+  - `DialogAdminOption.coreFamily` renamed to `coreProviderKey`
+  - provider enable/disable toggle path now reads provider selection via `providerKey`
+  - local `canonicalFamilies` memo renamed to `canonicalProviders`
+- Non-goals in this batch:
+  - no state-machine rewrite
+  - no route contract changes
+  - no control-plane behavior change beyond naming/compatibility cleanup
+- Architecture Sync: Verified (No doc changes)
+  - current architecture doc already describes TUI `/admin` as a control-plane surface that is mid-migration toward provider-first semantics while preserving compatibility names
+
+## Follow-up Fix: TUI admin root/account providerKey naming cleanup
+
+- Goal:
+  - continue shrinking `dialog-admin.tsx` family-heavy naming inside the root provider list and account list generation, without changing current admin behavior
+- Updated files:
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
+- Applied changes:
+  - root list local variables now use `providerRow` / `providerKey` / `providerData` naming instead of `familyRow` / `fam` / `familyData`
+  - root provider option payload now emits `{ providerKey }`
+  - root selection checkpoint text updated from `select family` to `select provider key`
+  - account list builder now uses `accountsWithProvider` / `coreProviderKey` / `providerKey` naming consistently
+  - account list category and selection paths now carry provider-key terminology while preserving the same behavior and state transitions
+- Architecture Sync: Verified (No doc changes)
+  - no architecture contract changed; this batch only reduced terminology debt inside an existing control-plane implementation
+
+## Follow-up Fix: TUI admin model/activity provider-key naming cleanup
+
+- Goal:
+  - continue terminology cleanup inside `dialog-admin.tsx` model/activity rendering paths without changing selection behavior
+- Updated files:
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
+- Applied changes:
+  - `shouldShowFree()` local provider grouping variables now use `providerKey` / `providerData`
+  - `formatQuotaFooter()` local provider grouping variable renamed from `providerFamily` to `providerKey`
+  - activity table account bucket lookup renamed from `accountFamily` to `providerBucket`
+  - activity model selection toast/account lookup now uses `providerKey` wording for account fetch path
+  - `owner()` helper local naming now uses provider-key terminology
+- Architecture Sync: Verified (No doc changes)
+  - this batch only renames local semantics inside an already documented compatibility-phase control-plane surface
+
+## Follow-up Fix: continuous web+tui provider-key terminology cleanup
+
+- Goal:
+  - continue autonomous provider-first cleanup across small Web/TUI hotspots without stopping after each micro-batch
+- Updated files:
+  - `packages/app/src/components/dialog-select-provider.tsx`
+  - `packages/app/src/components/dialog-select-model-unpaid.tsx`
+  - `packages/app/src/context/local.tsx`
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
+- Applied changes:
+  - Web `dialog-select-provider.tsx`
+    - local account sync row naming changed from generic `sync` to `providerRow`
+  - Web `dialog-select-model-unpaid.tsx`
+    - selection account resolution now uses `providerKey` / `providerRow` naming instead of `targetFamily` / `familyRow`
+  - Web `context/local.tsx`
+    - local helper `resolveFamily()` renamed to `resolveProviderKey()`
+    - account replacement helpers now use `providerKey` / `providerData` / `providers` naming
+  - TUI `dialog-admin.tsx`
+    - model-select internals now use `providerKey` / `runtimeProviderId` naming instead of `baseProviderID` / `modelProviderID`
+    - provider add keybind flows now use provider-key terminology in local variables and debug payloads
+- Architecture Sync: Verified (No doc changes)
+  - no long-lived boundary or runtime-flow contract changed; this was terminology debt reduction only
+
+## Follow-up Fix: continuous provider-key terminology cleanup batch 2
+
+- Goal:
+  - continue autonomous cleanup across remaining display/state hotspots while preserving existing compatibility contracts
+- Updated files:
+  - `packages/app/src/components/status-popover.tsx`
+  - `packages/app/src/components/settings-accounts.tsx`
+  - `packages/app/src/components/settings-providers.tsx`
+  - `packages/app/src/components/prompt-input.tsx`
+  - `packages/opencode/src/cli/cmd/tui/context/local.tsx`
+  - `packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx`
+- Applied changes:
+  - status/account UI rows now use `providerKey` naming instead of `family` in local row structures
+  - provider settings account-count helper now uses `providerRow` naming
+  - prompt footer/provider label helpers now use `providerKey` terminology for display/variant formatting paths
+  - TUI local account label/account replacement helpers now use `providerKey` / `providerData` naming
+  - TUI prompt footer account lookup now prefers `Account.parseProvider(...)` before legacy `parseFamily(...)`
+- Architecture Sync: Verified (No doc changes)
+  - these changes only reduce terminology debt in state/display helpers; runtime architecture remains unchanged
+
+## Follow-up Fix: provider-row type cleanup + dialog-account provider-key rename
+
+- Goal:
+  - continue provider-first terminology cleanup in reusable selector helpers and TUI account-management UI
+- Updated files:
+  - `packages/app/src/components/model-selector-state.ts`
+  - `packages/app/src/components/model-selector-state.test.ts`
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-account.tsx`
+- Applied changes:
+  - `ProviderRow.family` renamed to `ProviderRow.providerKey`
+  - internal provider-universe/provider-group naming in `model-selector-state.ts` now uses provider-oriented terminology
+  - associated tests updated to assert `providerKey`
+  - TUI `dialog-account.tsx` local account option/value/state naming now uses `providerKey` / `providerAccounts` / `knownProviders`
+- Architecture Sync: Verified (No doc changes)
+  - no behavior contract changed; helper/type naming only
+
+## Follow-up Fix: app selector helper + provider locale payload cleanup
+
+- Goal:
+  - continue removing `family` wording from reusable app-side helpers and user-facing account-switch payloads where the operational meaning is provider key
+- Updated files:
+  - `packages/app/src/components/model-selector-state.ts`
+  - `packages/app/src/components/settings-accounts.tsx`
+  - `packages/app/src/i18n/en.ts`
+  - `packages/app/src/i18n/zht.ts`
+  - `packages/app/src/i18n/zh.ts`
+- Applied changes:
+  - `buildAccountRows()` and `getModelUnavailableReason()` local naming now uses `providerKey` / `providerRow`
+  - `getActiveAccountForFamily()` argument/local naming updated toward provider-key semantics (function name kept for compatibility)
+  - account switch success toast now passes `{ provider, account }` instead of `{ family, account }`
+  - localized strings updated to `{{provider}} → {{account}}`
+- Architecture Sync: Verified (No doc changes)
+  - no runtime/data-flow contract changed; display/helper terminology only
+
+## Follow-up Fix: TUI prompt/variant/app/local provider-key cleanup
+
+- Goal:
+  - continue TUI-side terminology cleanup in footer variant controls, local hidden-provider helpers, and app bootstrap account resolution
+- Updated files:
+  - `packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx`
+  - `packages/opencode/src/cli/cmd/tui/util/model-variant.ts`
+  - `packages/opencode/src/cli/cmd/tui/app.tsx`
+  - `packages/opencode/src/cli/cmd/tui/context/local.tsx`
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-account.tsx`
+- Applied changes:
+  - prompt footer variant helpers now use `variantProviderKey`
+  - variant utility inputs renamed from `family` to `providerKey`
+  - app startup active-account lookup now prefers `Account.parseProvider(...)` before legacy `parseFamily(...)`
+  - local hidden-provider helpers now use `providerKey` naming
+  - dialog-account local action naming now uses `providerKey`
+- Architecture Sync: Verified (No doc changes)
+  - terminology cleanup only; no lifecycle or runtime contract changes
 
 ## Remaining issues / next-round backlog
 
@@ -364,6 +579,10 @@
 
 - Multiple APIs, routes, and UI helpers still use `family` language for behaviors that are actually provider/account-bound.
 - This remains a standing risk for future routing bugs and silent mis-design.
+- Compatibility-phase progress has reduced the highest-risk behavior paths, but the following still remain:
+  - legacy route paths such as `/:family/...`
+  - generated SDK/OpenAPI naming
+  - UI labels / i18n copy / test names using `family` as if it were the execution boundary
 
 ### 6. Full request-trace ↔ UI-display traceability is still incomplete
 
@@ -387,3 +606,53 @@
     - documented new `audit.identity` observability contract for turn-level provider/account execution tracing
     - documented persisted `session.execution` SSOT, autonomous synthetic identity reuse, manual interrupt queue clearing, and blocked cross-provider/account fallback once session pin exists
     - documented that manual Web/TUI selection now immediately PATCHes `session.execution` instead of waiting for the next prompt
+
+## Follow-up Fix: provider-key terminology cleanup batch 3
+
+- Goal:
+  - continue small compile-safe provider-first cleanup in remaining TUI/app helper and display hotspots
+- Updated files:
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-model.tsx`
+  - `packages/opencode/src/cli/cmd/tui/context/local.tsx`
+  - `packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx`
+  - `packages/app/src/components/model-selector-state.ts`
+- Applied changes:
+  - `dialog-admin.tsx`
+    - renamed local selection state from `selectedFamily` to `selectedProviderKey`
+    - renamed helper/account-selection locals to `effectiveAccountIdForProviderKey` and `syncProvidersForProviderKey`
+    - updated debug payload wording in the touched paths to prefer `providerKey`
+  - `dialog-model.tsx`
+    - renamed local grouping helpers from family-oriented names to provider-key/group wording
+    - clarified legacy email comment to refer to provider-key normalization
+  - `context/local.tsx`
+    - renamed parsed display locals from `familyId` / `familyProvider` to `providerKey` / `providerKeyInfo`
+  - `prompt/index.tsx`
+    - renamed footer quota selector helper from `currentQuotaFamily` to `currentQuotaProviderKey`
+  - `model-selector-state.ts`
+    - introduced provider-first helper name `providerKeyOf()`
+    - kept `familyOf` as a compatibility alias to avoid broader churn in this batch
+    - renamed internal filtered-model locals to provider-scoped wording
+- Architecture Sync: Verified (No doc changes)
+  - rename-only/local-helper cleanup; no runtime behavior or fallback policy changed
+
+## Follow-up Fix: provider-key terminology cleanup batch 4
+
+- Goal:
+  - continue shrinking remaining local/debug `family` wording in TUI admin and switch safe app-side helper imports to provider-first naming
+- Updated files:
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
+  - `packages/app/src/components/dialog-select-model.tsx`
+  - `packages/app/src/components/dialog-select-model-unpaid.tsx`
+- Applied changes:
+  - `dialog-admin.tsx`
+    - renamed local account lookup vars from `lookupFamily` to `lookupProviderKey`
+    - updated touched debug payloads for account edit/view/delete paths to use `providerKey` wording
+    - kept compatibility child-component props like `family={...}` unchanged where required by existing interfaces
+  - `dialog-select-model.tsx`
+    - switched safe local helper import/usage from `familyOf` to `providerKeyOf`
+    - renamed `targetFamily` / `familyRow` locals to provider-key wording
+  - `dialog-select-model-unpaid.tsx`
+    - switched safe local helper import/usage from `familyOf` to `providerKeyOf`
+- Architecture Sync: Verified (No doc changes)
+  - rename-only/local-helper cleanup; no behavior or routing contract changed
