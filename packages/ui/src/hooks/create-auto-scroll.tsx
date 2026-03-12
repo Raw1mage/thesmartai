@@ -20,9 +20,14 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let settling = false
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   let autoTimer: ReturnType<typeof setTimeout> | undefined
-  let deferredFollowFrame: number | undefined
   let cleanup: (() => void) | undefined
   let auto: { top: number; time: number } | undefined
+  // rAF loop state (no rafId needed — uses loopActive flag)
+  // Track previous scrollHeight for delta-based follow-bottom.
+  // Instead of setting scrollTop to an absolute position (which fights
+  // other scroll sources), we adjust scrollTop by the scrollHeight delta.
+  // This is equivalent to what CSS scroll-anchoring does, but in JS.
+  let lastScrollHeight = 0
 
   const threshold = () => options.bottomThreshold ?? 10
   const followThreshold = () => Math.max(4, threshold())
@@ -97,7 +102,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     }, 250)
   }
 
-  const isAuto = (el: HTMLElement) => {
+  const isAuto = (_el: HTMLElement) => {
     const a = auto
     if (!a) return false
 
@@ -106,7 +111,42 @@ export function createAutoScroll(options: AutoScrollOptions) {
       return false
     }
 
-    return Math.abs(el.scrollTop - a.top) < 2
+    // Time-based only. On iOS, scrollHeight dips can clamp scrollTop to a
+    // value far from our intended position, making position checks unreliable.
+    // User scrolls are already handled by handleWheel (upward wheel/touch)
+    // and handleInteraction (click/tap), so this only needs to guard against
+    // false-positive "user scrolled" detection from our own programmatic scrolls.
+    return true
+  }
+
+  // The primary follow-bottom mechanism during streaming is the handleScroll
+  // correction: when iOS anchor restoration fires a scroll event, we correct
+  // scrollTop synchronously (before paint → flicker-free). The rAF loop below
+  // is a lightweight fallback for edge cases where scroll events don't fire.
+  let loopActive = false
+  const startRafLoop = () => {
+    if (loopActive) return
+    loopActive = true
+    const tick = () => {
+      if (!loopActive) return
+      const el = scroll
+      if (!el || userScrolled() || !active()) {
+        loopActive = false
+        return
+      }
+      const distance = distanceFromBottom(el)
+      if (distance > followThreshold()) {
+        markAuto(el)
+        el.scrollTop = el.scrollHeight - el.clientHeight
+        lastScrollHeight = el.scrollHeight
+      }
+      requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }
+
+  const stopRafLoop = () => {
+    loopActive = false
   }
 
   const scrollToBottomNow = (behavior: ScrollBehavior) => {
@@ -122,27 +162,8 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
     // `scrollTop` assignment bypasses any CSS `scroll-behavior: smooth`.
     el.scrollTop = el.scrollHeight
+    lastScrollHeight = el.scrollHeight
     debug("scroll-apply", { behavior, phase: "after-assignment", ...metrics(el) })
-  }
-
-  const scheduleDeferredFollow = (reason: string) => {
-    if (deferredFollowFrame !== undefined) cancelAnimationFrame(deferredFollowFrame)
-    deferredFollowFrame = requestAnimationFrame(() => {
-      deferredFollowFrame = undefined
-      const el = scroll
-      if (!el) return
-      if (userScrolled()) {
-        debug("deferred-follow-blocked-user", { reason })
-        return
-      }
-      const distance = distanceFromBottom(el)
-      if (distance <= 1) {
-        debug("deferred-follow-skip", { reason, distance })
-        return
-      }
-      debug("deferred-follow", { reason, distance })
-      scrollToBottomNow("auto")
-    })
   }
 
   const scrollToBottom = (force: boolean) => {
@@ -170,8 +191,6 @@ export function createAutoScroll(options: AutoScrollOptions) {
       return
     }
 
-    // For auto-following content we prefer immediate updates to avoid
-    // visible "catch up" animations while content is still settling.
     scrollToBottomNow("auto")
   }
 
@@ -184,6 +203,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     }
     if (userScrolled()) return
 
+    stopRafLoop()
     setMode("free-reading", "user-stop")
     debug("user-stop")
     options.onUserInteracted?.()
@@ -201,6 +221,35 @@ export function createAutoScroll(options: AutoScrollOptions) {
     stop()
   }
 
+  // iOS touch scrolling doesn't fire wheel events, so we track touch
+  // gestures to detect upward swipes → free-reading mode.
+  let touchStartY = 0
+  let touchActive = false
+
+  const handleTouchStart = (e: TouchEvent) => {
+    if (e.touches.length !== 1) return
+    touchStartY = e.touches[0].clientY
+    touchActive = true
+  }
+
+  const handleTouchMove = (e: TouchEvent) => {
+    if (!touchActive || e.touches.length !== 1) return
+    const deltaY = e.touches[0].clientY - touchStartY
+    // deltaY > 0 means finger moved down → content scrolls UP (user reading earlier content)
+    if (deltaY > 10) {
+      const el = scroll
+      const target = e.target instanceof Element ? e.target : undefined
+      const nested = target?.closest("[data-scrollable]")
+      if (el && nested && nested !== el) return
+      touchActive = false
+      stop()
+    }
+  }
+
+  const handleTouchEnd = () => {
+    touchActive = false
+  }
+
   const handleScroll = () => {
     const el = scroll
     if (!el) return
@@ -216,10 +265,32 @@ export function createAutoScroll(options: AutoScrollOptions) {
       return
     }
 
+    // During active streaming, the scroll event can fire from iOS anchor
+    // restoration (which overrides our scrollTop). Rather than ignoring it,
+    // correct scrollTop immediately. The scroll event fires AFTER layout/anchor
+    // restoration but BEFORE paint, so this correction is flicker-free.
+    // User scrolls are handled by handleWheel (upward gesture → free-reading).
+    if (!userScrolled() && active()) {
+      markAuto(el)
+      el.scrollTop = el.scrollHeight - el.clientHeight
+      lastScrollHeight = el.scrollHeight
+      debug("handle-scroll-active-correct", metrics(el))
+      return
+    }
+
+    // In free-reading mode, let the user scroll freely. Don't fight
+    // iOS anchor restoration here — momentum scrolling after touchEnd
+    // is indistinguishable from anchor jumps, and correcting both
+    // makes the experience worse. The user can resume follow-bottom
+    // by scrolling to the bottom.
+    if (userScrolled()) {
+      debug("handle-scroll-free-reading")
+      return
+    }
+
     // Ignore scroll events triggered by our own scrollToBottom calls.
     if (!userScrolled() && isAuto(el)) {
       debug("handle-scroll-auto")
-      scrollToBottom(false)
       return
     }
 
@@ -231,16 +302,6 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (!active()) return
     debug("interaction")
     stop()
-  }
-
-  const updateOverflowAnchor = (_el: HTMLElement) => {
-    // overflow-anchor must be set on the scroller's CHILDREN (not the scroll
-    // container itself) to suppress browser scroll anchoring.
-    // Always disable: browser anchoring fights with both follow-bottom
-    // (ResizeObserver scrollToBottom) and free-reading (anchor snaps to
-    // wrong element), causing oscillation in both modes.
-    const content = store.contentRef
-    if (content) content.style.overflowAnchor = "none"
   }
 
   createResizeObserver(
@@ -258,27 +319,54 @@ export function createAutoScroll(options: AutoScrollOptions) {
         return
       }
       if (userScrolled()) {
+        // Always track scrollHeight even in free-reading mode so that
+        // when the user resumes, the delta doesn't include accumulated
+        // growth during free-reading.
+        if (el) lastScrollHeight = el.scrollHeight
         debug("resize-blocked-user")
         return
       }
-      const distance = el ? distanceFromBottom(el) : Infinity
-      debug("bottom-formula", {
-        reason: "resize-observer",
-        threshold: threshold(),
-        followThreshold: followThreshold(),
-        distance,
-        resumeOnly: options.resumeOnly === true,
-      })
-      if (!options.resumeOnly && (!Number.isFinite(distance) || distance > followThreshold())) {
-        debug("resize-blocked-distance", { distance, followThreshold: followThreshold() })
+
+      if (!el) return
+      const newScrollHeight = el.scrollHeight
+      const delta = newScrollHeight - lastScrollHeight
+      lastScrollHeight = newScrollHeight
+
+      if (delta === 0) {
+        debug("resize-no-delta")
         return
       }
-      // ResizeObserver fires after layout, before paint.
-      // Keep the bottom locked in the same frame to avoid visible
-      // "jump up then catch up" artifacts while streaming content.
-      debug("resize-follow", { distance, followThreshold: followThreshold(), resumeOnly: options.resumeOnly === true })
-      scrollToBottom(false)
-      scheduleDeferredFollow("resize-follow")
+
+      const distance = distanceFromBottom(el)
+      debug("resize-delta", {
+        delta,
+        distance,
+        followThreshold: followThreshold(),
+        resumeOnly: options.resumeOnly === true,
+      })
+
+      markAuto(el)
+
+      if (delta > 0) {
+        // Content grew — adjust scrollTop by the delta to maintain
+        // the same relative position. This is the JS equivalent of
+        // CSS scroll-anchoring: it preserves the viewport position
+        // without setting an absolute scrollTop that can fight other
+        // scroll sources.
+        el.scrollTop += delta
+      }
+
+      // Safety net: if we're far from bottom after the adjustment (or after
+      // a scrollHeight shrink caused by SolidJS re-renders clamping scrollTop),
+      // snap to bottom. This handles the iOS scrollHeight dip scenario where
+      // the browser clamps scrollTop and delta alone can't recover.
+      const remaining = distanceFromBottom(el)
+      if (remaining > followThreshold()) {
+        el.scrollTop = el.scrollHeight - el.clientHeight
+        debug("resize-delta-snap", { delta, remaining, ...metrics(el) })
+      } else {
+        debug("resize-delta-applied", { delta, ...metrics(el) })
+      }
     },
   )
 
@@ -290,11 +378,21 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
       if (working) {
         debug("working-start")
-        if (!userScrolled()) scrollToBottom(true)
+        // Clear any stale message hash so that useSessionHashScroll's
+        // applyHash effect doesn't fight follow-bottom by scrolling to
+        // a specific message during streaming.
+        if (typeof window !== "undefined" && window.location.hash) {
+          window.history.replaceState(null, "", window.location.href.replace(/#.*$/, ""))
+        }
+        if (!userScrolled()) {
+          scrollToBottom(true)
+          startRafLoop()
+        }
         return
       }
 
       debug("working-stop")
+      stopRafLoop()
       settling = true
       settleTimer = setTimeout(() => {
         settling = false
@@ -303,19 +401,18 @@ export function createAutoScroll(options: AutoScrollOptions) {
   )
 
   createEffect(() => {
-    // Track scroll mode and contentRef so we can update overflow anchoring
-    // on the content wrapper (not the scroller itself) once both exist.
     store.mode
-    store.contentRef // re-run when contentRef is set
+    store.contentRef
     const el = scroll
     if (!el) return
-    updateOverflowAnchor(el)
+    // Sync lastScrollHeight when refs change.
+    lastScrollHeight = el.scrollHeight
   })
 
   onCleanup(() => {
+    stopRafLoop()
     if (settleTimer) clearTimeout(settleTimer)
     if (autoTimer) clearTimeout(autoTimer)
-    if (deferredFollowFrame !== undefined) cancelAnimationFrame(deferredFollowFrame)
     if (cleanup) cleanup()
   })
 
@@ -330,22 +427,32 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
       if (!el) return
 
-      updateOverflowAnchor(el)
+      lastScrollHeight = el.scrollHeight
       debug("attach")
       el.addEventListener("wheel", handleWheel, { passive: true })
+      el.addEventListener("touchstart", handleTouchStart, { passive: true })
+      el.addEventListener("touchmove", handleTouchMove, { passive: true })
+      el.addEventListener("touchend", handleTouchEnd, { passive: true })
 
       cleanup = () => {
         el.removeEventListener("wheel", handleWheel)
+        el.removeEventListener("touchstart", handleTouchStart)
+        el.removeEventListener("touchmove", handleTouchMove)
+        el.removeEventListener("touchend", handleTouchEnd)
       }
     },
     contentRef: (el: HTMLElement | undefined) => setStore("contentRef", el),
     handleScroll,
     handleInteraction,
-    pause: stop,
+    pause: () => {
+      stopRafLoop()
+      stop()
+    },
     resume: () => {
       if (userScrolled()) setMode("follow-bottom", "explicit-resume")
       debug("resume")
       scrollToBottom(true)
+      if (active()) startRafLoop()
     },
     scrollToBottom: () => scrollToBottom(false),
     forceScrollToBottom: () => scrollToBottom(true),

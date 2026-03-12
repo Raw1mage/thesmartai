@@ -1565,6 +1565,7 @@ export default function Page() {
     sessionKey,
     sessionID: () => params.id,
     messagesReady,
+    working: () => status().type !== "idle",
     visibleUserMessages,
     turnStart: () => store.turnStart,
     currentMessageId: () => store.messageId,

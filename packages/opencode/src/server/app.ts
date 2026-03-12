@@ -769,7 +769,7 @@ export function createApp(app: Hono): Hono {
       return new Response(file, {
         headers: {
           "Content-Type": contentTypes[ext] || "application/octet-stream",
-          "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
         },
       })
     }

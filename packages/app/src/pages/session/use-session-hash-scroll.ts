@@ -14,6 +14,7 @@ type NewInput = {
   sessionKey: () => string
   sessionID: () => string | undefined
   messagesReady: () => boolean
+  working: () => boolean
   visibleUserMessages: () => UserMessage[]
   turnStart: () => number
   currentMessageId: () => string | undefined
@@ -59,6 +60,7 @@ export const useSessionHashScroll = (rawInput: NewInput | LegacyInput) => {
           sessionKey: () => "legacy",
           sessionID: () => "legacy",
           messagesReady: rawInput.messagesReady,
+          working: () => false,
           visibleUserMessages: rawInput.messages,
           turnStart: rawInput.turnStart,
           currentMessageId: rawInput.activeMessageId,
@@ -208,6 +210,11 @@ export const useSessionHashScroll = (rawInput: NewInput | LegacyInput) => {
       return
     }
 
+    // Skip hash-based scroll during active streaming — the reactive
+    // dependencies (messagesReady, etc.) re-trigger this effect as new
+    // content arrives, and the resulting rAF scroll fights follow-bottom.
+    if (input.working()) return
+
     requestAnimationFrame(() => applyHash("auto"))
   })
 
@@ -221,6 +228,9 @@ export const useSessionHashScroll = (rawInput: NewInput | LegacyInput) => {
     const targetId = pending
     if (!targetId) return
     if (input.currentMessageId() === targetId) return
+
+    // Skip pending-message scroll during active streaming.
+    if (input.working()) return
 
     const msg = messageById().get(targetId)
     if (!msg) return

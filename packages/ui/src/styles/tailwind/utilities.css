@@ -8,6 +8,13 @@
   }
 }
 
+/* Disable browser scroll anchoring on the session scroller.
+   JS handles follow-bottom via delta-based scrollTop adjustment
+   in the ResizeObserver (works on all platforms including iOS). */
+.session-scroller {
+  overflow-anchor: none;
+}
+
 @utility session-scroller {
   &::-webkit-scrollbar {
     width: 10px;
