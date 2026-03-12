@@ -81,6 +81,8 @@ export namespace Account {
   export const FamilyData = ProviderData
   /** @deprecated Use ProviderData instead */
   export type FamilyData = ProviderData
+  export const AccountProviderData = ProviderData
+  export type AccountProviderData = ProviderData
 
   // Provider-first compatibility aliases
   export const knownProviders = knownFamilies

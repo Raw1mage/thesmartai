@@ -794,3 +794,20 @@
   - added a selector-state test that exercises the provider-key alias directly
 - Architecture Sync: Verified (No doc changes)
   - L2 helper-alias adoption only; no runtime behavior or compatibility contract changed
+
+## Follow-up Fix: provider-key terminology cleanup batch 14
+
+- Goal:
+  - complete step-2 with low-risk provider-first alias adoption in shared core helper files while preserving compatibility names
+- Updated files:
+  - `packages/opencode/src/account/index.ts`
+  - `packages/opencode/src/provider/canonical-family-source.ts`
+- Applied changes:
+  - `account/index.ts`
+    - added provider-first `AccountProviderData` aliases alongside the existing `ProviderData` / deprecated `FamilyData` exports
+  - `canonical-family-source.ts`
+    - added provider-first aliases `CanonicalProviderRow`, `buildCanonicalProviderRows`, and `resolveCanonicalRuntimeProviderByKey`
+    - renamed internal grouping locals from family-oriented names to provider-key wording
+    - preserved compatibility row field names and existing exports to avoid contract churn
+- Architecture Sync: Verified (No doc changes)
+  - L2 shared-helper alias adoption only; no runtime behavior or public/persisted contract changed

@@ -12,6 +12,8 @@ export type CanonicalProviderKeyRow = {
   inModelsDev: boolean
 }
 
+export type CanonicalProviderRow = CanonicalProviderKeyRow
+
 /** @deprecated Use CanonicalProviderKeyRow instead */
 export type CanonicalProviderFamilyRow = CanonicalProviderKeyRow
 
@@ -55,54 +57,54 @@ export function buildCanonicalProviderFamilyRows(
       .map((id) => normalizeCanonicalProviderFamily(id))
       .filter((id): id is string => !!id),
   )
-  const connectedByFamily = new Map<string, string[]>()
-  const familyUniverse = new Set<string>()
+  const connectedByProviderKey = new Map<string, string[]>()
+  const providerKeyUniverse = new Set<string>()
 
-  for (const family of Object.keys(input.accountFamilies ?? {})) {
-    const normalized = normalizeCanonicalProviderFamily(family)
+  for (const providerKey of Object.keys(input.accountFamilies ?? {})) {
+    const normalized = normalizeCanonicalProviderFamily(providerKey)
     if (!normalized || excludedFamilies.has(normalized)) continue
-    familyUniverse.add(normalized)
+    providerKeyUniverse.add(normalized)
   }
 
   for (const providerId of input.connectedProviderIds ?? []) {
     const normalized = normalizeCanonicalProviderFamily(providerId)
     if (!normalized || excludedFamilies.has(normalized)) continue
-    familyUniverse.add(normalized)
-    const existing = connectedByFamily.get(normalized) ?? []
+    providerKeyUniverse.add(normalized)
+    const existing = connectedByProviderKey.get(normalized) ?? []
     existing.push(providerId)
-    connectedByFamily.set(normalized, existing)
+    connectedByProviderKey.set(normalized, existing)
   }
 
   for (const providerId of input.modelsDevProviderIds ?? []) {
     const normalized = normalizeCanonicalProviderFamily(providerId)
     if (!normalized || excludedFamilies.has(normalized)) continue
-    familyUniverse.add(normalized)
+    providerKeyUniverse.add(normalized)
   }
 
   for (const providerId of input.disabledProviderIds ?? []) {
     const normalized = normalizeCanonicalProviderFamily(providerId)
     if (!normalized || excludedFamilies.has(normalized)) continue
-    familyUniverse.add(normalized)
+    providerKeyUniverse.add(normalized)
   }
 
-  return Array.from(familyUniverse)
-    .map((family) => {
-      const familyData = input.accountFamilies?.[family]
-      const accountCount = familyData?.accounts ? Object.keys(familyData.accounts).length : 0
-      const activeCount = familyData?.activeAccount ? 1 : 0
-      const connectedIds = connectedByFamily.get(family) ?? []
+  return Array.from(providerKeyUniverse)
+    .map((providerKey) => {
+      const providerData = input.accountFamilies?.[providerKey]
+      const accountCount = providerData?.accounts ? Object.keys(providerData.accounts).length : 0
+      const activeCount = providerData?.activeAccount ? 1 : 0
+      const connectedIds = connectedByProviderKey.get(providerKey) ?? []
       const inModelsDev = (input.modelsDevProviderIds ?? []).some(
-        (id) => normalizeCanonicalProviderFamily(id) === family,
+        (id) => normalizeCanonicalProviderFamily(id) === providerKey,
       )
-      const inAccounts = !!familyData
+      const inAccounts = !!providerData
       const inConnectedProviders = connectedIds.length > 0
 
       return {
-        family,
-        label: Account.getProviderLabel(family),
+        family: providerKey,
+        label: Account.getProviderLabel(providerKey),
         accountCount,
         activeCount,
-        enabled: !disabledFamilies.has(family),
+        enabled: !disabledFamilies.has(providerKey),
         configured: inAccounts || inConnectedProviders,
         inAccounts,
         inConnectedProviders,
@@ -113,8 +115,10 @@ export function buildCanonicalProviderFamilyRows(
 }
 
 export const buildCanonicalProviderKeyRows = buildCanonicalProviderFamilyRows
+export const buildCanonicalProviderRows = buildCanonicalProviderFamilyRows
 export const normalizeCanonicalProviderKey = normalizeCanonicalProviderFamily
 export const resolveCanonicalRuntimeProviderKey = resolveCanonicalRuntimeProviderId
+export const resolveCanonicalRuntimeProviderByKey = resolveCanonicalRuntimeProviderId
 
 export function resolveCanonicalRuntimeProviderId(input: {
   family: string
