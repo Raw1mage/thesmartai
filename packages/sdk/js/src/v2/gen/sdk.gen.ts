@@ -6728,11 +6728,12 @@ export class Account extends HeyApiClient {
   /**
    * Trigger login
    *
-   * Get the login URL for a provider family.
+   * Get the login URL for a provider key. The legacy `family` path parameter is still accepted, and `providerKey` is an additive alias.
    */
   public login<ThrowOnError extends boolean = false>(
     parameters: {
-      family: string
+      family?: string
+      providerKey?: string
       directory?: string
     },
     options?: Options<never, ThrowOnError>,
@@ -6744,6 +6745,7 @@ export class Account extends HeyApiClient {
           args: [
             { in: "path", key: "family" },
             { in: "query", key: "directory" },
+            { in: "query", key: "providerKey" },
           ],
         },
       ],
@@ -6751,18 +6753,36 @@ export class Account extends HeyApiClient {
     return (options?.client ?? this.client).get<AccountLoginResponses, unknown, ThrowOnError>({
       url: "/api/v2/account/auth/{family}/login",
       ...options,
-      ...params,
+      ...buildClientParams(
+        [
+          {
+            ...parameters,
+            family: parameters.family ?? parameters.providerKey,
+            providerKey: parameters.providerKey ?? parameters.family,
+          },
+        ],
+        [
+          {
+            args: [
+              { in: "path", key: "family" },
+              { in: "query", key: "directory" },
+              { in: "query", key: "providerKey" },
+            ],
+          },
+        ],
+      ),
     })
   }
 
   /**
    * Remove account
    *
-   * Remove a specific account.
+   * Remove a specific account under a provider key. The legacy `family` path parameter is still accepted, and `providerKey` is an additive alias.
    */
   public remove<ThrowOnError extends boolean = false>(
     parameters: {
-      family: string
+      family?: string
+      providerKey?: string
       accountId: string
       directory?: string
     },
@@ -6776,6 +6796,7 @@ export class Account extends HeyApiClient {
             { in: "path", key: "family" },
             { in: "path", key: "accountId" },
             { in: "query", key: "directory" },
+            { in: "query", key: "providerKey" },
           ],
         },
       ],
@@ -6783,18 +6804,37 @@ export class Account extends HeyApiClient {
     return (options?.client ?? this.client).delete<AccountRemoveResponses, AccountRemoveErrors, ThrowOnError>({
       url: "/api/v2/account/{family}/{accountId}",
       ...options,
-      ...params,
+      ...buildClientParams(
+        [
+          {
+            ...parameters,
+            family: parameters.family ?? parameters.providerKey,
+            providerKey: parameters.providerKey ?? parameters.family,
+          },
+        ],
+        [
+          {
+            args: [
+              { in: "path", key: "family" },
+              { in: "path", key: "accountId" },
+              { in: "query", key: "directory" },
+              { in: "query", key: "providerKey" },
+            ],
+          },
+        ],
+      ),
     })
   }
 
   /**
    * Update account metadata
    *
-   * Update editable account metadata such as display name.
+   * Update editable account metadata under a provider key. The legacy `family` path parameter is still accepted, and `providerKey` is an additive alias.
    */
   public update<ThrowOnError extends boolean = false>(
     parameters: {
-      family: string
+      family?: string
+      providerKey?: string
       accountId: string
       directory?: string
       name?: string
@@ -6810,6 +6850,7 @@ export class Account extends HeyApiClient {
             { in: "path", key: "accountId" },
             { in: "query", key: "directory" },
             { in: "body", key: "name" },
+            { in: "body", key: "providerKey" },
           ],
         },
       ],
@@ -6817,11 +6858,49 @@ export class Account extends HeyApiClient {
     return (options?.client ?? this.client).patch<AccountUpdateResponses, AccountUpdateErrors, ThrowOnError>({
       url: "/api/v2/account/{family}/{accountId}",
       ...options,
-      ...params,
+      ...buildClientParams(
+        [
+          {
+            ...parameters,
+            family: parameters.family ?? parameters.providerKey,
+            providerKey: parameters.providerKey ?? parameters.family,
+          },
+        ],
+        [
+          {
+            args: [
+              { in: "path", key: "family" },
+              { in: "path", key: "accountId" },
+              { in: "query", key: "directory" },
+              { in: "body", key: "name" },
+              { in: "body", key: "providerKey" },
+            ],
+          },
+        ],
+      ),
       headers: {
         "Content-Type": "application/json",
         ...options?.headers,
-        ...params.headers,
+        ...buildClientParams(
+          [
+            {
+              ...parameters,
+              family: parameters.family ?? parameters.providerKey,
+              providerKey: parameters.providerKey ?? parameters.family,
+            },
+          ],
+          [
+            {
+              args: [
+                { in: "path", key: "family" },
+                { in: "path", key: "accountId" },
+                { in: "query", key: "directory" },
+                { in: "body", key: "name" },
+                { in: "body", key: "providerKey" },
+              ],
+            },
+          ],
+        ).headers,
       },
     })
   }

@@ -6104,10 +6104,11 @@ export type AccountSetActiveResponse = AccountSetActiveResponses[keyof AccountSe
 export type AccountLoginData = {
   body?: never
   path: {
-    family: string
+    family?: string
   }
   query?: {
     directory?: string
+    providerKey?: string
   }
   url: "/api/v2/account/auth/{family}/login"
 }
@@ -6122,11 +6123,12 @@ export type AccountLoginResponses = {
 export type AccountRemoveData = {
   body?: never
   path: {
-    family: string
+    family?: string
     accountId: string
   }
   query?: {
     directory?: string
+    providerKey?: string
   }
   url: "/api/v2/account/{family}/{accountId}"
 }
@@ -6156,9 +6158,10 @@ export type AccountRemoveResponse = AccountRemoveResponses[keyof AccountRemoveRe
 export type AccountUpdateData = {
   body?: {
     name: string
+    providerKey?: string
   }
   path: {
-    family: string
+    family?: string
     accountId: string
   }
   query?: {

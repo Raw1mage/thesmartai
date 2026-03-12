@@ -373,6 +373,21 @@
 - Notes:
   - server now rejects mismatched `{ path family, body providerKey }` pairs with `ACCOUNT_PROVIDER_MISMATCH` instead of silently accepting ambiguous routing
   - this remains additive/non-breaking because existing callers can keep using path `family` only
+
+## Follow-up Slice: remaining account-flow providerKey compatibility
+
+- Scope:
+  - extend additive provider-key compatibility beyond set-active into login/remove/update flows
+  - keep all legacy `family` path params and route shapes intact
+- Updated files:
+  - `packages/opencode/src/server/routes/account.ts`
+  - `packages/sdk/js/src/v2/gen/sdk.gen.ts`
+  - `packages/sdk/js/src/v2/gen/types.gen.ts`
+- Notes:
+  - `account.login` now accepts optional query `providerKey` alias alongside legacy path `family`
+  - `account.remove` now accepts optional query `providerKey` alias alongside legacy path `family`
+  - `account.update` now accepts optional body `providerKey` alias alongside legacy path `family`
+  - server applies the same mismatch guard (`ACCOUNT_PROVIDER_MISMATCH`) so additive aliases cannot silently target a different provider than the existing route path
 - `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (provider-key storage helper migration)
 - `bunx eslint /home/pkcs12/projects/opencode/packages/app/src/components/dialog-select-model.tsx /home/pkcs12/projects/opencode/packages/app/src/components/prompt-input.tsx /home/pkcs12/projects/opencode/packages/app/src/context/global-sync/bootstrap.ts /home/pkcs12/projects/opencode/packages/app/src/context/global-sync.tsx` ✅
 - `bunx tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit` ✅ (web provider-first compatibility read cleanup)

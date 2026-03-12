@@ -201,15 +201,28 @@ export const AccountRoutes = lazy(() =>
       describeRoute({
         summary: "Trigger login",
         description:
-          "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility.",
+          "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         operationId: "account.login",
         responses: {
           200: { description: "Login URL info" },
         },
       }),
       validator("param", z.object({ family: z.string() })),
+      validator("query", z.object({ providerKey: z.string().optional() })),
       async (c) => {
         const providerKey = c.req.valid("param").family
+        const { providerKey: requestedProviderKey } = c.req.valid("query")
+
+        if (requestedProviderKey && requestedProviderKey !== providerKey) {
+          return c.json(
+            {
+              code: "ACCOUNT_PROVIDER_MISMATCH",
+              message: `providerKey query does not match route provider: ${requestedProviderKey} !== ${providerKey}`,
+            },
+            400,
+          )
+        }
+
         const authMethod = await Plugin.getAuth(providerKey)
         if (!authMethod || !authMethod.methods[0]?.authorize) {
           return c.json({ error: "No auth method for provider key" }, 400)
@@ -224,7 +237,7 @@ export const AccountRoutes = lazy(() =>
       describeRoute({
         summary: "Remove account",
         description:
-          "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility.",
+          "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         operationId: "account.remove",
         responses: {
           200: {
@@ -239,8 +252,20 @@ export const AccountRoutes = lazy(() =>
         },
       }),
       validator("param", z.object({ family: z.string(), accountId: z.string() })),
+      validator("query", z.object({ providerKey: z.string().optional() })),
       async (c) => {
         const { family: providerKey, accountId } = c.req.valid("param")
+        const { providerKey: requestedProviderKey } = c.req.valid("query")
+
+        if (requestedProviderKey && requestedProviderKey !== providerKey) {
+          return c.json(
+            {
+              code: "ACCOUNT_PROVIDER_MISMATCH",
+              message: `providerKey query does not match route provider: ${requestedProviderKey} !== ${providerKey}`,
+            },
+            400,
+          )
+        }
 
         const username = RequestUser.username()
         if (username && UserDaemonManager.routeAccountMutationEnabled()) {
@@ -263,7 +288,7 @@ export const AccountRoutes = lazy(() =>
       describeRoute({
         summary: "Update account metadata",
         description:
-          "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility.",
+          "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         operationId: "account.update",
         responses: {
           200: {
@@ -282,11 +307,23 @@ export const AccountRoutes = lazy(() =>
         "json",
         z.object({
           name: z.string().min(1),
+          providerKey: z.string().optional(),
         }),
       ),
       async (c) => {
         const { family: providerKey, accountId } = c.req.valid("param")
-        const { name } = c.req.valid("json")
+        const { name, providerKey: requestedProviderKey } = c.req.valid("json")
+
+        if (requestedProviderKey && requestedProviderKey !== providerKey) {
+          return c.json(
+            {
+              code: "ACCOUNT_PROVIDER_MISMATCH",
+              message: `providerKey body does not match route provider: ${requestedProviderKey} !== ${providerKey}`,
+            },
+            400,
+          )
+        }
+
         const trimmedName = name.trim()
         if (!trimmedName) {
           return c.json(
