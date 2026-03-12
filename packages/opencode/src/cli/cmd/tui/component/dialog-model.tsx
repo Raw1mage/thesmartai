@@ -64,10 +64,9 @@ export function DialogModel(props: { providerId?: string }) {
 
   const normalizeProviderForRotation = (providerId: string) => {
     const normalizedProviderKey = providerKey(providerId)
-    // Fix: if provider key is an email (e.g. from legacy account ID), map to known provider
+    // Normalize legacy account-like provider IDs into their provider key when possible.
     if (normalizedProviderKey && normalizedProviderKey.includes("@")) {
       if (normalizedProviderKey.endsWith("gmail.com")) return "google-api"
-      // Default fallback for other emails if needed
     }
     return normalizedProviderKey ?? providerId
   }

@@ -747,3 +747,21 @@
   - documented `getActiveAccountForProviderKey` as the preferred provider-first alias while keeping the legacy export intact
 - Architecture Sync: Verified (No doc changes)
   - documentation/comment-only cleanup; no runtime behavior or API contract changed
+
+## Follow-up Fix: provider-key terminology cleanup batch 11
+
+- Goal:
+  - keep this pass L1-only by trimming remaining local variable/comment wording in prioritized TUI hotspots
+- Updated files:
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-model.tsx`
+  - `packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx`
+- Applied changes:
+  - `dialog-admin.tsx`
+    - renamed local root-list variable `providers` to `providerEntries` to better reflect grouped provider-key members
+  - `dialog-model.tsx`
+    - tightened local normalization comment to describe provider-key handling without fallback-oriented wording
+  - `prompt/index.tsx`
+    - clarified that footer account-label lookup is best-effort display metadata only
+- Architecture Sync: Verified (No doc changes)
+  - L1-only cleanup: local vars/comments only; no behavior or contract changes

@@ -222,6 +222,7 @@ export function Prompt(props: PromptProps) {
           label: Account.getDisplayName(selectedAccountId, info, providerId) || selectedAccountId,
         }
       } catch {
+        // Footer account metadata is best-effort display state only.
         return undefined
       }
     },
@@ -1160,7 +1161,9 @@ export function Prompt(props: PromptProps) {
     const next = !autonomousEnabled()
     setLocalAutonomousOverride(next)
     toast.show({
-      message: next ? "Autonomous mode — agent will continue working after each reply" : "Manual mode — agent waits for your input",
+      message: next
+        ? "Autonomous mode — agent will continue working after each reply"
+        : "Manual mode — agent waits for your input",
       variant: next ? "success" : "info",
     })
   }
@@ -1412,15 +1415,7 @@ export function Prompt(props: PromptProps) {
               <Show when={store.mode === "normal"}>
                 <box flexDirection="row" gap={1}>
                   <box onMouseUp={toggleAutonomous} flexShrink={0}>
-                    <text
-                      fg={
-                        autonomousEnabled()
-                          ? theme.success
-                          : keybind.leader
-                            ? theme.textMuted
-                            : theme.text
-                      }
-                    >
+                    <text fg={autonomousEnabled() ? theme.success : keybind.leader ? theme.textMuted : theme.text}>
                       <Show when={autonomousEnabled()} fallback={footerProviderLabel()}>
                         <span style={{ bold: true }}>{footerProviderLabel()}</span>
                       </Show>

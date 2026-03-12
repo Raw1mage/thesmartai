@@ -1272,7 +1272,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
       for (const providerRow of canonicalProviders()) {
         const providerKey = providerRow.family
-        const providers = groupedProviders().get(providerKey) || []
+        const providerEntries = groupedProviders().get(providerKey) || []
         const providerData = coreAll()?.[providerKey]
         const allIds = providerData ? Object.keys(providerData.accounts || {}) : []
         // Show all accounts that have real data — don't hide "generic" IDs
@@ -1290,7 +1290,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
         const shouldShow = showHidden() ? true : !providerDisabled
         if (!shouldShow) continue
 
-        const activeCount = providerRow.activeCount || providers.filter((p) => p.active).length
+        const activeCount = providerRow.activeCount || providerEntries.filter((p) => p.active).length
 
         const enabled = providerRow.enabled
 
