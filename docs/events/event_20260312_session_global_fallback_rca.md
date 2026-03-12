@@ -388,6 +388,21 @@
   - `account.remove` now accepts optional query `providerKey` alias alongside legacy path `family`
   - `account.update` now accepts optional body `providerKey` alias alongside legacy path `family`
   - server applies the same mismatch guard (`ACCOUNT_PROVIDER_MISMATCH`) so additive aliases cannot silently target a different provider than the existing route path
+
+## Follow-up Slice: quota/list providerKey response compatibility
+
+- Scope:
+  - extend additive provider-first docs/types to quota and list response aliases
+  - keep legacy `family` / `families` response fields intact
+  - simplify one remaining app read path to clearly prefer `providers ?? families`
+- Updated files:
+  - `packages/sdk/js/src/v2/gen/types.gen.ts`
+  - `packages/sdk/js/src/v2/gen/sdk.gen.ts`
+  - `packages/app/src/components/dialog-select-model.tsx`
+- Notes:
+  - quota response typing now exposes canonical `providerKey` while preserving legacy `family`
+  - `/api/v2/accounts` list response typing now exposes canonical `providers` while preserving legacy `families`
+  - app model-manager account payload read now uses a single provider-first compatibility extraction path for readability and lower migration drift risk
 - `bunx tsc -p /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json --noEmit` ✅ (provider-key storage helper migration)
 - `bunx eslint /home/pkcs12/projects/opencode/packages/app/src/components/dialog-select-model.tsx /home/pkcs12/projects/opencode/packages/app/src/components/prompt-input.tsx /home/pkcs12/projects/opencode/packages/app/src/context/global-sync/bootstrap.ts /home/pkcs12/projects/opencode/packages/app/src/context/global-sync.tsx` ✅
 - `bunx tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit` ✅ (web provider-first compatibility read cleanup)

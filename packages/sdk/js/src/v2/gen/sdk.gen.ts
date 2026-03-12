@@ -6598,7 +6598,7 @@ export class Account extends HeyApiClient {
   /**
    * Get quota hint for current model
    *
-   * Returns provider-specific quota hint text for prompt footer metadata.
+   * Returns provider-specific quota hint text for prompt footer metadata, including canonical `providerKey` plus legacy `family` compatibility.
    */
   public quotaHint<ThrowOnError extends boolean = false>(
     parameters: {
@@ -6944,7 +6944,7 @@ export class Account extends HeyApiClient {
   /**
    * List all accounts
    *
-   * Get a list of all configured accounts grouped by provider family.
+   * Get a list of all configured accounts grouped by provider key, with legacy `families` compatibility.
    */
   public listAll2<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -7101,7 +7101,7 @@ export class Account extends HeyApiClient {
   /**
    * Get quota hint for current model
    *
-   * Returns provider-specific quota hint text for prompt footer metadata.
+   * Returns provider-specific quota hint text for prompt footer metadata, including canonical `providerKey` plus legacy `family` compatibility.
    */
   public quotaHint3<ThrowOnError extends boolean = false>(
     parameters: {

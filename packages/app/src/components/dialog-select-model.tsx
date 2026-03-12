@@ -1024,14 +1024,15 @@ export const DialogSelectModel: Component<{
 
   const effectiveDisabledProviders = createMemo(() => globalSync.configActions.disabledProviders())
 
-  const accountProviders = createMemo(
-    () =>
-      ((accountInfo.latest as { providers?: Record<string, unknown>; families?: Record<string, unknown> } | undefined)
-        ?.providers ??
-        (accountInfo.latest as { providers?: Record<string, unknown>; families?: Record<string, unknown> } | undefined)
-          ?.families ??
-        {}) as Record<string, { activeAccount?: string; accounts?: Record<string, Record<string, unknown>> }>,
-  )
+  const accountProviders = createMemo(() => {
+    const payload = accountInfo.latest as
+      | { providers?: Record<string, unknown>; families?: Record<string, unknown> }
+      | undefined
+    return (payload?.providers ?? payload?.families ?? {}) as Record<
+      string,
+      { activeAccount?: string; accounts?: Record<string, Record<string, unknown>> }
+    >
+  })
 
   const providerStatus = createMemo(() => {
     const map = new Map<string, string>()

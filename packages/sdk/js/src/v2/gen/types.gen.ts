@@ -5956,6 +5956,10 @@ export type AccountQuotaHintResponses = {
    */
   200: {
     providerId: string
+    providerKey: string
+    /**
+     * Legacy compatibility alias for providerKey
+     */
     family: string
     accountId?: string
     hint?: string
@@ -6211,6 +6215,10 @@ export type AccountQuotaHint2Responses = {
    */
   200: {
     providerId: string
+    providerKey: string
+    /**
+     * Legacy compatibility alias for providerKey
+     */
     family: string
     accountId?: string
     hint?: string
@@ -6230,9 +6238,50 @@ export type AccountListAll2Data = {
 
 export type AccountListAll2Responses = {
   /**
-   * List of accounts by family
+   * List of accounts by provider key, with legacy families alias
    */
   200: {
+    providers: {
+      [key: string]: {
+        activeAccount?: string
+        accounts: {
+          [key: string]:
+            | {
+                type: "api"
+                name: string
+                apiKey: string
+                addedAt: number
+                projectId?: string
+                metadata?: {
+                  [key: string]: unknown
+                }
+              }
+            | {
+                type: "subscription"
+                name: string
+                email?: string
+                refreshToken: string
+                accessToken?: string
+                expiresAt?: number
+                projectId?: string
+                managedProjectId?: string
+                accountId?: string
+                addedAt: number
+                metadata?: {
+                  [key: string]: unknown
+                }
+                rateLimitResetTimes?: {
+                  [key: string]: number
+                }
+                coolingDownUntil?: number
+                cooldownReason?: string
+                fingerprint?: {
+                  [key: string]: unknown
+                }
+              }
+        }
+      }
+    }
     families: {
       [key: string]: {
         activeAccount?: string
