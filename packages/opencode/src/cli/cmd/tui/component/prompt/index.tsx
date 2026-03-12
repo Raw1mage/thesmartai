@@ -837,6 +837,7 @@ export function Prompt(props: PromptProps) {
     // Capture mode before it gets reset
     const currentMode = store.mode
     const variant = local.model.variant.current(props.sessionID)
+    const autonomous = autonomousEnabled() || undefined
 
     if (store.mode === "shell") {
       sdk.client.session.shell({
@@ -893,6 +894,7 @@ export function Prompt(props: PromptProps) {
           agent: local.agent.current()?.name || "agent",
           model: selectedModel,
           variant,
+          autonomous,
           parts: [
             {
               id: Identifier.ascending("part"),
@@ -1129,16 +1131,39 @@ export function Prompt(props: PromptProps) {
     return undefined
   })
 
-  const footerModelSummary = createMemo(() => {
-    const provider = local.model.parsed().provider
+  const footerProviderLabel = createMemo(() => local.model.parsed().provider)
+
+  const footerModelRest = createMemo(() => {
     const model = local.model.parsed().model
-    if (disableFooterMeta) return Locale.truncate(`${provider}  ${model}`, 110)
+    if (disableFooterMeta) return model
     const account = activeAccountLabel() || "--"
     const quota = quotaHint()
-    const base = `${provider}  ${model}  ${account}`
-    const withQuota = quota ? `${base}  ${quota}` : base
-    return Locale.truncate(withQuota, 110)
+    const base = `${model}  ${account}`
+    return quota ? `${base}  ${quota}` : base
   })
+
+  const serverAutonomous = createMemo(() => {
+    const s = sync.session.get(props.sessionID ?? "") as
+      | { workflow?: { autonomous?: { enabled?: boolean } } }
+      | undefined
+    return !!s?.workflow?.autonomous?.enabled
+  })
+
+  const [localAutonomousOverride, setLocalAutonomousOverride] = createSignal<boolean | undefined>(undefined)
+
+  const autonomousEnabled = createMemo(() => {
+    const local = localAutonomousOverride()
+    return local !== undefined ? local : serverAutonomous()
+  })
+
+  const toggleAutonomous = () => {
+    const next = !autonomousEnabled()
+    setLocalAutonomousOverride(next)
+    toast.show({
+      message: next ? "Autonomous mode — agent will continue working after each reply" : "Manual mode — agent waits for your input",
+      variant: next ? "success" : "info",
+    })
+  }
 
   return (
     <>
@@ -1386,13 +1411,28 @@ export function Prompt(props: PromptProps) {
               </Show>
               <Show when={store.mode === "normal"}>
                 <box flexDirection="row" gap={1}>
+                  <box onMouseUp={toggleAutonomous} flexShrink={0}>
+                    <text
+                      fg={
+                        autonomousEnabled()
+                          ? theme.success
+                          : keybind.leader
+                            ? theme.textMuted
+                            : theme.text
+                      }
+                    >
+                      <Show when={autonomousEnabled()} fallback={footerProviderLabel()}>
+                        <span style={{ bold: true }}>{footerProviderLabel()}</span>
+                      </Show>
+                    </text>
+                  </box>
                   <text
                     flexShrink={0}
                     fg={keybind.leader ? theme.textMuted : theme.text}
                     overflow="hidden"
                     wrapMode="none"
                   >
-                    {footerModelSummary()}
+                    {footerModelRest()}
                   </text>
                   <Show when={showVariant()}>
                     <text fg={theme.textMuted}>·</text>

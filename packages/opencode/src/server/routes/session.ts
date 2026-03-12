@@ -21,6 +21,7 @@ import { lazy } from "../../util/lazy"
 import { RequestUser } from "@/runtime/request-user"
 import { UserDaemonManager } from "../user-daemon"
 import { debugCheckpoint } from "@/util/debug"
+import { enqueueAutonomousContinue } from "@/session/workflow-runner"
 
 const log = Log.create({ service: "server" })
 const SESSION_ROUTE_DEBUG_ENABLED = false
@@ -541,6 +542,100 @@ export const SessionRoutes = lazy(() =>
           },
           { touch: false },
         )
+
+        return c.json(updatedSession)
+      },
+    )
+    .post(
+      "/:sessionID/autonomous",
+      describeRoute({
+        summary: "Toggle autonomous session mode",
+        description:
+          "Enable or disable autonomous continuation for a session, and optionally enqueue an immediate continue turn.",
+        operationId: "session.autonomous",
+        responses: {
+          200: {
+            description: "Updated autonomous workflow state",
+            content: {
+              "application/json": {
+                schema: resolver(Session.Info),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator(
+        "json",
+        z.object({
+          enabled: z.boolean(),
+          enqueue: z.boolean().optional(),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+
+        const username = RequestUser.username()
+        if (username && UserDaemonManager.routeSessionMutationEnabled()) {
+          const response = await UserDaemonManager.callSessionAutonomous<Session.Info>(username, sessionID, body)
+          if (response.ok && response.data) return c.json(response.data)
+          return c.json(
+            {
+              code: response.ok ? "DAEMON_INVALID_PAYLOAD" : response.error.code,
+              message: response.ok ? "daemon session.autonomous payload is empty" : response.error.message,
+            },
+            503,
+          )
+        }
+
+        const session = await Session.get(sessionID)
+        const workflow = session.workflow ?? Session.defaultWorkflow(session.time.updated)
+        const updatedSession = await Session.update(
+          sessionID,
+          (draft) => {
+            const current = draft.workflow ?? Session.defaultWorkflow(draft.time.updated)
+            draft.workflow = {
+              ...current,
+              autonomous: Session.mergeAutonomousPolicy(current.autonomous, {
+                enabled: body.enabled,
+              }),
+              state: body.enabled
+                ? current.state === "completed"
+                  ? "idle"
+                  : current.state
+                : current.state === "running"
+                  ? "waiting_user"
+                  : current.state,
+              stopReason: body.enabled ? undefined : current.stopReason,
+              updatedAt: Date.now(),
+            }
+          },
+          { touch: false },
+        )
+
+        if (body.enabled && body.enqueue !== false) {
+          let lastUser: MessageV2.User | undefined
+          for await (const message of MessageV2.stream(sessionID)) {
+            if (message.info.role === "user") lastUser = message.info as MessageV2.User
+          }
+          if (!lastUser) {
+            throw new Error(`no user message found for autonomous continuation: ${sessionID}`)
+          }
+          if (SessionStatus.get(sessionID).type === "idle") {
+            await enqueueAutonomousContinue({
+              sessionID,
+              user: lastUser,
+              roundCount: workflow.lastRunAt ? 1 : 0,
+            })
+          }
+        }
 
         return c.json(updatedSession)
       },

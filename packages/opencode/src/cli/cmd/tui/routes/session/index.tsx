@@ -1943,6 +1943,49 @@ function Task(props: ToolProps<typeof TaskTool>) {
   })
 
   const current = createMemo(() => tools().findLast((x) => x.state.status !== "pending"))
+
+  // Latest activity from child session (including reasoning/text)
+  const latestStep = createMemo(() => {
+    const sessionID = props.metadata.sessionId
+    if (!sessionID) return undefined
+    const msgs = (sync.data.message[sessionID] ?? []).filter((m) => m.role === "assistant")
+    for (let mi = msgs.length - 1; mi >= 0; mi--) {
+      const parts = sync.data.part[msgs[mi].id] ?? []
+      for (let pi = parts.length - 1; pi >= 0; pi--) {
+        const part = parts[pi]
+        if (!part) continue
+        if (part.type === "tool") {
+          const tp = part as ToolPart
+          const st = tp.state?.status ?? "pending"
+          if (st === "completed") continue
+          const input = tp.state && "input" in tp.state ? tp.state.input : undefined
+          return { tool: tp.tool, input, status: st }
+        }
+        if (part.type === "reasoning") return { status: "reasoning" as const }
+        if (part.type === "text") return { status: "responding" as const }
+      }
+    }
+    return undefined
+  })
+
+  const stepLabel = createMemo(() => {
+    const step = latestStep()
+    if (!step) return undefined
+    if (step.status === "reasoning") return "Thinking..."
+    if (step.status === "responding") return "Writing..."
+    if ("tool" in step && step.tool) {
+      const name = Locale.titlecase(step.tool)
+      const input = step.input as Record<string, unknown> | undefined
+      const detail =
+        input?.filePath ?? input?.file_path ?? input?.pattern ?? input?.query ?? input?.description ?? input?.url ?? input?.path
+      if (detail && typeof detail === "string") {
+        const short = detail.length > 40 ? "..." + detail.slice(-37) : detail
+        return `${name} · ${short}`
+      }
+      return name
+    }
+    return undefined
+  })
   const color = createMemo(() => local.agent.color(props.input.subagent_type ?? "unknown"))
   const running = createMemo(() => props.part.state.status === "running")
   const timers = createTimerCoordinator("route.session.task-tool")
@@ -1980,17 +2023,22 @@ function Task(props: ToolProps<typeof TaskTool>) {
             <text style={{ fg: theme.textMuted }}>
               {props.input.description} ({tools().length} toolcalls){elapsed()}
             </text>
-            <Show when={current()}>
-              {(item) => {
-                const state = item().state
-                const title = "title" in state && typeof state.title === "string" ? state.title : ""
-                return (
-                  <text style={{ fg: item().state.status === "error" ? theme.error : theme.textMuted }}>
-                    └ {Locale.titlecase(item().tool)} {title}
-                  </text>
-                )
-              }}
-            </Show>
+            <Switch>
+              <Match when={running() && stepLabel()}>
+                <text style={{ fg: theme.textMuted }}>└ {stepLabel()}</text>
+              </Match>
+              <Match when={current()}>
+                {(item) => {
+                  const state = item().state
+                  const title = "title" in state && typeof state.title === "string" ? state.title : ""
+                  return (
+                    <text style={{ fg: item().state.status === "error" ? theme.error : theme.textMuted }}>
+                      └ {Locale.titlecase(item().tool)} {title}
+                    </text>
+                  )
+                }}
+              </Match>
+            </Switch>
           </box>
           <Show when={props.metadata.sessionId}>
             <text fg={theme.text}>

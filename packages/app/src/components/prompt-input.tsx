@@ -1,4 +1,5 @@
 import { useFilteredList } from "@opencode-ai/ui/hooks"
+import { showToast } from "@opencode-ai/ui/toast"
 import {
   createEffect,
   on,
@@ -215,6 +216,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return paths
   })
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const serverAutonomous = createMemo(
+    () =>
+      !!(
+        info() as
+          | {
+              workflow?: {
+                autonomous?: {
+                  enabled?: boolean
+                }
+              }
+            }
+          | undefined
+      )?.workflow?.autonomous?.enabled,
+  )
+  const [localAutonomousOverride, setLocalAutonomousOverride] = createSignal<boolean | undefined>(undefined)
+  const autonomousEnabled = createMemo(() => {
+    const local = localAutonomousOverride()
+    return local !== undefined ? local : serverAutonomous()
+  })
   const status = createMemo(
     () =>
       sync.data.session_status[params.id ?? ""] ?? {
@@ -359,6 +379,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       rows.find((row) => row.id === selected)?.label ?? rows.find((row) => row.active)?.label ?? rows[0]?.label ?? "--"
     )
   })
+
+  const toggleAutonomous = () => {
+    const next = !autonomousEnabled()
+    setLocalAutonomousOverride(next)
+    showToast({
+      title: next ? "Autonomous mode" : "Manual mode",
+      description: next
+        ? "Agent will continue working after each reply"
+        : "Agent waits for your input",
+      variant: next ? "success" : "default",
+    })
+  }
   const providerLabel = createMemo(() => {
     const model = currentModel()
     if (!model) return "--"
@@ -1104,6 +1136,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     newSessionWorktree: () => props.newSessionWorktree,
     onNewSessionWorktreeReset: props.onNewSessionWorktreeReset,
     onSubmit: props.onSubmit,
+    autonomous: autonomousEnabled,
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -1343,14 +1376,24 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
-                <TooltipKeybind
-                  placement="top"
-                  gutter={8}
-                  title={language.t("command.model.choose")}
-                  keybind={command.keybind("model.choose")}
-                >
-                  <span class="text-12-regular text-text-weak px-1">{providerLabel()}</span>
-                </TooltipKeybind>
+                <Tooltip placement="top" gutter={8} value={autonomousEnabled() ? "關閉自動代理" : "開啟自動代理"}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    classList={{
+                      "h-6 px-2 min-w-0": true,
+                      "text-text-weak": !autonomousEnabled(),
+                      "text-green-400 font-semibold": autonomousEnabled(),
+                      "bg-green-500/10": autonomousEnabled(),
+                    }}
+                    disabled={!params.id}
+                    onClick={toggleAutonomous}
+                    aria-pressed={autonomousEnabled()}
+                    aria-label={autonomousEnabled() ? "關閉自動代理" : "開啟自動代理"}
+                  >
+                    <span class="text-12-regular px-1">{providerLabel()}</span>
+                  </Button>
+                </Tooltip>
                 <TooltipKeybind
                   placement="top"
                   gutter={8}

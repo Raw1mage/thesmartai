@@ -127,6 +127,7 @@ export namespace SessionPrompt {
     format: MessageV2.Format.optional(),
     system: z.string().optional(),
     variant: z.string().optional(),
+    autonomous: z.boolean().optional(),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -177,6 +178,27 @@ export namespace SessionPrompt {
   export const prompt = fn(PromptInput, async (input) => {
     const session = await Session.get(input.sessionID)
     await SessionRevert.cleanup(session)
+
+    if (input.autonomous !== undefined) {
+      await Session.update(input.sessionID, (draft) => {
+        const current = draft.workflow ?? Session.defaultWorkflow(draft.time.updated)
+        draft.workflow = {
+          ...current,
+          autonomous: Session.mergeAutonomousPolicy(current.autonomous, {
+            enabled: input.autonomous!,
+          }),
+          state: input.autonomous
+            ? current.state === "completed"
+              ? "idle"
+              : current.state
+            : current.state === "running"
+              ? "waiting_user"
+              : current.state,
+          stopReason: input.autonomous ? undefined : current.stopReason,
+          updatedAt: Date.now(),
+        }
+      }, { touch: false })
+    }
 
     const message = await createUserMessage(input)
     await Session.touch(input.sessionID)

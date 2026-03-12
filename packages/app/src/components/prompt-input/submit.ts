@@ -44,6 +44,7 @@ type PromptSubmitInput = {
   newSessionWorktree?: Accessor<string | undefined>
   onNewSessionWorktreeReset?: () => void
   onSubmit?: () => void
+  autonomous?: Accessor<boolean>
 }
 
 type CommentItem = {
@@ -442,6 +443,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         messageID,
         parts: requestParts,
         variant,
+        autonomous: input.autonomous?.() || undefined,
       })
     }
 

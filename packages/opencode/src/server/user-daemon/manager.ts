@@ -823,6 +823,28 @@ export namespace UserDaemonManager {
     return callJSON<T>({ entry, method: "PATCH", path: `/session/${encodeURIComponent(sessionID)}`, body: updates })
   }
 
+  export async function callSessionAutonomous<T>(username: string, sessionID: string, body: unknown) {
+    observe(username)
+    const safe = LinuxUserExec.sanitizeUsername(username)
+    if (!safe)
+      return {
+        ok: false,
+        error: { code: "DAEMON_INVALID_USER", message: "invalid username" },
+      } satisfies DaemonCallResult<T>
+    const entry = daemons.get(safe)
+    if (!entry)
+      return {
+        ok: false,
+        error: { code: "DAEMON_NOT_OBSERVED", message: "daemon not observed" },
+      } satisfies DaemonCallResult<T>
+    return callJSON<T>({
+      entry,
+      method: "POST",
+      path: `/session/${encodeURIComponent(sessionID)}/autonomous`,
+      body,
+    })
+  }
+
   export async function callSessionInit<T>(username: string, sessionID: string, body: unknown) {
     observe(username)
     const safe = LinuxUserExec.sanitizeUsername(username)

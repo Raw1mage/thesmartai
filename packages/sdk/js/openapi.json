@@ -3975,6 +3975,83 @@
         }
       }
     },
+    "/api/v2/session/{sessionID}/autonomous": {
+      "post": {
+        "operationId": "session.autonomous",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Toggle autonomous session mode",
+        "description": "Enable or disable autonomous continuation for a session, and optionally enqueue an immediate continue turn.",
+        "responses": {
+          "200": {
+            "description": "Updated autonomous workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "enqueue": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/session/{sessionID}/init": {
       "post": {
         "operationId": "session.init",
@@ -4610,6 +4687,9 @@
                   "variant": {
                     "type": "string"
                   },
+                  "autonomous": {
+                    "type": "boolean"
+                  },
                   "parts": {
                     "type": "array",
                     "items": {
@@ -5039,6 +5119,9 @@
                   },
                   "variant": {
                     "type": "string"
+                  },
+                  "autonomous": {
+                    "type": "boolean"
                   },
                   "parts": {
                     "type": "array",
@@ -13844,6 +13927,83 @@
         }
       }
     },
+    "/session/{sessionID}/autonomous": {
+      "post": {
+        "operationId": "session.autonomous",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Toggle autonomous session mode",
+        "description": "Enable or disable autonomous continuation for a session, and optionally enqueue an immediate continue turn.",
+        "responses": {
+          "200": {
+            "description": "Updated autonomous workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "enqueue": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/session/{sessionID}/init": {
       "post": {
         "operationId": "session.init",
@@ -14479,6 +14639,9 @@
                   "variant": {
                     "type": "string"
                   },
+                  "autonomous": {
+                    "type": "boolean"
+                  },
                   "parts": {
                     "type": "array",
                     "items": {
@@ -14908,6 +15071,9 @@
                   },
                   "variant": {
                     "type": "string"
+                  },
+                  "autonomous": {
+                    "type": "boolean"
                   },
                   "parts": {
                     "type": "array",
