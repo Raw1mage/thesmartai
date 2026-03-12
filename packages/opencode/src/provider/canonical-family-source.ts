@@ -1,6 +1,8 @@
 import { Account } from "../account"
 
 export type CanonicalProviderKeyRow = {
+  providerKey: string
+  /** @deprecated Use providerKey instead */
   family: string
   label: string
   accountCount: number
@@ -26,6 +28,7 @@ type BuildCanonicalProviderKeyRowsInput = {
   connectedProviderIds?: string[]
   modelsDevProviderIds?: string[]
   disabledProviderIds?: string[]
+  excludedProviderKeys?: string[]
   excludedFamilies?: string[]
 }
 
@@ -35,24 +38,24 @@ type BuildCanonicalProviderFamilyRowsInput = BuildCanonicalProviderKeyRowsInput
 const LEGACY_BLOCKLIST = new Set(["google"])
 const GENERIC_RUNTIME_FAMILIES = new Set(["claude-cli", "github-copilot", "github-copilot-enterprise", "opencode"])
 
-export function normalizeCanonicalProviderFamily(id: string | undefined | null): string | undefined {
+export function normalizeCanonicalProviderKey(id: string | undefined | null): string | undefined {
   if (!id) return undefined
   const raw = id.trim().toLowerCase()
   if (!raw) return undefined
-  if (raw.includes(":")) return normalizeCanonicalProviderFamily(raw.split(":")[0])
+  if (raw.includes(":")) return normalizeCanonicalProviderKey(raw.split(":")[0])
 
   const parsed = Account.parseProvider(raw) ?? raw
   if (!parsed || LEGACY_BLOCKLIST.has(parsed)) return undefined
   return parsed
 }
 
-export function buildCanonicalProviderFamilyRows(
-  input: BuildCanonicalProviderFamilyRowsInput,
-): CanonicalProviderFamilyRow[] {
-  const excludedFamilies = new Set(
-    (input.excludedFamilies ?? []).map((id) => normalizeCanonicalProviderKey(id)).filter((id): id is string => !!id),
+export function buildCanonicalProviderKeyRows(input: BuildCanonicalProviderKeyRowsInput): CanonicalProviderKeyRow[] {
+  const excludedProviderKeys = new Set(
+    [...(input.excludedProviderKeys ?? []), ...(input.excludedFamilies ?? [])]
+      .map((id) => normalizeCanonicalProviderKey(id))
+      .filter((id): id is string => !!id),
   )
-  const disabledFamilies = new Set(
+  const disabledProviderKeys = new Set(
     (input.disabledProviderIds ?? []).map((id) => normalizeCanonicalProviderKey(id)).filter((id): id is string => !!id),
   )
   const connectedByProviderKey = new Map<string, string[]>()
@@ -60,13 +63,13 @@ export function buildCanonicalProviderFamilyRows(
 
   for (const providerKey of Object.keys(input.accountFamilies ?? {})) {
     const normalized = normalizeCanonicalProviderKey(providerKey)
-    if (!normalized || excludedFamilies.has(normalized)) continue
+    if (!normalized || excludedProviderKeys.has(normalized)) continue
     providerKeyUniverse.add(normalized)
   }
 
   for (const providerId of input.connectedProviderIds ?? []) {
     const normalized = normalizeCanonicalProviderKey(providerId)
-    if (!normalized || excludedFamilies.has(normalized)) continue
+    if (!normalized || excludedProviderKeys.has(normalized)) continue
     providerKeyUniverse.add(normalized)
     const existing = connectedByProviderKey.get(normalized) ?? []
     existing.push(providerId)
@@ -75,13 +78,13 @@ export function buildCanonicalProviderFamilyRows(
 
   for (const providerId of input.modelsDevProviderIds ?? []) {
     const normalized = normalizeCanonicalProviderKey(providerId)
-    if (!normalized || excludedFamilies.has(normalized)) continue
+    if (!normalized || excludedProviderKeys.has(normalized)) continue
     providerKeyUniverse.add(normalized)
   }
 
   for (const providerId of input.disabledProviderIds ?? []) {
     const normalized = normalizeCanonicalProviderKey(providerId)
-    if (!normalized || excludedFamilies.has(normalized)) continue
+    if (!normalized || excludedProviderKeys.has(normalized)) continue
     providerKeyUniverse.add(normalized)
   }
 
@@ -98,23 +101,26 @@ export function buildCanonicalProviderFamilyRows(
       const inConnectedProviders = connectedIds.length > 0
 
       return {
+        providerKey,
         family: providerKey,
         label: Account.getProviderLabel(providerKey),
         accountCount,
         activeCount,
-        enabled: !disabledFamilies.has(providerKey),
+        enabled: !disabledProviderKeys.has(providerKey),
         configured: inAccounts || inConnectedProviders,
         inAccounts,
         inConnectedProviders,
         inModelsDev,
       } satisfies CanonicalProviderKeyRow
     })
-    .sort((a, b) => a.family.localeCompare(b.family))
+    .sort((a, b) => a.providerKey.localeCompare(b.providerKey))
 }
 
-export const buildCanonicalProviderKeyRows = buildCanonicalProviderFamilyRows
-export const buildCanonicalProviderRows = buildCanonicalProviderFamilyRows
-export const normalizeCanonicalProviderKey = normalizeCanonicalProviderFamily
+/** @deprecated Use buildCanonicalProviderKeyRows instead */
+export const buildCanonicalProviderFamilyRows = buildCanonicalProviderKeyRows
+export const buildCanonicalProviderRows = buildCanonicalProviderKeyRows
+/** @deprecated Use normalizeCanonicalProviderKey instead */
+export const normalizeCanonicalProviderFamily = normalizeCanonicalProviderKey
 export const resolveCanonicalRuntimeProviderKey = resolveCanonicalRuntimeProviderId
 export const resolveCanonicalRuntimeProviderByKey = resolveCanonicalRuntimeProviderId
 

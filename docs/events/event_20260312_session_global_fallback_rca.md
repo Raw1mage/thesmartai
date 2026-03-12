@@ -838,6 +838,32 @@
   - `server/routes/provider.ts`
     - switched internal canonical helper imports/usages to `buildCanonicalProviderRows` and `normalizeCanonicalProviderKey`
   - `canonical-family-source.ts`
+
+## Follow-up Fix: provider-key terminology cleanup batch 17 (L3 Slice 1)
+
+- Goal:
+  - complete the scoped L3 Slice 1 helper/type-alias pass in the remaining provider-key-first utility files only
+  - preserve compatibility exports/fields and avoid any route/schema/OpenAPI/SDK/persisted-storage contract changes
+- Updated files:
+  - `packages/opencode/src/account/index.ts`
+  - `packages/opencode/src/provider/canonical-family-source.ts`
+  - `packages/app/src/components/model-selector-state.ts`
+  - `packages/app/src/components/prompt-input/quota-refresh.ts`
+- Applied changes:
+  - `account/index.ts`
+    - made provider-oriented helper/type names primary for known-provider discovery and normalization internals
+    - kept family-oriented internal aliases so existing behavior and compatibility remain unchanged
+  - `canonical-family-source.ts`
+    - made `normalizeCanonicalProviderKey` and `buildCanonicalProviderKeyRows` the primary implementations
+    - added `providerKey` as the primary row field while retaining deprecated compatibility field `family`
+    - accepted `excludedProviderKeys` alongside legacy `excludedFamilies`
+  - `model-selector-state.ts`
+    - made `normalizeProviderKey` the primary normalization helper and retained `normalizeProviderFamily` as a compatibility alias
+    - added provider-oriented compatibility type aliases for account maps/records
+  - `quota-refresh.ts`
+    - made `isPromptQuotaProviderKey` the primary helper and retained `isPromptQuotaProviderFamily` as a deprecated compatibility alias
+- Architecture Sync: Verified (No doc changes)
+  - helper/type-alias cleanup only; no fallback behavior or external contract changed
     - switched internal runtime-provider resolution to call `resolveCanonicalRuntimeProviderByKey`
     - renamed local fallback normalization variable from `family` to `providerKey`
 - Architecture Sync: Verified (No doc changes)
@@ -854,3 +880,102 @@
   - preserved exported compatibility names and `family`-shaped input fields to avoid contract churn
 - Architecture Sync: Verified (No doc changes)
   - L2 alias-adoption only; no runtime behavior or contract changes
+
+## L3 Migration Backlog (executable, non-breaking)
+
+### Slice 0 — Baseline freeze / inventory lock
+
+- Target files:
+  - `/home/pkcs12/projects/opencode/docs/events/event_20260312_session_global_fallback_rca.md`
+  - `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md`
+- Changes:
+  - freeze current compatibility rules: provider-key preferred, legacy `family` names tolerated
+  - mark which surfaces are still contract-bound vs internal-only
+- Risk: low
+- Depends on: none
+
+### Slice 1 — Internal helper/type alias completion
+
+- Target files:
+  - `/home/pkcs12/projects/opencode/packages/opencode/src/account/index.ts`
+  - `/home/pkcs12/projects/opencode/packages/opencode/src/provider/canonical-family-source.ts`
+  - `/home/pkcs12/projects/opencode/packages/app/src/components/model-selector-state.ts`
+  - `/home/pkcs12/projects/opencode/packages/app/src/components/prompt-input/quota-refresh.ts`
+- Changes:
+  - finish provider-first aliases and preferred imports
+  - keep legacy exports/field names as compatibility wrappers
+- Risk: low
+- Depends on: Slice 0
+
+### Slice 2 — Web/TUI local state and selector cleanup
+
+- Target files:
+  - `/home/pkcs12/projects/opencode/packages/app/src/components/dialog-select-model.tsx`
+  - `/home/pkcs12/projects/opencode/packages/app/src/components/prompt-input.tsx`
+  - `/home/pkcs12/projects/opencode/packages/app/src/context/local.tsx`
+  - `/home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/context/local.tsx`
+  - `/home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-model.tsx`
+  - `/home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx`
+- Changes:
+  - separate display grouping (model family) from execution/account binding (provider key)
+  - remove remaining local `family`-driven account-selection assumptions
+- Risk: medium (UI drift/confusing labels)
+- Depends on: Slice 1
+
+### Slice 3 — Admin/control-plane semantics cleanup
+
+- Target files:
+  - `/home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
+  - `/home/pkcs12/projects/opencode/packages/app/src/components/settings-accounts.tsx`
+  - `/home/pkcs12/projects/opencode/packages/app/src/components/settings-providers.tsx`
+  - `/home/pkcs12/projects/opencode/packages/app/src/components/status-popover.tsx`
+- Changes:
+  - make mixed sources explicit: session execution vs selected account vs global active account
+  - reduce terminology debt in admin/status surfaces without changing behavior
+- Risk: medium (operator interpretation regressions)
+- Depends on: Slice 2
+
+### Slice 4 — Route/schema compatibility bridge prep (no contract break yet)
+
+- Target files:
+  - `/home/pkcs12/projects/opencode/packages/opencode/src/server/routes/account.ts`
+  - `/home/pkcs12/projects/opencode/packages/opencode/src/server/routes/provider.ts`
+  - `/home/pkcs12/projects/opencode/packages/sdk/js/openapi.json`
+  - `/home/pkcs12/projects/opencode/docs/ARCHITECTURE.md`
+- Changes:
+  - document/add parallel provider-key wording in schemas/examples
+  - prepare deprecation notes for `/:family/...` paths while preserving current routes
+- Risk: medium-high (SDK/doc mismatch if partial)
+- Depends on: Slice 1
+
+### Slice 5 — Contract migration slice (deferred, breaking-risk)
+
+- Target files:
+  - `/home/pkcs12/projects/opencode/packages/opencode/src/server/routes/account.ts`
+  - `/home/pkcs12/projects/opencode/packages/sdk/js/openapi.json`
+  - generated SDK/client consumers under `/home/pkcs12/projects/opencode/packages/app` and `/home/pkcs12/projects/opencode/packages/opencode`
+- Changes:
+  - rename public route/schema terminology from `family` to provider-scoped contract names
+  - remove legacy aliases only after downstream adoption
+- Risk: high
+- Depends on: Slice 4
+
+### Safest first non-breaking L3 slice
+
+- Recommend: **Slice 1 — Internal helper/type alias completion**
+- Why safest:
+  - no API/runtime contract change
+  - mostly import/helper/type adoption
+  - reduces future ambiguity before touching UI/control-plane semantics
+- First concrete files:
+  - `/home/pkcs12/projects/opencode/packages/opencode/src/account/index.ts`
+  - `/home/pkcs12/projects/opencode/packages/opencode/src/provider/canonical-family-source.ts`
+  - `/home/pkcs12/projects/opencode/packages/app/src/components/model-selector-state.ts`
+  - `/home/pkcs12/projects/opencode/packages/app/src/components/prompt-input/quota-refresh.ts`
+
+### Critical notes / edge cases
+
+- Do not rename public `/:family/...` routes yet; only add compatibility wording/docs.
+- Do not change persisted storage keys until SDK + Web/TUI consumers are fully dual-read.
+- Keep model-family grouping distinct from provider/account execution binding; collapsing them again risks reintroducing account drift.
+- Admin/footer/status surfaces may still display best-effort state rather than raw request truth; document that explicitly before any UI semantic cleanup.

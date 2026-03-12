@@ -1,5 +1,5 @@
-export function isPromptQuotaProviderFamily(providerFamily?: string) {
-  return providerFamily === "openai" || providerFamily === "google-api" || providerFamily === "gemini-cli"
+export function isPromptQuotaProviderKey(providerKey?: string) {
+  return providerKey === "openai" || providerKey === "google-api" || providerKey === "gemini-cli"
 }
 
 export function shouldRefreshProviderQuota(input: {
@@ -14,4 +14,5 @@ export function shouldRefreshProviderQuota(input: {
   return now - input.lastRefreshAt >= minIntervalMs
 }
 
-export const isPromptQuotaProviderKey = isPromptQuotaProviderFamily
+/** @deprecated Use isPromptQuotaProviderKey instead */
+export const isPromptQuotaProviderFamily = isPromptQuotaProviderKey

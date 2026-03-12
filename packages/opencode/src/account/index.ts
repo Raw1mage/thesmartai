@@ -281,7 +281,7 @@ export namespace Account {
     }
   }
 
-  async function listKnownFamiliesInternal(options?: { includeStorage?: boolean }): Promise<string[]> {
+  async function listKnownProvidersInternal(options?: { includeStorage?: boolean }): Promise<string[]> {
     const includeStorage = options?.includeStorage ?? true
     const { ModelsDev } = await import("../provider/models")
     const fromModels = Object.keys(await ModelsDev.get().catch(() => ({}) as Record<string, unknown>))
@@ -289,8 +289,10 @@ export namespace Account {
     return Array.from(new Set([...PROVIDERS, ...fromModels, ...fromStorage]))
   }
 
+  const listKnownFamiliesInternal = listKnownProvidersInternal
+
   export async function knownFamilies(options?: { includeStorage?: boolean }): Promise<string[]> {
-    return listKnownFamiliesInternal(options)
+    return listKnownProvidersInternal(options)
   }
 
   export function resolveFamilyFromKnown(providerId: string, knownFamilies: readonly string[]): string | undefined {
@@ -329,11 +331,11 @@ export namespace Account {
     return (await resolveFamily(providerId)) ?? providerId
   }
 
-  function resolveCanonicalFamilyFromKnown(family: string, knownFamilies: readonly string[]): string | undefined {
+  function resolveCanonicalProviderKeyFromKnown(family: string, knownFamilies: readonly string[]): string | undefined {
     return resolveFamilyFromKnown(family, knownFamilies)
   }
 
-  function inferFamilyFromAccountIds(
+  function inferProviderKeyFromAccountIds(
     accounts: Record<string, Info>,
     knownFamilies: readonly string[],
   ): string | undefined {
@@ -359,7 +361,7 @@ export namespace Account {
     return winner
   }
 
-  function mergeFamilyData(target: ProviderData, source: ProviderData): boolean {
+  function mergeProviderData(target: ProviderData, source: ProviderData): boolean {
     let changed = false
 
     for (const [accountId, info] of Object.entries(source.accounts)) {
@@ -388,28 +390,30 @@ export namespace Account {
     return changed
   }
 
-  type FamilyNormalizationMove = {
+  type ProviderNormalizationMove = {
     from: string
     to: string
     accountCount: number
   }
 
-  async function normalizeFamilyKeys(
+  type FamilyNormalizationMove = ProviderNormalizationMove
+
+  async function normalizeProviderKeys(
     storage: Storage,
-  ): Promise<{ storage: Storage; changed: boolean; moves: FamilyNormalizationMove[] }> {
-    const knownFamilies = await listKnownFamiliesInternal({ includeStorage: false })
+  ): Promise<{ storage: Storage; changed: boolean; moves: ProviderNormalizationMove[] }> {
+    const knownFamilies = await listKnownProvidersInternal({ includeStorage: false })
     let changed = false
-    const moves: FamilyNormalizationMove[] = []
+    const moves: ProviderNormalizationMove[] = []
 
     for (const [family, data] of Object.entries(storage.families)) {
-      const direct = resolveCanonicalFamilyFromKnown(family, knownFamilies)
-      const inferred = inferFamilyFromAccountIds(data.accounts, knownFamilies)
+      const direct = resolveCanonicalProviderKeyFromKnown(family, knownFamilies)
+      const inferred = inferProviderKeyFromAccountIds(data.accounts, knownFamilies)
       const canonical = direct ?? inferred
 
       if (!canonical || canonical === family) continue
 
       const target = (storage.families[canonical] ??= { accounts: {} })
-      const merged = mergeFamilyData(target, data)
+      const merged = mergeProviderData(target, data)
       delete storage.families[family]
 
       if (merged || canonical !== family) {
@@ -429,6 +433,8 @@ export namespace Account {
 
     return { storage, changed, moves }
   }
+
+  const normalizeFamilyKeys = normalizeProviderKeys
 
   async function save(storage: Storage): Promise<void> {
     debugCheckpoint("Account.save", "Writing", { path: filepath })
@@ -1057,7 +1063,7 @@ export namespace Account {
   export async function normalizeIdentities(): Promise<NormalizeIdentitiesReport> {
     const storage = await state()
     const familiesBefore = Object.keys(storage.families)
-    const normalized = await normalizeFamilyKeys(storage)
+    const normalized = await normalizeProviderKeys(storage)
     if (normalized.changed) {
       await save(storage)
       _storage = storage

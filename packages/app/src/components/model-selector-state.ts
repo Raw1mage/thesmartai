@@ -43,6 +43,7 @@ export type ProviderListItem = {
 }
 
 export type AccountFamilyMap = Record<string, { accounts?: Record<string, unknown>; activeAccount?: string }>
+export type AccountProviderMap = AccountFamilyMap
 
 export type ProviderRow = {
   id: string
@@ -64,12 +65,14 @@ export type AccountFamilyRecord = {
   accounts?: Record<string, Record<string, unknown>>
 }
 
-export function normalizeProviderFamily(id: string): string | undefined {
+export type AccountProviderRecord = AccountFamilyRecord
+
+export function normalizeProviderKey(id: string): string | undefined {
   if (!id) return undefined
   const raw = id.trim().toLowerCase()
   if (!raw) return undefined
 
-  if (raw.includes(":")) return normalizeProviderFamily(raw.split(":")[0]!)
+  if (raw.includes(":")) return normalizeProviderKey(raw.split(":")[0]!)
   if (raw === "anthropic") return "claude-cli"
   if (EXCLUDED_PROVIDER_FAMILIES.has(raw)) return undefined
 
@@ -89,6 +92,9 @@ export function normalizeProviderFamily(id: string): string | undefined {
   return undefined
 }
 
+/** @deprecated Use normalizeProviderKey instead */
+export const normalizeProviderFamily = normalizeProviderKey
+
 export function buildProviderRows(input: {
   providers: ProviderListItem[]
   accountFamilies?: AccountFamilyMap
@@ -100,40 +106,40 @@ export function buildProviderRows(input: {
   const providerUniverse = new Set<string>()
 
   for (const provider of input.providers) {
-    const normalized = normalizeProviderFamily(provider.id)
+    const normalized = normalizeProviderKey(provider.id)
     if (!normalized) continue
     providerUniverse.add(normalized)
   }
 
   if (input.accountFamilies) {
     for (const providerKey of Object.keys(input.accountFamilies)) {
-      const normalized = normalizeProviderFamily(providerKey)
+      const normalized = normalizeProviderKey(providerKey)
       if (!normalized) continue
       providerUniverse.add(normalized)
     }
   }
 
   for (const id of input.disabledProviders ?? []) {
-    const normalized = normalizeProviderFamily(id)
+    const normalized = normalizeProviderKey(id)
     if (!normalized) continue
     providerUniverse.add(normalized)
   }
 
   for (const id of popularProviderOrder) {
-    const normalized = normalizeProviderFamily(id)
+    const normalized = normalizeProviderKey(id)
     if (!normalized) continue
     providerUniverse.add(normalized)
   }
 
   const disabledFamilies = new Set(
-    (input.disabledProviders ?? []).map((id) => normalizeProviderFamily(id)).filter((id): id is string => !!id),
+    (input.disabledProviders ?? []).map((id) => normalizeProviderKey(id)).filter((id): id is string => !!id),
   )
 
   for (const providerKey of providerUniverse) {
     const providerAccounts = input.accountFamilies?.[providerKey]
     const accountsCount = providerAccounts?.accounts ? Object.keys(providerAccounts.accounts).length : 0
     const providersInGroup = input.providers.filter(
-      (provider) => (normalizeProviderFamily(provider.id) || provider.id) === providerKey,
+      (provider) => (normalizeProviderKey(provider.id) || provider.id) === providerKey,
     )
     const canonicalProvider = providersInGroup.find((provider) => provider.id === providerKey) ?? providersInGroup[0]
 
@@ -164,7 +170,7 @@ export function buildAccountRows(input: {
 }): AccountRow[] {
   if (!input.selectedProviderKey) return []
   const now = input.now ?? Date.now()
-  const providerKey = normalizeProviderFamily(input.selectedProviderKey) ?? input.selectedProviderKey
+  const providerKey = normalizeProviderKey(input.selectedProviderKey) ?? input.selectedProviderKey
   const providerRow = input.accountFamilies?.[providerKey]
   const activeAccount = typeof providerRow?.activeAccount === "string" ? providerRow.activeAccount : undefined
   const accounts = providerRow?.accounts && typeof providerRow.accounts === "object" ? providerRow.accounts : {}
@@ -195,7 +201,7 @@ export function filterModelsForMode<T extends { id: string; provider: { id: stri
   isVisible: (key: { modelID: string; providerID: string }) => boolean
 }) {
   return input.models
-    .filter((model) => (normalizeProviderFamily(model.provider.id) || model.provider.id) === input.providerKey)
+    .filter((model) => (normalizeProviderKey(model.provider.id) || model.provider.id) === input.providerKey)
     .filter((model) => {
       if (input.mode === "all") return true
       return input.isVisible({ modelID: model.id, providerID: model.provider.id })
@@ -203,12 +209,11 @@ export function filterModelsForMode<T extends { id: string; provider: { id: stri
 }
 
 export function providerKeyOf(providerId: string) {
-  return normalizeProviderFamily(providerId) || providerId
+  return normalizeProviderKey(providerId) || providerId
 }
 
 // Compatibility alias for older local call sites/tests that still use `family` wording.
 export const familyOf = providerKeyOf
-export const normalizeProviderKey = providerKeyOf
 
 export function isAccountLikeProviderId(id: string) {
   return id.includes("@")
