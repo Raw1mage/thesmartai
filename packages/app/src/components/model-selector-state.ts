@@ -157,14 +157,14 @@ export function buildProviderRows(input: {
 }
 
 export function buildAccountRows(input: {
-  selectedProviderFamily: string
+  selectedProviderKey: string
   accountFamilies?: AccountFamilyMap
   now?: number
   formatCooldown: (minutes: number) => string
 }): AccountRow[] {
-  if (!input.selectedProviderFamily) return []
+  if (!input.selectedProviderKey) return []
   const now = input.now ?? Date.now()
-  const providerKey = normalizeProviderFamily(input.selectedProviderFamily) ?? input.selectedProviderFamily
+  const providerKey = normalizeProviderFamily(input.selectedProviderKey) ?? input.selectedProviderKey
   const providerRow = input.accountFamilies?.[providerKey]
   const activeAccount = typeof providerRow?.activeAccount === "string" ? providerRow.activeAccount : undefined
   const accounts = providerRow?.accounts && typeof providerRow.accounts === "object" ? providerRow.accounts : {}
@@ -190,12 +190,12 @@ export function buildAccountRows(input: {
 
 export function filterModelsForMode<T extends { id: string; provider: { id: string } }>(input: {
   models: T[]
-  providerFamily: string
+  providerKey: string
   mode: "favorites" | "all"
   isVisible: (key: { modelID: string; providerID: string }) => boolean
 }) {
   return input.models
-    .filter((model) => (normalizeProviderFamily(model.provider.id) || model.provider.id) === input.providerFamily)
+    .filter((model) => (normalizeProviderFamily(model.provider.id) || model.provider.id) === input.providerKey)
     .filter((model) => {
       if (input.mode === "all") return true
       return input.isVisible({ modelID: model.id, providerID: model.provider.id })
@@ -276,20 +276,20 @@ export function pickSelectedAccount(input: {
 
 export function getFilteredModelsForSelection<T extends { id: string; provider: { id: string } }>(input: {
   models: T[]
-  selectedProviderFamily: string
+  selectedProviderKey: string
   currentProviderID?: string
   mode: "favorites" | "all"
   isVisible: (key: { modelID: string; providerID: string }) => boolean
 }) {
-  if (!input.selectedProviderFamily) return [] as T[]
+  if (!input.selectedProviderKey) return [] as T[]
 
   const providerScopedModels = input.models.filter(
-    (model) => providerKeyOf(model.provider.id) === input.selectedProviderFamily,
+    (model) => providerKeyOf(model.provider.id) === input.selectedProviderKey,
   )
   if (providerScopedModels.length === 0) return [] as T[]
 
   const resolvedProviderID =
-    providerScopedModels.find((model) => model.provider.id === input.selectedProviderFamily)?.provider.id ??
+    providerScopedModels.find((model) => model.provider.id === input.selectedProviderKey)?.provider.id ??
     (input.currentProviderID && providerScopedModels.some((model) => model.provider.id === input.currentProviderID)
       ? input.currentProviderID
       : undefined) ??
@@ -302,7 +302,7 @@ export function getFilteredModelsForSelection<T extends { id: string; provider: 
 
   return filterModelsForMode({
     models: scopedModels,
-    providerFamily: input.selectedProviderFamily,
+    providerKey: input.selectedProviderKey,
     mode: input.mode,
     isVisible: input.isVisible,
   })

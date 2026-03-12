@@ -22,7 +22,7 @@ describe("model selector state", () => {
   test("account rows keep stable label ordering and include cooldown reason", () => {
     const now = 1_000
     const rows = buildAccountRows({
-      selectedProviderFamily: "openai",
+      selectedProviderKey: "openai",
       now,
       formatCooldown: (minutes) => `cooldown ${minutes}m`,
       accountFamilies: {
@@ -53,13 +53,13 @@ describe("model selector state", () => {
     }
 
     const before = buildAccountRows({
-      selectedProviderFamily: "openai",
+      selectedProviderKey: "openai",
       accountFamilies,
       formatCooldown: (minutes) => `cooldown ${minutes}m`,
     })
 
     const after = buildAccountRows({
-      selectedProviderFamily: "openai",
+      selectedProviderKey: "openai",
       accountFamilies: {
         openai: {
           ...accountFamilies.openai,
@@ -134,7 +134,7 @@ describe("model selector state", () => {
 
     const rows = filterModelsForMode({
       models,
-      providerFamily: "openai",
+      providerKey: "openai",
       mode: "favorites",
       isVisible: (key) => key.modelID === "m2",
     })
@@ -152,7 +152,7 @@ describe("model selector state", () => {
 
     const rows = filterModelsForMode({
       models,
-      providerFamily: "openai",
+      providerKey: "openai",
       mode: "all",
       isVisible: () => false,
     })

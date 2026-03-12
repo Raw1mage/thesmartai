@@ -350,7 +350,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const providerKey = activeFamily()
     if (!providerKey) return "--"
     const rows = buildAccountRows({
-      selectedProviderFamily: providerKey,
+      selectedProviderKey: providerKey,
       accountFamilies: globalSync.data.account_families,
       formatCooldown: (minutes) => language.t("settings.models.recommendations.cooldown", { minutes }),
     })

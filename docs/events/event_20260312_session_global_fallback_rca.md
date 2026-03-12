@@ -690,3 +690,30 @@
     - updated test names from `provider family` wording to `provider key`
 - Architecture Sync: Verified (No doc changes)
   - rename-only/local-helper cleanup; no behavior or routing contract changed
+
+## Follow-up Fix: provider-key terminology cleanup batch 7
+
+- Goal:
+  - continue low-risk helper input-shape cleanup in model selector utilities while preserving compatibility at call sites
+- Updated files:
+  - `packages/app/src/components/model-selector-state.ts`
+- Applied changes:
+  - renamed helper input properties from `selectedProviderFamily` / `providerFamily` to `selectedProviderKey` / `providerKey`
+  - kept behavior unchanged by preserving the same normalization and filtering logic behind the renamed local/helper-facing inputs
+- Architecture Sync: Verified (No doc changes)
+  - helper/input-shape cleanup only; no behavior or API contract changes beyond local call sites
+
+## Follow-up Fix: provider-key terminology cleanup batch 8
+
+- Goal:
+  - finish a low-risk helper-input rename slice by updating local app call sites/tests to match provider-key terminology
+- Updated files:
+  - `packages/app/src/components/dialog-select-model.tsx`
+  - `packages/app/src/components/prompt-input.tsx`
+  - `packages/app/src/components/model-selector-state.test.ts`
+- Applied changes:
+  - updated local helper call sites from `selectedProviderFamily` to `selectedProviderKey`
+  - updated local helper call sites from `providerFamily` to `providerKey`
+  - updated selector-state tests to match the renamed helper inputs
+- Architecture Sync: Verified (No doc changes)
+  - local helper-call cleanup only; no runtime behavior or compatibility API contract changed

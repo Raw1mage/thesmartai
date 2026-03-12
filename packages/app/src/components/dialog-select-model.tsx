@@ -1126,7 +1126,7 @@ export const DialogSelectModel: Component<{
     const providerId = selectedProviderId()
     if (!providerId) return [] as Array<{ id: string; label: string; active: boolean; unavailable?: string }>
     return buildAccountRows({
-      selectedProviderFamily: providerAccountKey(providerId),
+      selectedProviderKey: providerAccountKey(providerId),
       accountFamilies: accountFamilies(),
       formatCooldown: (minutes) => language.t("settings.models.recommendations.cooldown", { minutes }),
     })
@@ -1251,7 +1251,7 @@ export const DialogSelectModel: Component<{
   const filteredModels = createMemo(() => {
     return getFilteredModelsForSelection({
       models: local.model.list(),
-      selectedProviderFamily: selectedProviderId(),
+      selectedProviderKey: selectedProviderId(),
       currentProviderID: local.model.current(params.id)?.provider?.id,
       mode: mode(),
       isVisible: (key) => local.model.visible(key),
