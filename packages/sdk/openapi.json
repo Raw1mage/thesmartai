@@ -1,18 +1,3 @@
-[Dev Sync Back] Synchronizing runtime -> templates (newer wins)...
-Source: /home/pkcs12/.config/opencode
-Target: /home/pkcs12/projects/opencode/templates
-  -> Synced: templates/AGENTS.md
-  -> Synced: templates/prompts/
-  -> Synced: templates/skills/
-[Dev Sync Back] Complete.
-[Dev Sync] Syncing templates -> runtime (newer wins)...
-  -> Synced: AGENTS.md
-  -> Synced: prompts/
-  -> Synced: skills/
-  -> Checked: accounts.json
-  -> Checked: opencode.json
-[Dev Sync] Ready. Starting Opencode...
-[runtime-init-check] ready for pkcs12
 {
   "openapi": "3.1.1",
   "info": {
@@ -50,13 +35,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.health({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/global/auth/session": {
@@ -111,13 +90,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.auth.session({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/global/auth/login": {
@@ -177,13 +150,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.auth.login({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/global/auth/logout": {
@@ -211,13 +178,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.auth.logout({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/global/event": {
@@ -236,13 +197,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.event({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/global/config": {
@@ -261,13 +216,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.config.get({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "global.config.update",
@@ -303,13 +252,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.config.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/global/dispose": {
@@ -328,13 +271,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.dispose({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/auth/{providerId}": {
@@ -382,13 +319,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.auth.set({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "auth.remove",
@@ -425,12 +356,6 @@ Target: /home/pkcs12/projects/opencode/templates
             },
             "required": true
           }
-        ],
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.auth.remove({\n  ...\n})"
-          }
         ]
       }
     },
@@ -462,13 +387,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.project.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/project/current": {
@@ -496,13 +415,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.project.current({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/project/{projectID}": {
@@ -595,13 +508,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.project.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/workspace": {
@@ -743,13 +650,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/workspace/current": {
@@ -888,13 +789,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.current({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/workspace/status": {
@@ -978,13 +873,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.status({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/workspace/{workspaceID}": {
@@ -1141,13 +1030,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.get({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/workspace/{workspaceID}/reset-run": {
@@ -1323,13 +1206,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.resetRun({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/workspace/{workspaceID}/delete-run": {
@@ -1513,13 +1390,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.deleteRun({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/workspace/{workspaceID}/reset": {
@@ -1676,13 +1547,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.reset({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/workspace/{workspaceID}/delete": {
@@ -1839,13 +1704,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.delete({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/workspace/{workspaceID}/archive": {
@@ -2002,13 +1861,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.archive({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/workspace/{workspaceID}/active": {
@@ -2165,13 +2018,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.active({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/workspace/{workspaceID}/failed": {
@@ -2328,13 +2175,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.failed({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/pty": {
@@ -2365,13 +2206,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.list({\n  ...\n})"
-          }
-        ]
+        }
       },
       "post": {
         "operationId": "pty.create",
@@ -2442,13 +2277,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.create({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/pty/{ptyID}": {
@@ -2494,13 +2323,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.get({\n  ...\n})"
-          }
-        ]
+        }
       },
       "put": {
         "operationId": "pty.update",
@@ -2573,13 +2396,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.update({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "pty.remove",
@@ -2623,13 +2440,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.remove({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/pty/{ptyID}/connect": {
@@ -2675,13 +2486,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.connect({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/config": {
@@ -2709,13 +2514,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.config.get({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "config.update",
@@ -2760,13 +2559,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.config.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/config/providers": {
@@ -2815,13 +2608,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.config.providers({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/experimental/debug-beacon": {
@@ -2894,13 +2681,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.debug.beacon({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/experimental/scroll-capture/latest": {
@@ -2954,13 +2735,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.scrollCapture.latest({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/experimental/scroll-capture": {
@@ -3028,13 +2803,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.scrollCapture.record({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/experimental/review-checkpoint": {
@@ -3143,13 +2912,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.review.checkpoint({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/experimental/user-daemon": {
@@ -3228,13 +2991,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.userDaemon.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/experimental/tool/ids": {
@@ -3272,13 +3029,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tool.ids({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/experimental/tool": {
@@ -3332,13 +3083,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tool.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/experimental/worktree": {
@@ -3385,13 +3130,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.worktree.create({\n  ...\n})"
-          }
-        ]
+        }
       },
       "get": {
         "operationId": "worktree.list",
@@ -3420,13 +3159,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.worktree.list({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "worktree.remove",
@@ -3471,13 +3204,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.worktree.remove({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/experimental/worktree/reset": {
@@ -3524,13 +3251,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.worktree.reset({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/experimental/session": {
@@ -3610,13 +3331,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.session.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/experimental/resource": {
@@ -3650,13 +3365,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.resource.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session": {
@@ -3720,13 +3429,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.list({\n  ...\n})"
-          }
-        ]
+        }
       },
       "post": {
         "operationId": "session.create",
@@ -3783,13 +3486,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.create({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/status": {
@@ -3833,13 +3530,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.status({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/top": {
@@ -3904,13 +3595,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.top({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}": {
@@ -3970,13 +3655,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.get({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "session.delete",
@@ -4031,13 +3710,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.delete({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "session.update",
@@ -4176,13 +3849,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/children": {
@@ -4245,13 +3912,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.children({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/todo": {
@@ -4311,13 +3972,84 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
+        }
+      }
+    },
+    "/api/v2/session/{sessionID}/autonomous": {
+      "post": {
+        "operationId": "session.autonomous",
+        "parameters": [
           {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.todo({\n  ...\n})"
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
           }
-        ]
+        ],
+        "summary": "Toggle autonomous session mode",
+        "description": "Enable or disable autonomous continuation for a session, and optionally enqueue an immediate continue turn.",
+        "responses": {
+          "200": {
+            "description": "Updated autonomous workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "enqueue": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        }
       }
     },
     "/api/v2/session/{sessionID}/init": {
@@ -4400,13 +4132,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.init({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/fork": {
@@ -4458,13 +4184,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.fork({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/abort": {
@@ -4520,13 +4240,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.abort({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/share": {
@@ -4582,13 +4296,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.share({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "session.unshare",
@@ -4643,13 +4351,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.unshare({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/diff": {
@@ -4697,13 +4399,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.diff({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/summarize": {
@@ -4785,13 +4481,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.summarize({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/message": {
@@ -4873,13 +4563,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.messages({\n  ...\n})"
-          }
-        ]
+        }
       },
       "post": {
         "operationId": "session.prompt",
@@ -5003,6 +4687,9 @@ Target: /home/pkcs12/projects/opencode/templates
                   "variant": {
                     "type": "string"
                   },
+                  "autonomous": {
+                    "type": "boolean"
+                  },
                   "parts": {
                     "type": "array",
                     "items": {
@@ -5029,13 +4716,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.prompt({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/message/{messageID}": {
@@ -5116,13 +4797,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.message({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "session.deleteMessage",
@@ -5186,13 +4861,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.deleteMessage({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/message/{messageID}/part/{partID}": {
@@ -5266,13 +4935,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.part.delete({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "part.update",
@@ -5353,13 +5016,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.part.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/prompt_async": {
@@ -5463,6 +5120,9 @@ Target: /home/pkcs12/projects/opencode/templates
                   "variant": {
                     "type": "string"
                   },
+                  "autonomous": {
+                    "type": "boolean"
+                  },
                   "parts": {
                     "type": "array",
                     "items": {
@@ -5489,13 +5149,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.prompt_async({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/command": {
@@ -5659,13 +5313,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.command({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/shell": {
@@ -5764,13 +5412,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.shell({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/revert": {
@@ -5848,13 +5490,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.revert({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/unrevert": {
@@ -5910,13 +5546,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.unrevert({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/session/{sessionID}/permissions/{permissionID}": {
@@ -6003,13 +5633,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.permission.respond({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/permission/{requestID}/reply": {
@@ -6090,13 +5714,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.permission.reply({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/permission": {
@@ -6127,13 +5745,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.permission.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/question": {
@@ -6164,13 +5776,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.question.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/question/{requestID}/reply": {
@@ -6247,13 +5853,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.question.reply({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/question/{requestID}/reject": {
@@ -6309,13 +5909,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.question.reject({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/provider": {
@@ -6619,13 +6213,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/provider/auth": {
@@ -6662,13 +6250,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.auth({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/provider/{providerId}/oauth/authorize": {
@@ -6733,13 +6315,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.oauth.authorize({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/provider/{providerId}/oauth/callback": {
@@ -6808,13 +6384,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.oauth.callback({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/mcp": {
@@ -6848,13 +6418,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.status({\n  ...\n})"
-          }
-        ]
+        }
       },
       "post": {
         "operationId": "mcp.add",
@@ -6924,13 +6488,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.add({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/mcp/{name}/auth": {
@@ -6995,13 +6553,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.start({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "mcp.auth.remove",
@@ -7054,13 +6606,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.remove({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/mcp/{name}/auth/callback": {
@@ -7134,13 +6680,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.callback({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/mcp/{name}/auth/authenticate": {
@@ -7196,13 +6736,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.authenticate({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/mcp/{name}/connect": {
@@ -7237,13 +6771,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.connect({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/mcp/{name}/disconnect": {
@@ -7278,13 +6806,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.disconnect({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/append-prompt": {
@@ -7339,13 +6861,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.appendPrompt({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/open-help": {
@@ -7373,13 +6889,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openHelp({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/open-sessions": {
@@ -7407,13 +6917,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openSessions({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/open-themes": {
@@ -7441,13 +6945,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openThemes({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/open-models": {
@@ -7475,13 +6973,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openModels({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/submit-prompt": {
@@ -7509,13 +7001,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.submitPrompt({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/clear-prompt": {
@@ -7543,13 +7029,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.clearPrompt({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/execute-command": {
@@ -7604,13 +7084,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.executeCommand({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/show-toast": {
@@ -7673,13 +7147,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.showToast({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/publish": {
@@ -7742,13 +7210,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.publish({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/select-session": {
@@ -7815,13 +7277,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.selectSession({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/control/next": {
@@ -7859,13 +7315,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.control.next({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/tui/control/response": {
@@ -7900,13 +7350,7 @@ Target: /home/pkcs12/projects/opencode/templates
               "schema": {}
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.control.response({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/account/quota": {
@@ -7965,12 +7409,16 @@ Target: /home/pkcs12/projects/opencode/templates
                   "type": "object",
                   "properties": {
                     "providerId": {
+                      "description": "Resolved runtime provider ID",
                       "type": "string"
                     },
                     "providerKey": {
+                      "description": "Canonical provider identity key",
                       "type": "string"
                     },
                     "family": {
+                      "description": "Deprecated alias of providerKey kept for compatibility",
+                      "deprecated": true,
                       "type": "string"
                     },
                     "accountId": {
@@ -7989,13 +7437,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.quotaHint({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/account": {
@@ -8021,6 +7463,7 @@ Target: /home/pkcs12/projects/opencode/templates
                   "type": "object",
                   "properties": {
                     "providers": {
+                      "description": "Canonical provider-keyed account map",
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -8153,6 +7596,8 @@ Target: /home/pkcs12/projects/opencode/templates
                       }
                     },
                     "families": {
+                      "description": "Deprecated alias of providers kept for compatibility",
+                      "deprecated": true,
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -8293,13 +7738,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.listAll({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/account/{family}/active": {
@@ -8319,11 +7758,12 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           }
         ],
         "summary": "Set active account",
-        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Active account set successfully",
@@ -8364,6 +7804,9 @@ Target: /home/pkcs12/projects/opencode/templates
                 "properties": {
                   "accountId": {
                     "type": "string"
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -8372,13 +7815,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.setActive({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/account/auth/{family}/login": {
@@ -8398,22 +7835,24 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Trigger login",
-        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Login URL info"
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.login({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/account/{family}/{accountId}": {
@@ -8433,7 +7872,8 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -8442,10 +7882,17 @@ Target: /home/pkcs12/projects/opencode/templates
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Remove account",
-        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account removed successfully",
@@ -8477,13 +7924,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.remove({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "account.update",
@@ -8501,7 +7942,8 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -8513,7 +7955,7 @@ Target: /home/pkcs12/projects/opencode/templates
           }
         ],
         "summary": "Update account metadata",
-        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account updated successfully",
@@ -8555,6 +7997,9 @@ Target: /home/pkcs12/projects/opencode/templates
                   "name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -8563,13 +8008,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/accounts/quota": {
@@ -8628,12 +8067,16 @@ Target: /home/pkcs12/projects/opencode/templates
                   "type": "object",
                   "properties": {
                     "providerId": {
+                      "description": "Resolved runtime provider ID",
                       "type": "string"
                     },
                     "providerKey": {
+                      "description": "Canonical provider identity key",
                       "type": "string"
                     },
                     "family": {
+                      "description": "Deprecated alias of providerKey kept for compatibility",
+                      "deprecated": true,
                       "type": "string"
                     },
                     "accountId": {
@@ -8652,13 +8095,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.quotaHint({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/accounts": {
@@ -8684,6 +8121,7 @@ Target: /home/pkcs12/projects/opencode/templates
                   "type": "object",
                   "properties": {
                     "providers": {
+                      "description": "Canonical provider-keyed account map",
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -8816,6 +8254,8 @@ Target: /home/pkcs12/projects/opencode/templates
                       }
                     },
                     "families": {
+                      "description": "Deprecated alias of providers kept for compatibility",
+                      "deprecated": true,
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -8956,13 +8396,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.listAll({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/accounts/{family}/active": {
@@ -8982,11 +8416,12 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           }
         ],
         "summary": "Set active account",
-        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Active account set successfully",
@@ -9027,6 +8462,9 @@ Target: /home/pkcs12/projects/opencode/templates
                 "properties": {
                   "accountId": {
                     "type": "string"
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -9035,13 +8473,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.setActive({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/accounts/auth/{family}/login": {
@@ -9061,22 +8493,24 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Trigger login",
-        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Login URL info"
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.login({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/accounts/{family}/{accountId}": {
@@ -9096,7 +8530,8 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -9105,10 +8540,17 @@ Target: /home/pkcs12/projects/opencode/templates
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Remove account",
-        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account removed successfully",
@@ -9140,13 +8582,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.remove({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "account.update",
@@ -9164,7 +8600,8 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -9176,7 +8613,7 @@ Target: /home/pkcs12/projects/opencode/templates
           }
         ],
         "summary": "Update account metadata",
-        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account updated successfully",
@@ -9218,6 +8655,9 @@ Target: /home/pkcs12/projects/opencode/templates
                   "name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -9226,13 +8666,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/rotation/status": {
@@ -9406,13 +8840,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.rotation.status({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/rotation/recommend": {
@@ -9580,13 +9008,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.rotation.recommend({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/rotation/fallback": {
@@ -9697,13 +9119,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.rotation.fallback({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/model/preferences": {
@@ -9780,13 +9196,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.model.preferences.get({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "model.preferences.update",
@@ -9919,13 +9329,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.model.preferences.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/find": {
@@ -10031,13 +9435,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.find.text({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/find/file": {
@@ -10107,13 +9505,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.find.files({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/find/symbol": {
@@ -10152,13 +9544,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.find.symbols({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/file": {
@@ -10197,13 +9583,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.file.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/file/content": {
@@ -10239,13 +9619,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.file.read({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/file/status": {
@@ -10276,13 +9650,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.file.status({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/instance/dispose": {
@@ -10310,13 +9678,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.instance.dispose({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/path": {
@@ -10344,13 +9706,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.path.get({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/vcs": {
@@ -10378,13 +9734,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.vcs.get({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/command": {
@@ -10415,13 +9765,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.command.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/log": {
@@ -10501,13 +9845,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.app.log({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/agent": {
@@ -10538,13 +9876,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.app.agents({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/skill": {
@@ -10595,13 +9927,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.app.skills({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/lsp": {
@@ -10632,13 +9958,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.lsp.status({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/formatter": {
@@ -10669,13 +9989,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.formatter.status({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/api/v2/event": {
@@ -10703,13 +10017,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.event.subscribe({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/global/health": {
@@ -10741,13 +10049,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.health({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/global/auth/session": {
@@ -10802,13 +10104,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.auth.session({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/global/auth/login": {
@@ -10868,13 +10164,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.auth.login({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/global/auth/logout": {
@@ -10902,13 +10192,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.auth.logout({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/global/event": {
@@ -10927,13 +10211,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.event({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/global/config": {
@@ -10952,13 +10230,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.config.get({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "global.config.update",
@@ -10994,13 +10266,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.config.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/global/dispose": {
@@ -11019,13 +10285,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.dispose({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/auth/{providerId}": {
@@ -11073,13 +10333,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.auth.set({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "auth.remove",
@@ -11116,12 +10370,6 @@ Target: /home/pkcs12/projects/opencode/templates
             },
             "required": true
           }
-        ],
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.auth.remove({\n  ...\n})"
-          }
         ]
       }
     },
@@ -11153,13 +10401,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.project.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/project/current": {
@@ -11187,13 +10429,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.project.current({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/project/{projectID}": {
@@ -11286,13 +10522,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.project.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/workspace": {
@@ -11434,13 +10664,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/workspace/current": {
@@ -11579,13 +10803,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.current({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/workspace/status": {
@@ -11669,13 +10887,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.status({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/workspace/{workspaceID}": {
@@ -11832,13 +11044,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.get({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/workspace/{workspaceID}/reset-run": {
@@ -12014,13 +11220,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.resetRun({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/workspace/{workspaceID}/delete-run": {
@@ -12204,13 +11404,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.deleteRun({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/workspace/{workspaceID}/reset": {
@@ -12367,13 +11561,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.reset({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/workspace/{workspaceID}/delete": {
@@ -12530,13 +11718,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.delete({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/workspace/{workspaceID}/archive": {
@@ -12693,13 +11875,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.archive({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/workspace/{workspaceID}/active": {
@@ -12856,13 +12032,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.active({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/workspace/{workspaceID}/failed": {
@@ -13019,13 +12189,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.workspace.failed({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/pty": {
@@ -13056,13 +12220,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.list({\n  ...\n})"
-          }
-        ]
+        }
       },
       "post": {
         "operationId": "pty.create",
@@ -13133,13 +12291,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.create({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/pty/{ptyID}": {
@@ -13185,13 +12337,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.get({\n  ...\n})"
-          }
-        ]
+        }
       },
       "put": {
         "operationId": "pty.update",
@@ -13264,13 +12410,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.update({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "pty.remove",
@@ -13314,13 +12454,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.remove({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/pty/{ptyID}/connect": {
@@ -13366,13 +12500,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.pty.connect({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/config": {
@@ -13400,13 +12528,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.config.get({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "config.update",
@@ -13451,13 +12573,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.config.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/config/providers": {
@@ -13506,13 +12622,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.config.providers({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/experimental/debug-beacon": {
@@ -13585,13 +12695,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.debug.beacon({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/experimental/scroll-capture/latest": {
@@ -13645,13 +12749,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.scrollCapture.latest({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/experimental/scroll-capture": {
@@ -13719,13 +12817,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.scrollCapture.record({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/experimental/review-checkpoint": {
@@ -13834,13 +12926,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.review.checkpoint({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/experimental/user-daemon": {
@@ -13919,13 +13005,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.userDaemon.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/experimental/tool/ids": {
@@ -13963,13 +13043,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tool.ids({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/experimental/tool": {
@@ -14023,13 +13097,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tool.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/experimental/worktree": {
@@ -14076,13 +13144,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.worktree.create({\n  ...\n})"
-          }
-        ]
+        }
       },
       "get": {
         "operationId": "worktree.list",
@@ -14111,13 +13173,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.worktree.list({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "worktree.remove",
@@ -14162,13 +13218,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.worktree.remove({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/experimental/worktree/reset": {
@@ -14215,13 +13265,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.worktree.reset({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/experimental/session": {
@@ -14301,13 +13345,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.session.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/experimental/resource": {
@@ -14341,13 +13379,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.resource.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session": {
@@ -14411,13 +13443,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.list({\n  ...\n})"
-          }
-        ]
+        }
       },
       "post": {
         "operationId": "session.create",
@@ -14474,13 +13500,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.create({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/status": {
@@ -14524,13 +13544,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.status({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/top": {
@@ -14595,13 +13609,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.top({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}": {
@@ -14661,13 +13669,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.get({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "session.delete",
@@ -14722,13 +13724,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.delete({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "session.update",
@@ -14867,13 +13863,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/children": {
@@ -14936,13 +13926,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.children({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/todo": {
@@ -15002,13 +13986,84 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
+        }
+      }
+    },
+    "/session/{sessionID}/autonomous": {
+      "post": {
+        "operationId": "session.autonomous",
+        "parameters": [
           {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.todo({\n  ...\n})"
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
           }
-        ]
+        ],
+        "summary": "Toggle autonomous session mode",
+        "description": "Enable or disable autonomous continuation for a session, and optionally enqueue an immediate continue turn.",
+        "responses": {
+          "200": {
+            "description": "Updated autonomous workflow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "enqueue": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        }
       }
     },
     "/session/{sessionID}/init": {
@@ -15091,13 +14146,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.init({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/fork": {
@@ -15149,13 +14198,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.fork({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/abort": {
@@ -15211,13 +14254,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.abort({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/share": {
@@ -15273,13 +14310,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.share({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "session.unshare",
@@ -15334,13 +14365,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.unshare({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/diff": {
@@ -15388,13 +14413,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.diff({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/summarize": {
@@ -15476,13 +14495,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.summarize({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/message": {
@@ -15564,13 +14577,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.messages({\n  ...\n})"
-          }
-        ]
+        }
       },
       "post": {
         "operationId": "session.prompt",
@@ -15694,6 +14701,9 @@ Target: /home/pkcs12/projects/opencode/templates
                   "variant": {
                     "type": "string"
                   },
+                  "autonomous": {
+                    "type": "boolean"
+                  },
                   "parts": {
                     "type": "array",
                     "items": {
@@ -15720,13 +14730,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.prompt({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/message/{messageID}": {
@@ -15807,13 +14811,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.message({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "session.deleteMessage",
@@ -15877,13 +14875,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.deleteMessage({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/message/{messageID}/part/{partID}": {
@@ -15957,13 +14949,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.part.delete({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "part.update",
@@ -16044,13 +15030,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.part.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/prompt_async": {
@@ -16154,6 +15134,9 @@ Target: /home/pkcs12/projects/opencode/templates
                   "variant": {
                     "type": "string"
                   },
+                  "autonomous": {
+                    "type": "boolean"
+                  },
                   "parts": {
                     "type": "array",
                     "items": {
@@ -16180,13 +15163,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.prompt_async({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/command": {
@@ -16350,13 +15327,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.command({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/shell": {
@@ -16455,13 +15426,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.shell({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/revert": {
@@ -16539,13 +15504,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.revert({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/unrevert": {
@@ -16601,13 +15560,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.unrevert({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/session/{sessionID}/permissions/{permissionID}": {
@@ -16694,13 +15647,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.permission.respond({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/permission/{requestID}/reply": {
@@ -16781,13 +15728,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.permission.reply({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/permission": {
@@ -16818,13 +15759,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.permission.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/question": {
@@ -16855,13 +15790,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.question.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/question/{requestID}/reply": {
@@ -16938,13 +15867,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.question.reply({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/question/{requestID}/reject": {
@@ -17000,13 +15923,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.question.reject({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/provider": {
@@ -17310,13 +16227,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/provider/auth": {
@@ -17353,13 +16264,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.auth({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/provider/{providerId}/oauth/authorize": {
@@ -17424,13 +16329,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.oauth.authorize({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/provider/{providerId}/oauth/callback": {
@@ -17499,13 +16398,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.provider.oauth.callback({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/mcp": {
@@ -17539,13 +16432,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.status({\n  ...\n})"
-          }
-        ]
+        }
       },
       "post": {
         "operationId": "mcp.add",
@@ -17615,13 +16502,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.add({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/mcp/{name}/auth": {
@@ -17686,13 +16567,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.start({\n  ...\n})"
-          }
-        ]
+        }
       },
       "delete": {
         "operationId": "mcp.auth.remove",
@@ -17745,13 +16620,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.remove({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/mcp/{name}/auth/callback": {
@@ -17825,13 +16694,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.callback({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/mcp/{name}/auth/authenticate": {
@@ -17887,13 +16750,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.auth.authenticate({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/mcp/{name}/connect": {
@@ -17928,13 +16785,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.connect({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/mcp/{name}/disconnect": {
@@ -17969,13 +16820,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.mcp.disconnect({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/append-prompt": {
@@ -18030,13 +16875,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.appendPrompt({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/open-help": {
@@ -18064,13 +16903,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openHelp({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/open-sessions": {
@@ -18098,13 +16931,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openSessions({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/open-themes": {
@@ -18132,13 +16959,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openThemes({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/open-models": {
@@ -18166,13 +16987,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.openModels({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/submit-prompt": {
@@ -18200,13 +17015,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.submitPrompt({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/clear-prompt": {
@@ -18234,13 +17043,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.clearPrompt({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/execute-command": {
@@ -18295,13 +17098,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.executeCommand({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/show-toast": {
@@ -18364,13 +17161,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.showToast({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/publish": {
@@ -18433,13 +17224,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.publish({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/select-session": {
@@ -18506,13 +17291,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.selectSession({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/control/next": {
@@ -18550,13 +17329,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.control.next({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/tui/control/response": {
@@ -18591,13 +17364,7 @@ Target: /home/pkcs12/projects/opencode/templates
               "schema": {}
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.tui.control.response({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/account/quota": {
@@ -18656,12 +17423,16 @@ Target: /home/pkcs12/projects/opencode/templates
                   "type": "object",
                   "properties": {
                     "providerId": {
+                      "description": "Resolved runtime provider ID",
                       "type": "string"
                     },
                     "providerKey": {
+                      "description": "Canonical provider identity key",
                       "type": "string"
                     },
                     "family": {
+                      "description": "Deprecated alias of providerKey kept for compatibility",
+                      "deprecated": true,
                       "type": "string"
                     },
                     "accountId": {
@@ -18680,13 +17451,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.quotaHint({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/account": {
@@ -18712,6 +17477,7 @@ Target: /home/pkcs12/projects/opencode/templates
                   "type": "object",
                   "properties": {
                     "providers": {
+                      "description": "Canonical provider-keyed account map",
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -18844,6 +17610,8 @@ Target: /home/pkcs12/projects/opencode/templates
                       }
                     },
                     "families": {
+                      "description": "Deprecated alias of providers kept for compatibility",
+                      "deprecated": true,
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -18984,13 +17752,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.listAll({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/account/{family}/active": {
@@ -19010,11 +17772,12 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           }
         ],
         "summary": "Set active account",
-        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Active account set successfully",
@@ -19055,6 +17818,9 @@ Target: /home/pkcs12/projects/opencode/templates
                 "properties": {
                   "accountId": {
                     "type": "string"
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -19063,13 +17829,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.setActive({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/account/auth/{family}/login": {
@@ -19089,22 +17849,24 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Trigger login",
-        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Login URL info"
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.login({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/account/{family}/{accountId}": {
@@ -19124,7 +17886,8 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -19133,10 +17896,17 @@ Target: /home/pkcs12/projects/opencode/templates
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Remove account",
-        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account removed successfully",
@@ -19168,13 +17938,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.remove({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "account.update",
@@ -19192,7 +17956,8 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -19204,7 +17969,7 @@ Target: /home/pkcs12/projects/opencode/templates
           }
         ],
         "summary": "Update account metadata",
-        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account updated successfully",
@@ -19246,6 +18011,9 @@ Target: /home/pkcs12/projects/opencode/templates
                   "name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -19254,13 +18022,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/accounts/quota": {
@@ -19319,12 +18081,16 @@ Target: /home/pkcs12/projects/opencode/templates
                   "type": "object",
                   "properties": {
                     "providerId": {
+                      "description": "Resolved runtime provider ID",
                       "type": "string"
                     },
                     "providerKey": {
+                      "description": "Canonical provider identity key",
                       "type": "string"
                     },
                     "family": {
+                      "description": "Deprecated alias of providerKey kept for compatibility",
+                      "deprecated": true,
                       "type": "string"
                     },
                     "accountId": {
@@ -19343,13 +18109,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.quotaHint({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/accounts": {
@@ -19375,6 +18135,7 @@ Target: /home/pkcs12/projects/opencode/templates
                   "type": "object",
                   "properties": {
                     "providers": {
+                      "description": "Canonical provider-keyed account map",
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -19507,6 +18268,8 @@ Target: /home/pkcs12/projects/opencode/templates
                       }
                     },
                     "families": {
+                      "description": "Deprecated alias of providers kept for compatibility",
+                      "deprecated": true,
                       "type": "object",
                       "propertyNames": {
                         "type": "string"
@@ -19647,13 +18410,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.listAll({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/accounts/{family}/active": {
@@ -19673,11 +18430,12 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           }
         ],
         "summary": "Set active account",
-        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Set the active account for a specific provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Active account set successfully",
@@ -19718,6 +18476,9 @@ Target: /home/pkcs12/projects/opencode/templates
                 "properties": {
                   "accountId": {
                     "type": "string"
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -19726,13 +18487,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.setActive({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/accounts/auth/{family}/login": {
@@ -19752,22 +18507,24 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Trigger login",
-        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Get the login URL for a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Login URL info"
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.login({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/accounts/{family}/{accountId}": {
@@ -19787,7 +18544,8 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -19796,10 +18554,17 @@ Target: /home/pkcs12/projects/opencode/templates
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "providerKey",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Remove account",
-        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Remove a specific account under a provider key. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account removed successfully",
@@ -19831,13 +18596,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.remove({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "account.update",
@@ -19855,7 +18614,8 @@ Target: /home/pkcs12/projects/opencode/templates
             "schema": {
               "type": "string"
             },
-            "required": true
+            "required": true,
+            "description": "Deprecated path param alias of providerKey"
           },
           {
             "in": "path",
@@ -19867,7 +18627,7 @@ Target: /home/pkcs12/projects/opencode/templates
           }
         ],
         "summary": "Update account metadata",
-        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility.",
+        "description": "Update editable account metadata under a provider key. Legacy route param name remains 'family' for compatibility, and request bodies may also include matching 'providerKey' as an additive alias.",
         "responses": {
           "200": {
             "description": "Account updated successfully",
@@ -19909,6 +18669,9 @@ Target: /home/pkcs12/projects/opencode/templates
                   "name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "providerKey": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -19917,13 +18680,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.account.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/rotation/status": {
@@ -20097,13 +18854,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.rotation.status({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/rotation/recommend": {
@@ -20271,13 +19022,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.rotation.recommend({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/rotation/fallback": {
@@ -20388,13 +19133,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.rotation.fallback({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/model/preferences": {
@@ -20471,13 +19210,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.model.preferences.get({\n  ...\n})"
-          }
-        ]
+        }
       },
       "patch": {
         "operationId": "model.preferences.update",
@@ -20610,13 +19343,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.model.preferences.update({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/find": {
@@ -20722,13 +19449,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.find.text({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/find/file": {
@@ -20798,13 +19519,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.find.files({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/find/symbol": {
@@ -20843,13 +19558,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.find.symbols({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/file": {
@@ -20888,13 +19597,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.file.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/file/content": {
@@ -20930,13 +19633,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.file.read({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/file/status": {
@@ -20967,13 +19664,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.file.status({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/instance/dispose": {
@@ -21001,13 +19692,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.instance.dispose({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/path": {
@@ -21035,13 +19720,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.path.get({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/vcs": {
@@ -21069,13 +19748,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.vcs.get({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/command": {
@@ -21106,13 +19779,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.command.list({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/log": {
@@ -21192,13 +19859,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.app.log({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/agent": {
@@ -21229,13 +19890,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.app.agents({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/skill": {
@@ -21286,13 +19941,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.app.skills({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/lsp": {
@@ -21323,13 +19972,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.lsp.status({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/formatter": {
@@ -21360,13 +20003,7 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.formatter.status({\n  ...\n})"
-          }
-        ]
+        }
       }
     },
     "/event": {
@@ -21394,66 +20031,12 @@ Target: /home/pkcs12/projects/opencode/templates
               }
             }
           }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.event.subscribe({\n  ...\n})"
-          }
-        ]
+        }
       }
     }
   },
   "components": {
     "schemas": {
-      "Event.installation.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "installation.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "version": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "version"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.installation.update-available": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "installation.update-available"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "version": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "version"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
       "Project": {
         "type": "object",
         "properties": {
@@ -21565,6 +20148,54 @@ Target: /home/pkcs12/projects/opencode/templates
           "properties"
         ]
       },
+      "Event.installation.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "installation.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "version"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.installation.update-available": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "installation.update-available"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "version"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
       "Event.server.connected": {
         "type": "object",
         "properties": {
@@ -21637,30 +20268,6 @@ Target: /home/pkcs12/projects/opencode/templates
           "properties": {
             "type": "object",
             "properties": {}
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.file.edited": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "file.edited"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "file": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "file"
-            ]
           }
         },
         "required": [
@@ -24190,6 +22797,30 @@ Target: /home/pkcs12/projects/opencode/templates
           "properties"
         ]
       },
+      "Event.file.edited": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.edited"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "file"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
       "Event.file.watcher.updated": {
         "type": "object",
         "properties": {
@@ -26161,16 +24792,16 @@ Target: /home/pkcs12/projects/opencode/templates
       "Event": {
         "anyOf": [
           {
-            "$ref": "#/components/schemas/Event.installation.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.installation.update-available"
-          },
-          {
             "$ref": "#/components/schemas/Event.project.updated"
           },
           {
             "$ref": "#/components/schemas/Event.server.instance.disposed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.installation.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.installation.update-available"
           },
           {
             "$ref": "#/components/schemas/Event.server.connected"
@@ -26183,9 +24814,6 @@ Target: /home/pkcs12/projects/opencode/templates
           },
           {
             "$ref": "#/components/schemas/Event.lsp.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.file.edited"
           },
           {
             "$ref": "#/components/schemas/Event.message.updated"
@@ -26258,6 +24886,9 @@ Target: /home/pkcs12/projects/opencode/templates
           },
           {
             "$ref": "#/components/schemas/Event.command.executed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.file.edited"
           },
           {
             "$ref": "#/components/schemas/Event.file.watcher.updated"

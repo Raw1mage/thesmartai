@@ -1335,6 +1335,26 @@
 - Architecture Sync: Verified (No doc changes)
   - OpenAPI metadata clarification only; runtime data flow and persistence contract unchanged
 
+## Follow-up Fix: provider-key migration batch 23 (regen unblocking + scoped validation mode)
+
+- Goal:
+  - unblock source-of-truth OpenAPI regeneration under long-running CI/dev wrapper noise
+  - keep migration moving with scoped, non-blocking validation (no global typecheck)
+- Updated files:
+  - `packages/sdk/openapi.json`
+  - `docs/events/event_20260312_session_global_fallback_rca.md`
+- Applied changes:
+  - detected that `bun dev generate > packages/sdk/openapi.json` may include runtime sync/log output before JSON payload in this environment
+  - switched to `packages/opencode/src/openapi/generate.ts` direct generation path and normalized resulting root OpenAPI artifact to strict JSON payload
+  - adopted scoped validation policy for this phase:
+    - touched-file lint
+    - generated OpenAPI JSON parse checks
+    - avoid full workspace typecheck when it causes repeated long hangs unrelated to touched files
+- Validation:
+  - `bun -e "JSON.parse(await Bun.file('/home/pkcs12/projects/opencode/packages/sdk/openapi.json').text()); console.log('root openapi parse ok')"` ✅
+- Architecture Sync: Verified (No doc changes)
+  - generation/runtime flow unchanged; this is a workflow unblocking/validation-scope adjustment only
+
 ### Critical notes / edge cases
 
 - Do not rename public `/:family/...` routes yet; only add compatibility wording/docs.
