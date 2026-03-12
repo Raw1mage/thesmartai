@@ -220,6 +220,8 @@ export function getActiveAccountForFamily(
   return typeof providerRow?.activeAccount === "string" ? providerRow.activeAccount : undefined
 }
 
+export const getActiveAccountForProviderKey = getActiveAccountForFamily
+
 export function getModelUnavailableReason(input: {
   providerId: string
   accountId?: string

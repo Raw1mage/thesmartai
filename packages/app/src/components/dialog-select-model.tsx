@@ -41,7 +41,7 @@ import {
   buildAccountRows,
   buildProviderRows,
   filterModelsForMode,
-  getActiveAccountForFamily,
+  getActiveAccountForProviderKey,
   getFilteredModelsForSelection,
   getModelUnavailableReason,
   isAccountLikeProviderId,
@@ -1095,7 +1095,7 @@ export const DialogSelectModel: Component<{
 
   const providerAccountKey = (providerId: string) => normalizeProviderFamily(providerId) || providerId
   const activeAccountForProvider = (providerId: string) =>
-    getActiveAccountForFamily(accountFamilies(), providerAccountKey(providerId))
+    getActiveAccountForProviderKey(accountFamilies(), providerAccountKey(providerId))
 
   const modelUnavailableReason = (providerId: string, accountId?: string) =>
     getModelUnavailableReason({

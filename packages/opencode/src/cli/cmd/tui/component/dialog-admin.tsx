@@ -772,7 +772,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     })
   }
 
-  // Group providers by family from SYNC data (for Level 1 list)
+  // Group providers by provider key from SYNC data (for Level 1 list)
   const groupedProviders = createMemo(() => {
     const groups = new Map<string, any[]>()
     for (const p of sync.data.provider) {
@@ -1285,7 +1285,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
         const accountTotal = providerData ? filteredIds.length : providerRow.accountCount
         const providerDisabled = !providerRow.enabled
 
-        // Show All/Filtered share the same family universe.
+        // Show All/Filtered share the same provider-key universe.
         // The only difference is whether disabled providers are filtered out.
         const shouldShow = showHidden() ? true : !providerDisabled
         if (!shouldShow) continue

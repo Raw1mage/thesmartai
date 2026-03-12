@@ -717,3 +717,21 @@
   - updated selector-state tests to match the renamed helper inputs
 - Architecture Sync: Verified (No doc changes)
   - local helper-call cleanup only; no runtime behavior or compatibility API contract changed
+
+## Follow-up Fix: provider-key terminology cleanup batch 9
+
+- Goal:
+  - add provider-key-friendly helper aliases and continue trimming low-risk local comment wording without changing compatibility contracts
+- Updated files:
+  - `packages/app/src/components/model-selector-state.ts`
+  - `packages/app/src/components/dialog-select-model.tsx`
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
+- Applied changes:
+  - `model-selector-state.ts`
+    - added `getActiveAccountForProviderKey` as a provider-first alias of the existing compatibility helper export
+  - `dialog-select-model.tsx`
+    - switched local usage to the new provider-key alias while preserving behavior
+  - `dialog-admin.tsx`
+    - updated remaining local comments from `family` wording to `provider key` where they only described local grouping semantics
+- Architecture Sync: Verified (No doc changes)
+  - alias/comment cleanup only; no runtime behavior or compatibility API contract changed
