@@ -1388,6 +1388,15 @@
 - Architecture Sync: Verified (No doc changes)
   - description-only contract clarification; no runtime behavior change
 
+## Follow-up Note: compatibility test boundary clarification
+
+- Observation:
+  - `packages/opencode/src/account/quota/hint.ts` helper contract currently returns `family` (not `providerKey`) by design.
+  - Canonical `providerKey` exposure is handled at route/OpenAPI response layer (`server/routes/account.ts`), not at this helper boundary.
+- Decision:
+  - compatibility tests for canonical `providerKey` + legacy `family` should be added at route/API contract level, not by changing helper-level expectations.
+  - helper tests remain unchanged to avoid false contract assumptions.
+
 ### Critical notes / edge cases
 
 - Do not rename public `/:family/...` routes yet; only add compatibility wording/docs.
