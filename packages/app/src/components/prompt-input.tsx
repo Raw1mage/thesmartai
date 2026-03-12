@@ -302,14 +302,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   createEffect(() => {
     const model = currentModel()
-    const providerFamily = model ? (effectiveProviderFamily() ?? model.provider.id) : undefined
+    const providerKey = model ? (effectiveProviderFamily() ?? model.provider.id) : undefined
     const last = lastCompletedAssistant()
     const completed =
       last && "completed" in last.time && typeof last.time.completed === "number" ? last.time.completed : undefined
     if (!last || completed === undefined) return
     const marker = `${last.id}:${completed}`
     if (marker === lastQuotaRefreshMarker()) return
-    if (!shouldRefreshProviderQuota({ providerFamily, lastRefreshAt: lastQuotaRefreshAt() })) return
+    if (!shouldRefreshProviderQuota({ providerKey, lastRefreshAt: lastQuotaRefreshAt() })) return
     setLastQuotaRefreshMarker(marker)
     setLastQuotaRefreshAt(Date.now())
     setQuotaRefresh((value) => value + 1)
@@ -385,9 +385,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     setLocalAutonomousOverride(next)
     showToast({
       title: next ? "Autonomous mode" : "Manual mode",
-      description: next
-        ? "Agent will continue working after each reply"
-        : "Agent waits for your input",
+      description: next ? "Agent will continue working after each reply" : "Agent waits for your input",
       variant: next ? "success" : "default",
     })
   }
@@ -1380,11 +1378,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   <Button
                     type="button"
                     variant="ghost"
-                    classList={{
-                      "h-6 px-2 min-w-0": true,
-                      "text-text-weak": !autonomousEnabled(),
-                      "text-green-400 font-semibold": autonomousEnabled(),
-                      "bg-green-500/10": autonomousEnabled(),
+                    class="h-6 px-2 min-w-0"
+                    style={{
+                      color: autonomousEnabled() ? "var(--icon-success-base)" : undefined,
+                      "font-weight": autonomousEnabled() ? "600" : undefined,
+                      "background-color": autonomousEnabled() ? "var(--surface-success-base)" : undefined,
                     }}
                     disabled={!params.id}
                     onClick={toggleAutonomous}

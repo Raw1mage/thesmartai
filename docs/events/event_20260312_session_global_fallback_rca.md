@@ -765,3 +765,19 @@
     - clarified that footer account-label lookup is best-effort display metadata only
 - Architecture Sync: Verified (No doc changes)
   - L1-only cleanup: local vars/comments only; no behavior or contract changes
+
+## Follow-up Fix: provider-key terminology cleanup batch 12
+
+- Goal:
+  - perform a contained L2 alias-adoption pass in Web quota refresh helpers without changing public/runtime contracts
+- Updated files:
+  - `packages/app/src/components/prompt-input/quota-refresh.ts`
+  - `packages/app/src/components/prompt-input.tsx`
+- Applied changes:
+  - `quota-refresh.ts`
+    - renamed the local helper input from `providerFamily` to `providerKey`
+    - added `isPromptQuotaProviderKey` as a provider-first alias for the existing compatibility helper export
+  - `prompt-input.tsx`
+    - updated local call site/variable naming to use `providerKey`
+- Architecture Sync: Verified (No doc changes)
+  - L2 helper-alias adoption only; no runtime behavior or public contract changed
