@@ -673,3 +673,20 @@
     - renamed model-selection candidate list from `familyCandidates` to `providerCandidates`
 - Architecture Sync: Verified (No doc changes)
   - rename-only/local-helper cleanup; no behavior or routing contract changed
+
+## Follow-up Fix: provider-key terminology cleanup batch 6
+
+- Goal:
+  - continue low-risk local helper/comment cleanup in TUI admin and align remaining test wording with provider-key terminology
+- Updated files:
+  - `packages/opencode/src/cli/cmd/tui/component/dialog-admin.tsx`
+  - `packages/app/src/components/model-selector-state.test.ts`
+- Applied changes:
+  - `dialog-admin.tsx`
+    - renamed local helper `family(...)` to `providerKeyFromId(...)`
+    - updated related local call sites and comments to provider-key wording
+    - kept legacy payload compatibility for `value.family` while documenting it as a compatibility path
+  - `model-selector-state.test.ts`
+    - updated test names from `provider family` wording to `provider key`
+- Architecture Sync: Verified (No doc changes)
+  - rename-only/local-helper cleanup; no behavior or routing contract changed

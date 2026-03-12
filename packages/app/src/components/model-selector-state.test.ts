@@ -125,7 +125,7 @@ describe("model selector state", () => {
     ).toBe("acct1")
   })
 
-  test("favorites mode only keeps visible models in selected provider family", () => {
+  test("favorites mode only keeps visible models in selected provider key", () => {
     const models = [
       { id: "m1", provider: { id: "openai-api-primary" } },
       { id: "m2", provider: { id: "openai-api-primary" } },
@@ -143,7 +143,7 @@ describe("model selector state", () => {
     expect(rows[0]?.id).toBe("m2")
   })
 
-  test("all mode keeps all models in selected provider family", () => {
+  test("all mode keeps all models in selected provider key", () => {
     const models = [
       { id: "m1", provider: { id: "openai-api-primary" } },
       { id: "m2", provider: { id: "openai-api-primary" } },

@@ -80,6 +80,7 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 
 function asProviderSelectionValue(value: unknown): ProviderSelectionValue | undefined {
   if (!isObjectRecord(value)) return undefined
+  // Accept legacy `family` payloads while normalizing local handling to providerKey semantics.
   const providerKey =
     typeof value.providerKey === "string"
       ? value.providerKey
@@ -490,12 +491,12 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     const pid = selectedProviderID()
     refreshSignal()
     if (currentStep !== "model_select" || !pid) return
-    if (family(pid) !== "google-api") return
+    if (providerKeyFromId(pid) !== "google-api") return
     if (googleModelsLoaded()) return
     loadGoogleModels()
   })
 
-  const family = (id: string) => {
+  const providerKeyFromId = (id: string) => {
     const parsed = Account.parseProvider(id)
     if (parsed) return parsed
     if (id === "opencode" || id.startsWith("opencode-")) return "opencode"
@@ -504,7 +505,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
   onMount(() => {
     if (!props.targetProviderID) return
-    const targetProviderKey = family(props.targetProviderID)
+    const targetProviderKey = providerKeyFromId(props.targetProviderID)
     if (targetProviderKey) setSelectedProviderKey(targetProviderKey)
     setSelectedProviderID(props.targetProviderID)
     setPage("providers")
@@ -512,7 +513,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   })
 
   const label = (name: string, id: string) => {
-    return Account.getProviderLabel(family(id) || id)
+    return Account.getProviderLabel(providerKeyFromId(id) || id)
   }
 
   function isFreeCost(info: { cost?: { input?: number; output?: number } }) {
@@ -584,7 +585,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     isRateLimited?: boolean,
     waitMs?: number,
   ): string | undefined {
-    const providerKey = family(providerId)
+    const providerKey = providerKeyFromId(providerId)
 
     // ──────────────────────────────────────────────────────────
     // Priority 1: Cooldown display (rate-limited state)
@@ -622,7 +623,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   }
 
   const owner = (provider: { id: string; name: string; email?: string }) => {
-    const providerKey = family(provider.id)
+    const providerKey = providerKeyFromId(provider.id)
     if (!providerKey) return undefined
 
     // Agnostic owner fallback
@@ -640,7 +641,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   const currentSessionProviderKey = createMemo(() => {
     const providerId = currentSessionModel()?.providerId
     if (!providerId) return undefined
-    return family(providerId) ?? providerId
+    return providerKeyFromId(providerId) ?? providerId
   })
 
   const effectiveAccountIdForProviderKey = (providerKey?: string | null) => {
@@ -775,10 +776,10 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   const groupedProviders = createMemo(() => {
     const groups = new Map<string, any[]>()
     for (const p of sync.data.provider) {
-      const fam = family(p.id)
-      if (!fam) continue
-      if (!groups.has(fam)) groups.set(fam, [])
-      groups.get(fam)!.push(p)
+      const providerKey = providerKeyFromId(p.id)
+      if (!providerKey) continue
+      if (!groups.has(providerKey)) groups.set(providerKey, [])
+      groups.get(providerKey)!.push(p)
     }
     return groups
   })
@@ -794,11 +795,11 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   )
 
   const syncProvidersForProviderKey = (providerKey: string) =>
-    sync.data.provider.filter((provider) => family(provider.id) === providerKey)
+    sync.data.provider.filter((provider) => providerKeyFromId(provider.id) === providerKey)
 
   const selectedRuntimeProvider = createMemo(() => {
     const currentProviderId = selectedProviderID()
-    const providerKey = selectedProviderKey() ?? (currentProviderId ? family(currentProviderId) : undefined)
+    const providerKey = selectedProviderKey() ?? (currentProviderId ? providerKeyFromId(currentProviderId) : undefined)
     if (!providerKey) return undefined
     return resolveCanonicalRuntimeProvider({
       family: providerKey,
@@ -868,8 +869,8 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
     const sortedModels = Array.from(modelEntries.values()).sort((a, b) => {
       const mode = activitySort()
-      const labelA = Account.getProviderLabel(family(a.providerId) || a.providerId)
-      const labelB = Account.getProviderLabel(family(b.providerId) || b.providerId)
+      const labelA = Account.getProviderLabel(providerKeyFromId(a.providerId) || a.providerId)
+      const labelB = Account.getProviderLabel(providerKeyFromId(b.providerId) || b.providerId)
       if (mode === "provider") {
         if (labelA !== labelB) return labelA.localeCompare(labelB)
         return a.modelId.localeCompare(b.modelId)
@@ -896,10 +897,10 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
     }
     const widths = sortedModels.reduce(
       (acc, entry) => {
-        const providerLabel = Account.getProviderLabel(family(entry.providerId) || entry.providerId) || "-"
+        const providerLabel = Account.getProviderLabel(providerKeyFromId(entry.providerId) || entry.providerId) || "-"
         acc.provider = Math.max(acc.provider, providerLabel.length)
         acc.model = Math.max(acc.model, (entry.modelId || "-").length)
-        const providerBucket = family(entry.providerId) ?? entry.providerId
+        const providerBucket = providerKeyFromId(entry.providerId) ?? entry.providerId
         const accountData = accountMap[entry.providerId] ?? accountMap[providerBucket]
         const accountIds = accountData ? Object.keys(accountData.accounts) : []
         const list = accountIds.length > 0 ? accountIds : ["-"]
@@ -923,12 +924,12 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       const providerId = entryModel.providerId
       const modelId = entryModel.modelId
       const isCurrentModel = currentModel?.providerId === providerId && currentModel?.modelID === modelId
-      const providerBucket = family(providerId) ?? providerId
+      const providerBucket = providerKeyFromId(providerId) ?? providerId
       const accountData = accountMap[providerId] ?? accountMap[providerBucket]
       const activeAccountId = accountData?.activeAccount
       const accountIds = accountData ? Object.keys(accountData.accounts) : []
       const list = accountIds.length > 0 ? accountIds : ["-"]
-      const providerLabel = Account.getProviderLabel(family(providerId) || providerId)
+      const providerLabel = Account.getProviderLabel(providerKeyFromId(providerId) || providerId)
       const providerCol = fitColumn(providerLabel || "-", widths.provider)
       const modelCol = fitColumn(modelId || "-", widths.model)
       const modelInfo = providerMap[providerId]?.models?.[modelId]
@@ -1055,7 +1056,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
     // Check if selecting an already-selected model (triggers auto-exit)
     // @event_20260208_double_enter_model_exit
-    const providerKey = family(providerId) || providerId
+    const providerKey = providerKeyFromId(providerId) || providerId
     const current = local.model.current(route.data.type === "session" ? route.data.sessionID : undefined)
     const currentAccountId = local.model.currentAccountId(
       route.data.type === "session" ? route.data.sessionID : undefined,
@@ -1404,9 +1405,9 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       const providerId = resolved.id
 
       const showAll = showHidden()
-      const isGoogleProvider = family(providerId) === "google-api"
+      const isGoogleProvider = providerKeyFromId(providerId) === "google-api"
       // Use canonical provider key for favorites/hidden checks (they expect provider boundary IDs like "google-api")
-      const providerKey = family(providerId) || providerId
+      const providerKey = providerKeyFromId(providerId) || providerId
       // Use the actual provider ID (account-specific when selected) for model selection
       // This ensures getSDK() uses the correct API key for the selected account
       const runtimeProviderId = providerId
@@ -1558,7 +1559,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       })
       setSelectedProviderID(nextProviderId ?? providerKey)
       const current = currentSessionModel()
-      const currentProviderKey = current ? (family(current.providerId) ?? current.providerId) : undefined
+      const currentProviderKey = current ? (providerKeyFromId(current.providerId) ?? current.providerId) : undefined
       if (current && currentProviderKey === providerKey) {
         local.model.set(
           { providerId: providerKey, modelID: current.modelID, accountId },
@@ -1796,7 +1797,9 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
             disabled:
               page() === "activities"
                 ? false
-                : !connected() || step() !== "model_select" || family(selectedProviderID() ?? "") !== "google-api",
+                : !connected() ||
+                  step() !== "model_select" ||
+                  providerKeyFromId(selectedProviderID() ?? "") !== "google-api",
             onTrigger: () => {
               if (page() === "activities") {
                 debugCheckpoint("admin.activities", "refresh")
