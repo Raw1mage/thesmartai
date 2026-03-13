@@ -10280,6 +10280,9 @@ export type AccountQuotaHint3Responses = {
   200: {
     providerId: string
     providerKey: string
+    /**
+     * Legacy compatibility alias for providerKey
+     */
     family: string
     accountId?: string
     hint?: string
@@ -10528,6 +10531,9 @@ export type AccountQuotaHint4Responses = {
   200: {
     providerId: string
     providerKey: string
+    /**
+     * Legacy compatibility alias for providerKey
+     */
     family: string
     accountId?: string
     hint?: string
@@ -10668,10 +10674,11 @@ export type AccountSetActive4Response = AccountSetActive4Responses[keyof Account
 export type AccountLogin4Data = {
   body?: never
   path: {
-    family: string
+    family?: string
   }
   query?: {
     directory?: string
+    providerKey?: string
   }
   url: "/accounts/auth/{family}/login"
 }
@@ -10686,11 +10693,12 @@ export type AccountLogin4Responses = {
 export type AccountRemove4Data = {
   body?: never
   path: {
-    family: string
+    family?: string
     accountId: string
   }
   query?: {
     directory?: string
+    providerKey?: string
   }
   url: "/accounts/{family}/{accountId}"
 }
@@ -10720,9 +10728,10 @@ export type AccountRemove4Response = AccountRemove4Responses[keyof AccountRemove
 export type AccountUpdate4Data = {
   body?: {
     name: string
+    providerKey?: string
   }
   path: {
-    family: string
+    family?: string
     accountId: string
   }
   query?: {
