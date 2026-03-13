@@ -263,6 +263,20 @@ Context pack 原則：
 - governor 可建議 replan / ask_user / completion narration。
 - 但 destructive / push / approval gates 仍不可交給 governor。
 
+**Phase 3.5 — operator entrypoint (implemented)**
+
+- Web 端現在已有第一個直接可操作的 Smart Runner/autonomous 入口：
+  - `packages/app/src/components/prompt-input.tsx`
+  - footer bar 中「附加檔案」按鈕左側新增「自動代理」圖示切換按鈕
+- 後端對應入口：
+  - `POST /api/v2/session/:sessionID/autonomous`
+  - 寫入 `workflow.autonomous.enabled`
+  - 若 session 當前 idle，立即呼叫 `enqueueAutonomousContinue(...)` 建立 synthetic continue turn
+- daemon 路由一致性：
+  - `POST /api/v2/session/:sessionID/autonomous` 也已接到 `UserDaemonManager.routeSessionMutationEnabled()` 路徑
+  - gateway 模式會透過 `UserDaemonManager.callSessionAutonomous(...)` 轉送到 per-user daemon，避免只在 local/non-daemon 模式有效
+- 這讓使用者不必再以聊天文字手動要求「繼續」，而能透過顯式 UI 開關把 session 交回 runtime autonomous supervisor。
+
 #### 主要風險與控制
 
 1. **Governance drift**
@@ -316,6 +330,16 @@ Smart Runner 的每次決策應可被觀測：
   - 路線修正
   - docs-first/context-first 決策
   - 可審計的 session 主持
+
+## Validation
+
+- `bun test /home/pkcs12/projects/opencode/packages/opencode/test/server/session-autonomous.test.ts` ✅
+- `bun x tsc --noEmit --project /home/pkcs12/projects/opencode/packages/app/tsconfig.json` ✅
+- `bun x tsc --noEmit --project /home/pkcs12/projects/opencode/packages/opencode/tsconfig.json` ✅
+
+## Architecture Sync
+
+- Updated `docs/ARCHITECTURE.md` to record the new web footer autonomous toggle and the backing `POST /api/v2/session/:sessionID/autonomous` runtime entrypoint. ✅
 
 ### Validation
 
