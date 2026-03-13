@@ -55,13 +55,17 @@ export namespace SessionProcessor {
     const { status, parts } = extractErrorDetails(error)
     if (!parts) return false
 
-    // Temporary errors: rate limit, quota, server errors, general 403 (could be temporary token issue)
+    // Temporary errors: rate limit, quota, server errors, auth failures (try other accounts)
     if (
       isRateLimitError(error) ||
       parts.includes("quota exceeded") ||
       parts.includes("rate limit") ||
       parts.includes("overloaded") ||
       parts.includes("server error") ||
+      parts.includes("unauthorized") ||
+      parts.includes("authenticatetoken") ||
+      parts.includes("authentication failed") ||
+      status === 401 ||
       status === 429 ||
       status === 500 ||
       status === 502 ||
@@ -148,6 +152,12 @@ export namespace SessionProcessor {
     // repeatedly, it means all accounts are exhausted. Stop early.
     let consecutiveNullFallbacks = 0
     const MAX_CONSECUTIVE_NULL_FALLBACKS = 2
+    // SAFETY KILL SWITCH: global consecutive error counter.
+    // Regardless of error type (401, 429, 500, etc.), if we fail this many
+    // times in a row without a single successful stream, force-stop the loop.
+    // This prevents infinite retry spirals that trigger server-side abuse detection.
+    let consecutiveErrors = 0
+    const MAX_CONSECUTIVE_ERRORS = 5
 
     const result = {
       get message() {
@@ -358,6 +368,7 @@ export namespace SessionProcessor {
               input.abort.throwIfAborted()
               switch (value.type) {
                 case "start":
+                  consecutiveErrors = 0 // Stream connected — reset kill switch
                   await clearPendingContinuation(input.sessionID)
                   SessionStatus.set(input.sessionID, { type: "busy" })
                   await Session.setWorkflowState({
@@ -756,7 +767,34 @@ export namespace SessionProcessor {
               if (needsCompaction) break
             }
           } catch (e: any) {
-            // 1. Handle Temporary Errors (Rate Limit, Quota, Server Busy)
+            // SAFETY KILL SWITCH: unconditional consecutive error counter.
+            // If we keep failing without ever reaching "start", force-stop.
+            consecutiveErrors++
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+              log.error("KILL SWITCH: too many consecutive errors, force-stopping", {
+                consecutiveErrors,
+                fallbackAttempts,
+                error: e?.message,
+                status: (e as any)?.status ?? (e as any)?.statusCode,
+              })
+              debugCheckpoint("syslog.rotation", "KILL SWITCH: consecutive errors exceeded limit", {
+                sessionID: input.sessionID,
+                consecutiveErrors,
+                fallbackAttempts,
+                error: e?.message,
+                status: (e as any)?.status ?? (e as any)?.statusCode,
+                note: "force-stopping to prevent infinite retry spiral and server-side abuse detection",
+              })
+              input.assistantMessage.error = MessageV2.fromError(e, { providerId: input.model.providerId })
+              Bus.publish(Session.Event.Error, {
+                sessionID: input.assistantMessage.sessionID,
+                error: input.assistantMessage.error,
+              })
+              SessionStatus.set(input.sessionID, { type: "idle" })
+              break
+            }
+
+            // 1. Handle Temporary Errors (Rate Limit, Quota, Server Busy, Auth failures)
             if (isModelTemporaryError(e)) {
               // SYSLOG: Rate limit or temporary error hit — rotation should kick in
               debugCheckpoint("syslog.rotation", "temporary error: rotation3d should activate", {
