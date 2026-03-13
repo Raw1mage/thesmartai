@@ -24,6 +24,22 @@ log_ok() { echo -e "${GREEN}[OK]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_err() { echo -e "${RED}[ERR]${NC} $1"; }
 
+ensure_clean_repo_deploy_source() {
+  if ! command -v git >/dev/null 2>&1; then
+    log_err "git is required to verify deploy source cleanliness."
+    exit 1
+  fi
+
+  local status
+  status="$(git -C "${ROOT_DIR}" status --short --untracked-files=normal)"
+  if [[ -n "${status}" ]]; then
+    log_err "Dirty repo detected; refusing install/deploy from uncommitted source."
+    log_warn "Commit, stash, or revert local changes before running install.sh."
+    printf '%s\n' "${status}"
+    exit 1
+  fi
+}
+
 usage() {
   cat <<'EOF'
 OpenCode bootstrap installer
@@ -433,6 +449,8 @@ main() {
     log_err "Please run this script from the opencode repository root."
     exit 1
   fi
+
+  ensure_clean_repo_deploy_source
 
   log_info "OpenCode bootstrap starting..."
 

@@ -116,6 +116,26 @@ log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
 log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
+ensure_clean_repo_deploy_source() {
+    if [ "${IS_SOURCE_REPO:-0}" -ne 1 ]; then
+        return
+    fi
+
+    if ! command -v git >/dev/null 2>&1; then
+        log_error "git not found; cannot verify deploy source cleanliness."
+        exit 1
+    fi
+
+    local status
+    status="$(git -C "${PROJECT_ROOT}" status --short --untracked-files=normal)"
+    if [ -n "${status}" ]; then
+        log_error "Dirty repo detected; refusing deploy-from-repo operation."
+        log_error "Commit/stash/revert changes before running install or web-refresh."
+        printf '%s\n' "${status}"
+        exit 1
+    fi
+}
+
 is_owner_scoped_command() {
     case "${1:-}" in
         install|dev-start|dev-up|dev-stop|dev-down|stop|flush|restart|dev-refresh|web-refresh|_restart-worker|status|logs|build-frontend|build-binary)
@@ -795,6 +815,8 @@ do_install() {
         exit 1
     fi
 
+    ensure_clean_repo_deploy_source
+
     local installer="${PROJECT_ROOT}/install.sh"
     if [ ! -f "${installer}" ]; then
         log_error "Installer not found: ${installer}"
@@ -1368,6 +1390,7 @@ do_web_refresh() {
     fi
 
     load_server_cfg
+    ensure_clean_repo_deploy_source
 
     log_info "Refreshing production web frontend (binary-safe deploy + restart)..."
     log_info "Installed binary is preserved; web-refresh only rebuilds/deploys frontend assets."
