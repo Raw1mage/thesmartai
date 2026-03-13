@@ -52,10 +52,10 @@ The `cms` branch is the primary product line for this environment, featuring sig
 1.  **Global Multi-Account Management**: A unified system for managing multiple provider accounts.
 2.  **Rotation3D System**: A dynamic model switching and load balancing system (`rotation3d`), enabling high availability and rate limit management.
 3.  **Admin Panel (`/admin`)**: A centralized "Three-in-One" management interface for system administration.
-4.  **Provider Granularity**: The legacy monolithic `google` provider is canonically split into runtime families that maximize resource utilization:
+4.  **Provider Granularity**: The legacy monolithic `google` provider is canonically split into provider-keyed runtime entries that maximize resource utilization:
     - `gemini-cli`: Optimized for batch processing and large context.
     - `google-api`: For lightweight, high-speed requests.
-    - legacy aliases are not valid canonical runtime families.
+    - legacy aliases are not valid canonical runtime provider keys.
 
 ### Upstream Integration
 
@@ -167,7 +167,7 @@ The `cms` branch is the primary product line for this environment, featuring sig
 5. **Web realtime behavior**
    - Primary path: SSE global events (`/global/event`) drive incremental UI updates.
    - Reliability fallback: while `session.status !== idle`, web periodically forces message snapshot hydration (`session.sync(..., { force: true })`) so assistant replies remain visible without page refresh if SSE propagation is delayed/dropped.
-   - Prompt footer quota metadata is **not** driven by raw SSE deltas alone. For OpenAI usage, web uses a conditional refresh gate in `packages/app/src/components/prompt-input.tsx`: it refetches quota only when a new assistant turn completes **and** the previous quota refresh is older than 60 seconds **and** the effective provider family is `openai`.
+   - Prompt footer quota metadata is **not** driven by raw SSE deltas alone. For OpenAI usage, web uses a conditional refresh gate in `packages/app/src/components/prompt-input.tsx`: it refetches quota only when a new assistant turn completes **and** the previous quota refresh is older than 60 seconds **and** the effective provider key is `openai`.
    - This keeps footer usage reasonably fresh after real AI interaction while avoiding constant polling for idle pages or non-OpenAI providers.
 
 6. **Runtime ownership target**
@@ -202,6 +202,11 @@ The `cms` branch is the primary product line for this environment, featuring sig
 - Prompt/runtime routing should use this registry for tools/skills/MCP inventory and on-demand MCP lifecycle policy.
 
 ### Provider Identity & TUI Admin Runtime Architecture (cms)
+
+Canonical naming note:
+
+- `providerKey` / `providers` are the preferred canonical contract terms.
+- Legacy `family` / `families` remain compatibility terms only and should not be extended into new APIs, docs, or helper surfaces unless explicitly required for backward compatibility.
 
 This section defines the **authoritative** provider/account/model architecture for cms TUI `/admin` and backend runtime.
 Historical change logs belong in `docs/events/`; this document keeps the current architecture only.
@@ -260,14 +265,14 @@ Provider-first migration status:
 
 #### B) TUI `/admin` provider operation pipeline (cms)
 
-| Stage                           | UI Component / Route                                                          | Runtime Side Effect                                                   |
-| :------------------------------ | :---------------------------------------------------------------------------- | :-------------------------------------------------------------------- |
-| Provider inventory bootstrap    | `tui/context/sync.tsx` (`provider.list`, `provider.auth`, `config.providers`) | Hydrates provider/auth/config state for admin menus                   |
-| Add provider entry              | `dialog-admin.tsx` → `DialogProviderManualAdd`                                | Writes `config.provider[...]`, triggers sync bootstrap                |
-| Add API key (models.dev family) | `DialogApiKeyAdd`                                                             | `Account.add(family, accountId, apiKey)` under canonical family scope |
-| Add Google API account          | `DialogGoogleApiAdd`                                                          | Adds `google-api` account with explicit family key                    |
-| OAuth account connect           | `DialogProvider` → `/provider/:id/oauth/*`                                    | Stores auth via `Auth.set(...)` / account module                      |
-| Active account switch           | `/account/:family/active` (legacy route name; operationally provider-scoped)  | Rotation and model availability read new active account               |
+| Stage                             | UI Component / Route                                                          | Runtime Side Effect                                                                                      |
+| :-------------------------------- | :---------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------- |
+| Provider inventory bootstrap      | `tui/context/sync.tsx` (`provider.list`, `provider.auth`, `config.providers`) | Hydrates provider/auth/config state for admin menus                                                      |
+| Add provider entry                | `dialog-admin.tsx` → `DialogProviderManualAdd`                                | Writes `config.provider[...]`, triggers sync bootstrap                                                   |
+| Add API key (legacy route naming) | `DialogApiKeyAdd`                                                             | `Account.add(family, accountId, apiKey)` using legacy compatibility naming over canonical provider scope |
+| Add Google API account            | `DialogGoogleApiAdd`                                                          | Adds `google-api` account with explicit canonical provider key                                           |
+| OAuth account connect             | `DialogProvider` → `/provider/:id/oauth/*`                                    | Stores auth via `Auth.set(...)` / account module                                                         |
+| Active account switch             | `/account/:family/active` (legacy route name; operationally provider-scoped)  | Rotation and model availability read new active account                                                  |
 
 #### B.0) Control-plane vs session-local selection boundary
 
@@ -294,7 +299,7 @@ This subsection documents how prompt footer usage/account metadata stays fresh w
    - TUI computes footer metadata from current provider/model/account state and provider-specific quota hints.
    - OpenAI quota is loaded through a Solid `createResource(quotaRefresh, ...)` path (`codexQuota`).
    - Refresh policy is event-driven, not interval-driven:
-     - **provider relevance gate**: quota path is only armed when current effective provider family is `openai`
+     - **provider relevance gate**: quota path is only armed when the current effective provider key is `openai`
      - **initial on-demand hydrate**: entering an OpenAI-backed footer can trigger one refresh if the last refresh is older than 60 seconds
      - **turn completion signal**: when `lastCompletedAssistant` changes, TUI refreshes quota only if the previous refresh is older than 60 seconds
    - Footer account label and footer OpenAI quota both resolve from the same effective account snapshot.
@@ -350,7 +355,7 @@ This subsection documents how prompt footer usage/account metadata stays fresh w
     - Refresh policy is event-driven, not interval-driven:
       - wait for a **new completed assistant turn**
       - require **more than 60 seconds** since the previous quota refresh
-    - require effective provider family = `openai`
+    - require effective provider key = `openai`
 - Non-OpenAI providers do not participate in this refresh path.
 
 3. **Shared OpenAI quota source-of-truth**
@@ -375,7 +380,7 @@ This subsection documents how prompt footer usage/account metadata stays fresh w
 2. Apply provider-specific manual correction layer to raw model feeds (remove known-bad upstream entries, add curated missing entries).
 3. Merge config providers and aliases.
 4. Merge env/auth-derived provider options.
-5. Merge account families (`Account.listAll`) into account-scoped provider entries.
+5. Merge provider-keyed account inventory from `Account.listAll()` into account-scoped provider entries.
 6. Apply plugin/custom loaders.
 7. Apply model/provider filtering (ignored/deprecated/disabled/rate-limit aware checks).
 
@@ -478,19 +483,19 @@ This package contains the core application logic, including the CLI, the Agent r
 
 #### A. Core & CLI (`src/index.ts`, `src/cli`)
 
-| File Path                                    | Description                                                                                                                                                             | Key Exports                                                                   | Input / Output                                                                                        |
-| :------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                               | **CLI Entry Point.** Configures `yargs`, sets up global error handling, and registers all CLI commands.                                                                 | _None_                                                                        | **Input:** CLI args<br>**Output:** Command execution                                                  |
-| `src/cli/bootstrap.ts`                       | **Initialization Utility.** Wraps command execution to initialize the project context/directory.                                                                        | `bootstrap`                                                                   | **Input:** Directory, Callback<br>**Output:** Promise result                                          |
-| `src/cli/cmd/run.ts`                         | **Run Command.** Primary interface for running agents. Handles interactive sessions and loops.                                                                          | `RunCommand`                                                                  | **Input:** Message, files, model<br>**Output:** Streaming output                                      |
-| `src/cli/cmd/serve.ts`                       | **Serve Command.** Starts the OpenCode server in headless mode for remote connections or MCP.                                                                           | `ServeCommand`                                                                | **Input:** Port, Host<br>**Output:** HTTP Server                                                      |
-| `src/cli/cmd/agent.ts`                       | **Agent Management.** Subcommands to create/list agents.                                                                                                                | `AgentCommand`                                                                | **Input:** Name, Tools<br>**Output:** Agent Config                                                    |
-| `src/cli/cmd/session.ts`                     | **Session Management.** Manages chat sessions (list, step, worker).                                                                                                     | `SessionCommand`                                                              | **Input:** Session ID<br>**Output:** Session Logs                                                     |
-| `src/cli/cmd/auth.ts`                        | **Authentication.** Manages provider credentials (login, logout, list).                                                                                                 | `AuthCommand`                                                                 | **Input:** Provider, Keys<br>**Output:** Stored Creds                                                 |
-| `src/cli/cmd/admin.ts`                       | **Admin Interface.** Launches the Terminal User Interface (TUI).                                                                                                        | `AdminCommand`                                                                | **Input:** URL<br>**Output:** TUI Render                                                              |
-| `src/cli/cmd/tui/component/prompt/index.tsx` | **TUI Prompt Footer + Variant Trigger.** Renders prompt footer model metadata and opens variant picker (`Thinking effort`) for supported model variants.                | `Prompt`                                                                      | **Input:** Local model/session state<br>**Output:** Prompt UI + variant selection interaction         |
-| `src/cli/cmd/tui/util/model-variant.ts`      | **Variant Normalization Policy.** Canonicalizes provider/model variant options, OpenAI label/order mapping, and effective default value resolution (`medium` fallback). | `buildVariantOptions`, `getEffectiveVariantValue`, `shouldShowVariantControl` | **Input:** Raw variant list + provider family<br>**Output:** Display-ready variant options/visibility |
-| `src/cli/ui.ts`                              | **UI Utilities.** Standardized terminal output, colors, styles, and user prompts.                                                                                       | `UI`                                                                          | **Input:** Text<br>**Output:** Formatted Stdout                                                       |
+| File Path                                    | Description                                                                                                                                                             | Key Exports                                                                   | Input / Output                                                                                     |
+| :------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                               | **CLI Entry Point.** Configures `yargs`, sets up global error handling, and registers all CLI commands.                                                                 | _None_                                                                        | **Input:** CLI args<br>**Output:** Command execution                                               |
+| `src/cli/bootstrap.ts`                       | **Initialization Utility.** Wraps command execution to initialize the project context/directory.                                                                        | `bootstrap`                                                                   | **Input:** Directory, Callback<br>**Output:** Promise result                                       |
+| `src/cli/cmd/run.ts`                         | **Run Command.** Primary interface for running agents. Handles interactive sessions and loops.                                                                          | `RunCommand`                                                                  | **Input:** Message, files, model<br>**Output:** Streaming output                                   |
+| `src/cli/cmd/serve.ts`                       | **Serve Command.** Starts the OpenCode server in headless mode for remote connections or MCP.                                                                           | `ServeCommand`                                                                | **Input:** Port, Host<br>**Output:** HTTP Server                                                   |
+| `src/cli/cmd/agent.ts`                       | **Agent Management.** Subcommands to create/list agents.                                                                                                                | `AgentCommand`                                                                | **Input:** Name, Tools<br>**Output:** Agent Config                                                 |
+| `src/cli/cmd/session.ts`                     | **Session Management.** Manages chat sessions (list, step, worker).                                                                                                     | `SessionCommand`                                                              | **Input:** Session ID<br>**Output:** Session Logs                                                  |
+| `src/cli/cmd/auth.ts`                        | **Authentication.** Manages provider credentials (login, logout, list).                                                                                                 | `AuthCommand`                                                                 | **Input:** Provider, Keys<br>**Output:** Stored Creds                                              |
+| `src/cli/cmd/admin.ts`                       | **Admin Interface.** Launches the Terminal User Interface (TUI).                                                                                                        | `AdminCommand`                                                                | **Input:** URL<br>**Output:** TUI Render                                                           |
+| `src/cli/cmd/tui/component/prompt/index.tsx` | **TUI Prompt Footer + Variant Trigger.** Renders prompt footer model metadata and opens variant picker (`Thinking effort`) for supported model variants.                | `Prompt`                                                                      | **Input:** Local model/session state<br>**Output:** Prompt UI + variant selection interaction      |
+| `src/cli/cmd/tui/util/model-variant.ts`      | **Variant Normalization Policy.** Canonicalizes provider/model variant options, OpenAI label/order mapping, and effective default value resolution (`medium` fallback). | `buildVariantOptions`, `getEffectiveVariantValue`, `shouldShowVariantControl` | **Input:** Raw variant list + provider key<br>**Output:** Display-ready variant options/visibility |
+| `src/cli/ui.ts`                              | **UI Utilities.** Standardized terminal output, colors, styles, and user prompts.                                                                                       | `UI`                                                                          | **Input:** Text<br>**Output:** Formatted Stdout                                                    |
 
 #### B. Agent Definition (`src/agent`, `src/acp`)
 
@@ -818,7 +823,7 @@ This section defines the authoritative behavior for runtime config and provider 
 ### C. Admin Providers List Modes
 
 1. **Filtered mode (default)**: show enabled providers only.
-2. **Show All mode**: show full provider family set (enabled + disabled).
+2. **Show All mode**: show full provider set (enabled + disabled).
 3. Both modes must use the same underlying provider universe; mode difference is filtering only.
 
 ### D. Toggle Behavior Contract
@@ -1549,7 +1554,7 @@ flowchart TD
 
 Behavior boundary (current cms WebApp):
 
-1. Provider/account rows derive from provider universe + account families.
+1. Provider/account rows derive from provider universe + provider-keyed account inventory.
 2. Mode switch (`favorites`/`all`) affects model filtering layer only.
 3. Unavailable/cooldown states are surfaced and selection is blocked with explicit reason.
 4. Web has admin-lite parity slices; TUI `/admin` remains canonical full control plane.

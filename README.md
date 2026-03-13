@@ -19,7 +19,7 @@
 
 `cms` 把 provider / account / model 三者收斂成一套一致的操作模型：
 
-- 同一個 family 可以管理多個帳號
+- 同一個 canonical provider key 可以管理多個帳號（legacy 文件中的 `family` 僅作相容用語）
 - 同一個模型群可以按策略 fallback
 - TUI 與 Web App 共用同一組後端資料與 API
 
@@ -36,7 +36,7 @@
 
 ### ③ 它是多模型、多帳號環境的穩定化版本
 
-- 用 account family 統一管理身份
+- 用 canonical provider key 統一管理身份（legacy `family` 用語仍可能在相容層出現）
 - 用 Rotation3D 管理 provider/account/model 三維 fallback
 - 用 shared config/state 避免前端顯示與後端真相脫節
 
@@ -46,7 +46,7 @@
 
 ### ① 全域多帳號管理（Global Multi-Account）
 
-- 以 provider family 為單位管理帳號（如 `openai`, `claude-cli`, `gemini-cli`, `google-api`）。
+- 以 canonical provider key 為單位管理帳號（如 `openai`, `claude-cli`, `gemini-cli`, `google-api`）。
 - 帳號資料集中於統一帳務模組與 XDG runtime `accounts.json`（預設 `~/.config/opencode/accounts.json`），支援 active account 切換與狀態追蹤。
 - runtime secrets（如 `accounts.json`, `mcp-auth.json`）保留於 user-home/XDG 或部署端 volume；repo 不追蹤這類本機憑證鏡像。
 - 前後端一致使用 `/account` API 與同步流程，避免「UI 顯示」與「實際路由」脫鉤。
@@ -70,7 +70,7 @@ cms 將 provider 管理從單體模式改為模組化分流，常見路徑如：
 - `gemini-cli`：偏長任務/批量處理
 - `google-api`：偏輕量、快速 API key 路徑
 
-目前 canonical Google family 只保留 `gemini-cli` 與 `google-api`，讓家族邊界、配額治理與路由策略更清晰。
+目前 canonical Google provider keys 只保留 `gemini-cli` 與 `google-api`；legacy `family` 文字若仍存在，應視為相容敘述而非新的正式命名。
 
 此設計讓配額治理、故障隔離、策略路由更精準，且能依場景調整家族策略。
 
@@ -178,7 +178,7 @@ cms 採 Monorepo 架構（Bun + TurboRepo），核心分層如下：
 ┌────────────────────────────────────────────────────┐
 │ Provider & Account Layer                           │
 │ - Provider graph assembly (models + config + auth) │
-│ - Account families + active account                │
+│ - Provider-keyed accounts + active account         │
 │ - Rotation3D fallback                              │
 └────────────────────────────────────────────────────┘
                      │
@@ -196,7 +196,7 @@ cms 採 Monorepo 架構（Bun + TurboRepo），核心分層如下：
 
 ### A. 身分解析必須 canonical
 
-- 不依賴字串猜測 provider family。
+- 不依賴字串猜測 provider 身分；正式語義應以 canonical provider key 為準。
 - 使用 canonical resolver（如 `Account.resolveFamily(...)`）維持一致性。
 
 ### B. Provider 組裝順序固定
