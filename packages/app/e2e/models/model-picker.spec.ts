@@ -2,8 +2,11 @@ import { test, expect } from "../fixtures"
 import { promptSelector } from "../selectors"
 import { clickListItem } from "../actions"
 
-test("smoke model selection updates prompt footer", async ({ page, gotoSession }) => {
+test("model manager only applies draft selection after submit", async ({ page, gotoSession }) => {
   await gotoSession()
+
+  const form = page.locator(promptSelector).locator("xpath=ancestor::form[1]")
+  const currentFooterLabel = (await form.locator('[data-component="button"]').nth(1).innerText()).trim()
 
   await page.locator(promptSelector).click()
   await page.keyboard.type("/model")
@@ -38,6 +41,13 @@ test("smoke model selection updates prompt footer", async ({ page, gotoSession }
 
   await clickListItem(dialog, { key })
 
-  const form = page.locator(promptSelector).locator("xpath=ancestor::form[1]")
+  const submit = dialog.getByRole("button", { name: /^submit$/i })
+  await expect(submit).toBeVisible()
+  await expect(form.locator('[data-component="button"]').filter({ hasText: currentFooterLabel }).first()).toBeVisible()
+  await expect(form.locator('[data-component="button"]').filter({ hasText: name }).first()).toHaveCount(0)
+
+  await submit.click()
+
   await expect(form.locator('[data-component="button"]').filter({ hasText: name }).first()).toBeVisible()
+  await expect(submit).toHaveCount(0)
 })

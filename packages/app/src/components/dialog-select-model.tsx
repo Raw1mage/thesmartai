@@ -46,8 +46,10 @@ import {
   getModelUnavailableReason,
   isAccountLikeProviderId,
   pickSelectedAccount,
+  pickSelectedModel,
   pickSelectedProvider,
   providerKeyOf,
+  sameModelSelectorSelection,
 } from "./model-selector-state"
 import { loadQuotaHint, peekQuotaHint } from "@/utils/quota-hint-cache"
 import "./dialog-select-model.css"
@@ -680,7 +682,8 @@ export const DialogSelectModel: Component<{
 
   const [selectedProviderId, setSelectedProviderId] = createSignal<string>(props.initialProviderId ?? "")
   const [selectedAccountId, setSelectedAccountId] = createSignal<string>(props.initialAccountId ?? "")
-  const [switchingAccountId, setSwitchingAccountId] = createSignal<string>("")
+  const [selectedModelKey, setSelectedModelKey] = createSignal<string>("")
+  const [submitting, setSubmitting] = createSignal(false)
   const [mode, setMode] = createSignal<"favorites" | "all">(props.initialMode ?? "favorites")
   const [mobileSection, setMobileSection] = createSignal<"provider" | "account" | "model">(
     props.initialMobileSection ?? "provider",
@@ -1061,6 +1064,15 @@ export const DialogSelectModel: Component<{
 
   const currentModel = createMemo(() => local.model.current(params.id))
   const currentSelection = createMemo(() => local.model.selection(params.id))
+  const committedSelection = createMemo(() => {
+    const selection = currentSelection()
+    if (!selection) return undefined
+    return {
+      providerID: selection.providerID,
+      modelID: selection.modelID,
+      accountID: selection.accountID,
+    }
+  })
   const preferredProviderId = createMemo(() => props.provider || providerKeyOf(currentModel()?.provider.id ?? ""))
 
   const providers = createMemo(() => {
@@ -1206,6 +1218,31 @@ export const DialogSelectModel: Component<{
     )
   })
 
+  const filteredModels = createMemo(() => {
+    return getFilteredModelsForSelection({
+      models: local.model.list(),
+      selectedProviderKey: selectedProviderId(),
+      currentProviderID: local.model.current(params.id)?.provider?.id,
+      mode: mode(),
+      isVisible: (key) => local.model.visible(key),
+    })
+  })
+
+  createEffect(() => {
+    const selected = pickSelectedModel({
+      selected: (() => {
+        const key = selectedModelKey()
+        if (!key) return undefined
+        const [providerID, modelID] = key.split(":")
+        if (!providerID || !modelID) return undefined
+        return { providerID, modelID }
+      })(),
+      preferred: committedSelection(),
+      models: filteredModels(),
+    })
+    setSelectedModelKey(selected ? `${selected.provider.id}:${selected.id}` : "")
+  })
+
   const refreshAccountState = async () => {
     await sdk.client.global.dispose().catch(() => undefined)
     await refetchAccountInfo()
@@ -1248,21 +1285,23 @@ export const DialogSelectModel: Component<{
     dialog.show(() => <DialogConnectProvider provider={providerId} onBack={reopenModelSelector} />, reopenModelSelector)
   }
 
-  const filteredModels = createMemo(() => {
-    return getFilteredModelsForSelection({
-      models: local.model.list(),
-      selectedProviderKey: selectedProviderId(),
-      currentProviderID: local.model.current(params.id)?.provider?.id,
-      mode: mode(),
-      isVisible: (key) => local.model.visible(key),
-    })
+  const selectedFilteredModel = createMemo(() => {
+    const key = selectedModelKey()
+    if (!key) return undefined
+    return filteredModels().find((item) => `${item.provider.id}:${item.id}` === key)
   })
 
-  const currentFilteredModel = createMemo(() => {
-    const current = currentModel()
-    if (!current) return undefined
-    return filteredModels().find((item) => item.provider.id === current.provider.id && item.id === current.id)
+  const draftSelection = createMemo(() => {
+    const model = selectedFilteredModel()
+    if (!model) return undefined
+    return {
+      providerID: model.provider.id,
+      modelID: model.id,
+      accountID: selectedAccountId() || undefined,
+    }
   })
+
+  const hasPendingChanges = createMemo(() => !sameModelSelectorSelection(draftSelection(), committedSelection()))
 
   const toggleProviderEnabled = (e: MouseEvent, providerId: string) => {
     e.stopPropagation()
@@ -1289,12 +1328,7 @@ export const DialogSelectModel: Component<{
     )
   }
 
-  const switchActiveAccount = (row: { id: string; label: string; unavailable?: string }) => {
-    const providerId = selectedProviderId()
-    if (!providerId) return
-    const providerKey = providerKeyForSelection(providerId)
-    if (!providerKey) return
-
+  const switchDraftAccount = (row: { id: string; label: string; unavailable?: string }) => {
     if (row.unavailable) {
       showToast({
         variant: "error",
@@ -1304,32 +1338,60 @@ export const DialogSelectModel: Component<{
       return
     }
 
-    const previous = selectedAccountId()
     setSelectedAccountId(row.id)
-    setSwitchingAccountId(row.id)
+  }
+
+  const submitSelection = async () => {
+    const model = selectedFilteredModel()
+    if (!model || !params.id) return
+    const accountId = selectedAccountId() || activeAccountForProvider(model.provider.id)
+    const unavailable = modelUnavailableReason(model.provider.id, accountId)
+    if (unavailable) {
+      showToast({
+        variant: "error",
+        title: language.t("dialog.model.activity.selectBlocked"),
+        description: unavailable,
+      })
+      return
+    }
+
+    const providerKey = providerKeyForSelection(model.provider.id)
+    const providerCandidates = local.model
+      .list()
+      .filter((item) => item.id === model.id && providerKeyForSelection(item.provider.id) === providerKey)
+    const providerIDForSelection =
+      providerCandidates.find((item) => providerKeyForSelection(item.provider.id) === providerKey)?.provider.id ??
+      providerCandidates.find((item) => !isAccountLikeProviderId(item.provider.id))?.provider.id ??
+      model.provider.id
+
+    setSubmitting(true)
     try {
-      const currentSelection = local.model.selection(params.id)
-      if (currentSelection) {
-        local.model.set(
-          { ...currentSelection, accountID: row.id },
-          { interrupt: true, syncSessionExecution: true },
-          params.id,
-        )
-      }
+      await local.model.set(
+        { modelID: model.id, providerID: providerIDForSelection, accountID: accountId },
+        {
+          recent: true,
+          interrupt: true,
+          syncSessionExecution: true,
+        },
+        params.id,
+      )
       showToast({
         variant: "success",
-        title: language.t("settings.accounts.toast.updated.title"),
-        description: `${providerKey}: ${row.label} selected for this session`,
+        title: language.t("dialog.model.submit.toast.title"),
+        description: language.t("dialog.model.submit.toast.description", {
+          provider: providerKey,
+          account: selectedAccountId() || "--",
+          model: model.name,
+        }),
       })
     } catch (err) {
-      setSelectedAccountId(previous)
       showToast({
         variant: "error",
         title: language.t("common.requestFailed"),
         description: err instanceof Error ? err.message : String(err),
       })
     } finally {
-      setSwitchingAccountId("")
+      setSubmitting(false)
     }
   }
 
@@ -1379,6 +1441,17 @@ export const DialogSelectModel: Component<{
         </div>
 
         <div class="flex items-center gap-2">
+          <Show when={hasPendingChanges()}>
+            <Button
+              size="small"
+              variant="primary"
+              class="h-7 rounded-full px-3"
+              onClick={() => void submitSelection()}
+              loading={submitting()}
+            >
+              {language.t("common.submit")}
+            </Button>
+          </Show>
           <Button
             size="small"
             variant="ghost"
@@ -1513,8 +1586,7 @@ export const DialogSelectModel: Component<{
                         ? "bg-surface-raised-pressed text-text-strong"
                         : "hover:bg-surface-raised-hover text-text-base",
                     )}
-                    disabled={switchingAccountId() === row.id}
-                    onClick={() => switchActiveAccount(row)}
+                    onClick={() => switchDraftAccount(row)}
                   >
                     <div class="flex items-center gap-2 min-w-0">
                       <div class="flex items-center gap-2 min-w-0 flex-1">
@@ -1598,7 +1670,7 @@ export const DialogSelectModel: Component<{
               class="h-full [&_[data-slot=list-scroll]]:h-full [&_[data-slot=list-scroll]]:p-2"
               items={filteredModels()}
               key={(x) => `${x.provider.id}:${x.id}`}
-              current={currentFilteredModel()}
+              current={selectedFilteredModel()}
               filterKeys={["provider.name", "name", "id"]}
               sortBy={(a, b) => {
                 return a.name.localeCompare(b.name)
@@ -1621,48 +1693,7 @@ export const DialogSelectModel: Component<{
               )}
               onSelect={(x) => {
                 if (!x) return
-                const providerKey = providerKeyForSelection(x.provider.id)
-                const accountId = selectedAccountId() || activeAccountForProvider(x.provider.id)
-                const unavailable = modelUnavailableReason(x.provider.id, accountId)
-                if (unavailable) {
-                  showToast({
-                    variant: "error",
-                    title: language.t("dialog.model.activity.selectBlocked"),
-                    description: unavailable,
-                  })
-                  return
-                }
-                const providerCandidates = local.model
-                  .list()
-                  .filter((m) => m.id === x.id && providerKeyForSelection(m.provider.id) === providerKey)
-                const providerIDForSelection =
-                  providerCandidates.find((m) => providerKeyForSelection(m.provider.id) === providerKey)?.provider.id ??
-                  providerCandidates.find((m) => !isAccountLikeProviderId(m.provider.id))?.provider.id ??
-                  x.provider.id
-                const applyModelSelection = () => {
-                  local.model.set(
-                    { modelID: x.id, providerID: providerIDForSelection, accountID: accountId },
-                    {
-                      recent: true,
-                      interrupt: true,
-                      syncSessionExecution: true,
-                    },
-                    params.id,
-                  )
-                  showToast({
-                    variant: "success",
-                    title: language.t("dialog.model.toast.updated.title"),
-                    description: language.t("dialog.model.toast.updated.description", {
-                      provider: providerKey,
-                      model: x.name,
-                    }),
-                  })
-                }
-                if (!accountId) {
-                  applyModelSelection()
-                  return
-                }
-                applyModelSelection()
+                setSelectedModelKey(`${x.provider.id}:${x.id}`)
               }}
             >
               {(item) => (

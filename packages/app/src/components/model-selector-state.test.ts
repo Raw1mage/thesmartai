@@ -5,6 +5,8 @@ import {
   filterModelsForMode,
   normalizeProviderKey,
   pickSelectedAccount,
+  pickSelectedModel,
+  sameModelSelectorSelection,
 } from "./model-selector-state"
 
 describe("model selector state", () => {
@@ -164,6 +166,52 @@ describe("model selector state", () => {
     })
 
     expect(rows.map((row) => row.id)).toEqual(["m1", "m2"])
+  })
+
+  test("pickSelectedModel preserves explicit draft selection when still visible", () => {
+    const models = [
+      { id: "gpt-5", provider: { id: "openai" } },
+      { id: "gpt-5.4", provider: { id: "openai" } },
+    ]
+
+    const selected = pickSelectedModel({
+      selected: { providerID: "openai", modelID: "gpt-5" },
+      preferred: { providerID: "openai", modelID: "gpt-5.4" },
+      models,
+    })
+
+    expect(selected?.id).toBe("gpt-5")
+  })
+
+  test("pickSelectedModel falls back to preferred committed selection when draft is absent", () => {
+    const models = [
+      { id: "gpt-5", provider: { id: "openai" } },
+      { id: "gpt-5.4", provider: { id: "openai" } },
+    ]
+
+    const selected = pickSelectedModel({
+      selected: { providerID: "openai", modelID: "missing" },
+      preferred: { providerID: "openai", modelID: "gpt-5.4" },
+      models,
+    })
+
+    expect(selected?.id).toBe("gpt-5.4")
+  })
+
+  test("sameModelSelectorSelection compares provider/model/account as draft dirty key", () => {
+    expect(
+      sameModelSelectorSelection(
+        { providerID: "openai", modelID: "gpt-5", accountID: "acct-a" },
+        { providerID: "openai", modelID: "gpt-5", accountID: "acct-a" },
+      ),
+    ).toBe(true)
+
+    expect(
+      sameModelSelectorSelection(
+        { providerID: "openai", modelID: "gpt-5", accountID: "acct-a" },
+        { providerID: "openai", modelID: "gpt-5", accountID: "acct-b" },
+      ),
+    ).toBe(false)
   })
 
   test("normalizeProviderKey keeps provider-key normalization behavior", () => {

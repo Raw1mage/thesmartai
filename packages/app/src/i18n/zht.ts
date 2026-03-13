@@ -126,6 +126,8 @@ export const dict = {
   "dialog.model.activity.disabled": "已停用",
   "dialog.model.toast.updated.title": "已更新模型",
   "dialog.model.toast.updated.description": "{{provider}} → {{model}}",
+  "dialog.model.submit.toast.title": "已更新模型管理員選擇",
+  "dialog.model.submit.toast.description": "{{provider}} / {{account}} → {{model}}",
 
   "dialog.model.unpaid.freeModels.title": "OpenCode 提供的免費模型",
   "dialog.model.unpaid.addMore.title": "從熱門提供者新增更多模型",

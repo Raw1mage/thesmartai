@@ -123,6 +123,8 @@ export const dict = {
   "dialog.model.activity.disabled": "Disabled",
   "dialog.model.toast.updated.title": "Model updated",
   "dialog.model.toast.updated.description": "{{provider}} → {{model}}",
+  "dialog.model.submit.toast.title": "Model manager updated",
+  "dialog.model.submit.toast.description": "{{provider}} / {{account}} → {{model}}",
 
   "dialog.model.unpaid.freeModels.title": "Free models provided by OpenCode",
   "dialog.model.unpaid.addMore.title": "Add more models from popular providers",

@@ -67,6 +67,17 @@ export type AccountFamilyRecord = {
 
 export type AccountProviderRecord = AccountFamilyRecord
 
+export type ModelSelectorSelection = {
+  providerID: string
+  modelID: string
+  accountID?: string
+}
+
+export type ModelListItemLike = {
+  id: string
+  provider: { id: string }
+}
+
 export function normalizeProviderKey(id: string): string | undefined {
   if (!id) return undefined
   const raw = id.trim().toLowerCase()
@@ -282,6 +293,31 @@ export function pickSelectedAccount(input: {
     return input.preferredAccountId
   }
   return input.accounts.find((row) => row.active)?.id ?? input.accounts[0]?.id ?? ""
+}
+
+export function pickSelectedModel<T extends ModelListItemLike>(input: {
+  selected?: { providerID?: string; modelID?: string }
+  preferred?: { providerID?: string; modelID?: string }
+  models: T[]
+}) {
+  if (input.models.length === 0) return undefined
+
+  const matches = (candidate?: { providerID?: string; modelID?: string }) =>
+    candidate &&
+    input.models.find((model) => model.provider.id === candidate.providerID && model.id === candidate.modelID)
+
+  return matches(input.selected) ?? matches(input.preferred) ?? input.models[0]
+}
+
+export function sameModelSelectorSelection(
+  left?: Pick<ModelSelectorSelection, "providerID" | "modelID" | "accountID">,
+  right?: Pick<ModelSelectorSelection, "providerID" | "modelID" | "accountID">,
+) {
+  return (
+    left?.providerID === right?.providerID &&
+    left?.modelID === right?.modelID &&
+    (left?.accountID ?? undefined) === (right?.accountID ?? undefined)
+  )
 }
 
 export function getFilteredModelsForSelection<T extends { id: string; provider: { id: string } }>(input: {
