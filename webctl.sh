@@ -1367,14 +1367,19 @@ do_web_refresh() {
         return
     fi
 
-    log_info "Refreshing production webapp (rebuild/deploy + restart)..."
-    if [ "${OPENCODE_WEB_REFRESH_FULL_BOOTSTRAP:-0}" = "1" ]; then
-        log_info "Full bootstrap mode enabled (includes system package step)."
-        do_install --yes
-    else
-        log_info "Fast refresh mode: skipping system package step (set OPENCODE_WEB_REFRESH_FULL_BOOTSTRAP=1 to force full bootstrap)."
-        do_install --yes --skip-system
-    fi
+    load_server_cfg
+
+    log_info "Refreshing production web frontend (binary-safe deploy + restart)..."
+    log_info "Installed binary is preserved; web-refresh only rebuilds/deploys frontend assets."
+
+    do_build_frontend
+
+    ensure_non_interactive_sudo web-refresh
+    log_info "Deploying frontend to ${FRONTEND_DIST}..."
+    run_as_root install -d -m 755 "${FRONTEND_DIST}"
+    run_as_root rm -rf "${FRONTEND_DIST}"/*
+    run_as_root cp -r "${PROJECT_ROOT}/packages/app/dist/"* "${FRONTEND_DIST}/"
+
     do_web_restart
 }
 
