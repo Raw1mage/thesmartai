@@ -180,15 +180,25 @@ EOF
   local runtime_cfg_file="${env_dir}/opencode.cfg"
   local runtime_cfg_template="${ROOT_DIR}/templates/system/opencode.cfg"
   local tmp_runtime_cfg="/tmp/opencode.cfg.$$"
+  local installed_frontend_path="/usr/local/share/opencode/frontend"
   run_as_root install -d -m 755 "${env_dir}"
 
+  if [[ ! -f "${runtime_cfg_template}" ]]; then
+    log_err "Missing runtime config template: ${runtime_cfg_template}"
+    exit 1
+  fi
+
   if run_as_root test -f "${runtime_cfg_file}"; then
-    log_ok "Keeping existing runtime config: ${runtime_cfg_file}"
-  else
-    if [[ ! -f "${runtime_cfg_template}" ]]; then
-      log_err "Missing runtime config template: ${runtime_cfg_template}"
-      exit 1
+    run_as_root cp "${runtime_cfg_file}" "${tmp_runtime_cfg}"
+    if run_as_root grep -q '^OPENCODE_FRONTEND_PATH=' "${tmp_runtime_cfg}"; then
+      run_as_root sed -i "s|^OPENCODE_FRONTEND_PATH=.*|OPENCODE_FRONTEND_PATH=\"${installed_frontend_path}\"|" "${tmp_runtime_cfg}"
+    else
+      printf '\nOPENCODE_FRONTEND_PATH="%s"\n' "${installed_frontend_path}" >> "${tmp_runtime_cfg}"
     fi
+    run_as_root install -m 644 "${tmp_runtime_cfg}" "${runtime_cfg_file}"
+    rm -f "${tmp_runtime_cfg}"
+    log_ok "Normalized runtime frontend path in: ${runtime_cfg_file}"
+  else
     cp "${runtime_cfg_template}" "${tmp_runtime_cfg}"
     run_as_root install -m 644 "${tmp_runtime_cfg}" "${runtime_cfg_file}"
     rm -f "${tmp_runtime_cfg}"
