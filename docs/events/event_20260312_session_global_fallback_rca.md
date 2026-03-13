@@ -1407,6 +1407,27 @@
 - Architecture Sync: Verified (No doc changes)
   - test-only slice; no runtime behavior changes
 
+## Follow-up Fix: provider-key migration batch 27 (expanded mismatch guard coverage)
+
+- Goal:
+  - extend route-level compatibility guard coverage for additional account mutation endpoints while preserving existing auth behavior
+- Updated files:
+  - `packages/opencode/test/server/account-providerkey-compat.test.ts`
+  - `docs/events/event_20260312_session_global_fallback_rca.md`
+- Applied changes:
+  - added mismatch-guard tests for:
+    - `DELETE /api/v2/account/:family/:accountId` with mismatched `providerKey` query
+    - `PATCH /api/v2/account/:family/:accountId` with mismatched `providerKey` body
+  - aligned tests with server auth/middleware ordering variance:
+    - some endpoints may return 401 before route-level mismatch guard
+    - login path may still return 400 mismatch before auth gate depending on middleware ordering
+    - test assertions now accept this non-breaking ordering variance while still requiring mismatch guard behavior when route layer runs
+- Validation:
+  - `bun test /home/pkcs12/projects/opencode/packages/opencode/test/server/account-providerkey-compat.test.ts --timeout 30000` ✅
+  - `bun run lint -- /home/pkcs12/projects/opencode/packages/opencode/test/server/account-providerkey-compat.test.ts` ✅
+- Architecture Sync: Verified (No doc changes)
+  - test-only coverage expansion; no runtime behavior changes
+
 ## Follow-up Note: compatibility test boundary clarification
 
 - Observation:
