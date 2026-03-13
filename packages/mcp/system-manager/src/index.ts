@@ -292,14 +292,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "manage_session",
-        description: "Manage opencode sessions (rename, fork, summarize, undo, redo, create, list).",
+        description: "Manage opencode sessions (rename, fork, summarize, undo, redo, create, list, search).",
         inputSchema: {
           type: "object",
           properties: {
-            operation: { type: "string", enum: ["rename", "fork", "summarize", "undo", "redo", "create", "list"] },
+            operation: { type: "string", enum: ["rename", "fork", "summarize", "undo", "redo", "create", "list", "search"] },
             sessionID: { type: "string" },
             title: { type: "string", description: "New title for rename" },
             messageID: { type: "string", description: "Message ID to fork from" },
+            query: { type: "string", description: "Search keyword for session titles (used with 'search' operation)" },
+            limit: { type: "number", description: "Max results for search (default 10)" },
           },
           required: ["operation"],
         },
@@ -570,11 +572,57 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "manage_session") {
-      const { operation, sessionID, title, messageID } = args as {
+      const { operation, sessionID, title, messageID, query, limit: searchLimit } = args as {
         operation: string
         sessionID?: string
         title?: string
         messageID?: string
+        query?: string
+        limit?: number
+      }
+
+      if (operation === "search") {
+        if (!query) throw new Error("query is required for search operation")
+        const sessionDir = path.join(STORAGE_BASE, "session")
+        const entries = await fs.readdir(sessionDir).catch(() => [] as string[])
+        const keywords = query.toLowerCase().split(/\s+/).filter(Boolean)
+        const maxResults = searchLimit ?? 10
+
+        const matches: Array<{ id: string; title: string; directory: string; updated: number; url: string }> = []
+        for (const entry of entries) {
+          if (!entry.startsWith("ses_")) continue
+          try {
+            const info = JSON.parse(await fs.readFile(path.join(sessionDir, entry, "info.json"), "utf-8"))
+            const sessionTitle = (info.title ?? "").toLowerCase()
+            if (!keywords.every((kw: string) => sessionTitle.includes(kw))) continue
+            const dir = info.directory ?? ""
+            const dirBase64 = Buffer.from(dir).toString("base64")
+            matches.push({
+              id: info.id,
+              title: info.title ?? "(untitled)",
+              directory: dir,
+              updated: info.time?.updated ?? info.time?.created ?? 0,
+              url: `/${dirBase64}/session/${info.id}`,
+            })
+          } catch {
+            continue
+          }
+        }
+
+        matches.sort((a, b) => b.updated - a.updated)
+        const results = matches.slice(0, maxResults)
+
+        if (results.length === 0) {
+          return { content: [{ type: "text", text: `No sessions found matching "${query}".` }] }
+        }
+
+        const lines = results.map((s, i) => {
+          const date = new Date(s.updated).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })
+          return `${i + 1}. **${s.title}**\n   ID: ${s.id}\n   Updated: ${date}\n   URL: ${s.url}`
+        })
+        return {
+          content: [{ type: "text", text: `Found ${matches.length} session(s) matching "${query}":\n\n${lines.join("\n\n")}` }],
+        }
       }
 
       if (operation === "list") {
