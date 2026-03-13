@@ -1554,6 +1554,11 @@
   - checkpoint tag/bundle intentionally capture commit graph state only
   - unrelated dirty working-tree files remain outside this checkpoint and should not be mixed into migration commits
 
+## Follow-up roadmap
+
+- Post-checkpoint execution roadmap is tracked in:
+  - `docs/events/event_20260313_providerkey_deprecation_execution_roadmap.md`
+
 ## Follow-up Note: compatibility test boundary clarification
 
 - Observation:
