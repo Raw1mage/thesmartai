@@ -650,6 +650,7 @@ export namespace LLM {
     triedVectors: Set<string> = new Set(),
     error?: unknown,
     currentAccountIdInput?: string,
+    sessionIdentity?: { providerId: string; accountId?: string },
   ): Promise<{ model: Provider.Model; accountId?: string } | null> {
     const { Account } = await import("@/account")
 
@@ -702,6 +703,32 @@ export namespace LLM {
       return null
     }
 
+    // FIX: Enforce session identity constraint — when a session has pinned
+    // provider/account, rotation must NOT escape to a different provider or
+    // account. This prevents subagent account drift during rate-limit rotation.
+    if (sessionIdentity?.accountId) {
+      if (fallback.providerId !== sessionIdentity.providerId) {
+        debugCheckpoint("syslog.rotation", "handleRateLimitFallback: blocked cross-provider by session identity", {
+          sessionIdentity,
+          fallback: `${fallback.providerId}:${fallback.accountId}:${fallback.modelID}`,
+          note: "session has pinned identity — cross-provider rotation blocked",
+        })
+        const fallbackKey = `${fallback.providerId}:${fallback.accountId}:${fallback.modelID}`
+        triedVectors.add(fallbackKey)
+        return handleRateLimitFallback(currentModel, strategy, triedVectors, error, currentAccountId, sessionIdentity)
+      }
+      if (fallback.accountId !== sessionIdentity.accountId) {
+        debugCheckpoint("syslog.rotation", "handleRateLimitFallback: blocked cross-account by session identity", {
+          sessionIdentity,
+          fallback: `${fallback.providerId}:${fallback.accountId}:${fallback.modelID}`,
+          note: "session has pinned identity — cross-account rotation blocked, model-only rotation allowed",
+        })
+        const fallbackKey = `${fallback.providerId}:${fallback.accountId}:${fallback.modelID}`
+        triedVectors.add(fallbackKey)
+        return handleRateLimitFallback(currentModel, strategy, triedVectors, error, currentAccountId, sessionIdentity)
+      }
+    }
+
     // Add the selected fallback to tried vectors to avoid immediate retry in subsequent attempts
     const fallbackKey = `${fallback.providerId}:${fallback.accountId}:${fallback.modelID}`
 
@@ -712,7 +739,7 @@ export namespace LLM {
         triedCount: triedVectors.size,
       })
       // If it has been tried, recursively call again to find a *new* fallback
-      return handleRateLimitFallback(currentModel, strategy, triedVectors, error, currentAccountId)
+      return handleRateLimitFallback(currentModel, strategy, triedVectors, error, currentAccountId, sessionIdentity)
     }
 
     // Mark as tried

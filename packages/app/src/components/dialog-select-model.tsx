@@ -1343,7 +1343,8 @@ export const DialogSelectModel: Component<{
 
   const submitSelection = async () => {
     const model = selectedFilteredModel()
-    if (!model || !params.id) return
+    if (!model) return
+    const sessionID = params.id || undefined
     const accountId = selectedAccountId() || activeAccountForProvider(model.provider.id)
     const unavailable = modelUnavailableReason(model.provider.id, accountId)
     if (unavailable) {
@@ -1370,10 +1371,10 @@ export const DialogSelectModel: Component<{
         { modelID: model.id, providerID: providerIDForSelection, accountID: accountId },
         {
           recent: true,
-          interrupt: true,
-          syncSessionExecution: true,
+          interrupt: !!sessionID,
+          syncSessionExecution: !!sessionID,
         },
-        params.id,
+        sessionID,
       )
       showToast({
         variant: "success",

@@ -159,6 +159,10 @@ export namespace SessionProcessor {
     let consecutiveErrors = 0
     const MAX_CONSECUTIVE_ERRORS = 5
 
+    // Session identity constraint for rotation — prevents subagent/session
+    // from drifting to a different provider/account during rate-limit fallback.
+    let sessionIdentity: { providerId: string; accountId?: string } | undefined
+
     const result = {
       get message() {
         return input.assistantMessage
@@ -170,6 +174,18 @@ export namespace SessionProcessor {
         log.info("process")
         needsCompaction = false
         const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
+
+        // Read session's pinned execution identity once to constrain rotation.
+        if (!sessionIdentity) {
+          const sessionInfo = await Session.get(input.sessionID).catch(() => undefined)
+          if (sessionInfo?.execution?.accountId) {
+            sessionIdentity = {
+              providerId: sessionInfo.execution.providerId,
+              accountId: sessionInfo.execution.accountId,
+            }
+          }
+        }
+
         while (true) {
           try {
             // Pre-flight rate-limit check: read shared rotation-state.json
@@ -233,6 +249,8 @@ export namespace SessionProcessor {
                   modelID: streamInput.model.id,
                   note: "prevents silent account drift from global active changes",
                 })
+                // Update session identity constraint for rotation
+                sessionIdentity = { providerId: streamInput.model.providerId, accountId }
               }
               if (accountId) {
                 logSessionAccountAudit({
@@ -283,6 +301,7 @@ export namespace SessionProcessor {
                       triedVectors,
                       undefined,
                       accountId,
+                      sessionIdentity,
                     )
                     if (fallback) {
                       log.info("Pre-flight: switched to fallback model", {
@@ -836,6 +855,7 @@ export namespace SessionProcessor {
                     input.accountId ??
                     input.assistantMessage.accountId ??
                     streamInput.user.model.accountId,
+                  sessionIdentity,
                 )
                 if (fallback) {
                   consecutiveNullFallbacks = 0
@@ -939,6 +959,7 @@ export namespace SessionProcessor {
                     input.accountId ??
                     input.assistantMessage.accountId ??
                     streamInput.user.model.accountId,
+                  sessionIdentity,
                 )
                 if (fallback) {
                   consecutiveNullFallbacks = 0

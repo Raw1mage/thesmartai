@@ -743,6 +743,18 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         })
         const model = arbitration.model
 
+        // FIX: Pin execution identity on child session immediately so the
+        // worker process inherits the correct provider/account and does not
+        // drift to the global active account during its prompt loop.
+        await Session.pinExecutionIdentity({
+          sessionID: session.id,
+          model: {
+            providerId: model.providerId,
+            modelID: model.modelID,
+            accountId: model.accountId,
+          },
+        })
+
         // SYSLOG: Log final subagent model decision
         debugCheckpoint("syslog.subagent", "task: subagent model decision", {
           parentSessionID: ctx.sessionID,
@@ -753,6 +765,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           parentAccountId: fallbackModel.accountId,
           childAccountId: model.accountId,
           accountMismatch: fallbackModel.accountId !== model.accountId,
+          pinnedToChild: true,
         })
         linkedTodo =
           (await Todo.get(ctx.sessionID)).find((todo) => todo.status === "in_progress") ??
