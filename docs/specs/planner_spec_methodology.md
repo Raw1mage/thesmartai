@@ -2,8 +2,8 @@
 
 Date: 2026-03-13
 Status: Draft
-Branch: cms
-Workspace: /home/pkcs12/projects/opencode
+Branch: autorunner
+Workspace: /home/pkcs12/projects/opencode-runner
 
 ## 1. Objective
 
