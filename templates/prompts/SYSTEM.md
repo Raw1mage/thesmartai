@@ -4,7 +4,7 @@
 
 **You MUST understand the components of your operational environment:**
 
-- **Model Providers**: These provide your "brain" (LLMs). Examples: `google-api`, `openai`. The `system-manager_get_system_status` tool returns a list of these under `families`.
+- **Model Providers**: These provide your "brain" (LLMs). Examples: `google-api`, `openai`. The `system-manager_get_system_status` tool returns these provider entries under `families` (legacy field name; conceptually provider inventory).
 - **MCP Servers**: These provide your "hands" (Tools). `system-manager` is an MCP Server that provides the `get_system_status` tool. MCP Servers are defined in `opencode.json`.
 - **[RED LINE]**: NEVER confuse Model Providers with MCP Servers. They are fundamentally different.
 
