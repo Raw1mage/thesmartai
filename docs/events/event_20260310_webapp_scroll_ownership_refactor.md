@@ -331,3 +331,125 @@ Status: In Progress
 - Architecture Sync: Updated
   - 已同步 `docs/ARCHITECTURE.md`，新增 web scroll incident observability contract，並補充 session turn 的 inline steps / bottom status row UI contract。
   - 依據：本輪除 retained capture 外，也正式改變了 session turn 的顯示結構：steps 不再依賴可收折 trigger，working 狀態列改為底部行。這已屬穩定 UI/scroll ownership contract 變更。
+
+---
+
+## iOS Mobile Scroll Oscillation — 深層根因追蹤 (2026-03-13)
+
+Status: Resolved (方案 H+ circuit breaker)
+
+### 已確認根因
+
+iOS WebKit 有**自己的 scroll anchoring 機制**，與 CSS `overflow-anchor` 規格完全無關：
+- `CSS.supports("overflow-anchor", "auto")` 在 iOS 上回傳 `false`
+- `.session-scroller { overflow-anchor: none }` 在 iOS 上被完全忽略
+- iOS 的 anchoring 綁定在 rendering pipeline 中的 layout 階段
+- 錨定目標：viewport 頂部附近的 DOM 元素（通常是最後一則使用者訊息附近的內容元素）
+- 表現：scrollTop 被反覆拉回固定位置（capture 中一致出現 ~107000-109000 的錨定值）
+
+### PC 狀態
+
+PC (Chrome) 自 Phase 3 第二輪後已穩定。`overflow-anchor: none` 在 Chrome 上正常運作，CSS 層已足以關閉瀏覽器 anchoring。後續所有修正皆針對 iOS mobile。
+
+### 嘗試過的方案與結果
+
+#### 方案 A：Delta-based scroll（統一平台）
+- **概念**：移除所有 CSS anchor 依賴與平台分支，統一用 `scrollTop += delta`（`delta = newScrollHeight - lastScrollHeight`）在 ResizeObserver 中追底。等同 JS 版的 CSS scroll-anchoring。
+- **實作**：`create-auto-scroll.tsx` 完整重寫，追蹤 `lastScrollHeight`，ResizeObserver 中計算 delta 增量。
+- **PC 結果**：✅ 正常運作
+- **iOS 結果**：❌ 失敗。iOS scrollHeight 會暫時下降（SolidJS re-render 導致），瀏覽器 clamp scrollTop，delta 無法恢復丟失的位置。
+
+#### 方案 B：Delta + Snap 安全網
+- **概念**：在 delta 套用後，若 `distanceFromBottom > followThreshold`，直接 snap 到底部。
+- **實作**：ResizeObserver 中 delta 後加 snap 校正。
+- **PC 結果**：✅ 正常
+- **iOS 結果**：❌ 形成 snap 震盪。Capture 顯示：`resize-delta-snap(dfb=0) → resize-delta(dfb=3500) → snap(dfb=0) → resize-delta(dfb=3500)`。我們 snap 到底，iOS 立刻拉回錨點，循環不止。
+
+#### 方案 C：handleScroll active() guard
+- **概念**：streaming 期間 scroll event 不切到 free-reading（只有 handleWheel 的上滑手勢才能）。防止 iOS scrollHeight 暫降觸發的 scroll event 被誤判為使用者捲動。
+- **實作**：`handleScroll` 中 `if (!userScrolled() && active()) return`
+- **iOS 結果**：❌ 無效。問題不在 mode 切換，而在 scrollTop 被 iOS anchoring 直接覆蓋。
+
+#### 方案 D：isAuto 改為純時間判斷
+- **概念**：移除 `isAuto` 的位置比對（`Math.abs(scrollTop - auto.top) < 2`），改為只檢查時間窗。因為 iOS clamp 後 scrollTop 與預期值差距大，位置比對必定失敗。
+- **iOS 結果**：❌ 不是核心問題。
+
+#### 方案 E：useSessionHashScroll streaming 靜默
+- **概念**：`useSessionHashScroll` 的 reactive effect 追蹤 `messagesReady()` 和 `visibleUserMessages()`，串流期間這些信號持續更新，觸發 `applyHash` / `scrollToMessage` 的 rAF 回調，把 scrollTop 拉回使用者訊息位置。
+- **實作**：加入 `working` 信號，`input.working()` 為 true 時跳過 hash scroll 和 pendingMessage scroll。
+- **iOS 結果**：⚠️ 部分有效。排除了一個 scroll 來源，但 iOS 原生 anchoring 仍獨立運作。
+
+#### 方案 F：rAF loop（每幀校正）
+- **概念**：streaming + follow-bottom 期間，每幀用 `requestAnimationFrame` 檢查 distanceFromBottom，若偏離則修正。
+- **實作**：`startRafLoop()` / `stopRafLoop()`，working 開始時啟動，結束或使用者上滑時停止。
+- **iOS 結果**：❌ 首次測試「完美」（使用者確認），但後續測試仍出現震盪。原因：rAF callback 在**渲染前**執行，iOS anchor restoration 在**渲染中**（layout 階段）執行，所以我們的修正被 iOS 覆蓋。
+
+#### 方案 G：rAF + setTimeout(0)（渲染後校正）
+- **概念**：`requestAnimationFrame(() => setTimeout(() => { 修正 }, 0))`。rAF 排入渲染前，setTimeout(0) 延遲到渲染完成後執行，此時 iOS anchor restoration 已結束。
+- **iOS 結果**：⚠️ 修正成功但**閃爍**。使用者回報：「程式有在防守，保持著追底狀態，但畫面會閃。回去的瞬間被拉回，視覺上看到閃爍，體驗不佳」。因為修正在 paint 之後，使用者看到一幀錯誤位置才被拉回。
+
+#### 方案 H：handleScroll 同步修正
+- **概念**：iOS anchor restoration 改變 scrollTop 時會觸發 scroll event。scroll event 在 layout 之後、paint 之前觸發。在 `handleScroll` 中直接修正 scrollTop = 同一幀修正 = 無閃爍。
+- **實作**：將 `handleScroll` 的 `active()` guard 從「忽略 return」改為「同步修正 scrollTop」。
+- **iOS 結果**：⚠️ **部分成功**。低頻跳錨時可穩定追底，使用者評價「48 小時最佳結果」。但高頻跳錨時（AI 輸出特定字元密集觸發 anchor restoration），校正本身形成 `correction → scroll event → anchor restoration → scroll event → correction` 迴圈，導致畫面狂閃。
+
+#### 方案 H+：handleScroll 同步修正 + Circuit Breaker（最終採用）
+- **概念**：方案 H 基礎上加入 circuit breaker。若 500ms 內出現第二次校正，判定為高頻對抗迴圈，立即熔斷：停止所有 scrollTop 修改，進入 free-reading 模式。恢復只能由使用者按「追底」按鈕觸發。
+- **實作**：
+  - `checkCircuitBreaker()`：追蹤 `lastCorrectionTime`，500ms 內第二次校正即跳脫。
+  - `circuitBroken` 為全域門閥，阻斷所有四個 scrollTop 修改路徑：
+    1. `handleScroll`（第一行直接 return）
+    2. `scrollToBottomNow`（直接 return）
+    3. `ResizeObserver`（只追蹤 scrollHeight，不動 scrollTop）
+    4. `rAF loop`（跳過校正）
+  - `resume()`：使用者按追底鈕時重置 `circuitBroken = false`、`lastCorrectionTime = 0`
+- **iOS 結果**：✅ **成功**。低頻跳錨時穩定追底（方案 H 原有效果）。高頻跳錨時最多閃一次即熔斷，畫面靜止於當前位置，使用者可按追底鈕重新恢復。使用者評價：「完美」。
+- **PC 結果**：✅ 無影響（PC 上 `overflow-anchor: none` 已足夠，handleScroll 校正幾乎不會觸發）。
+
+#### 方案 I：觸控偵測（作為方案 H+ 的輔助）
+- **概念**：iOS 觸控滑動不觸發 `wheel` 事件，導致手機上無法透過 `handleWheel` 進入 free-reading 模式。加入 `touchstart`/`touchmove`/`touchend` 事件偵測，手指向上滑超過 10px 即呼叫 `stop()` 進入 free-reading。
+- **實作**：`handleTouchStart`/`handleTouchMove`/`handleTouchEnd`，在 `scrollRef` 時註冊。包含 `data-scrollable` nested region 保護（與 handleWheel 一致）。
+- **iOS 結果**：✅ 手機使用者可正常進入 free-reading 模式。
+- **注意**：曾嘗試在 free-reading 模式下用 `!touchActive` 判斷 anchor jump 並校正位置（方案 H-freeReading），但 iOS 慣性滾動（momentum scroll）在手指離開後仍持續觸發 scroll event，與 anchor jump 不可區分，導致校正反而干擾正常慣性滑動。已移除該邏輯。
+
+### iOS anchor 行為分析（來自 capture 數據）
+
+| 指標 | 觀察值 |
+|------|--------|
+| clientHeight | 703px（手機 viewport 高度）|
+| 錨定 scrollTop | ~107000-109000（一致）|
+| distanceFromBottom | ~3400-3700px |
+| 錨定位置意義 | 最後一則使用者訊息附近 |
+| 使用者描述 | 「那個最後輸入點似乎永遠是定位在畫面中下方」 |
+
+iOS 選擇 viewport 頂部附近的元素作為 anchor。當使用者在底部時，viewport 頂部約在距底 703px 處的內容 — 通常是最後一則使用者訊息或 AI 回覆的開頭。新內容加在底部時，iOS 保持該 anchor 元素在 viewport 中的相對位置不變，導致 scrollTop 不跟著增長。
+
+### 已知限制
+
+1. **free-reading 模式下 iOS anchor jump 無法防護**：momentum scroll 與 anchor jump 不可區分（兩者都是 `touchActive = false` 時的 scroll event），任何校正都會干擾正常慣性滑動。目前策略：free-reading 時不做任何校正，接受偶發跳位。
+2. **高頻跳錨仍需熔斷**：方案 H 無法在高頻場景穩定追底，只能熔斷退出。根因是 iOS anchor restoration 發生在 rendering pipeline 的 layout 階段，任何 JS 層校正都在其後、無法搶先。
+
+### 備選方向（未實作）
+
+1. **CSS `transform: translateY()` 替代原生 scroll**：完全繞過 iOS scroll anchoring，但需重寫觸控物理、momentum scrolling、scrollbar。侵入性極高。
+2. **`flex-direction: column-reverse`**：聊天式 scroll 技巧，內容從底部往上長。scrollTop=0 = 底部。但需反轉 DOM 順序，影響範圍大。
+3. **CSS `contain: layout` / `contain: strict`**：讓子元素的 layout 變化不影響外層 scroll 計算。未驗證 iOS 是否據此排除 anchor 候選。
+
+### 相關檔案
+
+| 檔案 | 角色 |
+|------|------|
+| `packages/ui/src/hooks/create-auto-scroll.tsx` | 核心 scroll 控制器，方案 A-I 的主要修改對象 |
+| `packages/app/src/pages/session/use-session-hash-scroll.ts` | hash/message scroll，方案 E 靜默對象 |
+| `packages/app/src/pages/session.tsx` | session page，傳遞 `working` 信號 |
+| `packages/ui/src/styles/tailwind/utilities.css` | CSS anchor 規則（`overflow-anchor: none`） |
+| `packages/opencode/src/server/app.ts` | Cache-Control 暫改 no-cache（iOS 快取問題排查用） |
+| `packages/ui/src/hooks/scroll-debug.ts` | auto-capture 偵測系統 |
+| Server: `${Global.Path.log}/scroll-capture-latest.json` | retained capture 落點 |
+
+### 關鍵 commits
+
+| Commit | 內容 |
+|--------|------|
+| `5cb256a88c` | 方案 H：handleScroll sync correction + 方案 E + 方案 I + CSS anchor |
+| `1e94b7c3b6` | 方案 H+：circuit breaker（全域門閥，500ms 熔斷） |

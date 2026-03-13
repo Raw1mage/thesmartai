@@ -207,20 +207,25 @@
 [data-slot="basic-tool-bottom-collapse"] {
   display: flex;
   justify-content: center;
-  padding: 8px 12px 10px;
-  border-top: 1px solid var(--border-weaker-base);
+  margin-top: -14px;
+  padding-bottom: 2px;
+  pointer-events: none;
 
   [data-slot="bottom-collapse-icon"] {
+    pointer-events: auto;
     border: none;
     background: transparent;
-    padding: 0;
+    padding: 0 8px;
     cursor: pointer;
     color: var(--text-weak);
     font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
+    font-size: 10px;
     line-height: 1;
+    opacity: 0.5;
+    transition: opacity 0.15s ease;
 
     &:hover {
+      opacity: 1;
       color: var(--text-base);
     }
   }
