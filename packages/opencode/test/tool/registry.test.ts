@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import path from "path"
 import fs from "fs/promises"
 import { tmpdir } from "../fixture/fixture"
@@ -6,6 +6,13 @@ import { Instance } from "../../src/project/instance"
 import { ToolRegistry } from "../../src/tool/registry"
 
 describe("tool.registry", () => {
+  const originalClient = process.env.OPENCODE_CLIENT
+
+  afterEach(() => {
+    if (originalClient === undefined) delete process.env.OPENCODE_CLIENT
+    else process.env.OPENCODE_CLIENT = originalClient
+  })
+
   test("loads tools from .opencode/tool (singular)", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
@@ -70,6 +77,21 @@ describe("tool.registry", () => {
       fn: async () => {
         const ids = await ToolRegistry.ids()
         expect(ids).toContain("hello")
+      },
+    })
+  })
+
+  test("registers plan tools for interactive non-cli clients", async () => {
+    process.env.OPENCODE_CLIENT = "app"
+
+    await using tmp = await tmpdir()
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const ids = await ToolRegistry.ids()
+        expect(ids).toContain("plan_enter")
+        expect(ids).toContain("plan_exit")
       },
     })
   })

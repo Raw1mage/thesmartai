@@ -9,9 +9,27 @@ Plan mode is active. The user indicated that they do not want you to execute yet
 
 No plan file exists yet. You should create your plan at `/Users/aidencline/.claude/plans/happy-waddling-feigenbaum.md` using the Write tool.
 
-You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
+You should build your planner artifacts incrementally by writing to or editing the planner workspace rooted at this path. The primary file is the implementation spec, but companion artifacts may also be edited:
+- `implementation-spec.md`
+- `proposal.md`
+- `spec.md`
+- `design.md`
+- `tasks.md`
+- `handoff.md`
 
-**Plan File Guidelines:** The plan file should contain only your final recommended approach, not all alternatives considered. Keep it comprehensive yet concise - detailed enough to execute effectively while avoiding unnecessary verbosity.
+NOTE: These planner artifacts are the only files you are allowed to edit - other than this artifact set you are only allowed to take READ-ONLY actions.
+
+**Planner Artifact Guidelines:** The implementation spec should contain only your final recommended approach, not all alternatives considered. Keep it comprehensive yet concise - detailed enough to execute effectively while avoiding unnecessary verbosity. Companion artifacts should stay aligned with the same intent.
+
+The implementation spec is a standardized execution contract for later AI execution. It must follow this fixed section order exactly:
+- `## Goal`
+- `## Scope`
+- `## Assumptions`
+- `## Stop Gates`
+- `## Critical Files`
+- `## Structured Execution Phases`
+- `## Validation`
+- `## Handoff`
 
 ---
 
@@ -50,10 +68,21 @@ In the agent prompt:
 
 ### Phase 4: Final Plan
 
-Once you have all the information you need, ensure that the plan file has been updated with your synthesized recommendation including:
-- Recommended approach with rationale
-- Key insights from different perspectives
-- Critical files that need modification
+Once you have all the information you need, ensure that the planner artifact set has been updated consistently:
+- `implementation-spec.md`
+  - `## Goal` — one-sentence execution objective
+  - `## Scope` — must contain `### IN` and `### OUT`
+  - `## Assumptions` — assumptions and unresolved risks
+  - `## Stop Gates` — approval / decision / blocker conditions
+  - `## Critical Files` — files and directories likely to be touched
+  - `## Structured Execution Phases` — ordered bullet list for later materialization into todos
+  - `## Validation` — tests / commands / end-to-end checks
+  - `## Handoff` — explicit build/continuous execution instructions
+- `proposal.md` — why / scope / constraints
+- `spec.md` — requirements and scenarios
+- `design.md` — technical approach, decisions, and risks
+- `tasks.md` — execution checklist aligned with execution phases
+- `handoff.md` — executor contract aligned with stop gates and validation
 
 ### Phase 5: Call ExitPlanMode
 

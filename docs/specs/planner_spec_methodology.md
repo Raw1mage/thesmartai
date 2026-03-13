@@ -1,0 +1,334 @@
+# Planner Spec Methodology
+
+Date: 2026-03-13
+Status: Draft
+Branch: cms
+Workspace: /home/pkcs12/projects/opencode
+
+## 1. Objective
+
+Define the implementation plan for evolving the OpenCode planner from a single plan-file workflow into a repo-native spec production system rooted in `repo/specs/`.
+
+The planner's purpose is not merely to produce a loose plan. Its purpose is to help the user turn evolving conversational intent into rigorous implementation specifications that can be handed off to AI for autonomous execution.
+
+This methodology intentionally borrows OpenSpec's **artifact structure** while preserving OpenCode's distinctive strengths:
+
+- MCP `question` guided planning
+- planning-first runtime activation
+- stop gates / approval / decision boundaries
+- runtime handoff to todo graph / autonomous execution
+
+---
+
+## 2. Guiding Principle
+
+We are borrowing **methods**, not copying code.
+
+### From OpenSpec we borrow:
+
+- artifact decomposition
+- separation of spec / design / tasks
+- change-as-unit thinking
+- behavior-first structure
+- execution handoff discipline
+
+### From OpenCode we keep and strengthen:
+
+- conversation-native planning
+- question-driven clarification
+- autonomous-ready todo/action metadata
+- human-visible pause gates
+- runtime integration with build/autorunner
+
+In short:
+
+> OpenSpec contributes artifact methodology.
+> OpenCode contributes interactive planning runtime.
+
+---
+
+## 3. Why `repo/specs` Should Be the Planner Base
+
+The planner should not depend on transient chat context as its long-term memory.
+
+Using `repo/specs` as the planner base gives us:
+
+1. **Persistent spec substrate**
+   - the planning result lives in the repo, not only in session history
+2. **Human + AI collaboration surface**
+   - users can reason in conversation while AI continuously hardens artifacts
+3. **Execution-ready source of truth**
+   - executor agents can read specs instead of reconstructing intent from chat turns
+4. **Future daemon compatibility**
+   - long-running autorunner can treat specs as durable execution input
+
+---
+
+## 4. Planner Output Model
+
+The planner output should no longer be thought of as one markdown plan.
+It should be a small artifact set.
+
+## 4.1 Recommended base structure
+
+```text
+specs/
+  changes/
+    <change-slug>/
+      proposal.md
+      spec.md
+      design.md
+      tasks.md
+      handoff.md
+```
+
+This mirrors OpenSpec's artifact layering, but is integrated into OpenCode's planner/runtime.
+
+## 4.2 Role of each artifact
+
+### proposal.md
+Captures:
+- why this work exists
+- scope / non-goals
+- user intent and constraints
+- high-level success target
+
+### spec.md
+Captures:
+- behavioral requirements
+- scenarios / acceptance conditions
+- externally visible contract
+- what changes, not how it is implemented
+
+### design.md
+Captures:
+- technical approach
+- architecture boundaries
+- data flow / state flow
+- key decisions and trade-offs
+- critical files/modules
+
+### tasks.md
+Captures:
+- execution phases
+- implementation checklist
+- ordering / dependencies
+- validation tasks
+- todo graph seed for runtime materialization
+
+### handoff.md
+Captures:
+- how build/autorunner should consume the artifacts
+- what must be done before autonomous execution continues
+- any remaining approval / stop gate / unresolved risk items
+
+---
+
+## 5. Separation of Concerns
+
+This is the most important methodological rule.
+
+## 5.1 Spec = what
+
+Spec describes behavior and verifiable expectations.
+It should avoid implementation details whenever possible.
+
+Good content:
+- user-visible behavior
+- downstream/system-visible behavior
+- failure conditions
+- acceptance scenarios
+
+## 5.2 Design = how
+
+Design explains implementation approach.
+It contains:
+- architectural shape
+- technical decisions
+- trade-offs
+- module boundaries
+- migration / rollout thinking
+
+## 5.3 Tasks = execution steps
+
+Tasks are not behavioral truth and not architecture rationale.
+They are the execution ledger.
+They should be structured so runtime can materialize them into todos.
+
+---
+
+## 6. What Makes OpenCode Planner Different from OpenSpec
+
+OpenSpec is strong in artifact structure.
+OpenCode must be stronger in interactive refinement.
+
+## 6.1 MCP `question` remains central
+
+The planner must not become a static templating engine.
+It should continuously use MCP `question` to refine missing details such as:
+
+- scope boundaries
+- first milestone focus
+- autonomy level
+- approval requirements
+- validation criteria
+- trade-off choices
+
+This is a core differentiator and must remain first-class.
+
+## 6.2 Conversation continuously improves artifacts
+
+The user should not need to manually draft all artifacts from scratch.
+Instead:
+
+1. user states intent in conversation
+2. planner explores and asks questions
+3. planner updates artifacts under `specs/changes/<slug>/`
+4. user refines intent
+5. planner tightens artifacts again
+6. eventually artifacts become execution-ready
+
+This makes the planner an active collaborator, not just a document generator.
+
+## 6.3 Stop gates are explicit runtime constraints
+
+Artifacts must preserve runtime control information:
+- approval gates
+- decision gates
+- blocker conditions
+- validation requirements
+
+This is necessary for safe autonomous execution.
+
+---
+
+## 7. Recommended Artifact Production Order
+
+OpenSpec's sequencing is worth borrowing conceptually, but not rigidly.
+
+Recommended dependency order:
+
+1. **proposal**
+2. **spec**
+3. **design**
+4. **tasks**
+5. **handoff**
+
+But the process remains iterative, not waterfall.
+
+### Interpretation
+
+- proposal establishes intent and scope
+- spec defines what should change
+- design defines how we expect to change it
+- tasks define the execution steps
+- handoff packages it for build/autorunner
+
+The planner may revisit any earlier artifact as understanding improves.
+
+---
+
+## 8. Suggested Minimum Template Rules
+
+## proposal.md
+Must include:
+- intent
+- scope
+- non-goals
+- constraints
+
+## spec.md
+Must include:
+- requirements
+- scenarios
+- acceptance checks
+
+## design.md
+Must include:
+- context
+- goals / non-goals
+- decisions
+- risks / trade-offs
+- critical files
+
+## tasks.md
+Must include:
+- ordered execution groups
+- checkable tasks
+- validation tasks
+- dependency-aware steps
+
+## handoff.md
+Must include:
+- what executor must read first
+- expected runtime todo seed
+- stop gates still in force
+- definition of execution-ready
+
+---
+
+## 9. Runtime Integration Plan
+
+## Phase A — planner base migration
+
+Move the planner's artifact home from ad hoc plan paths toward repo-local `specs/changes/<slug>/...`.
+
+## Phase B — planner writes artifact set, not one file
+
+Initially this may still be bootstrapped from one template, but it should evolve into a multi-artifact structure.
+
+## Phase C — tasks artifact becomes runtime todo source
+
+Build/autorunner should materialize `tasks.md` (or equivalent execution section) into runtime todo graph.
+
+## Phase D — spec completeness gate
+
+Before leaving plan mode, planner should validate required sections and ask follow-up questions when artifacts are incomplete.
+
+## Phase E — verify and archive loop
+
+Later, implementation should be checked against:
+- spec
+- design
+- tasks
+
+and then synced into long-term project knowledge.
+
+---
+
+## 10. First Concrete Implementation Slice
+
+The first practical migration should remain conservative:
+
+1. keep the current planner runtime behavior
+2. change the planner storage base to `repo/specs`
+3. preserve implementation-spec prompts and completeness metadata
+4. prepare for future split into proposal/spec/design/tasks/handoff files
+
+This lets us migrate the substrate without breaking the planner experience.
+
+---
+
+## 11. Success Criteria
+
+This methodology is successful when:
+
+1. planner artifacts live under `repo/specs`
+2. the user feels AI is continuously improving the spec during conversation
+3. planner output is clearly separated into what/how/tasks layers
+4. runtime can hand off from planning artifacts into execution without re-deriving intent from chat
+5. humans can focus on functional thinking while AI maintains execution-grade rigor
+
+---
+
+## 12. Immediate Next Steps
+
+1. migrate planner base path into `specs/changes/<slug>/`
+2. keep the current structured template while changing storage location
+3. then split the current single implementation-spec into:
+   - proposal.md
+   - spec.md
+   - design.md
+   - tasks.md
+   - handoff.md
+4. finally add plan review/completeness gating before `plan_exit`

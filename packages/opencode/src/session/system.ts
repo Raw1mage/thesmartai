@@ -243,10 +243,11 @@ Task & Planning:
 - todowrite() frequently for planning; mark items complete immediately. todoread() to check progress.
 - When using todowrite(), prefer explicit todo \`action\` metadata (\`kind\`, \`waitingOn\`, \`needsApproval\`, \`canDelegate\`, \`risk\`) so autonomous session planning can safely continue without guessing.
 - question() when user request is ambiguous — ask before acting.
+- For non-trivial multi-step dev / autonomous / architecture-sensitive work, prefer planning-first flow: use plan_enter() before implementation so the planner can clarify requirements and produce an execution-ready plan.
 
 Web: webfetch() with redirect follow-up; websearch(); codesearch().
 
-Misc: skill(name) to load domain-specific instructions; plan_enter()/plan_exit() for plan mode (experimental).
+Misc: skill(name) to load domain-specific instructions; plan_enter()/plan_exit() for plan mode.
 
 Parallelism:
 - Independent tool calls MUST be sent in a single message (parallel), unless the driver specifies sequential-only pacing.

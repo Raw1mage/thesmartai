@@ -78,9 +78,11 @@ Plan mode is active. The user indicated that they do not want you to execute yet
 
 ## Plan File Info:
 ${exists ? `A plan file already exists at ${plan}. You can read it and make incremental edits using the edit tool.` : `No plan file exists yet. You should create your plan at ${plan} using the write tool.`}
-You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
+You should build your planner artifacts incrementally by writing to or editing the planner workspace rooted at this path. The editable artifact set is limited to: implementation-spec.md, proposal.md, spec.md, design.md, tasks.md, handoff.md. Other than this planner artifact set you are only allowed to take READ-ONLY actions.
 
 ## Plan Workflow
+
+Your required output is a planner artifact set rooted in the repo specs base, not just a general plan summary. The primary file is the implementation spec, but companion artifacts also exist: proposal.md, spec.md, design.md, tasks.md, handoff.md. The implementation spec must use these exact headings in order: "## Goal", "## Scope", "## Assumptions", "## Stop Gates", "## Critical Files", "## Structured Execution Phases", "## Validation", "## Handoff".
 
 ### Phase 1: Initial Understanding
 Goal: Gain a comprehensive understanding of the user's request by reading through code and asking them questions. Critical: In this phase you should only use the explore subagent type.
@@ -129,10 +131,14 @@ Goal: Review the plan(s) from Phase 2 and ensure alignment with the user's inten
 3. Use question tool to clarify any remaining questions with the user
 
 ### Phase 4: Final Plan
-Goal: Write your final plan to the plan file (the only file you can edit).
+Goal: Write your final planner artifact set.
 - Include only your recommended approach, not all alternatives
-- Ensure that the plan file is concise enough to scan quickly, but detailed enough to execute effectively
-- Include the paths of critical files to be modified
+- Ensure that implementation-spec.md is concise enough to scan quickly, but detailed enough to execute effectively
+- Treat implementation-spec.md as the canonical execution contract for later AI execution
+- Keep companion artifacts aligned: proposal.md (why/scope), spec.md (behavior), design.md (technical approach), tasks.md (execution checklist), handoff.md (executor instructions)
+- Use the exact required headings in implementation-spec.md: Goal, Scope, Assumptions, Stop Gates, Critical Files, Structured Execution Phases, Validation, Handoff
+- Under Scope, include explicit "### IN" and "### OUT" subsections
+- Ensure tasks.md reflects the same execution phases that build mode will materialize into todos
 - Include a verification section describing how to test the changes end-to-end (run the code, use MCP tools, run tests)
 
 ### Phase 5: Call plan_exit tool

@@ -134,7 +134,7 @@ export namespace ToolRegistry {
       ApplyPatchTool,
       ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
-      ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [PlanExitTool, PlanEnterTool] : []),
+      ...(["app", "cli", "desktop"].includes(Flag.OPENCODE_CLIENT) ? [PlanExitTool, PlanEnterTool] : []),
       ...custom,
     ]
   }

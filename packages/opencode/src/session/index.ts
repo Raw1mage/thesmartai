@@ -496,11 +496,15 @@ export namespace Session {
     return result
   }
 
+  export function planRoot(input: { slug: string; time: { created: number } }) {
+    const changeSlug = [input.time.created, input.slug].join("-")
+    return Instance.project.vcs
+      ? path.join(Instance.worktree, "specs", "changes", changeSlug)
+      : path.join(Global.Path.data, "plans", changeSlug)
+  }
+
   export function plan(input: { slug: string; time: { created: number } }) {
-    const base = Instance.project.vcs
-      ? path.join(Instance.worktree, ".opencode", "plans")
-      : path.join(Global.Path.data, "plans")
-    return path.join(base, [input.time.created, input.slug].join("-") + ".md")
+    return path.join(planRoot(input), "implementation-spec.md")
   }
 
   export const get = fn(Identifier.schema("session"), async (id) => {
