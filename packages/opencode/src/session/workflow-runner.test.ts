@@ -18,11 +18,15 @@ import {
   enqueuePendingContinuation,
   enqueueAutonomousContinue,
   evaluateAutonomousContinuation,
+  getAutonomousWorkflowHealth,
+  getPendingContinuationQueueInspection,
   getPendingContinuation,
+  mutatePendingContinuationQueue,
   planAutonomousNextAction,
   pickPendingContinuationsForResume,
   shouldInterruptAutonomousRun,
   shouldResumePendingContinuation,
+  summarizeAutonomousWorkflowHealth,
 } from "./workflow-runner"
 
 function approvedMission() {
@@ -620,6 +624,36 @@ describe("Session workflow runner", () => {
         inFlight: false,
       }),
     ).toBe(false)
+
+    expect(
+      shouldResumePendingContinuation({
+        session: {
+          workflow: {
+            ...Session.defaultWorkflow(1),
+            autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
+            state: "waiting_user",
+            stopReason: "approval_needed",
+          },
+        },
+        status: { type: "idle" },
+        inFlight: false,
+      }),
+    ).toBe(false)
+
+    expect(
+      shouldResumePendingContinuation({
+        session: {
+          workflow: {
+            ...Session.defaultWorkflow(1),
+            autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
+            state: "waiting_user",
+            stopReason: "wait_subagent",
+          },
+        },
+        status: { type: "idle" },
+        inFlight: false,
+      }),
+    ).toBe(false)
   })
 
   it("allows same-owner lease recovery but blocks foreign active lease", () => {
@@ -1105,6 +1139,68 @@ describe("Session workflow runner", () => {
     })
   })
 
+  it("includes delegation trace on autonomous synthetic continuation messages", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.createNext({
+          id: "session_delegation_metadata",
+          title: "delegation metadata test",
+          directory: tmp.path,
+        })
+        const planRoot = path.join(tmp.path, "specs", "changes", "test")
+        await Bun.write(
+          path.join(planRoot, "implementation-spec.md"),
+          "# Implementation Spec\n\n## Goal\n- Ship delegation metadata\n\n## Scope\n### IN\n- workflow runner\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- pause on artifact mismatch\n\n## Critical Files\n- packages/opencode/src/session/workflow-runner.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run workflow-runner tests\n\n## Handoff\n- Continue from approved mission\n",
+        )
+        await Bun.write(path.join(planRoot, "tasks.md"), "# Tasks\n\n- [ ] Implement delegation trace\n")
+        await Bun.write(
+          path.join(planRoot, "handoff.md"),
+          "# Handoff\n\n## Execution Contract\n- Read the approved mission first\n\n## Required Reads\n- implementation-spec.md\n- tasks.md\n- handoff.md\n\n## Stop Gates In Force\n- Preserve approval gates\n\n## Execution-Ready Checklist\n- [ ] Mission is approved\n",
+        )
+        await Session.setMission({
+          sessionID: session.id,
+          mission: approvedMission(),
+        })
+
+        const message = await enqueueAutonomousContinue({
+          sessionID: session.id,
+          user: {
+            id: "msg_user_prev_delegation",
+            role: "user",
+            sessionID: session.id,
+            time: { created: 1 },
+            agent: "coding",
+            model: {
+              providerId: "openai",
+              modelID: "gpt-5",
+              accountId: "acct-openai",
+            },
+            format: { type: "text" },
+          },
+          delegation: {
+            role: "coding",
+            source: "todo_action",
+            todoID: "todo_impl",
+            todoContent: "implement delegation trace",
+          },
+        })
+
+        const persisted = await MessageV2.get({ sessionID: session.id, messageID: message.id })
+        const part = persisted?.parts.find((item) => item.type === "text")
+        expect(part?.type).toBe("text")
+        if (part?.type !== "text") throw new Error("expected text part")
+        expect(part.text).toContain("planned coding step")
+        expect(part.metadata?.delegation).toMatchObject({
+          role: "coding",
+          source: "todo_action",
+          todoID: "todo_impl",
+        })
+      },
+    })
+  })
+
   it("records anomaly events for unreconciled wait_subagent state", async () => {
     await using tmp = await tmpdir()
     await Instance.provide({
@@ -1239,6 +1335,297 @@ describe("Session workflow runner", () => {
           domain: "anomaly",
           eventType: "workflow.mission_not_consumable",
           anomalyFlags: ["mission_not_consumable"],
+        })
+      },
+    })
+  })
+
+  it("summarizes queue, supervisor, and anomaly evidence into one health surface", () => {
+    const health = summarizeAutonomousWorkflowHealth({
+      workflow: {
+        ...Session.defaultWorkflow(1),
+        autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
+        state: "waiting_user",
+        stopReason: "wait_subagent",
+        supervisor: {
+          consecutiveResumeFailures: 2,
+          retryAt: 5_000,
+          lastResumeCategory: "provider_transient",
+          lastResumeError: "network timeout",
+        },
+      },
+      pending: {
+        sessionID: "ses_health",
+        messageID: "msg_health",
+        createdAt: 1_000,
+        roundCount: 3,
+        reason: "todo_in_progress",
+        text: "Continue current step",
+      },
+      events: [
+        {
+          id: "evt_1",
+          ts: 2_000,
+          level: "warn",
+          domain: "anomaly",
+          eventType: "workflow.unreconciled_wait_subagent",
+          sessionID: "ses_health",
+          anomalyFlags: ["unreconciled_wait_subagent"],
+          payload: {},
+        },
+        {
+          id: "evt_2",
+          ts: 3_000,
+          level: "warn",
+          domain: "anomaly",
+          eventType: "workflow.mission_not_consumable",
+          sessionID: "ses_health",
+          anomalyFlags: ["mission_not_consumable"],
+          payload: {},
+        },
+      ],
+    })
+
+    expect(health).toEqual({
+      state: "waiting_user",
+      stopReason: "wait_subagent",
+      queue: {
+        hasPendingContinuation: true,
+        roundCount: 3,
+        reason: "todo_in_progress",
+        queuedAt: 1_000,
+      },
+      supervisor: {
+        leaseOwner: undefined,
+        leaseExpiresAt: undefined,
+        retryAt: 5_000,
+        consecutiveResumeFailures: 2,
+        lastResumeCategory: "provider_transient",
+        lastResumeError: "network timeout",
+      },
+      anomalies: {
+        recentCount: 2,
+        latestEventType: "workflow.mission_not_consumable",
+        latestAt: 3_000,
+        flags: ["unreconciled_wait_subagent", "mission_not_consumable"],
+        countsByType: {
+          "workflow.unreconciled_wait_subagent": 1,
+          "workflow.mission_not_consumable": 1,
+        },
+      },
+      summary: {
+        health: "degraded",
+        label: "Degraded: workflow.mission_not_consumable",
+      },
+    })
+  })
+
+  it("loads autonomous workflow health from persisted queue and runtime events", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.updateAutonomous({
+          sessionID: session.id,
+          policy: { enabled: true },
+        })
+        await Session.updateWorkflowSupervisor({
+          sessionID: session.id,
+          patch: {
+            consecutiveResumeFailures: 1,
+            lastResumeCategory: "provider_rate_limit",
+            lastResumeError: "429 Too Many Requests",
+          },
+        })
+        await enqueuePendingContinuation({
+          sessionID: session.id,
+          messageID: "msg_resume",
+          createdAt: 10,
+          roundCount: 1,
+          reason: "todo_pending",
+          text: "Continue next step",
+        })
+        await RuntimeEventService.append({
+          sessionID: session.id,
+          level: "warn",
+          domain: "anomaly",
+          eventType: "workflow.unreconciled_wait_subagent",
+          anomalyFlags: ["unreconciled_wait_subagent"],
+          payload: { activeSubtasks: 0 },
+        })
+
+        const health = await getAutonomousWorkflowHealth(session.id)
+        expect(health.summary).toEqual({
+          health: "degraded",
+          label: "Degraded: workflow.unreconciled_wait_subagent",
+        })
+        expect(health.queue).toMatchObject({
+          hasPendingContinuation: true,
+          roundCount: 1,
+          reason: "todo_pending",
+        })
+        expect(health.supervisor).toMatchObject({
+          consecutiveResumeFailures: 1,
+          lastResumeCategory: "provider_rate_limit",
+        })
+        expect(health.anomalies).toMatchObject({
+          recentCount: 1,
+          latestEventType: "workflow.unreconciled_wait_subagent",
+          flags: ["unreconciled_wait_subagent"],
+        })
+      },
+    })
+  })
+
+  it("inspects pending continuation queue with resumable vs blocked reasons", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const blocked = await Session.create({})
+        await Session.setMission({ sessionID: blocked.id, mission: approvedMission() })
+        await Session.updateAutonomous({
+          sessionID: blocked.id,
+          policy: { enabled: true },
+        })
+        await Session.setWorkflowState({
+          sessionID: blocked.id,
+          state: "waiting_user",
+          stopReason: "wait_subagent",
+        })
+        await enqueuePendingContinuation({
+          sessionID: blocked.id,
+          messageID: "msg_blocked",
+          createdAt: 101,
+          roundCount: 2,
+          reason: "todo_pending",
+          text: "Continue",
+        })
+
+        const resumable = await Session.create({})
+        await Session.setMission({ sessionID: resumable.id, mission: approvedMission() })
+        await Session.updateAutonomous({
+          sessionID: resumable.id,
+          policy: { enabled: true },
+        })
+        await enqueuePendingContinuation({
+          sessionID: resumable.id,
+          messageID: "msg_resumable",
+          createdAt: 102,
+          roundCount: 1,
+          reason: "todo_in_progress",
+          text: "Continue current step",
+        })
+
+        const blockedInspection = await getPendingContinuationQueueInspection(blocked.id)
+        expect(blockedInspection).toMatchObject({
+          hasPendingContinuation: true,
+          status: "idle",
+          resumable: false,
+          blockedReasons: ["waiting_user_non_resumable:wait_subagent"],
+          pending: {
+            sessionID: blocked.id,
+            messageID: "msg_blocked",
+            roundCount: 2,
+          },
+        })
+
+        const resumableInspection = await getPendingContinuationQueueInspection(resumable.id)
+        expect(resumableInspection).toMatchObject({
+          hasPendingContinuation: true,
+          status: "idle",
+          resumable: true,
+          blockedReasons: [],
+          pending: {
+            sessionID: resumable.id,
+            messageID: "msg_resumable",
+            roundCount: 1,
+            reason: "todo_in_progress",
+          },
+        })
+      },
+    })
+  })
+
+  it("drops pending continuation through operator queue control mutation", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.setMission({ sessionID: session.id, mission: approvedMission() })
+        await Session.updateAutonomous({
+          sessionID: session.id,
+          policy: { enabled: true },
+        })
+        await enqueuePendingContinuation({
+          sessionID: session.id,
+          messageID: "msg_drop",
+          createdAt: 300,
+          roundCount: 1,
+          reason: "todo_pending",
+          text: "Continue",
+        })
+
+        const result = await mutatePendingContinuationQueue({
+          sessionID: session.id,
+          action: "drop_pending",
+        })
+
+        expect(result).toMatchObject({
+          action: "drop_pending",
+          applied: true,
+          reason: "dropped",
+          inspection: {
+            hasPendingContinuation: false,
+            blockedReasons: ["no_pending_continuation"],
+          },
+        })
+      },
+    })
+  })
+
+  it("returns not_resumable when operator requests resume for blocked queue", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.setMission({ sessionID: session.id, mission: approvedMission() })
+        await Session.updateAutonomous({
+          sessionID: session.id,
+          policy: { enabled: true },
+        })
+        await Session.setWorkflowState({
+          sessionID: session.id,
+          state: "waiting_user",
+          stopReason: "wait_subagent",
+        })
+        await enqueuePendingContinuation({
+          sessionID: session.id,
+          messageID: "msg_blocked_resume",
+          createdAt: 301,
+          roundCount: 1,
+          reason: "todo_pending",
+          text: "Continue",
+        })
+
+        const result = await mutatePendingContinuationQueue({
+          sessionID: session.id,
+          action: "resume_once",
+        })
+
+        expect(result).toMatchObject({
+          action: "resume_once",
+          applied: false,
+          reason: "not_resumable",
+          blockedReasons: ["waiting_user_non_resumable:wait_subagent"],
+          inspection: {
+            hasPendingContinuation: true,
+            resumable: false,
+            blockedReasons: ["waiting_user_non_resumable:wait_subagent"],
+          },
         })
       },
     })

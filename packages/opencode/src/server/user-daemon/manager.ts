@@ -850,6 +850,70 @@ export namespace UserDaemonManager {
     })
   }
 
+  export async function callSessionAutonomousHealth<T>(username: string, sessionID: string) {
+    observe(username)
+    const safe = LinuxUserExec.sanitizeUsername(username)
+    if (!safe)
+      return {
+        ok: false,
+        error: { code: "DAEMON_INVALID_USER", message: "invalid username" },
+      } satisfies DaemonCallResult<T>
+    const entry = daemons.get(safe)
+    if (!entry)
+      return {
+        ok: false,
+        error: { code: "DAEMON_NOT_OBSERVED", message: "daemon not observed" },
+      } satisfies DaemonCallResult<T>
+    return callJSON<T>({
+      entry,
+      method: "GET",
+      path: `/session/${encodeURIComponent(sessionID)}/autonomous/health`,
+    })
+  }
+
+  export async function callSessionAutonomousQueue<T>(username: string, sessionID: string) {
+    observe(username)
+    const safe = LinuxUserExec.sanitizeUsername(username)
+    if (!safe)
+      return {
+        ok: false,
+        error: { code: "DAEMON_INVALID_USER", message: "invalid username" },
+      } satisfies DaemonCallResult<T>
+    const entry = daemons.get(safe)
+    if (!entry)
+      return {
+        ok: false,
+        error: { code: "DAEMON_NOT_OBSERVED", message: "daemon not observed" },
+      } satisfies DaemonCallResult<T>
+    return callJSON<T>({
+      entry,
+      method: "GET",
+      path: `/session/${encodeURIComponent(sessionID)}/autonomous/queue`,
+    })
+  }
+
+  export async function callSessionAutonomousQueueControl<T>(username: string, sessionID: string, body: unknown) {
+    observe(username)
+    const safe = LinuxUserExec.sanitizeUsername(username)
+    if (!safe)
+      return {
+        ok: false,
+        error: { code: "DAEMON_INVALID_USER", message: "invalid username" },
+      } satisfies DaemonCallResult<T>
+    const entry = daemons.get(safe)
+    if (!entry)
+      return {
+        ok: false,
+        error: { code: "DAEMON_NOT_OBSERVED", message: "daemon not observed" },
+      } satisfies DaemonCallResult<T>
+    return callJSON<T>({
+      entry,
+      method: "POST",
+      path: `/session/${encodeURIComponent(sessionID)}/autonomous/queue`,
+      body,
+    })
+  }
+
   export async function callSessionInit<T>(username: string, sessionID: string, body: unknown) {
     observe(username)
     const safe = LinuxUserExec.sanitizeUsername(username)

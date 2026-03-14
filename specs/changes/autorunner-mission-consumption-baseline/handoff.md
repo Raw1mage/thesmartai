@@ -29,5 +29,19 @@
 - [x] Goal 清楚：讓 runner 真正讀取 approved mission content
 - [x] Scope 清楚：本輪只做 mission consumption baseline
 - [x] Stop gates 已明確
-- [ ] implementation boundary 已映射到實際 runtime files
-- [ ] targeted validation 已列出
+- [x] implementation boundary 已映射到實際 runtime files
+- [x] targeted validation 已列出
+- [x] runtime 會把 consumed mission trace 帶入 continuation metadata
+- [x] artifact 缺漏時會以 `mission_not_consumable` fail-fast 停止
+
+## Completion Note
+
+- 此 slice 已完成最小 mission consumption baseline：
+  - 新增 `packages/opencode/src/session/mission-consumption.ts`
+  - `workflow-runner` 會在 continuation 前驗證 approved mission artifacts 可消費
+  - 成功時保留 `missionConsumption` trace；失敗時記錄 `workflow.mission_not_consumable`
+- 下一步正式切片應為 delegated execution baseline，而不是再重複擴張 mission consumption。
+- delegated execution baseline 已於後續 slice 完成：
+  - continuation synthetic metadata 現已同時保留 mission + delegation trace
+  - delegated role 維持 bounded：`coding` / `testing` / `docs` / `review` / `generic`
+  - `mission_not_consumable` stop/anomaly 路徑仍是 delegated execution 的前置保護，不可繞過

@@ -1,4 +1,4 @@
-import { type ValidComponent, createEffect, createMemo, For, onCleanup, Show } from "solid-js"
+import { type ValidComponent, createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { TooltipKeybind } from "@opencode-ai/ui/tooltip"
@@ -34,7 +34,9 @@ import { SessionStatusSections } from "./session-status-sections"
 import { StatusTodoList } from "./status-todo-list"
 import { useStatusMonitor } from "./use-status-monitor"
 import { useStatusTodoSync } from "./use-status-todo-sync"
+import { useAutonomousHealthSync } from "./use-autonomous-health-sync"
 import { createFileTabListSync, scrollTabIntoView } from "./file-tab-scroll"
+import { Button } from "@opencode-ai/ui/button"
 import "./file-pane-scroll.css"
 
 type SessionSidePanelViewModel = {
@@ -100,6 +102,12 @@ export function SessionSidePanel(props: {
     sdk,
     sync,
   })
+  const autonomousHealth = useAutonomousHealthSync({
+    enabled: () => sideMode() === "status",
+    sessionID: activeSessionID,
+    sdk,
+    status: () => (activeSessionID() ? sync.data.session_status[activeSessionID()!] : undefined),
+  })
 
   const monitorEntries = createMemo(() =>
     buildMonitorEntries({
@@ -117,8 +125,33 @@ export function SessionSidePanel(props: {
       status: activeSessionID() ? sync.data.session_status[activeSessionID()!] : undefined,
       messages: props.vm.messages(),
       partsByMessage: sync.data.part,
+      autonomousHealth: autonomousHealth.data,
     }),
   )
+  const [queueControlLoading, setQueueControlLoading] = createSignal<"resume_once" | "drop_pending" | null>(null)
+  const [queueControlError, setQueueControlError] = createSignal<string | undefined>()
+
+  const runQueueControl = async (action: "resume_once" | "drop_pending") => {
+    const sessionID = activeSessionID()
+    if (!sessionID || queueControlLoading()) return
+    setQueueControlLoading(action)
+    setQueueControlError(undefined)
+    try {
+      const response = await sdk.fetch(`${sdk.url}/api/v2/session/${sessionID}/autonomous/queue`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-opencode-directory": sdk.directory },
+        body: JSON.stringify({ action }),
+      })
+      if (!response.ok) {
+        throw new Error(`Queue control failed (${response.status})`)
+      }
+      await autonomousHealth.forceRefresh()
+    } catch (error) {
+      setQueueControlError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setQueueControlLoading(null)
+    }
+  }
 
   const closeFilePane = () => {
     props.vm.view().filePane.close()
@@ -304,6 +337,33 @@ export function SessionSidePanel(props: {
                             </Show>
                           </div>
                         )}
+                      </Show>
+
+                      <Show when={autonomousHealth.data?.queue.hasPendingContinuation}>
+                        <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-2">
+                          <div class="text-11-medium uppercase tracking-wide text-text-weak">Queue control</div>
+                          <div class="flex flex-wrap gap-2">
+                            <Button
+                              size="small"
+                              variant="secondary"
+                              disabled={queueControlLoading() !== null}
+                              onClick={() => void runQueueControl("resume_once")}
+                            >
+                              {queueControlLoading() === "resume_once" ? "Resuming…" : "Resume once"}
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="ghost"
+                              disabled={queueControlLoading() !== null}
+                              onClick={() => void runQueueControl("drop_pending")}
+                            >
+                              {queueControlLoading() === "drop_pending" ? "Dropping…" : "Drop pending"}
+                            </Button>
+                          </div>
+                          <Show when={queueControlError()}>
+                            {(message) => <div class="text-11-regular text-warning">{message()}</div>}
+                          </Show>
+                        </div>
                       </Show>
 
                       <Show when={statusSummary().processLines.length > 0}>

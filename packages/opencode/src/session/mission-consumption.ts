@@ -1,9 +1,19 @@
 import path from "path"
+import { realpath } from "fs/promises"
 import { Instance } from "@/project/instance"
 import { Session } from "./index"
 
+function isWithinWorktree(candidate: string) {
+  const worktree = path.resolve(Instance.worktree)
+  const relative = path.relative(worktree, path.resolve(candidate))
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
+}
+
 function resolveArtifactPath(relativeOrAbsolute: string) {
-  return path.isAbsolute(relativeOrAbsolute) ? relativeOrAbsolute : path.join(Instance.worktree, relativeOrAbsolute)
+  const absolutePath = path.isAbsolute(relativeOrAbsolute)
+    ? path.resolve(relativeOrAbsolute)
+    : path.resolve(Instance.worktree, relativeOrAbsolute)
+  return isWithinWorktree(absolutePath) ? absolutePath : undefined
 }
 
 function extractSection(markdown: string, heading: string) {
@@ -32,9 +42,18 @@ function extractChecklistItems(text: string) {
 
 async function readRequiredArtifact(filePath: string, label: string, issues: string[]) {
   const absolutePath = resolveArtifactPath(filePath)
+  if (!absolutePath) {
+    issues.push(`${label} outside worktree: ${filePath}`)
+    return { absolutePath: "", text: "" }
+  }
   const file = Bun.file(absolutePath)
   if (!(await file.exists())) {
     issues.push(`${label} missing: ${filePath}`)
+    return { absolutePath, text: "" }
+  }
+  const canonicalPath = await realpath(absolutePath).catch(() => absolutePath)
+  if (!isWithinWorktree(canonicalPath)) {
+    issues.push(`${label} outside worktree: ${filePath}`)
     return { absolutePath, text: "" }
   }
   const text = await file.text().catch(() => "")
@@ -59,6 +78,97 @@ export type MissionConsumptionTrace = {
   executionChecklist: string[]
   requiredReads: string[]
   stopGates: string[]
+}
+
+export type DelegatedExecutionRole = "coding" | "testing" | "docs" | "review" | "generic"
+
+export type DelegationTrace = {
+  role: DelegatedExecutionRole
+  source: "todo_action" | "todo_content" | "mission_validation" | "generic"
+  todoID: string
+  todoContent: string
+}
+
+export function deriveDelegatedExecutionRole(input: {
+  todo: { id: string; content: string; action?: { kind?: string } }
+  mission: MissionConsumptionTrace
+}): DelegationTrace {
+  const text = input.todo.content.toLowerCase()
+  const actionKind = input.todo.action?.kind
+  const validationText = input.mission.validationChecks.join(" \n ").toLowerCase()
+  const hasTodoTestingSignal =
+    text.includes("test") ||
+    text.includes("validate") ||
+    text.includes("validation") ||
+    text.includes("coverage") ||
+    text.includes("integration") ||
+    text.includes("e2e") ||
+    text.includes("unit") ||
+    text.includes("regression") ||
+    text.includes("smoke")
+  const hasMissionTestingSignal =
+    validationText.includes("test") ||
+    validationText.includes("validate") ||
+    validationText.includes("validation") ||
+    validationText.includes("coverage") ||
+    validationText.includes("integration") ||
+    validationText.includes("e2e") ||
+    validationText.includes("unit") ||
+    validationText.includes("regression") ||
+    validationText.includes("smoke")
+  const hasMissionInferredTestingSignal = (text.includes("check") || text.includes("verify")) && hasMissionTestingSignal
+
+  if (actionKind === "docs" || text.includes("docs") || text.includes("readme") || text.includes("documentation")) {
+    return {
+      role: "docs",
+      source: actionKind === "docs" ? "todo_action" : "todo_content",
+      todoID: input.todo.id,
+      todoContent: input.todo.content,
+    }
+  }
+
+  if (text.includes("review") || text.includes("audit") || text.includes("inspect")) {
+    return {
+      role: "review",
+      source: "todo_content",
+      todoID: input.todo.id,
+      todoContent: input.todo.content,
+    }
+  }
+
+  if (actionKind === "test" || hasTodoTestingSignal || hasMissionInferredTestingSignal) {
+    return {
+      role: "testing",
+      source: actionKind === "test" ? "todo_action" : hasTodoTestingSignal ? "todo_content" : "mission_validation",
+      todoID: input.todo.id,
+      todoContent: input.todo.content,
+    }
+  }
+
+  if (
+    actionKind === "implement" ||
+    actionKind === "delegate" ||
+    text.includes("implement") ||
+    text.includes("build") ||
+    text.includes("fix") ||
+    text.includes("refactor") ||
+    text.includes("add ") ||
+    text.includes("update ")
+  ) {
+    return {
+      role: "coding",
+      source: actionKind === "implement" || actionKind === "delegate" ? "todo_action" : "todo_content",
+      todoID: input.todo.id,
+      todoContent: input.todo.content,
+    }
+  }
+
+  return {
+    role: "generic",
+    source: "generic",
+    todoID: input.todo.id,
+    todoContent: input.todo.content,
+  }
 }
 
 export type MissionConsumptionResult =

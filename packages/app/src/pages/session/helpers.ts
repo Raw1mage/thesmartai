@@ -58,6 +58,36 @@ export const getTabReorderIndex = (tabs: readonly string[], from: string, to: st
 
 type WorkflowChipTone = "neutral" | "info" | "success" | "warning"
 
+export type AutonomousHealthSummary = {
+  state: string
+  stopReason?: string
+  queue: {
+    hasPendingContinuation: boolean
+    roundCount?: number
+    reason?: string
+    queuedAt?: number
+  }
+  supervisor: {
+    leaseOwner?: string
+    leaseExpiresAt?: number
+    retryAt?: number
+    consecutiveResumeFailures: number
+    lastResumeCategory?: string
+    lastResumeError?: string
+  }
+  anomalies: {
+    recentCount: number
+    latestEventType?: string
+    latestAt?: number
+    flags: string[]
+    countsByType: Record<string, number>
+  }
+  summary: {
+    health: "healthy" | "queued" | "paused" | "degraded" | "blocked" | "completed"
+    label: string
+  }
+}
+
 export type SessionWorkflowChip = {
   label: string
   tone: WorkflowChipTone
@@ -730,6 +760,7 @@ export const getSessionStatusSummary = (input: {
   status?: SessionStatus
   messages?: readonly Message[]
   partsByMessage?: PartsByMessage
+  autonomousHealth?: AutonomousHealthSummary
 }): SessionStatusSummary => {
   const todos = (input.todos ?? []) as TodoWithAction[]
   const currentStep =
@@ -748,8 +779,23 @@ export const getSessionStatusSummary = (input: {
   const stopReason = prettyStopReason(input.session?.workflow?.stopReason)
   if (stopReason) processLines.push(`Stop: ${stopReason}`)
   if (input.status?.type && input.status.type !== "idle") processLines.push(`Runtime: ${input.status.type}`)
+  if (input.autonomousHealth?.summary?.label) processLines.push(`Health: ${input.autonomousHealth.summary.label}`)
 
   const debugLines: string[] = []
+  if (input.autonomousHealth?.queue.hasPendingContinuation) {
+    debugLines.push(
+      `Queue: ${input.autonomousHealth.queue.reason?.replaceAll("_", " ") ?? "pending continuation"}${typeof input.autonomousHealth.queue.roundCount === "number" ? ` (round ${input.autonomousHealth.queue.roundCount})` : ""}`,
+    )
+  }
+  if ((input.autonomousHealth?.anomalies.recentCount ?? 0) > 0) {
+    debugLines.push(`Anomalies: ${input.autonomousHealth?.anomalies.recentCount}`)
+    if (input.autonomousHealth?.anomalies.latestEventType) {
+      debugLines.push(`Latest anomaly: ${input.autonomousHealth.anomalies.latestEventType}`)
+    }
+    if ((input.autonomousHealth?.anomalies.flags.length ?? 0) > 0) {
+      debugLines.push(`Anomaly flags: ${input.autonomousHealth?.anomalies.flags.join(", ")}`)
+    }
+  }
   const supervisor = input.session?.workflow?.supervisor
   if (supervisor?.leaseOwner) debugLines.push(`Lease: ${supervisor.leaseOwner}`)
   if (supervisor?.retryAt) debugLines.push(`Retry at: ${formatDebugTime(supervisor.retryAt)}`)

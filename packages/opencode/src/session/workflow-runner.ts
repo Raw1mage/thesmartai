@@ -64,6 +64,158 @@ export type AutonomousNarration = {
   text: string
 }
 
+export type AutonomousWorkflowHealth = {
+  state: Session.WorkflowState
+  stopReason?: string
+  queue: {
+    hasPendingContinuation: boolean
+    roundCount?: number
+    reason?: PendingContinuationInfo["reason"]
+    queuedAt?: number
+  }
+  supervisor: {
+    leaseOwner?: string
+    leaseExpiresAt?: number
+    retryAt?: number
+    consecutiveResumeFailures: number
+    lastResumeCategory?: string
+    lastResumeError?: string
+  }
+  anomalies: {
+    recentCount: number
+    latestEventType?: string
+    latestAt?: number
+    flags: string[]
+    countsByType: Record<string, number>
+  }
+  summary: {
+    health: "healthy" | "queued" | "paused" | "degraded" | "blocked" | "completed"
+    label: string
+  }
+}
+
+export type PendingContinuationResumeBlockReason =
+  | "no_pending_continuation"
+  | "in_flight"
+  | "status_busy"
+  | "status_retry"
+  | "autonomous_disabled"
+  | "workflow_blocked"
+  | "workflow_completed"
+  | `waiting_user_non_resumable:${string}`
+  | "supervisor_retry_backoff"
+  | "supervisor_foreign_lease"
+
+export type PendingContinuationQueueInspection = {
+  hasPendingContinuation: boolean
+  pending?: PendingContinuationInfo
+  status: SessionStatus.Info["type"]
+  inFlight: boolean
+  resumable: boolean
+  blockedReasons: PendingContinuationResumeBlockReason[]
+  health: AutonomousWorkflowHealth
+}
+
+export type PendingContinuationQueueControlAction = "resume_once" | "drop_pending"
+
+export type PendingContinuationQueueControlResult = {
+  action: PendingContinuationQueueControlAction
+  applied: boolean
+  reason: "resumed" | "dropped" | "no_pending_continuation" | "not_resumable" | "resume_dispatch_skipped"
+  blockedReasons?: PendingContinuationResumeBlockReason[]
+  inspection: PendingContinuationQueueInspection
+}
+
+export function summarizeAutonomousWorkflowHealth(input: {
+  workflow?: Session.WorkflowInfo
+  pending?: PendingContinuationInfo
+  events?: RuntimeEventService.Event[]
+}): AutonomousWorkflowHealth {
+  const workflow = input.workflow ?? Session.defaultWorkflow()
+  const events = input.events ?? []
+  const anomalyEvents = events.filter((event) => event.domain === "anomaly")
+  const countsByType = Object.fromEntries(
+    anomalyEvents
+      .reduce((map, event) => {
+        map.set(event.eventType, (map.get(event.eventType) ?? 0) + 1)
+        return map
+      }, new Map<string, number>())
+      .entries(),
+  )
+  const latestAnomaly = anomalyEvents.at(-1)
+  const queue = {
+    hasPendingContinuation: !!input.pending,
+    roundCount: input.pending?.roundCount,
+    reason: input.pending?.reason,
+    queuedAt: input.pending?.createdAt,
+  }
+  const supervisor = {
+    leaseOwner: workflow.supervisor?.leaseOwner,
+    leaseExpiresAt: workflow.supervisor?.leaseExpiresAt,
+    retryAt: workflow.supervisor?.retryAt,
+    consecutiveResumeFailures: workflow.supervisor?.consecutiveResumeFailures ?? 0,
+    lastResumeCategory: workflow.supervisor?.lastResumeCategory,
+    lastResumeError: workflow.supervisor?.lastResumeError,
+  }
+
+  let health: AutonomousWorkflowHealth["summary"]["health"] = "healthy"
+  let label = "Autonomous runner idle"
+  if (workflow.state === "completed") {
+    health = "completed"
+    label = "Autonomous workflow completed"
+  } else if (workflow.state === "blocked") {
+    health = "blocked"
+    label = workflow.stopReason ? `Workflow blocked: ${workflow.stopReason}` : "Workflow blocked"
+  } else if (queue.hasPendingContinuation) {
+    health = "queued"
+    label = queue.reason === "todo_in_progress" ? "Queued to resume current step" : "Queued to start next step"
+  } else if (workflow.state === "waiting_user") {
+    health = "paused"
+    label = workflow.stopReason ? `Waiting: ${workflow.stopReason}` : "Waiting for user"
+  }
+  if (health !== "blocked" && health !== "completed") {
+    if (supervisor.consecutiveResumeFailures > 0 || anomalyEvents.length > 0) {
+      health = "degraded"
+      label = latestAnomaly?.eventType
+        ? `Degraded: ${latestAnomaly.eventType}`
+        : workflow.stopReason
+          ? `Degraded: ${workflow.stopReason}`
+          : "Degraded autonomous workflow health"
+    }
+  }
+
+  return {
+    state: workflow.state,
+    stopReason: workflow.stopReason,
+    queue,
+    supervisor,
+    anomalies: {
+      recentCount: anomalyEvents.length,
+      latestEventType: latestAnomaly?.eventType,
+      latestAt: latestAnomaly?.ts,
+      flags: [...new Set(anomalyEvents.flatMap((event) => event.anomalyFlags))],
+      countsByType,
+    },
+    summary: {
+      health,
+      label,
+    },
+  }
+}
+
+export async function getAutonomousWorkflowHealth(sessionID: string, input?: { eventLimit?: number }) {
+  const session = await Session.get(sessionID)
+  const [pending, events] = await Promise.all([
+    getPendingContinuation(sessionID),
+    RuntimeEventService.list(sessionID, { limit: input?.eventLimit ?? 20 }),
+  ])
+  return summarizeAutonomousWorkflowHealth({
+    workflow: session.workflow,
+    pending,
+    events,
+  })
+}
+
 export function detectWaitSubagentMismatch(input: {
   todos: Todo.Info[]
   activeSubtasks?: number
@@ -182,9 +334,38 @@ type ResumeCandidate = {
   session: Pick<Session.Info, "workflow">
   status: SessionStatus.Info
   inFlight: boolean
+  health?: AutonomousWorkflowHealth
   budget?: {
     family: string
     waitTimeMs: number
+  }
+}
+
+const NON_RESUMABLE_WAITING_REASONS = new Set([
+  "approval_needed",
+  "product_decision_needed",
+  "mission_not_approved",
+  "mission_not_consumable",
+  "max_continuous_rounds",
+  "manual_interrupt",
+  "risk_review_needed",
+  "wait_subagent",
+])
+
+function healthRankForResume(health: AutonomousWorkflowHealth["summary"]["health"]) {
+  switch (health) {
+    case "healthy":
+      return 0
+    case "queued":
+      return 1
+    case "paused":
+      return 2
+    case "degraded":
+      return 3
+    case "blocked":
+      return 4
+    case "completed":
+      return 5
   }
 }
 
@@ -192,20 +373,48 @@ export function shouldResumePendingContinuation(input: {
   session: Pick<Session.Info, "workflow">
   status: SessionStatus.Info
   inFlight: boolean
+  health?: AutonomousWorkflowHealth
   owner?: string
   now?: number
 }) {
-  if (input.inFlight) return false
-  if (input.status.type !== "idle") return false
+  return inspectPendingContinuationResumability(input).resumable
+}
+
+export function inspectPendingContinuationResumability(input: {
+  session: Pick<Session.Info, "workflow">
+  status: SessionStatus.Info
+  inFlight: boolean
+  health?: AutonomousWorkflowHealth
+  owner?: string
+  now?: number
+}) {
+  const blockedReasons: PendingContinuationResumeBlockReason[] = []
+  if (input.inFlight) blockedReasons.push("in_flight")
+  if (input.status.type === "busy") blockedReasons.push("status_busy")
+  if (input.status.type === "retry") blockedReasons.push("status_retry")
+
   const workflow = input.session.workflow
-  if (!workflow?.autonomous.enabled) return false
-  if (workflow.state === "blocked" || workflow.state === "completed") return false
+  if (!workflow?.autonomous.enabled) blockedReasons.push("autonomous_disabled")
+
+  const health = input.health ?? summarizeAutonomousWorkflowHealth({ workflow })
+  if (health.state === "blocked") blockedReasons.push("workflow_blocked")
+  if (health.state === "completed") blockedReasons.push("workflow_completed")
+  if (health.state === "waiting_user" && NON_RESUMABLE_WAITING_REASONS.has(health.stopReason ?? "")) {
+    blockedReasons.push(`waiting_user_non_resumable:${health.stopReason}`)
+  }
+
   const now = input.now ?? Date.now()
-  const supervisor = workflow.supervisor
-  if ((supervisor?.retryAt ?? 0) > now) return false
-  if ((supervisor?.leaseExpiresAt ?? 0) > now && supervisor?.leaseOwner && supervisor.leaseOwner !== input.owner)
-    return false
-  return true
+  const supervisor = health.supervisor
+  if ((supervisor.retryAt ?? 0) > now) blockedReasons.push("supervisor_retry_backoff")
+  if ((supervisor.leaseExpiresAt ?? 0) > now && supervisor.leaseOwner && supervisor.leaseOwner !== input.owner) {
+    blockedReasons.push("supervisor_foreign_lease")
+  }
+
+  return {
+    resumable: blockedReasons.length === 0,
+    blockedReasons,
+    health,
+  }
 }
 
 export function computeResumeBackoffMs(consecutiveFailures: number) {
@@ -338,17 +547,25 @@ export function classifyResumeFailure(error: unknown): {
   }
 }
 
-export function pickPendingContinuationsForResume(input: { items: ResumeCandidate[]; maxCount: number }) {
+export function pickPendingContinuationsForResume(input: {
+  items: ResumeCandidate[]
+  maxCount: number
+  preferredSessionID?: string
+}) {
   const eligible = input.items
     .filter((item) =>
       shouldResumePendingContinuation({
         session: item.session,
         status: item.status,
         inFlight: item.inFlight,
+        health: item.health,
         owner: SUPERVISOR_OWNER,
       }),
     )
     .sort((a, b) => {
+      const aHealthRank = healthRankForResume(a.health?.summary.health ?? "healthy")
+      const bHealthRank = healthRankForResume(b.health?.summary.health ?? "healthy")
+      if (aHealthRank !== bHealthRank) return aHealthRank - bHealthRank
       const aReady = (a.budget?.waitTimeMs ?? 0) === 0 ? 0 : 1
       const bReady = (b.budget?.waitTimeMs ?? 0) === 0 ? 0 : 1
       if (aReady !== bReady) return aReady - bReady
@@ -368,6 +585,15 @@ export function pickPendingContinuationsForResume(input: { items: ResumeCandidat
   const picked: ResumeCandidate[] = []
   const usedFamilies = new Set<string>()
   const maxCount = Math.max(0, input.maxCount)
+
+  if (input.preferredSessionID) {
+    const preferred = eligible.find((item) => item.pending.sessionID === input.preferredSessionID)
+    if (preferred && picked.length < maxCount) {
+      picked.push(preferred)
+      const family = preferred.budget?.family
+      if (family) usedFamilies.add(family)
+    }
+  }
 
   for (const item of eligible) {
     if (picked.length >= maxCount) break
@@ -632,11 +858,135 @@ export async function listPendingContinuations() {
   return result.sort((a, b) => a.createdAt - b.createdAt)
 }
 
+export async function getPendingContinuationQueueInspection(
+  sessionID: string,
+): Promise<PendingContinuationQueueInspection> {
+  const session = await Session.get(sessionID)
+  const pending = await getPendingContinuation(sessionID)
+  const status = SessionStatus.get(sessionID)
+  const inFlight = resumeInFlight.has(sessionID)
+  const events = await RuntimeEventService.list(sessionID, { limit: 20 }).catch(() => [])
+  const health = summarizeAutonomousWorkflowHealth({
+    workflow: session.workflow,
+    pending,
+    events,
+  })
+
+  if (!pending) {
+    return {
+      hasPendingContinuation: false,
+      status: status.type,
+      inFlight,
+      resumable: false,
+      blockedReasons: ["no_pending_continuation"],
+      health,
+    }
+  }
+
+  const resumability = inspectPendingContinuationResumability({
+    session,
+    status,
+    inFlight,
+    health,
+    owner: SUPERVISOR_OWNER,
+  })
+
+  return {
+    hasPendingContinuation: true,
+    pending,
+    status: status.type,
+    inFlight,
+    resumable: resumability.resumable,
+    blockedReasons: resumability.blockedReasons,
+    health: resumability.health,
+  }
+}
+
+export async function mutatePendingContinuationQueue(input: {
+  sessionID: string
+  action: PendingContinuationQueueControlAction
+}): Promise<PendingContinuationQueueControlResult> {
+  if (input.action === "drop_pending") {
+    const pending = await getPendingContinuation(input.sessionID)
+    if (!pending) {
+      return {
+        action: input.action,
+        applied: false,
+        reason: "no_pending_continuation",
+        inspection: await getPendingContinuationQueueInspection(input.sessionID),
+      }
+    }
+    await clearPendingContinuation(input.sessionID)
+    await RuntimeEventService.append({
+      sessionID: input.sessionID,
+      level: "info",
+      domain: "workflow",
+      eventType: "workflow.pending_continuation_dropped",
+      anomalyFlags: [],
+      payload: {
+        source: "operator_control",
+      },
+    }).catch(() => undefined)
+    return {
+      action: input.action,
+      applied: true,
+      reason: "dropped",
+      inspection: await getPendingContinuationQueueInspection(input.sessionID),
+    }
+  }
+
+  const inspection = await getPendingContinuationQueueInspection(input.sessionID)
+  if (!inspection.hasPendingContinuation) {
+    return {
+      action: input.action,
+      applied: false,
+      reason: "no_pending_continuation",
+      inspection,
+    }
+  }
+  if (!inspection.resumable) {
+    return {
+      action: input.action,
+      applied: false,
+      reason: "not_resumable",
+      blockedReasons: inspection.blockedReasons,
+      inspection,
+    }
+  }
+
+  await resumePendingContinuations({
+    maxCount: 1,
+    preferredSessionID: input.sessionID,
+  })
+  const after = await getPendingContinuationQueueInspection(input.sessionID)
+  const resumed = after.inFlight || after.status === "busy"
+  await RuntimeEventService.append({
+    sessionID: input.sessionID,
+    level: resumed ? "info" : "warn",
+    domain: resumed ? "workflow" : "anomaly",
+    eventType: resumed
+      ? "workflow.pending_continuation_resume_requested"
+      : "workflow.pending_continuation_resume_dispatch_skipped",
+    anomalyFlags: resumed ? [] : ["pending_continuation_resume_dispatch_skipped"],
+    payload: {
+      source: "operator_control",
+      blockedReasons: resumed ? undefined : after.blockedReasons,
+    },
+  }).catch(() => undefined)
+  return {
+    action: input.action,
+    applied: resumed,
+    reason: resumed ? "resumed" : "resume_dispatch_skipped",
+    blockedReasons: resumed ? undefined : after.blockedReasons,
+    inspection: after,
+  }
+}
+
 export async function enqueuePendingContinuation(input: PendingContinuationInfo) {
   await Storage.write(queueKey(input.sessionID), PendingContinuationInfo.parse(input))
 }
 
-export async function resumePendingContinuations(input?: { maxCount?: number }) {
+export async function resumePendingContinuations(input?: { maxCount?: number; preferredSessionID?: string }) {
   using _lock = await Lock.write(RESUME_LOCK)
   const items = await listPendingContinuations()
   const resumable: ResumeCandidate[] = []
@@ -653,6 +1003,11 @@ export async function resumePendingContinuations(input?: { maxCount?: number }) 
       session,
       status: SessionStatus.get(item.sessionID),
       inFlight,
+      health: summarizeAutonomousWorkflowHealth({
+        workflow: session.workflow,
+        pending: item,
+        events: await RuntimeEventService.list(item.sessionID, { limit: 10 }).catch(() => []),
+      }),
       budget: await resolvePendingContinuationBudget(item),
     })
   }
@@ -661,6 +1016,7 @@ export async function resumePendingContinuations(input?: { maxCount?: number }) 
   const selected = pickPendingContinuationsForResume({
     items: resumable,
     maxCount,
+    preferredSessionID: input?.preferredSessionID,
   })
 
   for (const item of selected) {
@@ -751,9 +1107,19 @@ export async function enqueueAutonomousContinue(input: {
   user: MessageV2.User
   text?: string
   roundCount?: number
+  delegation?: {
+    role: "coding" | "testing" | "docs" | "review" | "generic"
+    source: "todo_action" | "todo_content" | "mission_validation" | "generic"
+    todoID: string
+    todoContent: string
+  }
 }) {
   const now = Date.now()
-  const text = input.text ?? AUTONOMOUS_CONTINUE_TEXT
+  const text =
+    input.text ??
+    (input.delegation && input.delegation.role !== "generic"
+      ? `Continue with the next planned ${input.delegation.role} step: ${input.delegation.todoContent}`
+      : AUTONOMOUS_CONTINUE_TEXT)
   const session = await Session.get(input.sessionID)
   const missionConsumption = session.mission ? await consumeMissionArtifacts(session.mission) : undefined
   if (session.mission && missionConsumption && !missionConsumption.ok) {
@@ -815,6 +1181,7 @@ export async function enqueueAutonomousContinue(input: {
       modelArbitration: arbitration.trace,
       mission: buildMissionMetadata(session),
       missionConsumption: missionConsumption?.ok ? missionConsumption.trace : undefined,
+      delegation: input.delegation,
     },
   })
   await enqueuePendingContinuation({

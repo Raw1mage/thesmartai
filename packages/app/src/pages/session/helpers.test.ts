@@ -333,6 +333,33 @@ describe("getSessionStatusSummary", () => {
             },
           ] as any,
         },
+        autonomousHealth: {
+          state: "waiting_user",
+          stopReason: "wait_subagent",
+          queue: {
+            hasPendingContinuation: true,
+            roundCount: 2,
+            reason: "todo_in_progress",
+            queuedAt: 1,
+          },
+          supervisor: {
+            consecutiveResumeFailures: 2,
+            retryAt: 60_000,
+            lastResumeCategory: "provider_rate_limit",
+            lastResumeError: "rate limited",
+          },
+          anomalies: {
+            recentCount: 1,
+            latestEventType: "workflow.unreconciled_wait_subagent",
+            latestAt: 65_000,
+            flags: ["unreconciled_wait_subagent"],
+            countsByType: { "workflow.unreconciled_wait_subagent": 1 },
+          },
+          summary: {
+            health: "degraded",
+            label: "Degraded: workflow.unreconciled_wait_subagent",
+          },
+        },
       }),
     ).toMatchObject({
       currentStep: {
@@ -350,6 +377,7 @@ describe("getSessionStatusSummary", () => {
         "Workflow: Waiting",
         "Stop: Wait subagent",
         "Runtime: busy",
+        "Health: Degraded: workflow.unreconciled_wait_subagent",
         "AI layer: 1 narration",
         "AI latest: pause",
         "AI role: interruption",
@@ -558,9 +586,40 @@ describe("getSessionStatusSummary", () => {
           },
         ] as any,
       },
+      autonomousHealth: {
+        state: "waiting_user",
+        stopReason: "wait_subagent",
+        queue: {
+          hasPendingContinuation: true,
+          roundCount: 2,
+          reason: "todo_in_progress",
+          queuedAt: 1,
+        },
+        supervisor: {
+          consecutiveResumeFailures: 2,
+          retryAt: 60_000,
+          lastResumeCategory: "provider_rate_limit",
+          lastResumeError: "rate limited",
+        },
+        anomalies: {
+          recentCount: 1,
+          latestEventType: "workflow.unreconciled_wait_subagent",
+          latestAt: 65_000,
+          flags: ["unreconciled_wait_subagent"],
+          countsByType: { "workflow.unreconciled_wait_subagent": 1 },
+        },
+        summary: {
+          health: "degraded",
+          label: "Degraded: workflow.unreconciled_wait_subagent",
+        },
+      },
     })
 
     expect(summary.debugLines).toEqual([
+      "Queue: todo in progress (round 2)",
+      "Anomalies: 1",
+      "Latest anomaly: workflow.unreconciled_wait_subagent",
+      "Anomaly flags: unreconciled_wait_subagent",
       "Lease: supervisor:test",
       expect.stringMatching(/^Retry at: \d{2}:\d{2}:\d{2}$/),
       "Resume failures: 2",

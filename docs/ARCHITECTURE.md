@@ -132,6 +132,8 @@ The `cms` branch is the primary product line for this environment, featuring sig
 - Incoming real user prompts may now safely preempt a busy autonomous synthetic run. Runtime cleanup is keyed by per-run identity so an old aborted loop cannot accidentally clear the replacement loop.
 - A durable continuation queue foundation now exists under session storage, and the server runtime now starts an in-process autonomous supervisor that scans pending continuation records and re-enters session loops for idle autonomous sessions.
 - Autonomous synthetic continuation turns now also carry mission metadata (`source / contract / planPath / artifactPaths`) on the synthetic user text part, so downstream execution can be traced back to the approved OpenSpec mission that authorized the run.
+- Delegated execution baseline is now implemented on top of that continuation path: synthetic continuation metadata includes a bounded delegation contract (role/source/todo trace), and runtime only emits bounded roles `coding` / `testing` / `docs` / `review` / `generic`.
+- When mission artifacts cannot be consumed, autonomous continuation now fail-fast stops with `stopReason=mission_not_consumable` and records `workflow.mission_not_consumable` anomaly evidence (no silent fallback to todo-only continuation).
 - `mission_not_approved` is now a first-class stop reason in the autonomous continuation pipeline. When a session lacks an approved mission contract, runtime moves workflow state to `waiting_user` with `stopReason=mission_not_approved` instead of silently continuing from todos alone.
 - A new session-scoped runtime event journal baseline exists in `packages/opencode/src/system/runtime-event-service.ts`. It persists structured runtime events with fixed fields (`ts / level / domain / eventType / sessionID / todoID? / anomalyFlags[] / payload`) and currently serves as the minimal evidence substrate for runner/workflow anomalies.
 - First anomaly integration is now active for stale delegated-subagent waits: when workflow evaluation stops at `wait_subagent` but no active subtask remains and todo state still says `waitingOn=subagent`, runtime records `workflow.unreconciled_wait_subagent` into that event journal instead of leaving the inconsistency purely implicit in scattered state surfaces.
@@ -291,6 +293,10 @@ Provider-first migration status:
   - `artifactPaths` (`root`, `implementationSpec`, `proposal`, `spec`, `design`, `tasks`, `handoff`)
 - Architectural rule: autonomous runner must not continue solely because todo state exists. It may continue only when autonomous mode is enabled **and** the session carries an approved mission contract.
 - Current first supported mission source is repo-local `/specs` OpenSpec change artifacts. This is the initial product path for session-scoped runners: consume an approved development plan, then drive delegated execution under that plan boundary.
+- Synthetic continuation contract now includes both mission and delegated execution trace:
+  - mission metadata: `source / contract / planPath / artifactPaths`
+  - delegation metadata: bounded role derivation trace (`role` + derivation source/todo evidence)
+- Delegated execution is intentionally bounded at this stage: `coding` / `testing` / `docs` / `review` / `generic`; ambiguous cases must stay `generic` instead of escalating to unsupported orchestration behavior.
 
 #### B) TUI `/admin` provider operation pipeline (cms)
 

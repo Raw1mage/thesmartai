@@ -68,6 +68,7 @@ import {
   getPendingContinuation,
   shouldInterruptAutonomousRun,
 } from "./workflow-runner"
+import { consumeMissionArtifacts, deriveDelegatedExecutionRole } from "./mission-consumption"
 import {
   annotateSmartRunnerApprovalAdoption,
   annotateSmartRunnerAskUserAdoption,
@@ -766,6 +767,41 @@ export namespace SessionPrompt {
     emitNarration?: typeof emitAutonomousNarration
     enqueueContinue?: typeof enqueueAutonomousContinue
   }) {
+    const session = await Session.get(input.sessionID)
+    const missionConsumption = session.mission ? await consumeMissionArtifacts(session.mission) : undefined
+    if (session.mission && missionConsumption && !missionConsumption.ok) {
+      const emitNarration = input.emitNarration ?? emitAutonomousNarration
+      const narration = {
+        kind: "pause" as const,
+        text: "Paused: approved mission artifacts could not be consumed safely, so autonomous execution stopped.",
+      }
+      await emitNarration({
+        sessionID: input.sessionID,
+        parentID: input.user.id,
+        agent: input.user.agent,
+        variant: input.user.variant,
+        model: input.user.model,
+        text: narration.text,
+        kind: narration.kind,
+      })
+      await Session.setWorkflowState({
+        sessionID: input.sessionID,
+        state: "waiting_user",
+        stopReason: "mission_not_consumable",
+        lastRunAt: Date.now(),
+      })
+      return {
+        halted: true as const,
+        nextRoundCount: input.autonomousRounds,
+        narration,
+      }
+    }
+    const delegation = missionConsumption?.ok
+      ? deriveDelegatedExecutionRole({
+          todo: input.decision.todo,
+          mission: missionConsumption.trace,
+        })
+      : undefined
     const narration = describeAutonomousNextAction({
       type: "continue",
       reason: input.decision.reason,
@@ -789,9 +825,14 @@ export namespace SessionPrompt {
       sessionID: input.sessionID,
       user: input.user,
       roundCount: nextRoundCount,
-      text: input.decision.text,
+      text:
+        delegation && delegation.role !== "generic"
+          ? `Continue with the next planned ${delegation.role} step: ${input.decision.todo.content}`
+          : input.decision.text,
+      delegation,
     })
     return {
+      halted: false as const,
       nextRoundCount,
       narration,
     }
@@ -1574,6 +1615,7 @@ export namespace SessionPrompt {
             autonomousRounds,
           })
           autonomousRounds = continuationResult.nextRoundCount
+          if (continuationResult.halted) break
           continue
         }
         if (

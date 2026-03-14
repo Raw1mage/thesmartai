@@ -21,7 +21,69 @@ import { lazy } from "../../util/lazy"
 import { RequestUser } from "@/runtime/request-user"
 import { UserDaemonManager } from "../user-daemon"
 import { debugCheckpoint } from "@/util/debug"
-import { enqueueAutonomousContinue } from "@/session/workflow-runner"
+import {
+  enqueueAutonomousContinue,
+  getAutonomousWorkflowHealth,
+  getPendingContinuationQueueInspection,
+  mutatePendingContinuationQueue,
+} from "@/session/workflow-runner"
+
+const AutonomousWorkflowHealthSchema = z.object({
+  state: z.enum(["idle", "running", "waiting_user", "blocked", "completed"]),
+  stopReason: z.string().optional(),
+  queue: z.object({
+    hasPendingContinuation: z.boolean(),
+    roundCount: z.number().optional(),
+    reason: z.string().optional(),
+    queuedAt: z.number().optional(),
+  }),
+  supervisor: z.object({
+    leaseOwner: z.string().optional(),
+    leaseExpiresAt: z.number().optional(),
+    retryAt: z.number().optional(),
+    consecutiveResumeFailures: z.number(),
+    lastResumeCategory: z.string().optional(),
+    lastResumeError: z.string().optional(),
+  }),
+  anomalies: z.object({
+    recentCount: z.number(),
+    latestEventType: z.string().optional(),
+    latestAt: z.number().optional(),
+    flags: z.array(z.string()),
+    countsByType: z.record(z.string(), z.number()),
+  }),
+  summary: z.object({
+    health: z.enum(["healthy", "queued", "paused", "degraded", "blocked", "completed"]),
+    label: z.string(),
+  }),
+})
+
+const PendingContinuationQueueInspectionSchema = z.object({
+  hasPendingContinuation: z.boolean(),
+  pending: z
+    .object({
+      sessionID: z.string(),
+      messageID: z.string(),
+      createdAt: z.number(),
+      roundCount: z.number(),
+      reason: z.enum(["todo_pending", "todo_in_progress"]),
+      text: z.string(),
+    })
+    .optional(),
+  status: z.enum(["idle", "busy", "retry"]),
+  inFlight: z.boolean(),
+  resumable: z.boolean(),
+  blockedReasons: z.array(z.string()),
+  health: AutonomousWorkflowHealthSchema,
+})
+
+const PendingContinuationQueueControlSchema = z.object({
+  action: z.enum(["resume_once", "drop_pending"]),
+  applied: z.boolean(),
+  reason: z.enum(["resumed", "dropped", "no_pending_continuation", "not_resumable", "resume_dispatch_skipped"]),
+  blockedReasons: z.array(z.string()).optional(),
+  inspection: PendingContinuationQueueInspectionSchema,
+})
 
 const log = Log.create({ service: "server" })
 const SESSION_ROUTE_DEBUG_ENABLED = false
@@ -638,6 +700,159 @@ export const SessionRoutes = lazy(() =>
         }
 
         return c.json(updatedSession)
+      },
+    )
+    .get(
+      "/:sessionID/autonomous/health",
+      describeRoute({
+        summary: "Get autonomous workflow health",
+        description:
+          "Return a converged health snapshot for autonomous execution, including queue state, supervisor retry state, and recent anomaly evidence.",
+        operationId: "session.autonomous.health",
+        responses: {
+          200: {
+            description: "Autonomous workflow health snapshot",
+            content: {
+              "application/json": {
+                schema: resolver(AutonomousWorkflowHealthSchema),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const username = RequestUser.username()
+        if (username && UserDaemonManager.routeSessionReadEnabled()) {
+          const response = await UserDaemonManager.callSessionAutonomousHealth<
+            z.infer<typeof AutonomousWorkflowHealthSchema>
+          >(username, sessionID)
+          if (response.ok && response.data) return c.json(response.data)
+          return c.json(
+            {
+              code: response.ok ? "DAEMON_INVALID_PAYLOAD" : response.error.code,
+              message: response.ok ? "daemon session.autonomous.health payload is empty" : response.error.message,
+            },
+            503,
+          )
+        }
+
+        await Session.get(sessionID)
+        const health = await getAutonomousWorkflowHealth(sessionID)
+        return c.json(health)
+      },
+    )
+    .get(
+      "/:sessionID/autonomous/queue",
+      describeRoute({
+        summary: "Inspect pending autonomous continuation queue state",
+        description:
+          "Return queue inspection for one session, including pending continuation payload, resumable/blocked classification, and block reasons.",
+        operationId: "session.autonomous.queue",
+        responses: {
+          200: {
+            description: "Pending continuation queue inspection",
+            content: {
+              "application/json": {
+                schema: resolver(PendingContinuationQueueInspectionSchema),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const username = RequestUser.username()
+        if (username && UserDaemonManager.routeSessionReadEnabled()) {
+          const response = await UserDaemonManager.callSessionAutonomousQueue<
+            z.infer<typeof PendingContinuationQueueInspectionSchema>
+          >(username, sessionID)
+          if (response.ok && response.data) return c.json(response.data)
+          return c.json(
+            {
+              code: response.ok ? "DAEMON_INVALID_PAYLOAD" : response.error.code,
+              message: response.ok ? "daemon session.autonomous.queue payload is empty" : response.error.message,
+            },
+            503,
+          )
+        }
+
+        await Session.get(sessionID)
+        const inspection = await getPendingContinuationQueueInspection(sessionID)
+        return c.json(inspection)
+      },
+    )
+    .post(
+      "/:sessionID/autonomous/queue",
+      describeRoute({
+        summary: "Control pending autonomous continuation queue",
+        description:
+          "Apply operator control actions for one session pending queue (resume once or drop pending item), returning post-action inspection state.",
+        operationId: "session.autonomous.queue.control",
+        responses: {
+          200: {
+            description: "Pending continuation queue control result",
+            content: {
+              "application/json": {
+                schema: resolver(PendingContinuationQueueControlSchema),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      validator(
+        "json",
+        z.object({
+          action: z.enum(["resume_once", "drop_pending"]),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const body = c.req.valid("json")
+        const username = RequestUser.username()
+        if (username && UserDaemonManager.routeSessionMutationEnabled()) {
+          const response = await UserDaemonManager.callSessionAutonomousQueueControl<
+            z.infer<typeof PendingContinuationQueueControlSchema>
+          >(username, sessionID, body)
+          if (response.ok && response.data) return c.json(response.data)
+          return c.json(
+            {
+              code: response.ok ? "DAEMON_INVALID_PAYLOAD" : response.error.code,
+              message: response.ok
+                ? "daemon session.autonomous.queue.control payload is empty"
+                : response.error.message,
+            },
+            503,
+          )
+        }
+
+        await Session.get(sessionID)
+        const result = await mutatePendingContinuationQueue({
+          sessionID,
+          action: body.action,
+        })
+        return c.json(result)
       },
     )
     .post(
