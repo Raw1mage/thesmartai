@@ -92,6 +92,39 @@ async function getServerRequestHeaders(method: string) {
   return headers
 }
 
+async function readNestedSessionMessages(sessionID: string) {
+  const messagesDir = path.join(STORAGE_BASE, "session", sessionID, "messages")
+  if (!(await pathExists(messagesDir))) {
+    throw new Error(`Canonical transcript storage missing for session ${sessionID}: ${messagesDir}`)
+  }
+
+  const entries = await fs.readdir(messagesDir, { withFileTypes: true })
+  const messages: Array<{ info: any; parts: any[] }> = []
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const messageDir = path.join(messagesDir, entry.name)
+    const infoPath = path.join(messageDir, "info.json")
+    const partsDir = path.join(messageDir, "parts")
+    if (!(await pathExists(infoPath))) {
+      throw new Error(`Canonical transcript message missing info.json: ${infoPath}`)
+    }
+    if (!(await pathExists(partsDir))) {
+      throw new Error(`Canonical transcript message missing parts directory: ${partsDir}`)
+    }
+
+    const info = JSON.parse(await fs.readFile(infoPath, "utf-8"))
+    const partFiles = (await fs.readdir(partsDir)).filter((name) => name.endsWith(".json")).sort()
+    const parts = await Promise.all(
+      partFiles.map(async (name) => JSON.parse(await fs.readFile(path.join(partsDir, name), "utf-8"))),
+    )
+    messages.push({ info, parts })
+  }
+
+  messages.sort((a, b) => (a.info.time?.created ?? 0) - (b.info.time?.created ?? 0))
+  return messages
+}
+
 function getQuotaDayStart(): number {
   const now = new Date()
   const resetHourUTC = 8 // 16:00 Taipei is 08:00 UTC
@@ -947,30 +980,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "export_transcript") {
       const { sessionID, savePath } = args as { sessionID: string; savePath?: string }
       const sessionInfoPath = `${STORAGE_BASE}/session/${sessionID}/info.json`
-      const messageDir = `${STORAGE_BASE}/message/${sessionID}`
 
       const session = JSON.parse(await fs.readFile(sessionInfoPath, "utf-8"))
-      const messageFiles = await fs.readdir(messageDir)
-      const messages = await Promise.all(
-        messageFiles.sort().map(async (file: string) => {
-          const msg = JSON.parse(await fs.readFile(`${messageDir}/${file}`, "utf-8"))
-          const partDir = `${STORAGE_BASE}/part/${msg.id}`
-          let parts = []
-          try {
-            const partFiles = await fs.readdir(partDir)
-            parts = await Promise.all(
-              partFiles
-                .sort()
-                .map(async (pfile: string) => JSON.parse(await fs.readFile(`${partDir}/${pfile}`, "utf-8"))),
-            )
-          } catch (e) {}
-          return { ...msg, parts }
-        }),
-      )
+      const messages = await readNestedSessionMessages(sessionID)
 
       let md = `# Session: ${session.title || sessionID}\n\n`
       for (const m of messages) {
-        md += `## ${m.role === "user" ? "User" : "Assistant"}\n\n`
+        md += `## ${m.info.role === "user" ? "User" : "Assistant"}\n\n`
         for (const p of m.parts) {
           if (p.type === "text") md += `${p.text}\n\n`
           if (p.type === "tool") {
