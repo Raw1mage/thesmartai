@@ -485,6 +485,50 @@ list_orphan_mcp_candidates() {
     '
 }
 
+# List ALL MCP processes regardless of ppid (used during restart to ensure
+# fresh MCP instances after code changes).
+list_all_mcp_processes() {
+    ps -eo pid=,args= 2>/dev/null | awk '
+        {
+            pid = $1
+            $1 = ""
+            sub(/^[[:space:]]+/, "", $0)
+            cmd = $0
+
+            is_internal_mcp_binary = (cmd ~ /\/usr\/local\/lib\/opencode\/mcp\/(system-manager|refacting-merger|gcp-grounding)( |$)/)
+            is_internal_mcp_source = (cmd ~ /\/packages\/mcp\/(system-manager\/src\/index\.ts|refacting-merger\/src\/index\.ts|gcp-grounding\/index\.ts)( |$)/)
+            is_memory_mcp = ((cmd ~ /@modelcontextprotocol\/server-memory/) || (cmd ~ /server-memory( |$)/))
+            is_filesystem_mcp = ((cmd ~ /@modelcontextprotocol\/server-filesystem/) || (cmd ~ /server-filesystem( |$)/))
+            is_fetch_mcp = ((cmd ~ /@modelcontextprotocol\/server-fetch/) || (cmd ~ /server-fetch( |$)/))
+            is_sequential_thinking_mcp = ((cmd ~ /@modelcontextprotocol\/server-sequential-thinking/) || (cmd ~ /server-sequential-thinking( |$)/))
+
+            if (is_internal_mcp_binary || is_internal_mcp_source || is_memory_mcp || is_filesystem_mcp || is_fetch_mcp || is_sequential_thinking_mcp) {
+                printf "%s\t%s\n", pid, cmd
+            }
+        }
+    '
+}
+
+# Kill all MCP server processes so the new server spawns fresh instances.
+flush_mcp() {
+    local candidates
+    candidates="$(list_all_mcp_processes || true)"
+
+    if [ -z "${candidates}" ]; then
+        log_success "No MCP server processes to flush"
+        return 0
+    fi
+
+    local count=0
+    while IFS=$'\t' read -r pid cmd; do
+        [ -n "${pid}" ] || continue
+        terminate_process_tree "${pid}" "mcp pid ${pid}"
+        count=$((count + 1))
+    done <<< "${candidates}"
+
+    log_success "Flushed ${count} MCP server process(es)"
+}
+
 tracked_dev_pids() {
     local pid_file
     for pid_file in "${BACKEND_PID_FILE}" "${PID_FILE}" "${FRONTEND_PID_FILE}"; do
@@ -1339,6 +1383,10 @@ do_restart_worker() {
     append_restart_event "${txid}" "stop" "started" "stopping current server" "${mode}" "${graceful}"
     do_dev_stop
     append_restart_event "${txid}" "stop" "ok" "current server stopped" "${mode}" "${graceful}"
+
+    append_restart_event "${txid}" "mcp-flush" "started" "flushing MCP servers for code reload" "${mode}" "${graceful}"
+    flush_mcp
+    append_restart_event "${txid}" "mcp-flush" "ok" "MCP servers flushed" "${mode}" "${graceful}"
 
     append_restart_event "${txid}" "flush" "started" "flushing orphan candidates after stop" "${mode}" "${graceful}"
     if do_flush; then
