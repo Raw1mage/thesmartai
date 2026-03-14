@@ -136,7 +136,12 @@ function list<T>(value: T[] | undefined | null, fallback: T[]) {
   return fallback
 }
 
+function isSessionDebugEnabled() {
+  return false // typeof window !== "undefined" && window.localStorage.getItem("opencode:session-debug") === "1"
+}
+
 function sendSessionTurnDebugBeacon(payload: Record<string, unknown>) {
+  if (!isSessionDebugEnabled()) return
   if (typeof window === "undefined") return
   const headers = new Headers({
     "content-type": "application/json",
@@ -474,8 +479,10 @@ export function SessionTurn(
     const key = JSON.stringify(payload)
     if (key === renderStateLog) return
     renderStateLog = key
-    console.debug("[session-reload-debug] session-turn:render-state", payload)
-    sendSessionTurnDebugBeacon(payload)
+    if (isSessionDebugEnabled()) {
+      console.debug("[session-reload-debug] session-turn:render-state", payload)
+      sendSessionTurnDebugBeacon(payload)
+    }
   })
 
   const [copied, setCopied] = createSignal(false)
@@ -645,14 +652,16 @@ export function SessionTurn(
     const key = `${r.attempt}:${r.next}:${r.message}`
     if (key === retryLog) return
     retryLog = key
-    console.warn("[session-turn] retry", {
-      sessionID: props.sessionID,
-      messageID: props.messageID,
-      attempt: r.attempt,
-      next: r.next,
-      raw: r.message,
-      parsed: unwrap(r.message),
-    })
+    if (isSessionDebugEnabled()) {
+      console.warn("[session-turn] retry", {
+        sessionID: props.sessionID,
+        messageID: props.messageID,
+        attempt: r.attempt,
+        next: r.next,
+        raw: r.message,
+        parsed: unwrap(r.message),
+      })
+    }
   })
 
   let errorLog = ""
@@ -663,12 +672,14 @@ export function SessionTurn(
     if (!raw) return
     if (raw === errorLog) return
     errorLog = raw
-    console.warn("[session-turn] assistant-error", {
-      sessionID: props.sessionID,
-      messageID: props.messageID,
-      raw,
-      parsed: unwrap(raw),
-    })
+    if (isSessionDebugEnabled()) {
+      console.warn("[session-turn] assistant-error", {
+        sessionID: props.sessionID,
+        messageID: props.messageID,
+        raw,
+        parsed: unwrap(raw),
+      })
+    }
   })
 
   createEffect(() => {

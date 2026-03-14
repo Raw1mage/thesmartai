@@ -177,6 +177,9 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
           try {
             const events = await loopSdk.global.event({
               onSseError: (error) => {
+                if (signal.aborted) return
+                if (error instanceof Error && error.name === "AbortError") return
+                if ((error as DOMException)?.name === "AbortError") return
                 if (isUnauthorized(error) && webAuth.enabled() && !webAuth.authenticated()) return
                 if (streamErrorLogged) return
                 streamErrorLogged = true
@@ -215,6 +218,9 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
             }
           } catch (error) {
             if (signal.aborted) return
+            if (error instanceof Error && error.name === "AbortError") return
+            if ((error as DOMException)?.name === "AbortError") return
+
             if (isUnauthorized(error) && webAuth.enabled() && !webAuth.authenticated()) {
               await wait(RECONNECT_DELAY_MS)
               continue

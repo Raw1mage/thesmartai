@@ -261,7 +261,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         if (disposed) return
         const next = result.data?.[sessionID] ?? { type: "idle" }
         const current = sync.data.session_status[sessionID]
-        console.debug("[session-reload-debug] prompt-input:status-poll", {
+        if (false /* disabled */) console.debug("[session-reload-debug] prompt-input:status-poll", {
           sessionID,
           currentType: current?.type ?? "idle",
           nextType: next.type,

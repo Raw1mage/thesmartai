@@ -18,7 +18,7 @@ import { debugCheckpoint } from "@/util/debug"
 import { Global } from "@/global"
 import path from "path"
 
-const EXPERIMENTAL_DEBUG_BEACON_ENABLED = false
+const EXPERIMENTAL_DEBUG_BEACON_ENABLED = process.env.OPENCODE_DEBUG_BEACON === "1"
 const SCROLL_CAPTURE_FILE = path.join(Global.Path.log, "scroll-capture-latest.json")
 const MAX_SCROLL_CAPTURE_HISTORY = 10
 

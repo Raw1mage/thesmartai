@@ -1,6 +1,6 @@
 import type { useSDK } from "@/context/sdk"
 
-const SESSION_RELOAD_DEBUG_ENABLED = false
+const SESSION_RELOAD_DEBUG_ENABLED = false // import.meta.env.VITE_OPENCODE_DEBUG_BEACON === "1"
 const RECENT_TTL_MS = 2_000
 const recent = new Map<string, number>()
 

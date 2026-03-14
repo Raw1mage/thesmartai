@@ -201,15 +201,15 @@ function shouldAutoCapture(entry: ScrollDebugEntry) {
     )
   }
   queued.push(capture)
-  console.warn("[scroll-debug] auto-capture", capture)
+  if (isScrollDebugEnabled()) console.warn("[scroll-debug] auto-capture", capture)
   void sendAutoCapture(capture).catch((error) => {
-    console.error("[scroll-debug] auto-capture upload failed", error)
+    if (isScrollDebugEnabled()) console.error("[scroll-debug] auto-capture upload failed", error)
   })
   void flushScrollDebug()
 }
 
 export function isScrollDebugEnabled() {
-  return typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") !== "0"
+  return false // typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") === "1"
 }
 
 function ensureHelpers() {
@@ -265,7 +265,7 @@ export async function flushScrollDebug() {
           time: Date.now(),
         }
       }
-      console.info("[scroll-debug] flush ok", { count: batch.length })
+      if (isScrollDebugEnabled()) console.info("[scroll-debug] flush ok", { count: batch.length })
     })
     .catch((error) => {
       if (typeof window !== "undefined") {
@@ -276,7 +276,7 @@ export async function flushScrollDebug() {
           time: Date.now(),
         }
       }
-      console.error("[scroll-debug] flush failed", error)
+      if (isScrollDebugEnabled()) console.error("[scroll-debug] flush failed", error)
       queued.unshift(...batch)
     })
     .finally(() => {

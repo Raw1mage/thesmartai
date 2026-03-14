@@ -198,7 +198,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const key = keyFor(input.directory, input.sessionID)
       if (meta.loading[key]) return
 
-      console.debug("[session-reload-debug] loadMessages:start", {
+      if (false /* disabled */) console.debug("[session-reload-debug] loadMessages:start", {
         directory: input.directory,
         sessionID: input.sessionID,
         limit: input.limit,
@@ -215,7 +215,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       setMeta("loading", key, true)
       await fetchMessages(input)
         .then((next) => {
-          console.debug("[session-reload-debug] loadMessages:success", {
+          if (false /* disabled */) console.debug("[session-reload-debug] loadMessages:success", {
             directory: input.directory,
             sessionID: input.sessionID,
             messageCount: next.session.length,
@@ -241,7 +241,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           })
         })
         .catch((error) => {
-          console.debug("[session-reload-debug] loadMessages:error", {
+          if (false /* disabled */) console.debug("[session-reload-debug] loadMessages:error", {
             directory: input.directory,
             sessionID: input.sessionID,
             error: error instanceof Error ? error.message : String(error),
@@ -258,7 +258,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           throw error
         })
         .finally(() => {
-          console.debug("[session-reload-debug] loadMessages:done", {
+          if (false /* disabled */) console.debug("[session-reload-debug] loadMessages:done", {
             directory: input.directory,
             sessionID: input.sessionID,
           })
@@ -340,7 +340,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           const hasMessages = store.message[sessionID] !== undefined
           const hydrated = meta.limit[key] !== undefined
-          console.debug("[session-reload-debug] session.sync:start", {
+          if (false /* disabled */) console.debug("[session-reload-debug] session.sync:start", {
             directory,
             sessionID,
             force,
@@ -370,7 +370,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               ? Promise.resolve()
               : retry(() => client.session.get({ directory, sessionID })).then((session) => {
                   const data = session.data
-                  console.debug("[session-reload-debug] session.sync:get", {
+                  if (false /* disabled */) console.debug("[session-reload-debug] session.sync:get", {
                     directory,
                     sessionID,
                     found: !!data,
@@ -414,7 +414,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           return runInflight(inflight, key, () =>
             Promise.all([sessionReq, messagesReq])
               .then(() => {
-                console.debug("[session-reload-debug] session.sync:done", {
+                if (false /* disabled */) console.debug("[session-reload-debug] session.sync:done", {
                   directory,
                   sessionID,
                 })
@@ -428,7 +428,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                 })
               })
               .catch((error) => {
-                console.debug("[session-reload-debug] session.sync:error", {
+                if (false /* disabled */) console.debug("[session-reload-debug] session.sync:error", {
                   directory,
                   sessionID,
                   error: error instanceof Error ? error.message : String(error),
