@@ -141,8 +141,9 @@ function isSecureRequest(c: Context) {
 
 function cookieHeader(c: Context, token: string, maxAgeSeconds: number) {
   const secure = isSecureRequest(c)
-  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure ? "; Secure" : ""
-    }`
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${
+    secure ? "; Secure" : ""
+  }`
 }
 
 function clearCookieHeader(c: Context) {
@@ -164,6 +165,28 @@ function routePublic(c: Context) {
   if (pathname === "/global/auth/logout") return true
   if ((method === "GET" || method === "HEAD") && !isApiPath(pathname)) return true
   return false
+}
+
+function isTrustedLoopbackRequest(c: Context) {
+  const marker = c.req.header("x-opencode-loopback")
+  if (marker !== "1") return false
+
+  const forwardedFor = c.req.header("x-forwarded-for")
+  const forwardedProto = c.req.header("x-forwarded-proto")
+  const realIp = c.req.header("x-real-ip")
+  const cfConnectingIp = c.req.header("cf-connecting-ip")
+  if (forwardedFor || forwardedProto || realIp || cfConnectingIp) return false
+
+  try {
+    const hostname = new URL(c.req.url).hostname.toLowerCase()
+    if (hostname !== "127.0.0.1" && hostname !== "localhost" && hostname !== "::1" && hostname !== "[::1]") {
+      return false
+    }
+  } catch {
+    return false
+  }
+
+  return true
 }
 
 function lockKey(c: Context, user: string) {
@@ -269,6 +292,7 @@ function shouldProtectMutation(method: string, pathname: string) {
 export const WebAuth = {
   enabled,
   routePublic,
+  isTrustedLoopbackRequest,
   readSession,
   shouldProtectMutation,
   isApiPath,

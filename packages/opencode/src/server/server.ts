@@ -45,10 +45,21 @@ export namespace Server {
   export function listen(opts: { port: number; hostname: string; mdns?: boolean; cors?: string[] }) {
     _corsWhitelist = opts.cors ?? []
 
+    const appFetch = App().fetch
+
     const args = {
       hostname: opts.hostname,
       idleTimeout: 0,
-      fetch: App().fetch,
+      fetch(request: Request, server: Bun.Server<any>) {
+        const headers = new Headers(request.headers)
+        headers.delete("x-opencode-loopback")
+        const remote = server.requestIP(request)
+        const address = remote?.address?.trim().toLowerCase()
+        if (address === "127.0.0.1" || address === "::1") {
+          headers.set("x-opencode-loopback", "1")
+        }
+        return appFetch(new Request(request, { headers }))
+      },
       websocket: websocket,
     } as const
     const tryServe = (port: number) => {

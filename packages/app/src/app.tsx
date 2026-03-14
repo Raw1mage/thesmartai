@@ -1,6 +1,9 @@
 import "@/index.css"
 import { ErrorBoundary, Show, Suspense, lazy, type JSX, type ParentProps } from "solid-js"
-import { Router, Route, Navigate } from "@solidjs/router"
+import { Router, Route, Navigate, useNavigate } from "@solidjs/router"
+import { createEffect, onCleanup } from "solid-js"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { base64Encode } from "@opencode-ai/util/encode"
 import { MetaProvider } from "@solidjs/meta"
 import { Font } from "@opencode-ai/ui/font"
 import { I18nProvider } from "@opencode-ai/ui/context"
@@ -123,10 +126,38 @@ function SessionProviders(props: ParentProps) {
 function RouterRoot(props: ParentProps<{ appChildren?: JSX.Element }>) {
   return (
     <AppShellProviders>
+      <WebSessionSelectBridge />
       {props.appChildren}
       {props.children}
     </AppShellProviders>
   )
+}
+
+function WebSessionSelectBridge() {
+  const globalSDK = useGlobalSDK()
+  const navigate = useNavigate()
+
+  createEffect(() => {
+    const unsub = globalSDK.event.listen((e) => {
+      const event = e.details
+      if (event?.type !== "tui.session.select") return
+      const sessionID = (event.properties as any)?.sessionID
+      if (typeof sessionID !== "string" || !sessionID) return
+      void (async () => {
+        try {
+          const session = await globalSDK.client.session.get({ sessionID })
+          const directory = session.data?.directory
+          if (!directory) return
+          navigate(`/${base64Encode(directory)}/session/${sessionID}`)
+        } catch {
+          // ignore failed external session selection
+        }
+      })()
+    })
+    onCleanup(() => unsub())
+  })
+
+  return null
 }
 
 const getStoredDefaultServerUrl = (platform: ReturnType<typeof usePlatform>) => {

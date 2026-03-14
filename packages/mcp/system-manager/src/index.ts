@@ -24,6 +24,7 @@ const KV_PATH = path.join(XDG_STATE_HOME, "opencode", "kv.json")
 const ROTATION_STATE_PATH = path.join(XDG_STATE_HOME, "opencode", "rotation-state.json")
 const USAGE_STATS_PATH = path.join(XDG_CONFIG_HOME, "opencode", "usage-stats.json")
 const STORAGE_BASE = path.join(OPENCODE_DATA_HOME, "storage")
+const OPENCODE_SERVER_CFG = process.env.OPENCODE_SERVER_CFG ?? "/etc/opencode/opencode.cfg"
 const CODEX_ISSUER = "https://auth.openai.com"
 const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
@@ -35,6 +36,60 @@ async function pathExists(targetPath: string) {
   } catch {
     return false
   }
+}
+
+async function getServerApiBaseUrl() {
+  const explicit = process.env.OPENCODE_SERVER_URL?.trim()
+  if (explicit) return explicit.replace(/\/+$/, "")
+
+  const raw = await fs.readFile(OPENCODE_SERVER_CFG, "utf-8").catch(() => "")
+  const portLine = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("OPENCODE_PORT="))
+  const port =
+    portLine
+      ?.slice("OPENCODE_PORT=".length)
+      .trim()
+      .replace(/^['\"]|['\"]$/g, "") || "1080"
+  return `http://127.0.0.1:${port}/api/v2`
+}
+
+async function readServerRuntimeConfig() {
+  const raw = await fs.readFile(OPENCODE_SERVER_CFG, "utf-8").catch(() => "")
+  const map = new Map<string, string>()
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith("#")) continue
+    const index = trimmed.indexOf("=")
+    if (index <= 0) continue
+    const key = trimmed.slice(0, index).trim()
+    const value = trimmed
+      .slice(index + 1)
+      .trim()
+      .replace(/^['\"]|['\"]$/g, "")
+    map.set(key, value)
+  }
+  return map
+}
+
+async function getServerRequestHeaders(method: string) {
+  const headers = new Headers()
+  const config = await readServerRuntimeConfig()
+  const username = process.env.OPENCODE_SERVER_USERNAME?.trim() || config.get("OPENCODE_SERVER_USERNAME")?.trim() || ""
+  const password = process.env.OPENCODE_SERVER_PASSWORD?.trim() || ""
+  const htpasswd = config.get("OPENCODE_SERVER_HTPASSWD")?.trim() || ""
+
+  if (username && password) {
+    headers.set("Authorization", `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`)
+    return headers
+  }
+
+  if (method !== "GET" && htpasswd) {
+    return headers
+  }
+
+  return headers
 }
 
 function getQuotaDayStart(): number {
@@ -292,16 +347,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "manage_session",
-        description: "Manage opencode sessions (rename, fork, summarize, undo, redo, create, list, search).",
+        description: "Manage opencode sessions (rename, fork, summarize, undo, redo, create, open, list, search).",
         inputSchema: {
           type: "object",
           properties: {
-            operation: { type: "string", enum: ["rename", "fork", "summarize", "undo", "redo", "create", "list", "search"] },
+            operation: {
+              type: "string",
+              enum: ["rename", "fork", "summarize", "undo", "redo", "create", "open", "list", "search"],
+            },
             sessionID: { type: "string" },
             title: { type: "string", description: "New title for rename" },
             messageID: { type: "string", description: "Message ID to fork from" },
             query: { type: "string", description: "Search keyword for session titles (used with 'search' operation)" },
             limit: { type: "number", description: "Max results for search (default 10)" },
+            mode: {
+              type: "string",
+              description:
+                "Optional dispatch hint for open. Session selection is routed through /api/v2/tui/select-session, which emits shared tui.session.select event consumed by both TUI and Web.",
+            },
           },
           required: ["operation"],
         },
@@ -572,7 +635,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     if (name === "manage_session") {
-      const { operation, sessionID, title, messageID, query, limit: searchLimit } = args as {
+      const {
+        operation,
+        sessionID,
+        title,
+        messageID,
+        query,
+        limit: searchLimit,
+      } = args as {
         operation: string
         sessionID?: string
         title?: string
@@ -621,7 +691,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return `${i + 1}. **${s.title}**\n   ID: ${s.id}\n   Updated: ${date}\n   URL: ${s.url}`
         })
         return {
-          content: [{ type: "text", text: `Found ${matches.length} session(s) matching "${query}":\n\n${lines.join("\n\n")}` }],
+          content: [
+            { type: "text", text: `Found ${matches.length} session(s) matching "${query}":\n\n${lines.join("\n\n")}` },
+          ],
         }
       }
 
@@ -636,13 +708,78 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       if (operation === "create") {
+        const baseUrl = await getServerApiBaseUrl()
+        const headers = await getServerRequestHeaders("POST")
+        headers.set("content-type", "application/json")
+        const rawCreate = await fetch(`${baseUrl}/session`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ title: title ?? "New Session" }),
+        }).catch(() => undefined)
+
+        if (rawCreate?.ok) {
+          const created = await rawCreate.json().catch(() => undefined as any)
+          const createdID = created?.id
+          if (createdID) {
+            let kv: any = {}
+            try {
+              kv = JSON.parse(await fs.readFile(KV_PATH, "utf-8"))
+            } catch (e) {}
+            kv.ui_trigger = "session.list.refresh"
+            await fs.writeFile(KV_PATH, JSON.stringify(kv, null, 2))
+            const dir = created.directory ?? ""
+            const dirBase64 = Buffer.from(dir).toString("base64")
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Created new session: ${createdID}\nTitle: ${created.title ?? "(untitled)"}\nURL: /${dirBase64}/session/${createdID}`,
+                },
+              ],
+            }
+          }
+        }
+
         let kv: any = {}
         try {
           kv = JSON.parse(await fs.readFile(KV_PATH, "utf-8"))
         } catch (e) {}
         kv.ui_trigger = "session.new"
         await fs.writeFile(KV_PATH, JSON.stringify(kv, null, 2))
-        return { content: [{ type: "text", text: "Creating new session..." }] }
+        return { content: [{ type: "text", text: "Creating new session UI..." }] }
+      }
+
+      if (operation === "open") {
+        if (!sessionID) throw new Error("sessionID is required for open operation")
+        const session = JSON.parse(
+          await fs.readFile(path.join(STORAGE_BASE, "session", sessionID, "info.json"), "utf-8"),
+        )
+        const dir = session.directory ?? ""
+        const dirBase64 = Buffer.from(dir).toString("base64")
+        const baseUrl = await getServerApiBaseUrl()
+        const headers = await getServerRequestHeaders("POST")
+        headers.set("Content-Type", "application/json")
+        const response = await fetch(`${baseUrl}/tui/select-session`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ sessionID }),
+        })
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            throw new Error(
+              `Failed to open session ${sessionID}: server auth rejected request (${response.status}). Provide OPENCODE_SERVER_PASSWORD env for Basic Auth, or use an authenticated Web session path.`,
+            )
+          }
+          throw new Error(`Failed to open session ${sessionID}: /tui/select-session returned HTTP ${response.status}`)
+        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Dispatched TUI session selection: ${sessionID}\nTitle: ${session.title ?? "(untitled)"}\nURL: /${dirBase64}/session/${sessionID}`,
+            },
+          ],
+        }
       }
 
       if (!sessionID) throw new Error("sessionID is required for this operation")

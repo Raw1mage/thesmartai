@@ -55,4 +55,15 @@ describe("system-manager session fork guards", () => {
     expect(result.fatal).toHaveLength(0)
     expect(result.warnings).toHaveLength(0)
   })
+
+  test("accepts nested session storage as canonical transcript source", async () => {
+    const sessionDir = path.join(storageBase, "session", "ses_nested")
+    const messageDir = path.join(sessionDir, "messages", "msg_1")
+    await mkdir(path.join(messageDir, "parts"), { recursive: true })
+    await writeFile(path.join(sessionDir, "info.json"), JSON.stringify({ id: "ses_nested", title: "Nested" }, null, 2))
+    await writeFile(path.join(messageDir, "info.json"), JSON.stringify({ id: "msg_1", role: "user" }, null, 2))
+
+    const result = await validateForkSource(storageBase, "ses_nested")
+    expect(result.fatal).toHaveLength(0)
+  })
 })

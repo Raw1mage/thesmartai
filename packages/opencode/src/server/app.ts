@@ -136,6 +136,7 @@ export function createApp(app: Hono): Hono {
 
     if (!WebAuth.enabled()) return proceed()
     if (WebAuth.routePublic(c)) return proceed()
+    if (WebAuth.isTrustedLoopbackRequest(c)) return proceed()
 
     const basicUser = await WebAuth.verifyBasicAuthUser(c)
     if (basicUser) {

@@ -84,6 +84,14 @@ The `cms` branch is the primary product line for this environment, featuring sig
 
 - **TUI `/admin`** is the canonical control plane for provider/account/model operations and rotation-aware diagnostics.
 - **Web** provides an admin-lite model manager that reuses the same backend account/provider APIs, including provider visibility toggles plus account add/view/rename/delete/set-active flows inside `packages/app/src/components/dialog-select-model.tsx`.
+- **Shared external session-switch bridge** now reuses the existing `tui.session.select` event contract across both surfaces:
+  - backend route `/api/v2/tui/select-session` publishes `TuiEvent.SessionSelect`
+  - `system-manager.manage_session.open` targets the local loopback runtime control URL derived from `/etc/opencode/opencode.cfg` (`http://127.0.0.1:<OPENCODE_PORT>/api/v2`), not the public proxy URL
+  - server auth grants a narrow localhost exception only for requests whose **real Bun socket peer** is loopback and that carry no forwarded/proxy IP headers; this bypass is not header-trust-based
+  - TUI consumes `tui.session.select` via `route.navigate(...)`
+  - Web consumes the same SSE event in `packages/app/src/app.tsx` via a wildcard `globalSDK.event.listen(...)` listener, then resolves session directory and navigates to `/:dir/session/:sessionID`
+  - wildcard listening is required because SSE events are emitted under `directory: Instance.directory`, not a guaranteed `"global"` channel
+  - contract goal: MCP/system-manager session open must produce a real visible session switch on both TUI and Web, not a URL-only pseudo-success
 
 #### Deployment/runtime consistency
 
