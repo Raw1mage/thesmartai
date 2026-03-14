@@ -209,6 +209,27 @@ export namespace Session {
   })
   export type WorkflowInfo = z.output<typeof WorkflowInfo>
 
+  export const MissionArtifactPaths = z.object({
+    root: z.string(),
+    implementationSpec: z.string(),
+    proposal: z.string(),
+    spec: z.string(),
+    design: z.string(),
+    tasks: z.string(),
+    handoff: z.string(),
+  })
+  export type MissionArtifactPaths = z.output<typeof MissionArtifactPaths>
+
+  export const MissionContract = z.object({
+    source: z.literal("openspec_compiled_plan"),
+    contract: z.literal("implementation_spec"),
+    approvedAt: z.number(),
+    planPath: z.string(),
+    artifactPaths: MissionArtifactPaths,
+    executionReady: z.boolean(),
+  })
+  export type MissionContract = z.output<typeof MissionContract>
+
   export const ExecutionIdentity = z.object({
     providerId: z.string(),
     modelID: z.string(),
@@ -258,6 +279,7 @@ export namespace Session {
       stats: Stats.optional(),
       execution: ExecutionIdentity.optional(),
       workflow: WorkflowInfo.optional(),
+      mission: MissionContract.optional(),
     })
     .meta({
       ref: "Session",
@@ -648,6 +670,26 @@ export namespace Session {
           current: draft.execution,
           model: input.model,
         })
+      },
+      { touch: false },
+    )
+  }
+
+  export async function setMission(input: { sessionID: string; mission: MissionContract }) {
+    return update(
+      input.sessionID,
+      (draft) => {
+        draft.mission = input.mission
+      },
+      { touch: false },
+    )
+  }
+
+  export async function clearMission(sessionID: string) {
+    return update(
+      sessionID,
+      (draft) => {
+        delete draft.mission
       },
       { touch: false },
     )

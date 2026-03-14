@@ -806,6 +806,15 @@ describe("planner reactivation", () => {
           expect(handoffPart.metadata?.handoff?.artifactPaths?.tasks).toContain("tasks.md")
           expect(handoffPart.metadata?.handoff?.artifactPaths?.handoff).toContain("handoff.md")
 
+          const updatedSession = await Session.get(session.id)
+          expect(updatedSession.mission).toMatchObject({
+            source: "openspec_compiled_plan",
+            contract: "implementation_spec",
+            executionReady: true,
+          })
+          expect(updatedSession.mission?.planPath).toContain("implementation-spec.md")
+          expect(updatedSession.mission?.artifactPaths?.handoff).toContain("handoff.md")
+
           const todos = await Todo.get(session.id)
           expect(todos.length).toBeGreaterThanOrEqual(3)
           expect(todos[0]?.status).toBe("in_progress")

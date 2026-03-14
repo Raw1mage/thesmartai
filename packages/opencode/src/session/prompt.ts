@@ -1581,6 +1581,8 @@ export namespace SessionPrompt {
             "approval_needed",
             "product_decision_needed",
             "wait_subagent",
+            "mission_not_approved",
+            "mission_not_consumable",
             "max_continuous_rounds",
             "todo_complete",
           ].includes(decision.reason)
@@ -1628,6 +1630,20 @@ export namespace SessionPrompt {
             sessionID,
             state: "waiting_user",
             stopReason: "wait_subagent",
+            lastRunAt: Date.now(),
+          })
+        } else if (decision.reason === "mission_not_approved") {
+          await Session.setWorkflowState({
+            sessionID,
+            state: "waiting_user",
+            stopReason: "mission_not_approved",
+            lastRunAt: Date.now(),
+          })
+        } else if (decision.reason === "mission_not_consumable") {
+          await Session.setWorkflowState({
+            sessionID,
+            state: "waiting_user",
+            stopReason: "mission_not_consumable",
             lastRunAt: Date.now(),
           })
         }

@@ -28,6 +28,7 @@
   - approval / decision / blocker gates
   - validation plan
 - 若上述骨架尚未成立，**不得**宣稱可安全 autonomous 持續執行；必須先補 plan，再進入 execution。
+- 在 planning / clarification 階段，凡屬於**有明確選項的選擇題**（例如 milestone、scope、approval posture、validation target、delegation strategy），**預設必須使用 MCP `question`** 呈現，而不是用自由文字把選項混在 prose 內；只有在使用者需要先用長篇背景補充脈絡時，才先 freeform 再用 `question` 收斂決策。
 - 若任務變更模組邊界、資料流、狀態機、debug checkpoints 或沉澱了重要 root cause，Main Agent **必須**委派 documentation agent（搭配 `doc-coauthoring`）同步框架文件。
 - 其他技能（如 `code-thinker`, `software-architect`, `webapp-testing`, `doc-coauthoring`）屬於加值裝備；`agent-workflow` 是所有非瑣碎開發任務的底盤。
 

@@ -53,6 +53,7 @@ If the answer would not change execution behavior, the planning agent should not
 Use when the task boundary is unclear.
 
 Examples:
+
 - which module is in scope?
 - should this round include docs/tests/refactor or code only?
 - is the goal planning-only or implementation-ready?
@@ -62,6 +63,7 @@ Examples:
 Use when there are multiple valid execution orders.
 
 Examples:
+
 - should we optimize for user-visible behavior first or infrastructure first?
 - should we stabilize planning mode before daemon substrate work?
 
@@ -70,6 +72,7 @@ Examples:
 Use when automation level or approval boundaries are unclear.
 
 Examples:
+
 - can architecture-sensitive changes proceed autonomously?
 - should daemon-related refactors stop for review before code changes?
 
@@ -78,6 +81,7 @@ Examples:
 Use when success criteria are underspecified.
 
 Examples:
+
 - what will count as a successful first milestone?
 - should the first phase be judged by UX feel, runtime logs, or test coverage?
 
@@ -86,6 +90,7 @@ Examples:
 Use when subagent strategy materially affects execution.
 
 Examples:
+
 - should planning and execution be split into separate agents?
 - should docs/testing be mandatory in the first slice?
 
@@ -94,6 +99,7 @@ Examples:
 Use when multiple safe strategies exist with different tradeoffs.
 
 Examples:
+
 - prefer rapid prototype or more conservative architecture-first path?
 - allow temporary compatibility layer, or require fail-fast only?
 
@@ -126,6 +132,24 @@ MCP `question` should be the default tool when:
 3. explicit user confirmation is useful for later execution gating
 4. the answer can be represented as structured planning state
 
+### 6.1 Default rule for choice-shaped planning questions
+
+If the planning agent is about to ask a question that can reasonably be expressed as a finite set of execution-shaping choices, it should use MCP `question` by default instead of freeform prose.
+
+This applies especially to:
+
+- first-milestone selection
+- scope narrowing
+- implementation-order tradeoffs
+- approval/risk posture
+- validation target selection
+- delegation/workflow selection
+
+In short:
+
+- **choice-shaped question => MCP `question` by default**
+- **open-context / explanation-first question => conversational clarification first**
+
 Examples:
 
 - pick first milestone focus
@@ -148,6 +172,12 @@ Pattern:
 
 - first freeform gather if necessary
 - then use `question` to close key decision points
+
+### 7.1 Anti-pattern to avoid
+
+Do not present a user with a prose question like “which direction do you want?” when the real decision already has 2–5 concrete options the agent can enumerate.
+
+That is exactly the case MCP `question` should handle.
 
 ---
 
@@ -250,23 +280,31 @@ Each question answer should update a known planning field.
 Examples:
 
 ### milestone focus answer
+
 Updates:
+
 - `goal`
 - top-priority todo(s)
 
 ### approval posture answer
+
 Updates:
+
 - `autonomyPolicy.requireApprovalFor`
 - todo `needsApproval`
 - stop gates
 
 ### validation preference answer
+
 Updates:
+
 - `validation`
 - todo sequence
 
 ### delegation choice answer
+
 Updates:
+
 - todo `canDelegate`
 - subagent/workflow plan
 
@@ -335,15 +373,20 @@ That is what reduces the need for repeated user turns.
 ## 17. Suggested Implementation Sequence
 
 ### Phase 1
+
 - update planning prompts/system instructions to explicitly use this contract
+- require planning mode to prefer MCP `question` whenever the question is choice-shaped
 
 ### Phase 2
+
 - route non-trivial autonomous/dev requests into planning mode by default
 
 ### Phase 3
+
 - ensure planning round outputs are stored as structured plan state
 
 ### Phase 4
+
 - feed plan state directly into `todowrite` + autorunner handoff
 
 ---
@@ -356,6 +399,7 @@ This contract is successful when:
 2. users can feel the plan becoming sharper after each round
 3. the final plan consistently contains enough structure for multi-step autonomous execution
 4. autorunner feels less passive because it begins from a clarified plan
+5. choice-based planning forks are normally presented through MCP `question`, not ad-hoc prose questioning
 
 ---
 

@@ -16,3 +16,6 @@
 [submodule "refs/openspec"]
 	path = refs/openspec
 	url = https://github.com/Fission-AI/OpenSpec
+[submodule "refs/openclaw"]
+	path = refs/openclaw
+	url = https://github.com/openclaw/openclaw

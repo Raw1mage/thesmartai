@@ -462,6 +462,25 @@ export const PlanExitTool = Tool.define("plan_exit", {
     }
     const planTodos = materializePlanTodos({ implementationSpec: planMarkdown, tasks: artifacts.tasks })
     await Todo.update({ sessionID: ctx.sessionID, todos: planTodos })
+    await Session.setMission({
+      sessionID: ctx.sessionID,
+      mission: {
+        source: "openspec_compiled_plan",
+        contract: "implementation_spec",
+        approvedAt: Date.now(),
+        planPath: plan,
+        executionReady: true,
+        artifactPaths: {
+          root: path.relative(Instance.worktree, planRoot),
+          implementationSpec: plan,
+          proposal: path.relative(Instance.worktree, path.join(planRoot, "proposal.md")),
+          spec: path.relative(Instance.worktree, path.join(planRoot, "spec.md")),
+          design: path.relative(Instance.worktree, path.join(planRoot, "design.md")),
+          tasks: path.relative(Instance.worktree, path.join(planRoot, "tasks.md")),
+          handoff: path.relative(Instance.worktree, path.join(planRoot, "handoff.md")),
+        },
+      },
+    })
 
     const userMsg: MessageV2.User = {
       id: Identifier.ascending("message"),

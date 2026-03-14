@@ -125,10 +125,16 @@ The `cms` branch is the primary product line for this environment, featuring sig
    - Session APIs: list/read/status/top + mutation routes.
 
 - Session records now also carry persisted workflow metadata (`workflow.autonomous`, `workflow.state`, stop reason, timestamps) as the foundation for autonomous-session continuation.
+- Session records now also carry a persisted runner mission contract (`session.mission`) that acts as the authority boundary for autonomous execution. Current mission contract shape is OpenSpec-derived: autonomous continuation is only allowed when the session carries an approved `openspec_compiled_plan` / `implementation_spec` mission marked `executionReady=true`.
 - In-process continuation is now wired inside the prompt loop: after an assistant round completes, the runtime can synthesize the next user step from outstanding todos when autonomous mode is enabled and no blocker/approval stop condition is active.
+- `plan_exit` is now the canonical bridge from planning to runner execution authority: after companion artifacts pass completeness gates and the user approves the handoff, runtime both materializes structured todos and persists the approved mission contract onto the session. This means `/specs` plans are no longer just planner-side artifacts; they are the first supported runtime mission source for autonomous runner work.
 - Autonomous turns now also emit short transcript-visible progress narration messages (`continue` / `pause` / `complete`) so the shared session surface can explain what the runtime is doing without requiring the user to inspect only sidebar state.
 - Incoming real user prompts may now safely preempt a busy autonomous synthetic run. Runtime cleanup is keyed by per-run identity so an old aborted loop cannot accidentally clear the replacement loop.
 - A durable continuation queue foundation now exists under session storage, and the server runtime now starts an in-process autonomous supervisor that scans pending continuation records and re-enters session loops for idle autonomous sessions.
+- Autonomous synthetic continuation turns now also carry mission metadata (`source / contract / planPath / artifactPaths`) on the synthetic user text part, so downstream execution can be traced back to the approved OpenSpec mission that authorized the run.
+- `mission_not_approved` is now a first-class stop reason in the autonomous continuation pipeline. When a session lacks an approved mission contract, runtime moves workflow state to `waiting_user` with `stopReason=mission_not_approved` instead of silently continuing from todos alone.
+- A new session-scoped runtime event journal baseline exists in `packages/opencode/src/system/runtime-event-service.ts`. It persists structured runtime events with fixed fields (`ts / level / domain / eventType / sessionID / todoID? / anomalyFlags[] / payload`) and currently serves as the minimal evidence substrate for runner/workflow anomalies.
+- First anomaly integration is now active for stale delegated-subagent waits: when workflow evaluation stops at `wait_subagent` but no active subtask remains and todo state still says `waitingOn=subagent`, runtime records `workflow.unreconciled_wait_subagent` into that event journal instead of leaving the inconsistency purely implicit in scattered state surfaces.
 - Web prompt footer now exposes a direct autonomous entrypoint in `packages/app/src/components/prompt-input.tsx`: the first footer provider label (for example `OpenAI`) doubles as the autonomous toggle. When enabled, that provider label switches to a highlighted active state; clicking it calls `POST /api/v2/session/:sessionID/autonomous`, which persists `workflow.autonomous.enabled` and, when enabling an idle session, immediately enqueues a synthetic autonomous continue turn so the in-process supervisor can resume work without waiting for a manual follow-up prompt. In per-user daemon routed mode, this same endpoint follows the existing `routeSessionMutationEnabled` path and is forwarded via `UserDaemonManager.callSessionAutonomous(...)` so autonomous toggles and continuation enqueue remain user-scoped.
 - Experimental Smart Runner support now has two guarded stages:
   - `experimental.smart_runner.enabled=true`: after the deterministic runner chooses a low-risk continue path, the prompt loop may invoke `packages/opencode/src/session/smart-runner-governor.ts` with a compact context pack and persist the advisory result under `workflow.supervisor.lastGovernorTrace*`; the supervisor also keeps a bounded recent `governorTraceHistory` window for session-side inspection.
@@ -272,6 +278,19 @@ Provider-first migration status:
 - Operational goal: session execution identity should no longer depend solely on whichever latest user/assistant message happened to survive hydration; the session record itself is now the canonical pin.
 - Rule: runtime must prefer the session-carried `accountId` when present. Provider-level active account is only a fallback for legacy/default execution paths that did not pin a session account.
 - Result: two sessions using the same provider may now execute with different accounts without mutating each other's execution identity, even if they happen to use models from the same model family.
+
+#### A.2) Session runner mission contract
+
+- Session-local autonomous execution now has a separate authority layer from plain execution identity: `session.execution` answers **which provider/model/account is executing**, while `session.mission` answers **what approved plan authorizes autonomous continuation**.
+- Current persisted mission contract is stored on the session as:
+  - `source` (currently `openspec_compiled_plan`)
+  - `contract` (currently `implementation_spec`)
+  - `approvedAt`
+  - `planPath`
+  - `executionReady`
+  - `artifactPaths` (`root`, `implementationSpec`, `proposal`, `spec`, `design`, `tasks`, `handoff`)
+- Architectural rule: autonomous runner must not continue solely because todo state exists. It may continue only when autonomous mode is enabled **and** the session carries an approved mission contract.
+- Current first supported mission source is repo-local `/specs` OpenSpec change artifacts. This is the initial product path for session-scoped runners: consume an approved development plan, then drive delegated execution under that plan boundary.
 
 #### B) TUI `/admin` provider operation pipeline (cms)
 

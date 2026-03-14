@@ -12,6 +12,8 @@ import { Account } from "@/account"
 import { isAuthError, isRateLimitError } from "@/account/rate-limit-judge"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
+import { RuntimeEventService } from "@/system/runtime-event-service"
+import { consumeMissionArtifacts } from "./mission-consumption"
 
 export const AUTONOMOUS_CONTINUE_TEXT =
   "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision."
@@ -19,9 +21,24 @@ export const AUTONOMOUS_CONTINUE_TEXT =
 export const AUTONOMOUS_PROGRESS_TEXT =
   "Continue the task already in progress. Finish or unblock it before starting new work, unless reprioritization is clearly necessary."
 
+function buildMissionMetadata(session: Pick<Session.Info, "mission">) {
+  const mission = session.mission
+  if (!mission) return undefined
+  return {
+    source: mission.source,
+    contract: mission.contract,
+    approvedAt: mission.approvedAt,
+    executionReady: mission.executionReady,
+    planPath: mission.planPath,
+    artifactPaths: mission.artifactPaths,
+  }
+}
+
 export type ContinuationDecisionReason =
   | "subagent_session"
   | "autonomous_disabled"
+  | "mission_not_approved"
+  | "mission_not_consumable"
   | "blocked"
   | "max_continuous_rounds"
   | "todo_complete"
@@ -45,6 +62,25 @@ export type AutonomousNextAction =
 export type AutonomousNarration = {
   kind: "continue" | "pause" | "complete"
   text: string
+}
+
+export function detectWaitSubagentMismatch(input: {
+  todos: Todo.Info[]
+  activeSubtasks?: number
+  decision: { continue: boolean; reason: ContinuationDecisionReason }
+}) {
+  if (input.decision.reason !== "wait_subagent") return undefined
+  if ((input.activeSubtasks ?? 0) > 0) return undefined
+  const waitingTodos = actionableTodos(input.todos).filter(
+    (todo) => todo.action?.waitingOn === "subagent" || todo.action?.kind === "wait",
+  )
+  if (!waitingTodos.length) return undefined
+  return {
+    anomalyCode: "unreconciled_wait_subagent",
+    waitingTodoIDs: waitingTodos.map((todo) => todo.id),
+    waitingTodoContents: waitingTodos.map((todo) => todo.content),
+    activeSubtasks: input.activeSubtasks ?? 0,
+  }
 }
 
 function actionableTodos(todos: Todo.Info[]) {
@@ -367,7 +403,7 @@ async function resolvePendingContinuationBudget(item: PendingContinuationInfo) {
 }
 
 export function evaluateAutonomousContinuation(input: {
-  session: Pick<Session.Info, "parentID" | "workflow" | "time">
+  session: Pick<Session.Info, "parentID" | "workflow" | "time" | "mission">
   todos: Todo.Info[]
   roundCount: number
   activeSubtasks?: number
@@ -381,7 +417,7 @@ export function evaluateAutonomousContinuation(input: {
 }
 
 export function planAutonomousNextAction(input: {
-  session: Pick<Session.Info, "parentID" | "workflow" | "time">
+  session: Pick<Session.Info, "parentID" | "workflow" | "time" | "mission">
   todos: Todo.Info[]
   roundCount: number
   activeSubtasks?: number
@@ -394,6 +430,14 @@ export function planAutonomousNextAction(input: {
   }
   if (!workflow.autonomous.enabled) {
     return { type: "stop", reason: "autonomous_disabled" }
+  }
+  if (
+    !input.session.mission ||
+    input.session.mission.source !== "openspec_compiled_plan" ||
+    input.session.mission.contract !== "implementation_spec" ||
+    !input.session.mission.executionReady
+  ) {
+    return { type: "stop", reason: "mission_not_approved" }
   }
   if (workflow.state === "blocked") {
     return { type: "stop", reason: "blocked" }
@@ -462,6 +506,16 @@ export function describeAutonomousNextAction(action: AutonomousNextAction): Auto
       return { kind: "complete", text: "Autonomous plan complete for the current todo set." }
     case "blocked":
       return { kind: "pause", text: "Paused: the workflow is currently blocked." }
+    case "mission_not_approved":
+      return {
+        kind: "pause",
+        text: "Paused: autonomous runner requires an approved OpenSpec mission contract before continuing.",
+      }
+    case "mission_not_consumable":
+      return {
+        kind: "pause",
+        text: "Paused: approved mission artifacts could not be consumed safely, so autonomous execution stopped.",
+      }
     case "autonomous_disabled":
       return { kind: "pause", text: "Autonomous continuation is disabled, so I am waiting for your next instruction." }
     case "subagent_session":
@@ -489,7 +543,7 @@ export async function decideAutonomousContinuation(input: { sessionID: string; r
     countPendingApprovals(input.sessionID),
     countPendingQuestions(input.sessionID),
   ])
-  return evaluateAutonomousContinuation({
+  const decision = evaluateAutonomousContinuation({
     session,
     todos,
     roundCount: input.roundCount,
@@ -497,6 +551,43 @@ export async function decideAutonomousContinuation(input: { sessionID: string; r
     pendingApprovals,
     pendingQuestions,
   })
+  if (decision.continue && session.mission) {
+    const missionConsumption = await consumeMissionArtifacts(session.mission)
+    if (!missionConsumption.ok) {
+      await RuntimeEventService.append({
+        sessionID: input.sessionID,
+        level: "warn",
+        domain: "anomaly",
+        eventType: "workflow.mission_not_consumable",
+        anomalyFlags: ["mission_not_consumable"],
+        payload: {
+          issues: missionConsumption.issues,
+          consumedArtifacts: missionConsumption.consumedArtifacts,
+        },
+      }).catch(() => undefined)
+      return { continue: false as const, reason: "mission_not_consumable" as const }
+    }
+  }
+  const mismatch = detectWaitSubagentMismatch({
+    todos,
+    activeSubtasks,
+    decision: {
+      continue: decision.continue,
+      reason: decision.reason,
+    },
+  })
+  if (mismatch) {
+    await RuntimeEventService.append({
+      sessionID: input.sessionID,
+      level: "warn",
+      domain: "anomaly",
+      eventType: "workflow.unreconciled_wait_subagent",
+      todoID: mismatch.waitingTodoIDs[0],
+      anomalyFlags: [mismatch.anomalyCode],
+      payload: mismatch,
+    }).catch(() => undefined)
+  }
+  return decision
 }
 
 async function countPendingApprovals(sessionID: string) {
@@ -664,6 +755,10 @@ export async function enqueueAutonomousContinue(input: {
   const now = Date.now()
   const text = input.text ?? AUTONOMOUS_CONTINUE_TEXT
   const session = await Session.get(input.sessionID)
+  const missionConsumption = session.mission ? await consumeMissionArtifacts(session.mission) : undefined
+  if (session.mission && missionConsumption && !missionConsumption.ok) {
+    throw new Error(`mission_not_consumable:${missionConsumption.issues.join("; ")}`)
+  }
   const pinnedModel = session.execution
     ? {
         providerId: session.execution.providerId,
@@ -718,6 +813,8 @@ export async function enqueueAutonomousContinue(input: {
     messageID: message.id,
     metadata: {
       modelArbitration: arbitration.trace,
+      mission: buildMissionMetadata(session),
+      missionConsumption: missionConsumption?.ok ? missionConsumption.trace : undefined,
     },
   })
   await enqueuePendingContinuation({

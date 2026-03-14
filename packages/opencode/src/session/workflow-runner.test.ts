@@ -1,10 +1,18 @@
 import { describe, expect, it } from "bun:test"
 import { Session } from "./index"
+import { MessageV2 } from "./message-v2"
+import { Todo } from "./todo"
+import { Instance } from "../project/instance"
+import { RuntimeEventService } from "../system/runtime-event-service"
+import { tmpdir } from "../../test/fixture/fixture"
+import path from "path"
 import {
   classifyResumeFailure,
   computeResumeBackoffMs,
   computeResumeRetryAt,
   clearPendingContinuation,
+  decideAutonomousContinuation,
+  detectWaitSubagentMismatch,
   describeAutonomousNextAction,
   detectApprovalRequiredForTodos,
   enqueuePendingContinuation,
@@ -17,11 +25,31 @@ import {
   shouldResumePendingContinuation,
 } from "./workflow-runner"
 
+function approvedMission() {
+  return {
+    source: "openspec_compiled_plan" as const,
+    contract: "implementation_spec" as const,
+    approvedAt: 1,
+    planPath: "specs/changes/test/implementation-spec.md",
+    executionReady: true,
+    artifactPaths: {
+      root: "specs/changes/test",
+      implementationSpec: "specs/changes/test/implementation-spec.md",
+      proposal: "specs/changes/test/proposal.md",
+      spec: "specs/changes/test/spec.md",
+      design: "specs/changes/test/design.md",
+      tasks: "specs/changes/test/tasks.md",
+      handoff: "specs/changes/test/handoff.md",
+    },
+  }
+}
+
 describe("Session workflow runner", () => {
   it("continues when autonomous mode is enabled and todos remain", () => {
     const decision = evaluateAutonomousContinuation({
       session: {
         parentID: undefined,
+        mission: approvedMission(),
         workflow: {
           ...Session.defaultWorkflow(1),
           autonomous: {
@@ -50,6 +78,7 @@ describe("Session workflow runner", () => {
       planAutonomousNextAction({
         session: {
           parentID: undefined,
+          mission: approvedMission(),
           workflow: {
             ...Session.defaultWorkflow(1),
             autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
@@ -73,6 +102,7 @@ describe("Session workflow runner", () => {
       planAutonomousNextAction({
         session: {
           parentID: undefined,
+          mission: approvedMission(),
           workflow: {
             ...Session.defaultWorkflow(1),
             autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
@@ -92,6 +122,7 @@ describe("Session workflow runner", () => {
       planAutonomousNextAction({
         session: {
           parentID: undefined,
+          mission: approvedMission(),
           workflow: {
             ...Session.defaultWorkflow(1),
             autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
@@ -151,6 +182,7 @@ describe("Session workflow runner", () => {
       planAutonomousNextAction({
         session: {
           parentID: undefined,
+          mission: approvedMission(),
           workflow: {
             ...Session.defaultWorkflow(1),
             autonomous: {
@@ -173,6 +205,7 @@ describe("Session workflow runner", () => {
       planAutonomousNextAction({
         session: {
           parentID: undefined,
+          mission: approvedMission(),
           workflow: {
             ...Session.defaultWorkflow(1),
             autonomous: {
@@ -201,6 +234,7 @@ describe("Session workflow runner", () => {
       planAutonomousNextAction({
         session: {
           parentID: undefined,
+          mission: approvedMission(),
           workflow: {
             ...Session.defaultWorkflow(1),
             autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
@@ -227,6 +261,7 @@ describe("Session workflow runner", () => {
       planAutonomousNextAction({
         session: {
           parentID: undefined,
+          mission: approvedMission(),
           workflow: {
             ...Session.defaultWorkflow(1),
             autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
@@ -264,6 +299,7 @@ describe("Session workflow runner", () => {
       planAutonomousNextAction({
         session: {
           parentID: undefined,
+          mission: approvedMission(),
           workflow: {
             ...Session.defaultWorkflow(1),
             autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
@@ -313,6 +349,34 @@ describe("Session workflow runner", () => {
       kind: "pause",
       text: "Paused: a delegated subagent task is still running.",
     })
+
+    expect(describeAutonomousNextAction({ type: "stop", reason: "mission_not_approved" })).toEqual({
+      kind: "pause",
+      text: "Paused: autonomous runner requires an approved OpenSpec mission contract before continuing.",
+    })
+  })
+
+  it("detects stale wait_subagent mismatch when no active subtasks remain", () => {
+    const mismatch = detectWaitSubagentMismatch({
+      decision: { continue: false, reason: "wait_subagent" },
+      activeSubtasks: 0,
+      todos: [
+        {
+          id: "todo_wait",
+          content: "waiting for subagent",
+          status: "in_progress",
+          priority: "high",
+          action: { kind: "wait", waitingOn: "subagent" },
+        },
+      ],
+    })
+
+    expect(mismatch).toEqual({
+      anomalyCode: "unreconciled_wait_subagent",
+      waitingTodoIDs: ["todo_wait"],
+      waitingTodoContents: ["waiting for subagent"],
+      activeSubtasks: 0,
+    })
   })
 
   it("only interrupts busy autonomous runs when current work is synthetic or queued", () => {
@@ -352,6 +416,7 @@ describe("Session workflow runner", () => {
       planAutonomousNextAction({
         session: {
           parentID: undefined,
+          mission: approvedMission(),
           workflow: {
             ...Session.defaultWorkflow(1),
             autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
@@ -371,6 +436,7 @@ describe("Session workflow runner", () => {
       session: {
         parentID: undefined,
         workflow: Session.defaultWorkflow(1),
+        mission: approvedMission(),
         time: { created: 1, updated: 1 },
       },
       todos: [{ id: "a", content: "next", status: "pending", priority: "high" }],
@@ -380,10 +446,59 @@ describe("Session workflow runner", () => {
     expect(decision).toEqual({ continue: false, reason: "autonomous_disabled" })
   })
 
+  it("stops when autonomous runner has no approved mission contract", () => {
+    const decision = evaluateAutonomousContinuation({
+      session: {
+        parentID: undefined,
+        workflow: {
+          ...Session.defaultWorkflow(1),
+          autonomous: {
+            ...Session.defaultWorkflow(1).autonomous,
+            enabled: true,
+          },
+          state: "waiting_user",
+        },
+        time: { created: 1, updated: 1 },
+      },
+      todos: [{ id: "a", content: "next", status: "pending", priority: "high" }],
+      roundCount: 0,
+    })
+
+    expect(decision).toEqual({ continue: false, reason: "mission_not_approved" })
+  })
+
+  it("continues when autonomous runner has an approved mission contract", () => {
+    const decision = evaluateAutonomousContinuation({
+      session: {
+        parentID: undefined,
+        mission: approvedMission(),
+        workflow: {
+          ...Session.defaultWorkflow(1),
+          autonomous: {
+            ...Session.defaultWorkflow(1).autonomous,
+            enabled: true,
+          },
+          state: "waiting_user",
+        },
+        time: { created: 1, updated: 1 },
+      },
+      todos: [{ id: "a", content: "next", status: "pending", priority: "high" }],
+      roundCount: 0,
+    })
+
+    expect(decision).toEqual({
+      continue: true,
+      reason: "todo_pending",
+      text: "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision.",
+      todo: { id: "a", content: "next", status: "pending", priority: "high" },
+    })
+  })
+
   it("stops when max continuous rounds is reached", () => {
     const decision = evaluateAutonomousContinuation({
       session: {
         parentID: undefined,
+        mission: approvedMission(),
         workflow: {
           ...Session.defaultWorkflow(1),
           autonomous: {
@@ -406,6 +521,7 @@ describe("Session workflow runner", () => {
     const decision = evaluateAutonomousContinuation({
       session: {
         parentID: undefined,
+        mission: approvedMission(),
         workflow: {
           ...Session.defaultWorkflow(1),
           autonomous: {
@@ -865,6 +981,266 @@ describe("Session workflow runner", () => {
       providerId: "github-copilot",
       modelID: "gpt-5.4",
       accountId: "acct-copilot",
+    })
+  })
+
+  it("includes approved mission metadata on autonomous synthetic continuation messages", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.createNext({
+          id: "session_mission_metadata",
+          title: "mission metadata test",
+          directory: tmp.path,
+        })
+        const planRoot = path.join(tmp.path, "specs", "changes", "test")
+        await Bun.write(
+          path.join(planRoot, "implementation-spec.md"),
+          "# Implementation Spec\n\n## Goal\n- Ship mission metadata\n\n## Scope\n### IN\n- mission runtime\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- pause on artifact mismatch\n\n## Critical Files\n- packages/opencode/src/session/workflow-runner.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run workflow-runner tests\n\n## Handoff\n- Continue from approved mission\n",
+        )
+        await Bun.write(path.join(planRoot, "tasks.md"), "# Tasks\n\n- [ ] Read approved mission\n")
+        await Bun.write(
+          path.join(planRoot, "handoff.md"),
+          "# Handoff\n\n## Execution Contract\n- Read the approved mission first\n\n## Required Reads\n- implementation-spec.md\n- tasks.md\n- handoff.md\n\n## Stop Gates In Force\n- Preserve approval gates\n\n## Execution-Ready Checklist\n- [ ] Mission is approved\n",
+        )
+        await Session.setMission({
+          sessionID: session.id,
+          mission: approvedMission(),
+        })
+
+        const message = await enqueueAutonomousContinue({
+          sessionID: session.id,
+          user: {
+            id: "msg_user_prev_mission",
+            role: "user",
+            sessionID: session.id,
+            time: { created: 1 },
+            agent: "coding",
+            model: {
+              providerId: "openai",
+              modelID: "gpt-5",
+              accountId: "acct-openai",
+            },
+            format: { type: "text" },
+          },
+          text: "Continue",
+        })
+
+        const persisted = await MessageV2.get({ sessionID: session.id, messageID: message.id })
+        const part = persisted?.parts.find((item) => item.type === "text")
+        expect(part?.type).toBe("text")
+        if (part?.type !== "text") throw new Error("expected text part")
+        expect(part.metadata?.mission).toMatchObject({
+          source: "openspec_compiled_plan",
+          contract: "implementation_spec",
+          executionReady: true,
+          planPath: "specs/changes/test/implementation-spec.md",
+        })
+      },
+    })
+  })
+
+  it("includes mission consumption trace on autonomous synthetic continuation messages", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.createNext({
+          id: "session_mission_consumption_metadata",
+          title: "mission consumption metadata test",
+          directory: tmp.path,
+        })
+        const planRoot = path.join(tmp.path, "specs", "changes", "test")
+        await Bun.write(
+          path.join(planRoot, "implementation-spec.md"),
+          "# Implementation Spec\n\n## Goal\n- Ship mission consumption\n\n## Scope\n### IN\n- runner mission\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- pause on artifact mismatch\n\n## Critical Files\n- packages/opencode/src/session/workflow-runner.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run workflow-runner tests\n\n## Handoff\n- Continue from approved mission\n",
+        )
+        await Bun.write(
+          path.join(planRoot, "tasks.md"),
+          "# Tasks\n\n- [ ] Read approved mission\n- [ ] Continue execution\n",
+        )
+        await Bun.write(
+          path.join(planRoot, "handoff.md"),
+          "# Handoff\n\n## Execution Contract\n- Read the approved mission first\n\n## Required Reads\n- implementation-spec.md\n- tasks.md\n- handoff.md\n\n## Stop Gates In Force\n- Preserve approval gates\n\n## Execution-Ready Checklist\n- [ ] Mission is approved\n",
+        )
+        await Session.setMission({
+          sessionID: session.id,
+          mission: approvedMission(),
+        })
+
+        const message = await enqueueAutonomousContinue({
+          sessionID: session.id,
+          user: {
+            id: "msg_user_prev_mission_consumption",
+            role: "user",
+            sessionID: session.id,
+            time: { created: 1 },
+            agent: "coding",
+            model: {
+              providerId: "openai",
+              modelID: "gpt-5",
+              accountId: "acct-openai",
+            },
+            format: { type: "text" },
+          },
+          text: "Continue",
+        })
+
+        const persisted = await MessageV2.get({ sessionID: session.id, messageID: message.id })
+        const part = persisted?.parts.find((item) => item.type === "text")
+        expect(part?.type).toBe("text")
+        if (part?.type !== "text") throw new Error("expected text part")
+        expect(part.metadata?.missionConsumption).toMatchObject({
+          source: "openspec_compiled_plan",
+          contract: "implementation_spec",
+          consumedArtifacts: {
+            implementationSpec: "specs/changes/test/implementation-spec.md",
+            tasks: "specs/changes/test/tasks.md",
+            handoff: "specs/changes/test/handoff.md",
+          },
+        })
+        expect(part.metadata?.missionConsumption?.executionChecklist.length).toBeGreaterThan(0)
+      },
+    })
+  })
+
+  it("records anomaly events for unreconciled wait_subagent state", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.setMission({
+          sessionID: session.id,
+          mission: approvedMission(),
+        })
+        await Session.updateAutonomous({
+          sessionID: session.id,
+          policy: { enabled: true },
+        })
+        await Todo.update({
+          sessionID: session.id,
+          todos: [
+            {
+              id: "todo_wait",
+              content: "waiting for subagent",
+              status: "in_progress",
+              priority: "high",
+              action: { kind: "wait", waitingOn: "subagent" },
+            },
+          ],
+        })
+
+        const decision = await decideAutonomousContinuation({
+          sessionID: session.id,
+          roundCount: 0,
+        })
+        expect(decision).toEqual({ continue: false, reason: "wait_subagent" })
+
+        const events = await RuntimeEventService.list(session.id)
+        expect(events.at(-1)).toMatchObject({
+          level: "warn",
+          domain: "anomaly",
+          eventType: "workflow.unreconciled_wait_subagent",
+          todoID: "todo_wait",
+          anomalyFlags: ["unreconciled_wait_subagent"],
+        })
+      },
+    })
+  })
+
+  it("records unreconciled_wait_subagent after task failure reconciliation", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.setMission({
+          sessionID: session.id,
+          mission: approvedMission(),
+        })
+        await Session.updateAutonomous({
+          sessionID: session.id,
+          policy: { enabled: true },
+        })
+        await Todo.update({
+          sessionID: session.id,
+          todos: [{ id: "todo_delegate", content: "delegate API audit", status: "pending", priority: "high" }],
+        })
+
+        await Todo.reconcileProgress({
+          sessionID: session.id,
+          linkedTodoID: "todo_delegate",
+          taskStatus: "error",
+        })
+
+        const todosAfterFailure = await Todo.get(session.id)
+        expect(todosAfterFailure).toEqual([
+          {
+            id: "todo_delegate",
+            content: "delegate API audit",
+            status: "in_progress",
+            priority: "high",
+            action: { kind: "delegate", canDelegate: true, waitingOn: "subagent" },
+          },
+        ])
+
+        const decision = await decideAutonomousContinuation({
+          sessionID: session.id,
+          roundCount: 0,
+        })
+        expect(decision).toEqual({ continue: false, reason: "wait_subagent" })
+
+        const events = await RuntimeEventService.list(session.id)
+        expect(events.at(-1)).toMatchObject({
+          level: "warn",
+          domain: "anomaly",
+          eventType: "workflow.unreconciled_wait_subagent",
+          todoID: "todo_delegate",
+          anomalyFlags: ["unreconciled_wait_subagent"],
+          payload: {
+            waitingTodoIDs: ["todo_delegate"],
+            activeSubtasks: 0,
+          },
+        })
+      },
+    })
+  })
+
+  it("fails fast when approved mission artifacts cannot be consumed", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.setMission({
+          sessionID: session.id,
+          mission: approvedMission(),
+        })
+        await Session.updateAutonomous({
+          sessionID: session.id,
+          policy: { enabled: true },
+        })
+        await Todo.update({
+          sessionID: session.id,
+          todos: [{ id: "todo_next", content: "next approved step", status: "pending", priority: "high" }],
+        })
+
+        const decision = await decideAutonomousContinuation({
+          sessionID: session.id,
+          roundCount: 0,
+        })
+        expect(decision).toEqual({ continue: false, reason: "mission_not_consumable" })
+
+        const events = await RuntimeEventService.list(session.id)
+        expect(events.at(-1)).toMatchObject({
+          level: "warn",
+          domain: "anomaly",
+          eventType: "workflow.mission_not_consumable",
+          anomalyFlags: ["mission_not_consumable"],
+        })
+      },
     })
   })
 
