@@ -300,13 +300,7 @@ export default function Page() {
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const sessionExecutionModel = createMemo(() => {
-    const execution = (
-      info() as
-        | {
-            execution?: { providerId?: string; modelID?: string; accountId?: string }
-          }
-        | undefined
-    )?.execution
+    const execution = info()?.execution
     if (!execution?.providerId || !execution?.modelID) return undefined
     return {
       providerID: execution.providerId,
@@ -327,7 +321,7 @@ export default function Page() {
       () => [params.id, !!info(), messagesReady()] as const,
       ([id, hasInfo, ready]) => {
         if (!id) return
-        console.debug("[session-reload-debug] session-page:state", {
+        if (false /* disabled */) console.debug("[session-reload-debug] session-page:state", {
           directory: sdk.directory,
           sessionID: id,
           hasInfo,
@@ -359,7 +353,7 @@ export default function Page() {
         if (hasInfo && ready) return
         if (initialHydratedSessionID === id) return
         initialHydratedSessionID = id
-        console.debug("[session-reload-debug] session-page:hydrate", {
+        if (false /* disabled */) console.debug("[session-reload-debug] session-page:hydrate", {
           directory: sdk.directory,
           sessionID: id,
           hasInfo,
@@ -695,7 +689,7 @@ export default function Page() {
       () => [params.id, messagesReady(), messages().length, visibleUserMessages().length, activeMessage()?.id] as const,
       ([id, ready, total, visible, active]) => {
         if (!id) return
-        console.debug("[session-reload-debug] session-page:render-gate", {
+        if (false /* disabled */) console.debug("[session-reload-debug] session-page:render-gate", {
           directory: sdk.directory,
           sessionID: id,
           messagesReady: ready,
@@ -1302,7 +1296,7 @@ export default function Page() {
     const overflow = max > 1
     const bottom = !overflow || el.scrollTop >= max - 2
 
-    if (typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") !== "0") {
+    if (typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") === "1") {
       const viewportTop = el.getBoundingClientRect().top
       const viewportBottom = viewportTop + el.clientHeight
       const blockCandidates = Array.from(
@@ -1342,7 +1336,7 @@ export default function Page() {
       })
     }
 
-    if (typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") !== "0") {
+    if (typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") === "1") {
       console.debug("[scroll-debug]", {
         time: Date.now(),
         scope: "session-page-state",
@@ -1402,12 +1396,14 @@ export default function Page() {
     on(
       autoScroll.mode,
       (mode) => {
-        console.debug("[scroll-debug] session-page:mode", {
-          sessionID: params.id,
-          mode,
-          bottom: ui.scroll.bottom,
-          overflow: ui.scroll.overflow,
-        })
+        if (typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") === "1") {
+          console.debug("[scroll-debug] session-page:mode", {
+            sessionID: params.id,
+            mode,
+            bottom: ui.scroll.bottom,
+            overflow: ui.scroll.overflow,
+          })
+        }
       },
       { defer: true },
     ),
@@ -1535,7 +1531,7 @@ export default function Page() {
       const delta = measured - store.promptHeight
       const stick = el ? el.scrollHeight - el.clientHeight - el.scrollTop < 10 + Math.max(0, delta) : false
 
-      if (typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") !== "0") {
+      if (typeof window !== "undefined" && window.localStorage.getItem("opencode:scroll-debug") === "1") {
         console.debug("[scroll-debug]", {
           time: Date.now(),
           scope: "session-page-state",

@@ -910,6 +910,13 @@ export type Session = {
     snapshot?: string
     diff?: string
   }
+  execution?: {
+    providerId: string
+    modelID: string
+    accountId?: string
+    revision?: number
+    updatedAt?: number
+  }
   stats?: {
     requestsTotal: number
     totalTokens: number

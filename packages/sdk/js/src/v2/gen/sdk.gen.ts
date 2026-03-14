@@ -2966,6 +2966,11 @@ export class Session2 extends HeyApiClient {
       sessionID: string
       directory?: string
       title?: string
+      execution?: {
+        providerId: string
+        modelID: string
+        accountId?: string
+      }
       time?: {
         archived?: number
       }
@@ -2980,6 +2985,7 @@ export class Session2 extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "body", key: "title" },
+            { in: "body", key: "execution" },
             { in: "body", key: "time" },
           ],
         },
@@ -3887,6 +3893,11 @@ export class Session2 extends HeyApiClient {
       sessionID: string
       directory?: string
       title?: string
+      execution?: {
+        providerId: string
+        modelID: string
+        accountId?: string
+      }
       time?: {
         archived?: number
       }
@@ -3901,6 +3912,7 @@ export class Session2 extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "body", key: "title" },
+            { in: "body", key: "execution" },
             { in: "body", key: "time" },
           ],
         },

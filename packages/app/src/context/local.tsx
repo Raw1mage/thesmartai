@@ -72,7 +72,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       if (!isModelValid(model)) return undefined
       if (!model.accountID) return model
       const ids = availableAccountIds(model.providerID)
-      if (ids.length === 0) return { providerID: model.providerID, modelID: model.modelID }
+      if (ids.length === 0) return model
       if (ids.includes(model.accountID)) return model
       const nextAccountID = replacementAccountID(model.providerID, model.accountID)
       if (!nextAccountID) return undefined
@@ -187,11 +187,15 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         const a = agent.current()
         if (!a) return undefined
         if (sessionID) {
-          return getFirstValidModel(
-            () => ephemeral.model[buildModelScopeKey(a.name, sessionID)],
+          const m1 = ephemeral.model[buildModelScopeKey(a.name, sessionID)]
+          console.log(`[local.model] resolveScopedSelection(${sessionID}): a.name=${a.name}, m1=`, m1)
+          const res = getFirstValidModel(
+            () => m1,
             () => (a.model ? { providerID: a.model.providerId, modelID: a.model.modelID } : undefined),
             fallbackModel,
           )
+          console.log(`[local.model] resolveScopedSelection(${sessionID}) result:`, res)
+          return res
         }
         return getFirstValidModel(
           () => ephemeral.model[buildModelScopeKey(a.name, sessionID)],
@@ -242,7 +246,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const syncSessionExecution = async (sessionID: string, model: ModelKey | undefined) => {
         if (!model) return
-        await (sdk.client.session.update as any)({
+        await sdk.client.session.update({
           sessionID,
           execution: {
             providerId: model.providerID,

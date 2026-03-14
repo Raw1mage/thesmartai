@@ -583,7 +583,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             }
           })
           if (sessionID && options?.syncSessionExecution) {
-            await (sdk.client.session.update as any)({
+            await sdk.client.session.update({
               sessionID,
               execution: {
                 providerId: normalized.providerId,
