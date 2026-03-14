@@ -168,9 +168,8 @@ function routePublic(c: Context) {
 }
 
 function isTrustedLoopbackRequest(c: Context) {
-  const marker = c.req.header("x-opencode-loopback")
-  if (marker !== "1") return false
-
+  // Reject if any proxy headers are present — request came through a
+  // reverse proxy and is NOT a direct loopback connection.
   const forwardedFor = c.req.header("x-forwarded-for")
   const forwardedProto = c.req.header("x-forwarded-proto")
   const realIp = c.req.header("x-real-ip")

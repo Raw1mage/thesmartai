@@ -188,14 +188,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         if (!a) return undefined
         if (sessionID) {
           const m1 = ephemeral.model[buildModelScopeKey(a.name, sessionID)]
-          console.log(`[local.model] resolveScopedSelection(${sessionID}): a.name=${a.name}, m1=`, m1)
-          const res = getFirstValidModel(
+          return getFirstValidModel(
             () => m1,
             () => (a.model ? { providerID: a.model.providerId, modelID: a.model.modelID } : undefined),
             fallbackModel,
           )
-          console.log(`[local.model] resolveScopedSelection(${sessionID}) result:`, res)
-          return res
         }
         return getFirstValidModel(
           () => ephemeral.model[buildModelScopeKey(a.name, sessionID)],

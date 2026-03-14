@@ -633,6 +633,14 @@ export namespace Session {
     sessionID: string
     model: { providerId: string; modelID: string; accountId?: string }
   }) {
+    // Skip update (and the Bus event it publishes) when identity is unchanged.
+    // pinExecutionIdentity is called up to 5× per processor loop iteration;
+    // unconditional updates caused a Bus event storm → frontend SSE cascade →
+    // expensive snapshot scans → event-loop saturation → slow LLM streaming.
+    const current = await get(input.sessionID)
+    if (current && sameExecutionIdentity(current.execution, input.model)) {
+      return current
+    }
     return update(
       input.sessionID,
       (draft) => {
