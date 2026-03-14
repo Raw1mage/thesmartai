@@ -111,27 +111,7 @@ function normalizeLine(line: string): string {
 }
 
 function normalizeFile() {
-  if (normalizing) return
-  normalizing = true
-  let text = ""
-  try {
-    text = fs.readFileSync(file, "utf-8")
-  } catch {
-    normalizing = false
-    return
-  }
-  const next = text
-    .split("\n")
-    .map((line) => normalizeLine(line))
-    .join("\n")
-  if (next === text) {
-    normalizing = false
-    return
-  }
-  try {
-    fs.writeFileSync(file, next)
-  } catch {}
-  normalizing = false
+  return
 }
 
 function normalizeMaybe() {

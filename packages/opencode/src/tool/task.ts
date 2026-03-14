@@ -200,6 +200,9 @@ type TaskWorker = {
   readyPromise: Promise<void>
   readyResolve: () => void
   lastHeartbeatAt?: number
+  lastPhase?: string
+  lastWorkerMessage?: string
+  lastStderr?: string
   current?: WorkerRequest
 }
 
@@ -253,7 +256,7 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
     },
     stdin: "pipe",
     stdout: "pipe",
-    stderr: "inherit",
+    stderr: "pipe",
   })
 
   let readyResolve = () => {}
@@ -268,6 +271,7 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
     ready: false,
     readyPromise,
     readyResolve,
+    lastPhase: "spawned",
   }
   workers.push(worker)
   beacon.setGauge("worker.total", workers.length)
@@ -279,6 +283,27 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
   })
 
   const log = Log.create({ service: "task.worker" })
+  ;(async () => {
+    const stderr = proc.stderr
+    if (!stderr) return
+    const reader = stderr.getReader()
+    const decoder = new TextDecoder()
+    let captured = ""
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const text = decoder.decode(value, { stream: true })
+      captured = (captured + text).slice(-4000)
+      worker.lastStderr = captured
+      try {
+        process.stderr.write(text)
+      } catch {
+        // ignore stderr forward failures
+      }
+    }
+  })().catch(() => {
+    // ignore stderr bridge failures
+  })
   ;(async () => {
     const reader = proc.stdout?.getReader()
     if (!reader) return
@@ -333,17 +358,23 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
           worker.ready = true
           worker.readyResolve()
           worker.lastHeartbeatAt = Date.now()
+          worker.lastPhase = "ready"
+          worker.lastWorkerMessage = "ready"
           continue
         }
 
         if (msg?.type === "heartbeat") {
           beacon.hit("worker.heartbeat")
           worker.lastHeartbeatAt = Date.now()
+          worker.lastPhase = "heartbeat"
+          worker.lastWorkerMessage = "heartbeat"
           continue
         }
 
         if (msg?.type === "done" && worker.current?.id === msg.id) {
           beacon.hit("worker.done")
+          worker.lastPhase = "done"
+          worker.lastWorkerMessage = typeof msg.error === "string" ? `done:${msg.error}` : "done"
           const req = worker.current
           worker.current = undefined
           worker.busy = false
@@ -376,6 +407,8 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
 
         if (msg?.type === "canceled" && worker.current?.sessionID === msg.sessionID) {
           beacon.hit("worker.canceled")
+          worker.lastPhase = "canceled"
+          worker.lastWorkerMessage = `canceled:${msg.sessionID}`
           const req = worker.current
           worker.current = undefined
           worker.busy = false
@@ -391,6 +424,8 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
 
         if (msg?.type === "error") {
           beacon.hit("worker.error")
+          worker.lastPhase = "error"
+          worker.lastWorkerMessage = typeof msg.error === "string" ? msg.error : "error"
           if (worker.current && msg.id === worker.current.id) {
             const req = worker.current
             worker.current = undefined
@@ -412,8 +447,34 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
     worker.current = undefined
     worker.busy = false
     removeWorker(worker.id)
-    if (req) req.reject(new Error("worker process exited unexpectedly"))
-    log.debug("task worker exited", { workerID, exitCode: await proc.exited.catch(() => -1) })
+    const exitCode = await proc.exited.catch(() => -1)
+    const diagnostics = {
+      workerID,
+      exitCode,
+      lastPhase: worker.lastPhase,
+      lastWorkerMessage: worker.lastWorkerMessage,
+      hasCurrentRequest: !!req,
+      requestID: req?.id,
+      sessionID: req?.sessionID,
+      eventCount: req?.eventCount,
+      firstEventAt: req?.firstEventAt,
+      lastEventAt: req?.lastEventAt,
+      lastHeartbeatAt: worker.lastHeartbeatAt,
+      lastStderr: worker.lastStderr?.slice(-1000),
+    }
+    debugCheckpoint("task.worker", "worker_exit_unexpected", diagnostics)
+    if (req) {
+      const detail = [
+        `exitCode=${exitCode}`,
+        worker.lastPhase ? `lastPhase=${worker.lastPhase}` : undefined,
+        worker.lastWorkerMessage ? `lastWorkerMessage=${worker.lastWorkerMessage}` : undefined,
+        worker.lastStderr?.trim() ? `stderr=${worker.lastStderr.trim().slice(-300)}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(", ")
+      req.reject(new Error(`worker process exited unexpectedly${detail ? ` (${detail})` : ""}`))
+    }
+    log.debug("task worker exited", diagnostics)
     log.debug("task worker bridge stats", { workerID, bridgedEvents, bridgeParseErrors })
   })().catch(() => {
     removeWorker(worker.id)
