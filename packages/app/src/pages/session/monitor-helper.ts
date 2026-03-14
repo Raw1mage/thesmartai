@@ -17,6 +17,30 @@ export type EnrichedMonitorEntry = SessionMonitorInfo & {
   latestNarration?: string
 }
 
+export type MonitorDisplayCard = {
+  badge: string
+  title: string
+  headline?: string
+}
+
+export type RunnerDisplayCard = {
+  badge: "R"
+  title: string
+  chips: Array<{ label: string; tone: "neutral" | "info" | "success" | "warning" }>
+  lines: string[]
+  tools: string[]
+  subagents: string[]
+  mcpServers: string[]
+}
+
+type RunnerToolTrace = {
+  name: string
+  status?: string
+  title?: string
+  subagentType?: string
+  mcpServer?: string
+}
+
 export const MONITOR_STATUS_LABELS: Record<string, string> = {
   busy: "Running",
   working: "Working",
@@ -30,6 +54,104 @@ export const MONITOR_STATUS_LABELS: Record<string, string> = {
 export function monitorTitle(value: { title?: string; agent?: string }) {
   const title = value.title || "Untitled session"
   return value.agent ? `${title} (${value.agent})` : title
+}
+
+export function monitorDisplayCard(value: EnrichedMonitorEntry): MonitorDisplayCard {
+  const badge = MONITOR_LEVEL_LABELS[value.level] ?? value.level
+  const headline = value.todo?.content || value.latestNarration || value.activeTool || undefined
+
+  if (value.level === "session") {
+    return { badge, title: value.title || "Untitled session", headline }
+  }
+
+  if (value.level === "sub-session") {
+    return { badge, title: value.title || "Untitled session", headline }
+  }
+
+  if (value.level === "agent" || value.level === "sub-agent") {
+    return { badge, title: value.agent || value.title || "Untitled agent", headline }
+  }
+
+  return { badge, title: value.activeTool || value.title || "Untitled tool", headline }
+}
+
+export function buildRunnerDisplayCard(input: {
+  currentStep?: { content?: string }
+  methodChips?: Array<{ label: string; tone: "neutral" | "info" | "success" | "warning" }>
+  processLines?: string[]
+  status?: { type?: string }
+  autonomousHealth?: {
+    summary?: { label?: string }
+    queue?: { hasPendingContinuation?: boolean; reason?: string; roundCount?: number }
+  }
+  monitorEntries?: EnrichedMonitorEntry[]
+  messages?: Message[]
+  partsByMessage?: Record<string, readonly Part[] | undefined>
+}): RunnerDisplayCard {
+  const queue = input.autonomousHealth?.queue
+  const queuedLabel = queue?.hasPendingContinuation
+    ? `${queue.reason?.replaceAll("_", " ") ?? "pending continuation"}${typeof queue.roundCount === "number" ? ` (round ${queue.roundCount})` : ""}`
+    : undefined
+  const title =
+    input.currentStep?.content?.trim() ||
+    queuedLabel ||
+    input.autonomousHealth?.summary?.label ||
+    (input.status?.type && input.status.type !== "idle" ? input.status.type : undefined) ||
+    "idle"
+
+  const lines = [...(input.processLines ?? [])]
+  if (lines.length === 0) lines.push(`Runtime: ${input.status?.type ?? "idle"}`)
+
+  const tools = new Set<string>()
+  const subagents = new Set<string>()
+  const mcpServers = new Set<string>()
+
+  for (const entry of input.monitorEntries ?? []) {
+    if (entry.activeTool) tools.add(entry.activeTool)
+    if (entry.level === "sub-agent" && entry.agent) subagents.add(entry.agent)
+    if (entry.level === "tool" && entry.activeTool === "task" && entry.agent) subagents.add(entry.agent)
+    if (entry.activeTool?.startsWith("mcp") || entry.activeTool?.includes("mcp")) {
+      mcpServers.add(entry.activeTool)
+    }
+  }
+
+  for (const message of input.messages ?? []) {
+    if (message.role !== "assistant") continue
+    const parts = input.partsByMessage?.[message.id] ?? []
+    for (const part of parts) {
+      if (part.type !== "tool") continue
+      tools.add(part.tool)
+      const rawInput = part.state.input
+      if (rawInput && typeof rawInput === "object") {
+        const subagentType = typeof rawInput["subagent_type"] === "string" ? rawInput["subagent_type"] : undefined
+        if (subagentType) subagents.add(subagentType)
+        const mcpServer =
+          typeof rawInput["serverName"] === "string"
+            ? rawInput["serverName"]
+            : typeof rawInput["mcpName"] === "string"
+              ? rawInput["mcpName"]
+              : undefined
+        if (mcpServer) mcpServers.add(mcpServer)
+      }
+      if (part.tool.startsWith("mcp") || part.tool.includes("mcp")) {
+        mcpServers.add(part.tool)
+      }
+    }
+  }
+
+  if (tools.size > 0) lines.push(`Tools: ${[...tools].join(", ")}`)
+  if (subagents.size > 0) lines.push(`Delegated: ${[...subagents].join(", ")}`)
+  if (mcpServers.size > 0) lines.push(`MCP: ${[...mcpServers].join(", ")}`)
+
+  return {
+    badge: "R",
+    title,
+    chips: [...(input.methodChips ?? [])],
+    lines,
+    tools: [...tools],
+    subagents: [...subagents],
+    mcpServers: [...mcpServers],
+  }
 }
 
 export function monitorToolStatus(value: { statusType: string; activeToolStatus?: string }) {

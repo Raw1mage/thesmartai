@@ -181,7 +181,10 @@ EOF
   local runtime_cfg_template="${ROOT_DIR}/templates/system/opencode.cfg"
   local tmp_runtime_cfg="/tmp/opencode.cfg.$$"
   local installed_frontend_path="/usr/local/share/opencode/frontend"
+  local runtime_webctl_dst="${env_dir}/webctl.sh"
   run_as_root install -d -m 755 "${env_dir}"
+  run_as_root install -m 755 "${ROOT_DIR}/webctl.sh" "${runtime_webctl_dst}"
+  log_ok "Installed runtime web controller: ${runtime_webctl_dst}"
 
   if [[ ! -f "${runtime_cfg_template}" ]]; then
     log_err "Missing runtime config template: ${runtime_cfg_template}"
@@ -194,6 +197,11 @@ EOF
       run_as_root sed -i "s|^OPENCODE_FRONTEND_PATH=.*|OPENCODE_FRONTEND_PATH=\"${installed_frontend_path}\"|" "${tmp_runtime_cfg}"
     else
       printf '\nOPENCODE_FRONTEND_PATH="%s"\n' "${installed_frontend_path}" >> "${tmp_runtime_cfg}"
+    fi
+    if run_as_root grep -q '^OPENCODE_WEBCTL_PATH=' "${tmp_runtime_cfg}"; then
+      run_as_root sed -i "s|^OPENCODE_WEBCTL_PATH=.*|OPENCODE_WEBCTL_PATH=\"${runtime_webctl_dst}\"|" "${tmp_runtime_cfg}"
+    else
+      printf 'OPENCODE_WEBCTL_PATH="%s"\n' "${runtime_webctl_dst}" >> "${tmp_runtime_cfg}"
     fi
     run_as_root install -m 644 "${tmp_runtime_cfg}" "${runtime_cfg_file}"
     rm -f "${tmp_runtime_cfg}"

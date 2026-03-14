@@ -12,11 +12,11 @@ import { useSync } from "@/context/sync"
 import type { Todo, UserMessage } from "@opencode-ai/sdk/v2/client"
 import { getSessionStatusSummary } from "./helpers"
 import {
+  buildRunnerDisplayCard,
   buildMonitorEntries,
+  monitorDisplayCard,
   type EnrichedMonitorEntry,
-  MONITOR_LEVEL_LABELS,
   MONITOR_STATUS_LABELS,
-  monitorTitle,
   monitorToolStatus,
 } from "./monitor-helper"
 import { SessionStatusSections } from "./session-status-sections"
@@ -97,6 +97,18 @@ export default function SessionToolPageRoute() {
       messages: messages(),
       partsByMessage: sync.data.part,
       autonomousHealth: autonomousHealth.data,
+    }),
+  )
+  const runnerCard = createMemo(() =>
+    buildRunnerDisplayCard({
+      currentStep: statusSummary().currentStep,
+      methodChips: statusSummary().methodChips,
+      processLines: statusSummary().processLines,
+      status: params.id ? sync.data.session_status[params.id] : undefined,
+      autonomousHealth: autonomousHealth.data,
+      monitorEntries: monitorEntries() as EnrichedMonitorEntry[],
+      messages: messages(),
+      partsByMessage: sync.data.part,
     }),
   )
 
@@ -229,46 +241,36 @@ export default function SessionToolPageRoute() {
                     fallback={<div class="text-12-regular text-text-danger">{monitor.error}</div>}
                   >
                     <div class="flex flex-col gap-3">
-                      <Show
-                        when={statusSummary().currentStep}
-                        fallback={<div class="text-12-regular text-text-weak">No current step.</div>}
-                      >
-                        {(step) => (
-                          <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-1">
-                            <div class="text-11-medium uppercase tracking-wide text-text-weak">Current objective</div>
-                            <div class="text-12-medium text-text-strong break-words">{step().content}</div>
-                            <Show when={statusSummary().methodChips.length > 0}>
-                              <div class="flex flex-wrap gap-1 pt-1">
-                                <For each={statusSummary().methodChips}>
-                                  {(chip) => (
-                                    <span
-                                      class="inline-flex h-5 px-1.5 items-center rounded-full border text-[11px] font-medium"
-                                      classList={{
-                                        "bg-info/12 text-info border-info/20": chip.tone === "info",
-                                        "bg-success/12 text-success border-success/20": chip.tone === "success",
-                                        "bg-warning/12 text-warning border-warning/20": chip.tone === "warning",
-                                        "bg-surface-base text-text-muted border-border-weak-base":
-                                          chip.tone === "neutral",
-                                      }}
-                                    >
-                                      {chip.label}
-                                    </span>
-                                  )}
-                                </For>
-                              </div>
-                            </Show>
+                      <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-2">
+                        <div class="flex items-start gap-2 min-w-0">
+                          <span class="text-11-medium text-text-weak shrink-0">[{runnerCard().badge}]</span>
+                          <div class="min-w-0 flex-1">
+                            <div class="text-12-medium text-text-strong break-words">{runnerCard().title}</div>
                           </div>
-                        )}
-                      </Show>
-
-                      <Show when={statusSummary().processLines.length > 0}>
-                        <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-1">
-                          <div class="text-11-medium uppercase tracking-wide text-text-weak">Status</div>
-                          <For each={statusSummary().processLines}>
-                            {(line) => <div class="text-12-regular text-text-weak break-words">{line}</div>}
-                          </For>
                         </div>
-                      </Show>
+                        <Show when={runnerCard().chips.length > 0}>
+                          <div class="flex flex-wrap gap-1">
+                            <For each={runnerCard().chips}>
+                              {(chip) => (
+                                <span
+                                  class="inline-flex h-5 px-1.5 items-center rounded-full border text-[11px] font-medium"
+                                  classList={{
+                                    "bg-info/12 text-info border-info/20": chip.tone === "info",
+                                    "bg-success/12 text-success border-success/20": chip.tone === "success",
+                                    "bg-warning/12 text-warning border-warning/20": chip.tone === "warning",
+                                    "bg-surface-base text-text-muted border-border-weak-base": chip.tone === "neutral",
+                                  }}
+                                >
+                                  {chip.label}
+                                </span>
+                              )}
+                            </For>
+                          </div>
+                        </Show>
+                        <For each={runnerCard().lines}>
+                          {(line) => <div class="text-12-regular text-text-weak break-words">{line}</div>}
+                        </For>
+                      </div>
 
                       <Show
                         when={monitorEntries().length > 0}
@@ -277,13 +279,22 @@ export default function SessionToolPageRoute() {
                         <For each={monitorEntries() as EnrichedMonitorEntry[]}>
                           {(item) => (
                             <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-1">
-                              <div class="flex items-center gap-2 min-w-0">
+                              <div class="flex items-start gap-2 min-w-0">
                                 <span class="text-11-medium text-text-weak shrink-0">
-                                  [{MONITOR_LEVEL_LABELS[item.level] ?? item.level}]
+                                  [{monitorDisplayCard(item).badge}]
                                 </span>
-                                <span class="text-12-medium text-text-strong truncate">{monitorTitle(item)}</span>
+                                <div class="min-w-0 flex-1">
+                                  <div class="text-12-medium text-text-strong break-words">
+                                    {monitorDisplayCard(item).title}
+                                    <Show when={monitorDisplayCard(item).headline}>
+                                      {(headline) => <span class="text-text-weak"> · {headline()}</span>}
+                                    </Show>
+                                  </div>
+                                </div>
                               </div>
-                              <Show when={item.todo?.content}>
+                              <Show
+                                when={item.todo?.content && item.todo?.content !== monitorDisplayCard(item).headline}
+                              >
                                 <div class="text-11-regular text-info break-words">Todo: {item.todo?.content}</div>
                               </Show>
                               <Show when={item.todo?.status}>

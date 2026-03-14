@@ -150,7 +150,6 @@ export const useSessionCommands = (input: SessionCommandContext) => {
     viewCommand({
       id: "review.toggle",
       title: input.language.t("command.review.toggle"),
-      keybind: "mod+shift+r",
       onSelect: () => {
         if (input.layout.fileTree.opened() && input.layout.fileTree.mode() === "changes") {
           input.layout.fileTree.close()

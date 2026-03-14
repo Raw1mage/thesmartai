@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import { streamSSE } from "hono/streaming"
+import path from "node:path"
 import z from "zod"
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus } from "@/bus/global"
@@ -13,6 +14,14 @@ import { errors } from "../error"
 import { WebAuth } from "../web-auth"
 
 const log = Log.create({ service: "server" })
+
+function resolveWebctlPath() {
+  if (process.env.OPENCODE_WEBCTL_PATH) return process.env.OPENCODE_WEBCTL_PATH
+  if (process.env.OPENCODE_LAUNCH_MODE === "webctl" && process.env.OPENCODE_REPO_ROOT) {
+    return path.join(process.env.OPENCODE_REPO_ROOT, "webctl.sh")
+  }
+  return "/etc/opencode/webctl.sh"
+}
 
 function applyProxyFriendlySSEHeaders(c: { header: (name: string, value: string) => void }) {
   c.header("Cache-Control", "no-cache, no-store, must-revalidate, no-transform")
@@ -320,6 +329,78 @@ export const GlobalRoutes = lazy(() =>
         const config = c.req.valid("json")
         const next = await Config.updateGlobal(config)
         return c.json(next)
+      },
+    )
+    .post(
+      "/web/restart",
+      describeRoute({
+        summary: "Restart web runtime",
+        description:
+          "Schedule a controlled web runtime restart. Intended for authenticated operators; clients should wait for health recovery and then reload.",
+        operationId: "global.web.restart",
+        responses: {
+          200: {
+            description: "Restart accepted",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    ok: z.literal(true),
+                    accepted: z.literal(true),
+                    mode: z.literal("controlled_restart"),
+                    probePath: z.literal("/api/v2/global/health"),
+                    recommendedInitialDelayMs: z.number(),
+                    fallbackReloadAfterMs: z.number(),
+                  }),
+                ),
+              },
+            },
+          },
+          ...errors(500),
+        },
+      }),
+      async (c) => {
+        const webctlPath = resolveWebctlPath()
+        const exists = await Bun.file(webctlPath).exists()
+        if (!exists) {
+          log.error("web restart rejected: control script missing", { webctlPath })
+          return c.json(
+            {
+              code: "WEBCTL_MISSING",
+              message: `web control script not found: ${webctlPath}`,
+            },
+            500,
+          )
+        }
+
+        const proc = Bun.spawn({
+          cmd: [webctlPath, "restart", "--graceful"],
+          stdout: "ignore",
+          stderr: "pipe",
+          stdin: "ignore",
+        })
+        const stderrText = proc.stderr ? new Response(proc.stderr).text() : Promise.resolve("")
+        const exitCode = await proc.exited
+        const stderr = (await stderrText).trim()
+        if (exitCode !== 0) {
+          log.error("web restart failed to schedule", { webctlPath, exitCode, stderr })
+          return c.json(
+            {
+              code: "WEB_RESTART_FAILED",
+              message: stderr || `web restart command failed (${exitCode})`,
+            },
+            500,
+          )
+        }
+
+        return c.json({
+          ok: true,
+          accepted: true,
+          mode: "controlled_restart",
+          probePath: "/api/v2/global/health",
+          recommendedInitialDelayMs: 1500,
+          fallbackReloadAfterMs: 10000,
+        })
       },
     )
     .post(

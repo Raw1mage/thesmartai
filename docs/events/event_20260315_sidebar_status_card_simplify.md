@@ -95,6 +95,63 @@ Status: Completed
   - 結果：11 pass / 2 skip / 0 fail
   - skip 原因：`focusTerminalById` 測試需要 DOM，當前 bun 測試 runtime 無 document。
 
+## Follow-up adjustments (same day)
+
+- 移除 `review.toggle` 的 `Ctrl/Cmd+Shift+R` 綁定，避免異動檢視被快捷鍵強綁。
+- 工作監控卡內取消全域 `Current objective / No current step` 區塊，避免把 runner/main agent 目標混成單一摘要。
+- monitor 子卡改為以 badge + title + headline 呈現：
+  - session / sub-session 顯示 `[S]` / `[SS]` + session title
+  - agent / sub-agent 顯示 `[A]` / `[SA]` + agent 名稱
+  - tool 顯示 `[T]` + tool 名稱
+- headline 優先顯示該卡自己的 `todo.content`，否則才落到最新 narration 或 active tool，讓 runner/agent「正在忙什麼」出現在自己的卡內，而不是被全域 `No current step` 取代。
+
+### Follow-up validation
+
+- `bun --filter @opencode-ai/app typecheck` ✅
+- `bun test "/home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts" "/home/pkcs12/projects/opencode/packages/app/src/pages/session/monitor-helper.test.ts"` ✅
+  - 結果：11 pass / 2 skip / 0 fail
+
+## Runner card integration
+
+- 將 Runner 視為工作監控中的一個獨立工作單位，以**前端合成卡**方式固定呈現為 `[R]`。
+- 資料流整合來源：
+  - `session workflow`（workflow state / stop reason / supervisor）
+  - `autonomous health`（summary / queue / anomalies）
+  - `current todo/current step`
+  - `session runtime status`
+- `[R]` 卡永遠存在：
+  - 若 Runner 已有 current step，標題顯示 current step
+  - 否則退到 queue reason / health summary / runtime status
+  - 若完全未啟動，明確顯示 `idle`
+- monitor 列表中的其他卡片仍代表 session / agent / subagent / tool 等工作單位；Runner 不再依賴 monitor API 原生提供 `level: runner`，而是由前端將 orchestration 狀態聚合成一張穩定卡片。
+- `[R]` 卡進一步升級為**執行動態卡**，不再只顯示粗粒度 workflow/runtime 狀態：
+  - 會聚合 current task / current step
+  - 會列出 active tools
+  - 會列出 delegated subagents
+  - 會從 tool input metadata 推斷 MCP / server 痕跡（如 `mcpName` / `serverName`）
+  - 因此 `[R]` 現在用來表達真正的 Runner activity，而不是單純 `STATUS` 摘要
+- Todo list 不再把低資訊價值的 `implement` 顯示為獨立泡泡；改為只顯示有意義的狀態後綴，並以 `·` 內嵌在同一行尾端（如 waiting / needs approval）。
+
+### Runner validation
+
+- `bun --filter @opencode-ai/app typecheck` ✅
+- `bun test "/home/pkcs12/projects/opencode/packages/app/src/pages/session/helpers.test.ts" "/home/pkcs12/projects/opencode/packages/app/src/pages/session/monitor-helper.test.ts"` ✅
+  - 結果：12 pass / 2 skip / 0 fail
+
+## Controlled web restart flow
+
+- 新增受控 Web restart control flow，而不是常駐 auto-refresh：
+  - Web settings 新增 `Restart Web` 按鈕
+  - 按下後呼叫 `POST /api/v2/global/web/restart`
+  - backend 透過 runtime control script 觸發 `webctl.sh restart --graceful`
+  - frontend 進入等待狀態並輪詢 `/api/v2/global/health`
+  - server 恢復健康後自動 `window.location.reload()`
+- restart control script 路徑改納入 runtime config contract：
+  - `templates/system/opencode.cfg` 新增 `OPENCODE_WEBCTL_PATH="/etc/opencode/webctl.sh"`
+  - `install.sh` 會安裝 repo `webctl.sh` 到 `/etc/opencode/webctl.sh`
+  - backend route 預設優先使用 `OPENCODE_WEBCTL_PATH`（若有 env override 則可覆蓋）
+- 設計目標：不是所有情況都自動 refresh，而是**只有使用者明確觸發 restart 時**，頁面才進入受控等待與 reload。
+
 ## Architecture Sync
 
 - Verified (No doc changes)

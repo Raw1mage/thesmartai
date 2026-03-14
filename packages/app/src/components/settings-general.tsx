@@ -1,4 +1,5 @@
-import { Component, Show, createMemo, createResource, type JSX } from "solid-js"
+import { Component, Show, createMemo, createResource, createSignal, type JSX } from "solid-js"
+import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Select } from "@opencode-ai/ui/select"
 import { Switch } from "@opencode-ai/ui/switch"
@@ -6,6 +7,7 @@ import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useSettings, monoFontFamily } from "@/context/settings"
 import { playSound, SOUND_OPTIONS } from "@/utils/sound"
 import { Link } from "./link"
@@ -38,9 +40,77 @@ export const SettingsGeneral: Component = () => {
   const theme = useTheme()
   const language = useLanguage()
   const platform = usePlatform()
+  const globalSDK = useGlobalSDK()
   const settings = useSettings()
+  const [restartState, setRestartState] = createSignal<"idle" | "restarting" | "waiting" | "error">("idle")
+  const [restartMessage, setRestartMessage] = createSignal<string>("")
 
   const linux = createMemo(() => platform.platform === "desktop" && platform.os === "linux")
+  const web = createMemo(() => platform.platform === "web")
+
+  const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+  const waitForRestartRecovery = async (input: { initialDelayMs: number; fallbackReloadAfterMs: number }) => {
+    const healthUrl = `${globalSDK.url}/api/v2/global/health`
+    const deadline = Date.now() + 30_000
+    const fallbackAt = Date.now() + input.fallbackReloadAfterMs
+    let seenUnavailable = false
+
+    await wait(input.initialDelayMs)
+
+    while (Date.now() < deadline) {
+      try {
+        const response = await fetch(healthUrl, { cache: "no-store" })
+        if (response.ok) {
+          const data = (await response.json()) as { healthy?: boolean }
+          if (data.healthy) {
+            if (seenUnavailable || Date.now() >= fallbackAt) {
+              window.location.reload()
+              return
+            }
+          }
+        } else {
+          seenUnavailable = true
+        }
+      } catch {
+        seenUnavailable = true
+      }
+      await wait(1000)
+    }
+
+    setRestartState("error")
+    setRestartMessage("Web restart was triggered, but automatic reload timed out. Please refresh manually.")
+  }
+
+  const restartWeb = async () => {
+    if (restartState() === "restarting" || restartState() === "waiting") return
+    if (!window.confirm("Restart the web runtime now? The page will reload automatically after recovery.")) return
+
+    setRestartState("restarting")
+    setRestartMessage("Requesting controlled web restart…")
+    try {
+      const response = await globalSDK.fetch(`${globalSDK.url}/api/v2/global/web/restart`, {
+        method: "POST",
+      })
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(text || `Restart failed (${response.status})`)
+      }
+      const data = (await response.json()) as {
+        recommendedInitialDelayMs: number
+        fallbackReloadAfterMs: number
+      }
+      setRestartState("waiting")
+      setRestartMessage("Restarting web runtime… this page will reload automatically.")
+      await waitForRestartRecovery({
+        initialDelayMs: data.recommendedInitialDelayMs,
+        fallbackReloadAfterMs: data.fallbackReloadAfterMs,
+      })
+    } catch (error) {
+      setRestartState("error")
+      setRestartMessage(error instanceof Error ? error.message : String(error))
+    }
+  }
 
   const themeOptions = createMemo(() =>
     Object.entries(theme.themes()).map(([id, def]) => ({ id, name: def.name ?? id })),
@@ -350,6 +420,43 @@ export const SettingsGeneral: Component = () => {
     </div>
   )
 
+  const RuntimeSection = () => (
+    <div class="flex flex-col gap-1">
+      <h3 class="text-14-medium text-text-strong pb-2">Runtime</h3>
+
+      <div class="bg-surface-raised-base px-4 rounded-lg">
+        <SettingsRow
+          title="Restart Web"
+          description="Schedule a controlled web runtime restart. This page will reload automatically after the server becomes healthy again."
+        >
+          <div class="flex flex-col items-end gap-2">
+            <Button
+              size="small"
+              variant="secondary"
+              onClick={() => void restartWeb()}
+              disabled={restartState() === "restarting" || restartState() === "waiting"}
+            >
+              {restartState() === "restarting" || restartState() === "waiting" ? "Restarting…" : "Restart Web"}
+            </Button>
+            <Show when={restartMessage()}>
+              {(message) => (
+                <span
+                  class="max-w-72 text-right text-11-regular"
+                  classList={{
+                    "text-text-weak": restartState() !== "error",
+                    "text-text-danger": restartState() === "error",
+                  }}
+                >
+                  {message()}
+                </span>
+              )}
+            </Show>
+          </div>
+        </SettingsRow>
+      </div>
+    </div>
+  )
+
   return (
     <div class="flex flex-col h-full overflow-y-auto no-scrollbar px-4 pb-10 sm:px-10 sm:pb-10">
       <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
@@ -366,6 +473,10 @@ export const SettingsGeneral: Component = () => {
         <NotificationsSection />
 
         <SoundsSection />
+
+        <Show when={web()}>
+          <RuntimeSection />
+        </Show>
 
         <Show when={platform.platform === "desktop" && platform.os === "windows" && platform.getWslEnabled}>
           {(_) => {
