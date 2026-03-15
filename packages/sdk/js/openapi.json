@@ -255,6 +255,57 @@
         }
       }
     },
+    "/api/v2/global/web/restart": {
+      "post": {
+        "operationId": "global.web.restart",
+        "summary": "Restart web runtime",
+        "description": "Schedule a controlled web runtime restart. Intended for authenticated operators; clients should wait for health recovery and then reload.",
+        "responses": {
+          "200": {
+            "description": "Restart accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "accepted": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "mode": {
+                      "type": "string",
+                      "const": "controlled_restart"
+                    },
+                    "probePath": {
+                      "type": "string",
+                      "const": "/api/v2/global/health"
+                    },
+                    "recommendedInitialDelayMs": {
+                      "type": "number"
+                    },
+                    "fallbackReloadAfterMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "accepted",
+                    "mode",
+                    "probePath",
+                    "recommendedInitialDelayMs",
+                    "fallbackReloadAfterMs"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/global/dispose": {
       "post": {
         "operationId": "global.dispose",
@@ -11017,6 +11068,57 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/Config"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/global/web/restart": {
+      "post": {
+        "operationId": "global.web.restart",
+        "summary": "Restart web runtime",
+        "description": "Schedule a controlled web runtime restart. Intended for authenticated operators; clients should wait for health recovery and then reload.",
+        "responses": {
+          "200": {
+            "description": "Restart accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "accepted": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "mode": {
+                      "type": "string",
+                      "const": "controlled_restart"
+                    },
+                    "probePath": {
+                      "type": "string",
+                      "const": "/api/v2/global/health"
+                    },
+                    "recommendedInitialDelayMs": {
+                      "type": "number"
+                    },
+                    "fallbackReloadAfterMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "accepted",
+                    "mode",
+                    "probePath",
+                    "recommendedInitialDelayMs",
+                    "fallbackReloadAfterMs"
+                  ]
+                }
               }
             }
           }
@@ -24850,6 +24952,25 @@
                   "handoff"
                 ]
               },
+              "artifactIntegrity": {
+                "type": "object",
+                "properties": {
+                  "implementationSpec": {
+                    "type": "string"
+                  },
+                  "tasks": {
+                    "type": "string"
+                  },
+                  "handoff": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "implementationSpec",
+                  "tasks",
+                  "handoff"
+                ]
+              },
               "executionReady": {
                 "type": "boolean"
               }
@@ -29203,6 +29324,25 @@
                   "proposal",
                   "spec",
                   "design",
+                  "tasks",
+                  "handoff"
+                ]
+              },
+              "artifactIntegrity": {
+                "type": "object",
+                "properties": {
+                  "implementationSpec": {
+                    "type": "string"
+                  },
+                  "tasks": {
+                    "type": "string"
+                  },
+                  "handoff": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "implementationSpec",
                   "tasks",
                   "handoff"
                 ]
