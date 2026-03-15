@@ -190,6 +190,55 @@ cms 採 Monorepo 架構（Bun + TurboRepo），核心分層如下：
 └────────────────────────────────────────────────────┘
 ```
 
+### 4.1 `openclaw` 架構導入後，系統現在怎麼運作
+
+`cms` 並不是把 OpenClaw 原樣搬進來，而是吸收它的幾個核心控制面概念，再接到既有的 session-based runtime。
+
+目前已落地的主軸是：
+
+- **session 仍是唯一執行邊界**：每個 session 保留自己的 todo、workflow state、pending continuation 與 supervisor 狀態，避免多個 autonomous run 同時踩同一份 session 狀態。
+- **`workflow-runner` 變成 orchestration 中心**：它會根據 todo、mission approval、blocker gate、subagent 狀態與 recent anomalies，判斷下一步是繼續、排隊待續，還是停在 `waiting_user` / `blocked`。
+- **continuation queue 成為 trigger 吸收層**：當 prompt loop、operator action 或 runtime API 要求「繼續跑下一步」時，不直接粗暴重入，而是先寫入 pending continuation，讓 runner 以可觀測、可恢復的方式續跑。
+- **supervisor 提供 lease / retry / anomaly evidence**：這一層不是 scheduler daemon，而是先把 autonomous run 的 ownership、backoff 與異常訊號固定下來，確保 Web / TUI / API 看到的是同一份健康狀態。
+
+你可以把它理解成下面這條路徑：
+
+```text
+User / API / Operator action
+          │
+          ▼
+ mission + todos + approval gates
+          │
+          ▼
+ enqueue pending continuation
+          │
+          ▼
+ workflow-runner decides continue / pause / block
+          │
+          ▼
+ session prompt loop executes one serialized turn
+          │
+          ▼
+ supervisor records lease / retry / anomalies
+          │
+          ▼
+ Web / TUI read the same workflow + queue health
+```
+
+這個設計直接對應 OpenClaw 帶來的幾個啟發，但只移植了目前風險最低、最能與 `cms` 現況接軌的部分：
+
+- **已吸收**
+  - lane/queue 思維：先排隊、再進單一 session turn
+  - trigger 思維：把「繼續執行」視為可持久化、可檢查的事件，而不是一個隱形副作用
+  - orchestration 思維：由 runner 根據 workflow 狀態決定是否繼續，而不是每層各自猜
+- **刻意延後**
+  - always-on daemon / gateway 常駐排程
+  - heartbeat / cron 觸發源
+  - host-wide isolated job sessions
+  - restart / drain / host scheduler lifecycle
+
+換句話說，`cms` 現在的 shape 是：**先把 OpenClaw 的 queue-first、orchestration-first、observable-state-first 收進 session runtime，還沒有直接擴張成一個 7x24 的全域 daemon scheduler。**
+
 ---
 
 ## 5) 核心設計原則
