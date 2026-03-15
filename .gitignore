@@ -8,6 +8,7 @@ node_modules
 *~
 playground
 tmp
+typecheck.log
 dist
 ts-dist
 .turbo
