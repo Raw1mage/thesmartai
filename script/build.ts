@@ -138,9 +138,34 @@ const targets = singleFlag
 await $`rm -rf dist`
 await $`mkdir -p dist`
 
-// Build frontend for release bundling
-console.log("building frontend")
-await $`bun run --cwd packages/app build`
+// Build frontend for release bundling — skip if source unchanged
+const frontendHashFile = path.join(dir, "packages/app/dist/.build-hash")
+const computeFrontendHash = async () => {
+  // Hash all source files + package.json to detect changes
+  const result = await $`find packages/app/src packages/ui/src -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum`.text()
+  const pkgHash = await $`sha256sum packages/app/package.json packages/ui/package.json`.text()
+  const hasher = new Bun.CryptoHasher("sha256")
+  hasher.update(result)
+  hasher.update(pkgHash)
+  return hasher.digest("hex")
+}
+
+const currentFrontendHash = await computeFrontendHash()
+let frontendSkipped = false
+
+if (fs.existsSync(frontendHashFile)) {
+  const previousHash = fs.readFileSync(frontendHashFile, "utf-8").trim()
+  if (previousHash === currentFrontendHash) {
+    console.log("frontend up-to-date, skipping build")
+    frontendSkipped = true
+  }
+}
+
+if (!frontendSkipped) {
+  console.log("building frontend")
+  await $`bun run --cwd packages/app build`
+  fs.writeFileSync(frontendHashFile, currentFrontendHash)
+}
 await $`tar -czf dist/opencode-frontend.tar.gz -C packages/app/dist .`
 
 const binaries: Record<string, string> = {}

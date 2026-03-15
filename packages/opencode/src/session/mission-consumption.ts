@@ -1,7 +1,13 @@
 import path from "path"
 import { realpath } from "fs/promises"
+import { createHash } from "crypto"
 import { Instance } from "@/project/instance"
 import { Session } from "./index"
+import { extractChecklistItems } from "./tasks-checklist"
+
+function digest(text: string) {
+  return createHash("sha1").update(text).digest("hex")
+}
 
 function isWithinWorktree(candidate: string) {
   const worktree = path.resolve(Instance.worktree)
@@ -28,15 +34,6 @@ function extractBulletItems(text: string) {
     .map((line) => line.trim())
     .filter((line) => /^[-*]\s+/.test(line))
     .map((line) => line.replace(/^[-*]\s+/, "").trim())
-    .filter(Boolean)
-}
-
-function extractChecklistItems(text: string) {
-  return text
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter((line) => /^-\s*\[[ xX]\]\s+/.test(line))
-    .map((line) => line.replace(/^-\s*\[[ xX]\]\s+/, "").trim())
     .filter(Boolean)
 }
 
@@ -212,9 +209,21 @@ export async function consumeMissionArtifacts(mission: Session.Info["mission"]):
   const scope = extractSection(implementationSpec.text, "Scope")
   const validation = extractSection(implementationSpec.text, "Validation")
   const stopGates = extractSection(implementationSpec.text, "Stop Gates")
-  const checklistItems = extractChecklistItems(tasks.text)
+  const checklistItems = extractChecklistItems(tasks.text, { includeChecked: true })
   const requiredReads = extractBulletItems(extractSection(handoff.text, "Required Reads"))
   const handoffStopGates = extractBulletItems(extractSection(handoff.text, "Stop Gates In Force"))
+
+  if (mission.artifactIntegrity) {
+    if (digest(implementationSpec.text) !== mission.artifactIntegrity.implementationSpec) {
+      issues.push("spec_dirty: implementationSpec changed after approval")
+    }
+    if (digest(tasks.text) !== mission.artifactIntegrity.tasks) {
+      issues.push("spec_dirty: tasks changed after approval")
+    }
+    if (digest(handoff.text) !== mission.artifactIntegrity.handoff) {
+      issues.push("spec_dirty: handoff changed after approval")
+    }
+  }
 
   if (!goal) issues.push("implementationSpec missing Goal section")
   if (!scope) issues.push("implementationSpec missing Scope section")

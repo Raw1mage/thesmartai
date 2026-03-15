@@ -363,6 +363,12 @@ const prettyStopReason = (reason?: string) => {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1)
 }
 
+export const prettyQueueReason = (reason?: string) => {
+  if (!reason) return undefined
+  const normalized = reason.replaceAll("_", " ")
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
+
 export const getSessionWorkflowChips = (session?: WorkflowLikeSession): SessionWorkflowChip[] => {
   const workflow = session?.workflow
   if (!workflow) return []
@@ -498,7 +504,7 @@ export const getSessionStatusSummary = (input: {
 
   if (input.autonomousHealth?.queue.hasPendingContinuation) {
     processLines.push(
-      `Queue: ${input.autonomousHealth.queue.reason?.replaceAll("_", " ") ?? "pending continuation"}${typeof input.autonomousHealth.queue.roundCount === "number" ? ` (round ${input.autonomousHealth.queue.roundCount})` : ""}`,
+      `Queue: ${prettyQueueReason(input.autonomousHealth.queue.reason) ?? "Pending continuation"}${typeof input.autonomousHealth.queue.roundCount === "number" ? ` (round ${input.autonomousHealth.queue.roundCount})` : ""}`,
     )
   }
   if ((input.autonomousHealth?.anomalies.recentCount ?? 0) > 0) {

@@ -97,6 +97,49 @@ run_as_root() {
   exit 1
 }
 
+# ── Fingerprint helpers (make-style skip) ──────────────────────────────
+
+# Compare sha256 of two files; returns 0 (true) if identical.
+files_identical() {
+  local src="$1" dst="$2"
+  [[ -f "${dst}" ]] || return 1
+  local h1 h2
+  h1="$(sha256sum "${src}" | awk '{print $1}')"
+  h2="$(sha256sum "${dst}" | awk '{print $1}')"
+  [[ "${h1}" == "${h2}" ]]
+}
+
+# Same as files_identical but dst requires sudo to read.
+files_identical_root() {
+  local src="$1" dst="$2"
+  run_as_root test -f "${dst}" || return 1
+  local h1 h2
+  h1="$(sha256sum "${src}" | awk '{print $1}')"
+  h2="$(run_as_root sha256sum "${dst}" | awk '{print $1}')"
+  [[ "${h1}" == "${h2}" ]]
+}
+
+# Compute a deterministic hash over a directory tree (content + relative paths).
+# Usage: dir_fingerprint /path/to/dir  →  prints a single sha256
+dir_fingerprint() {
+  local dir="$1"
+  [[ -d "${dir}" ]] || { echo ""; return; }
+  # hash every file's content, prefix with relative path, then hash the list
+  find "${dir}" -type f -print0 | sort -z | xargs -0 sha256sum 2>/dev/null | sha256sum | awk '{print $1}'
+}
+
+# Compare directory tree fingerprints; returns 0 if identical.
+dirs_identical_root() {
+  local src="$1" dst="$2"
+  run_as_root test -d "${dst}" || return 1
+  local h1 h2
+  h1="$(dir_fingerprint "${src}")"
+  h2="$(run_as_root bash -c "$(declare -f dir_fingerprint); dir_fingerprint '${dst}'")"
+  [[ -n "${h1}" && "${h1}" == "${h2}" ]]
+}
+
+# ── End fingerprint helpers ────────────────────────────────────────────
+
 detect_nologin_shell() {
   if command -v nologin >/dev/null 2>&1; then
     command -v nologin
@@ -146,17 +189,25 @@ system_init() {
   local daemon_launcher_src="${ROOT_DIR}/templates/system/opencode-user-daemon-launch.sh"
   local daemon_launcher_dst="/usr/local/libexec/opencode-user-daemon-launch"
   if [[ -f "${wrapper_src}" ]]; then
-    run_as_root install -d -m 755 "/usr/local/libexec"
-    run_as_root install -m 755 "${wrapper_src}" "${wrapper_dst}"
-    log_ok "Installed privilege wrapper: ${wrapper_dst}"
+    if files_identical_root "${wrapper_src}" "${wrapper_dst}"; then
+      log_ok "Privilege wrapper up-to-date: ${wrapper_dst}"
+    else
+      run_as_root install -d -m 755 "/usr/local/libexec"
+      run_as_root install -m 755 "${wrapper_src}" "${wrapper_dst}"
+      log_ok "Installed privilege wrapper: ${wrapper_dst}"
+    fi
   else
     log_warn "Wrapper source not found: ${wrapper_src}"
   fi
 
   if [[ -f "${daemon_launcher_src}" ]]; then
-    run_as_root install -d -m 755 "/usr/local/libexec"
-    run_as_root install -m 755 "${daemon_launcher_src}" "${daemon_launcher_dst}"
-    log_ok "Installed per-user daemon launcher: ${daemon_launcher_dst}"
+    if files_identical_root "${daemon_launcher_src}" "${daemon_launcher_dst}"; then
+      log_ok "Daemon launcher up-to-date: ${daemon_launcher_dst}"
+    else
+      run_as_root install -d -m 755 "/usr/local/libexec"
+      run_as_root install -m 755 "${daemon_launcher_src}" "${daemon_launcher_dst}"
+      log_ok "Installed per-user daemon launcher: ${daemon_launcher_dst}"
+    fi
   else
     log_warn "Daemon launcher source not found: ${daemon_launcher_src}"
   fi
@@ -169,12 +220,17 @@ ${SYSTEM_SERVICE_USER} ALL=(root) NOPASSWD: /usr/local/libexec/opencode-run-as-u
 ${SYSTEM_SERVICE_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl start opencode-user-daemon@*.service
 ${SYSTEM_SERVICE_USER} ALL=(root) NOPASSWD: /bin/systemctl start opencode-user-daemon@*.service
 EOF
-  run_as_root install -m 440 "${tmp_sudoers}" "${sudoers_file}"
-  rm -f "${tmp_sudoers}"
-  if command -v visudo >/dev/null 2>&1; then
-    run_as_root visudo -cf "${sudoers_file}" >/dev/null
+  if files_identical_root "${tmp_sudoers}" "${sudoers_file}"; then
+    rm -f "${tmp_sudoers}"
+    log_ok "Sudoers policy up-to-date: ${sudoers_file}"
+  else
+    run_as_root install -m 440 "${tmp_sudoers}" "${sudoers_file}"
+    rm -f "${tmp_sudoers}"
+    if command -v visudo >/dev/null 2>&1; then
+      run_as_root visudo -cf "${sudoers_file}" >/dev/null
+    fi
+    log_ok "Installed sudoers policy: ${sudoers_file}"
   fi
-  log_ok "Installed sudoers policy: ${sudoers_file}"
 
   local env_dir="/etc/opencode"
   local runtime_cfg_file="${env_dir}/opencode.cfg"
@@ -183,8 +239,28 @@ EOF
   local installed_frontend_path="/usr/local/share/opencode/frontend"
   local runtime_webctl_dst="${env_dir}/webctl.sh"
   run_as_root install -d -m 755 "${env_dir}"
-  run_as_root install -m 755 "${ROOT_DIR}/webctl.sh" "${runtime_webctl_dst}"
-  log_ok "Installed runtime web controller: ${runtime_webctl_dst}"
+  if files_identical_root "${ROOT_DIR}/webctl.sh" "${runtime_webctl_dst}"; then
+    log_ok "Runtime web controller up-to-date: ${runtime_webctl_dst}"
+  else
+    run_as_root install -m 755 "${ROOT_DIR}/webctl.sh" "${runtime_webctl_dst}"
+    run_as_root chown -R "${SYSTEM_SERVICE_USER}:${SYSTEM_SERVICE_USER}" "${env_dir}"
+    run_as_root chmod 755 "${env_dir}"
+    run_as_root chmod g=u "${env_dir}"/*
+    log_ok "Installed runtime web controller: ${runtime_webctl_dst}"
+  fi
+
+  # Add invoking user to the service group so they can execute
+  # scripts in /etc/opencode/ without privilege escalation.
+  local invoking_user="${SUDO_USER:-$(whoami)}"
+  if [[ "${invoking_user}" != "root" && "${invoking_user}" != "${SYSTEM_SERVICE_USER}" ]]; then
+    if ! id -nG "${invoking_user}" 2>/dev/null | grep -qw "${SYSTEM_SERVICE_USER}"; then
+      run_as_root usermod -aG "${SYSTEM_SERVICE_USER}" "${invoking_user}"
+      log_ok "Added ${invoking_user} to group ${SYSTEM_SERVICE_USER}"
+      log_warn "Group change takes effect on next login (or run: newgrp ${SYSTEM_SERVICE_USER})"
+    else
+      log_ok "${invoking_user} already in group ${SYSTEM_SERVICE_USER}"
+    fi
+  fi
 
   if [[ ! -f "${runtime_cfg_template}" ]]; then
     log_err "Missing runtime config template: ${runtime_cfg_template}"
@@ -192,20 +268,28 @@ EOF
   fi
 
   if run_as_root test -f "${runtime_cfg_file}"; then
-    run_as_root cp "${runtime_cfg_file}" "${tmp_runtime_cfg}"
-    if run_as_root grep -q '^OPENCODE_FRONTEND_PATH=' "${tmp_runtime_cfg}"; then
-      run_as_root sed -i "s|^OPENCODE_FRONTEND_PATH=.*|OPENCODE_FRONTEND_PATH=\"${installed_frontend_path}\"|" "${tmp_runtime_cfg}"
+    # Check if config already has correct values — skip sed if so
+    local cfg_ok=1
+    run_as_root grep -q "^OPENCODE_FRONTEND_PATH=\"${installed_frontend_path}\"" "${runtime_cfg_file}" || cfg_ok=0
+    run_as_root grep -q "^OPENCODE_WEBCTL_PATH=\"${runtime_webctl_dst}\"" "${runtime_cfg_file}" || cfg_ok=0
+    if [[ "${cfg_ok}" -eq 1 ]]; then
+      log_ok "Runtime config up-to-date: ${runtime_cfg_file}"
     else
-      printf '\nOPENCODE_FRONTEND_PATH="%s"\n' "${installed_frontend_path}" >> "${tmp_runtime_cfg}"
+      run_as_root cp "${runtime_cfg_file}" "${tmp_runtime_cfg}"
+      if grep -q '^OPENCODE_FRONTEND_PATH=' "${tmp_runtime_cfg}"; then
+        sed -i "s|^OPENCODE_FRONTEND_PATH=.*|OPENCODE_FRONTEND_PATH=\"${installed_frontend_path}\"|" "${tmp_runtime_cfg}"
+      else
+        printf '\nOPENCODE_FRONTEND_PATH="%s"\n' "${installed_frontend_path}" >> "${tmp_runtime_cfg}"
+      fi
+      if grep -q '^OPENCODE_WEBCTL_PATH=' "${tmp_runtime_cfg}"; then
+        sed -i "s|^OPENCODE_WEBCTL_PATH=.*|OPENCODE_WEBCTL_PATH=\"${runtime_webctl_dst}\"|" "${tmp_runtime_cfg}"
+      else
+        printf 'OPENCODE_WEBCTL_PATH="%s"\n' "${runtime_webctl_dst}" >> "${tmp_runtime_cfg}"
+      fi
+      run_as_root install -m 644 "${tmp_runtime_cfg}" "${runtime_cfg_file}"
+      rm -f "${tmp_runtime_cfg}"
+      log_ok "Normalized runtime config: ${runtime_cfg_file}"
     fi
-    if run_as_root grep -q '^OPENCODE_WEBCTL_PATH=' "${tmp_runtime_cfg}"; then
-      run_as_root sed -i "s|^OPENCODE_WEBCTL_PATH=.*|OPENCODE_WEBCTL_PATH=\"${runtime_webctl_dst}\"|" "${tmp_runtime_cfg}"
-    else
-      printf 'OPENCODE_WEBCTL_PATH="%s"\n' "${runtime_webctl_dst}" >> "${tmp_runtime_cfg}"
-    fi
-    run_as_root install -m 644 "${tmp_runtime_cfg}" "${runtime_cfg_file}"
-    rm -f "${tmp_runtime_cfg}"
-    log_ok "Normalized runtime frontend path in: ${runtime_cfg_file}"
   else
     cp "${runtime_cfg_template}" "${tmp_runtime_cfg}"
     run_as_root install -m 644 "${tmp_runtime_cfg}" "${runtime_cfg_file}"
@@ -213,24 +297,47 @@ EOF
     log_ok "Created runtime config: ${runtime_cfg_file}"
   fi
 
-  log_info "Installing binary to /usr/local/bin/opencode..."
-  run_as_root install -m 755 "${ROOT_DIR}/dist/opencode-linux-x64/bin/opencode" "/usr/local/bin/opencode"
-
-  log_info "Installing internal MCP servers to /usr/local/lib/opencode/mcp..."
-  run_as_root install -d -m 755 "/usr/local/lib/opencode/mcp"
-  if [[ -d "${ROOT_DIR}/dist/opencode-linux-x64/mcp" ]]; then
-    for f in "${ROOT_DIR}/dist/opencode-linux-x64/mcp/"*; do
-      if [[ -f "$f" ]]; then
-        run_as_root install -m 755 "$f" "/usr/local/lib/opencode/mcp/$(basename "$f")"
-      fi
-    done
+  local bin_src="${ROOT_DIR}/dist/opencode-linux-x64/bin/opencode"
+  local bin_dst="/usr/local/bin/opencode"
+  if files_identical_root "${bin_src}" "${bin_dst}"; then
+    log_ok "Binary up-to-date: ${bin_dst}"
+  else
+    log_info "Installing binary to ${bin_dst}..."
+    run_as_root install -m 755 "${bin_src}" "${bin_dst}"
   fi
 
-  log_info "Installing web frontend to /usr/local/share/opencode/frontend..."
+  local mcp_src="${ROOT_DIR}/dist/opencode-linux-x64/mcp"
+  local mcp_dst="/usr/local/lib/opencode/mcp"
+  run_as_root install -d -m 755 "${mcp_dst}"
+  if [[ -d "${mcp_src}" ]]; then
+    local mcp_changed=0
+    for f in "${mcp_src}/"*; do
+      if [[ -f "$f" ]]; then
+        local mcp_name
+        mcp_name="$(basename "$f")"
+        if files_identical_root "$f" "${mcp_dst}/${mcp_name}"; then
+          continue
+        fi
+        run_as_root install -m 755 "$f" "${mcp_dst}/${mcp_name}"
+        mcp_changed=1
+      fi
+    done
+    if [[ "${mcp_changed}" -eq 0 ]]; then
+      log_ok "MCP servers up-to-date: ${mcp_dst}"
+    else
+      log_ok "Updated MCP servers in: ${mcp_dst}"
+    fi
+  fi
+
   run_as_root install -d -m 755 "/usr/local/share/opencode/frontend"
   if [[ -d "${ROOT_DIR}/packages/app/dist" ]]; then
-    run_as_root cp -r "${ROOT_DIR}/packages/app/dist/"* "/usr/local/share/opencode/frontend/"
-    run_as_root chown -R "${SYSTEM_SERVICE_USER}:${SYSTEM_SERVICE_USER}" "/usr/local/share/opencode/frontend"
+    if dirs_identical_root "${ROOT_DIR}/packages/app/dist" "/usr/local/share/opencode/frontend"; then
+      log_ok "Frontend up-to-date: ${installed_frontend_path}"
+    else
+      log_info "Installing web frontend to ${installed_frontend_path}..."
+      run_as_root cp -r "${ROOT_DIR}/packages/app/dist/"* "/usr/local/share/opencode/frontend/"
+      run_as_root chown -R "${SYSTEM_SERVICE_USER}:${SYSTEM_SERVICE_USER}" "/usr/local/share/opencode/frontend"
+    fi
   fi
 
   local unit_file="/etc/systemd/system/${SYSTEM_SERVICE_NAME}.service"
@@ -270,19 +377,33 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 EOF
 
-  run_as_root install -m 644 "${tmp_unit}" "${unit_file}"
-  rm -f "${tmp_unit}"
-  log_ok "Installed systemd unit: ${unit_file}"
+  local units_changed=0
+  if files_identical_root "${tmp_unit}" "${unit_file}"; then
+    rm -f "${tmp_unit}"
+    log_ok "Systemd unit up-to-date: ${unit_file}"
+  else
+    run_as_root install -m 644 "${tmp_unit}" "${unit_file}"
+    rm -f "${tmp_unit}"
+    log_ok "Installed systemd unit: ${unit_file}"
+    units_changed=1
+  fi
 
   if [[ -f "${daemon_template_src}" ]]; then
-    run_as_root install -m 644 "${daemon_template_src}" "${daemon_template_dst}"
-    log_ok "Installed per-user daemon unit template: ${daemon_template_dst}"
+    if files_identical_root "${daemon_template_src}" "${daemon_template_dst}"; then
+      log_ok "Daemon unit template up-to-date: ${daemon_template_dst}"
+    else
+      run_as_root install -m 644 "${daemon_template_src}" "${daemon_template_dst}"
+      log_ok "Installed per-user daemon unit template: ${daemon_template_dst}"
+      units_changed=1
+    fi
   else
     log_warn "Per-user daemon unit template not found: ${daemon_template_src}"
   fi
 
-  run_as_root systemctl daemon-reload
-  run_as_root systemctl enable "${SYSTEM_SERVICE_NAME}.service"
+  if [[ "${units_changed}" -eq 1 ]]; then
+    run_as_root systemctl daemon-reload
+  fi
+  run_as_root systemctl enable "${SYSTEM_SERVICE_NAME}.service" 2>/dev/null
   log_ok "Enabled service: ${SYSTEM_SERVICE_NAME}.service"
 
   SYSTEM_INIT_DONE=1
@@ -491,8 +612,21 @@ main() {
 
   ensure_command bun "Bun is required to continue."
 
-  log_info "Installing JS dependencies (bun install)..."
-  bun install
+  local lock_hash_file="${ROOT_DIR}/node_modules/.lock-hash"
+  local current_lock_hash=""
+  if [[ -f "${ROOT_DIR}/bun.lock" ]]; then
+    current_lock_hash="$(sha256sum "${ROOT_DIR}/bun.lock" | awk '{print $1}')"
+  fi
+  if [[ -n "${current_lock_hash}" && -f "${lock_hash_file}" ]] \
+     && [[ "$(cat "${lock_hash_file}")" == "${current_lock_hash}" ]]; then
+    log_ok "JS dependencies up-to-date (bun.lock unchanged)."
+  else
+    log_info "Installing JS dependencies (bun install)..."
+    bun install
+    if [[ -n "${current_lock_hash}" ]]; then
+      echo "${current_lock_hash}" > "${lock_hash_file}"
+    fi
+  fi
 
   log_info "Building backend binary (dist/opencode-linux-x64/bin/opencode)..."
   # skip-install to prevent recursive loops as bun install already triggered build.ts

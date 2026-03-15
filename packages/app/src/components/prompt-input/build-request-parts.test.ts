@@ -40,6 +40,26 @@ describe("buildRequestParts", () => {
     expect(result.optimisticParts.every((part) => part.sessionID === "ses_1" && part.messageID === "msg_1")).toBe(true)
   })
 
+  test("normalizes @planner mention to canonical plan agent", () => {
+    const prompt: Prompt = [{ type: "agent", name: "planner", content: "@planner", start: 0, end: 8 }]
+
+    const result = buildRequestParts({
+      prompt,
+      context: [],
+      images: [],
+      text: "@planner",
+      messageID: "msg_plan_alias",
+      sessionID: "ses_plan_alias",
+      sessionDirectory: "/repo",
+    })
+
+    const agentPart = result.requestParts.find((part) => part.type === "agent")
+    expect(agentPart).toBeDefined()
+    if (agentPart?.type === "agent") {
+      expect(agentPart.name).toBe("plan")
+    }
+  })
+
   test("deduplicates context files when prompt already includes same path", () => {
     const prompt: Prompt = [{ type: "file", path: "src/foo.ts", content: "@src/foo.ts", start: 0, end: 11 }]
 

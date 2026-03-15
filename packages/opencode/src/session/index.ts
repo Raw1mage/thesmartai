@@ -25,6 +25,7 @@ import { PermissionNext } from "@/permission/next"
 import { Global } from "@/global"
 import type { LanguageModelV2Usage } from "@ai-sdk/provider"
 import { iife } from "@/util/iife"
+import { plannerArtifacts, plannerRoot } from "./planner-layout"
 
 export namespace Session {
   const log = Log.create({ service: "session" })
@@ -220,12 +221,20 @@ export namespace Session {
   })
   export type MissionArtifactPaths = z.output<typeof MissionArtifactPaths>
 
+  export const MissionArtifactIntegrity = z.object({
+    implementationSpec: z.string(),
+    tasks: z.string(),
+    handoff: z.string(),
+  })
+  export type MissionArtifactIntegrity = z.output<typeof MissionArtifactIntegrity>
+
   export const MissionContract = z.object({
     source: z.literal("openspec_compiled_plan"),
     contract: z.literal("implementation_spec"),
     approvedAt: z.number(),
     planPath: z.string(),
     artifactPaths: MissionArtifactPaths,
+    artifactIntegrity: MissionArtifactIntegrity.optional(),
     executionReady: z.boolean(),
   })
   export type MissionContract = z.output<typeof MissionContract>
@@ -519,14 +528,11 @@ export namespace Session {
   }
 
   export function planRoot(input: { slug: string; time: { created: number } }) {
-    const changeSlug = [input.time.created, input.slug].join("-")
-    return Instance.project.vcs
-      ? path.join(Instance.worktree, "specs", "changes", changeSlug)
-      : path.join(Global.Path.data, "plans", changeSlug)
+    return plannerRoot(input)
   }
 
-  export function plan(input: { slug: string; time: { created: number } }) {
-    return path.join(planRoot(input), "implementation-spec.md")
+  export function plan(input: { slug: string; title?: string; time: { created: number } }) {
+    return plannerArtifacts(input).implementationSpec
   }
 
   export const get = fn(Identifier.schema("session"), async (id) => {

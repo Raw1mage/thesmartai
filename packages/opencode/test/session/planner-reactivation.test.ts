@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Instance } from "../../src/project/instance"
 import { Session } from "../../src/session"
 import { SessionPrompt } from "../../src/session/prompt"
+import { plannerArtifacts } from "../../src/session/planner-layout"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Question } from "../../src/question"
 import { Todo } from "../../src/session/todo"
@@ -117,17 +118,19 @@ describe("planner reactivation", () => {
           await Question.reply({ requestID: pending[0].id, answers: [["Yes"]] })
           await execute
 
-          expect(planPath).toContain("/specs/changes/")
+          expect(planPath).toContain("/specs/")
+          expect(planPath).not.toContain("/specs/changes/")
           expect(planPath).toEndWith("/implementation-spec.md")
           const planText = await Bun.file(planPath).text()
           expect(planText).toContain("## Goal")
           expect(planText).toContain("## Structured Execution Phases")
           expect(planText).toContain("## Handoff")
-          expect(await Bun.file(planPath.replace("implementation-spec.md", "proposal.md")).exists()).toBe(true)
-          expect(await Bun.file(planPath.replace("implementation-spec.md", "spec.md")).exists()).toBe(true)
-          expect(await Bun.file(planPath.replace("implementation-spec.md", "design.md")).exists()).toBe(true)
-          expect(await Bun.file(planPath.replace("implementation-spec.md", "tasks.md")).exists()).toBe(true)
-          expect(await Bun.file(planPath.replace("implementation-spec.md", "handoff.md")).exists()).toBe(true)
+          const artifacts = plannerArtifacts(session)
+          expect(await Bun.file(artifacts.proposal).exists()).toBe(true)
+          expect(await Bun.file(artifacts.spec).exists()).toBe(true)
+          expect(await Bun.file(artifacts.design).exists()).toBe(true)
+          expect(await Bun.file(artifacts.tasks).exists()).toBe(true)
+          expect(await Bun.file(artifacts.handoff).exists()).toBe(true)
           await Session.remove(session.id)
         },
       })
@@ -137,7 +140,83 @@ describe("planner reactivation", () => {
     }
   })
 
-  test("auto-routes non-trivial implementation requests into plan agent", async () => {
+  test("plan_enter reuses existing planner root after session title changes", async () => {
+    const originalClient = process.env.OPENCODE_CLIENT
+    process.env.OPENCODE_CLIENT = "app"
+
+    try {
+      await using tmp = await tmpdir({ git: true })
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const session = await Session.create({})
+          const initialArtifacts = plannerArtifacts({ ...session, title: undefined })
+
+          await Bun.write(
+            initialArtifacts.implementationSpec,
+            "# Implementation Spec\n\n## Goal\n- Keep planner root stable\n\n## Scope\n### IN\n- planner reuse\n\n### OUT\n- runtime rewrite\n\n## Assumptions\n- title may change\n\n## Stop Gates\n- stop on missing artifacts\n\n## Critical Files\n- packages/opencode/src/tool/plan.ts\n\n## Structured Execution Phases\n- Re-enter plan mode\n\n## Validation\n- Run planner tests\n\n## Handoff\n- Continue from same planner package\n",
+          )
+          await Bun.write(
+            initialArtifacts.proposal,
+            "# Proposal\n\n## Why\n- keep same root\n\n## What Changes\n- reuse planner package\n\n## Capabilities\n### New Capabilities\n- root-reuse: stable planner package\n\n### Modified Capabilities\n- planner-entry: prefers existing root\n\n## Impact\n- affects planner path reuse\n",
+          )
+          await Bun.write(
+            initialArtifacts.spec,
+            "# Spec\n\n## Purpose\n- reuse existing planner package\n\n## Requirements\n\n### Requirement: planner re-entry reuses same package\nThe system SHALL reuse the prior planner package for the same session when it already exists.\n\n#### Scenario: title changed after first entry\n- **GIVEN** an existing planner package\n- **WHEN** plan mode is re-entered\n- **THEN** the same package is reused\n\n## Acceptance Checks\n- no second planner root is created\n",
+          )
+          await Bun.write(
+            initialArtifacts.design,
+            "# Design\n\n## Context\n- session titles can change after first user prompt\n\n## Goals / Non-Goals\n**Goals:**\n- reuse planner package\n\n**Non-Goals:**\n- rename old package\n\n## Decisions\n- prefer existing root before minting a new one\n\n## Risks / Trade-offs\n- stale root reuse -> guard by checking implementation-spec existence\n\n## Critical Files\n- packages/opencode/src/tool/plan.ts\n",
+          )
+          await Bun.write(initialArtifacts.tasks, "# Tasks\n\n- [ ] Re-enter plan mode\n")
+          await Bun.write(
+            initialArtifacts.handoff,
+            "# Handoff\n\n## Execution Contract\n- Build agent must read implementation-spec.md first\n\n## Required Reads\n- implementation-spec.md\n- design.md\n- tasks.md\n\n## Stop Gates In Force\n- Preserve approval gates\n\n## Execution-Ready Checklist\n- [ ] Implementation spec is complete\n",
+          )
+
+          await Session.update(
+            session.id,
+            (draft) => {
+              draft.title = "Consolidate planner root reuse"
+            },
+            { touch: false },
+          )
+
+          const updated = await Session.get(session.id)
+          const titleArtifacts = plannerArtifacts(updated)
+          expect(titleArtifacts.root).not.toBe(initialArtifacts.root)
+
+          const { PlanEnterTool } = await import("../../src/tool/plan")
+          const tool = await PlanEnterTool.init()
+          const execute = tool.execute({}, {
+            sessionID: session.id,
+            abort: new AbortController().signal,
+            messageID: "msg_test_reuse",
+            callID: "call_test_reuse",
+            agent: "build",
+            messages: [],
+            metadata: async () => {},
+            ask: async () => [["Yes"]],
+            extra: {},
+          } as any)
+
+          const pending = await waitForPendingQuestion(session.id)
+          expect(pending.length).toBe(1)
+          await Question.reply({ requestID: pending[0].id, answers: [["Yes"]] })
+          await execute
+
+          expect(await Bun.file(initialArtifacts.implementationSpec).exists()).toBe(true)
+          expect(await Bun.file(titleArtifacts.implementationSpec).exists()).toBe(false)
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      if (originalClient === undefined) delete process.env.OPENCODE_CLIENT
+      else process.env.OPENCODE_CLIENT = originalClient
+    }
+  })
+
+  test("auto-routes non-trivial implementation requests into plan mode", async () => {
     const originalClient = process.env.OPENCODE_CLIENT
     process.env.OPENCODE_CLIENT = "app"
 
@@ -168,7 +247,7 @@ describe("planner reactivation", () => {
     }
   })
 
-  test("does not auto-route lightweight status questions into plan agent", async () => {
+  test("does not auto-route lightweight status questions into plan mode", async () => {
     const originalClient = process.env.OPENCODE_CLIENT
     process.env.OPENCODE_CLIENT = "app"
 
@@ -194,7 +273,7 @@ describe("planner reactivation", () => {
     }
   })
 
-  test("does not auto-route status-only requests into plan agent", async () => {
+  test("does not auto-route status-only requests into plan mode", async () => {
     const originalClient = process.env.OPENCODE_CLIENT
     process.env.OPENCODE_CLIENT = "app"
 
@@ -225,7 +304,7 @@ describe("planner reactivation", () => {
     }
   })
 
-  test("does not auto-route plain status questions into plan agent", async () => {
+  test("does not auto-route plain status questions into plan mode", async () => {
     const originalClient = process.env.OPENCODE_CLIENT
     process.env.OPENCODE_CLIENT = "app"
 
@@ -786,6 +865,14 @@ describe("planner reactivation", () => {
           expect(handoffPart.metadata?.handoff?.contract).toBe("implementation_spec")
           expect(handoffPart.text).toContain("structured todos/action metadata")
           expect(handoffPart.metadata?.handoff?.materializedTodos?.length).toBeGreaterThanOrEqual(3)
+          expect(handoffPart.metadata?.handoff?.todoMaterializationPolicy).toMatchObject({
+            source: "tasks.md unchecked checklist items",
+            includeChecked: false,
+            maxSeedItems: 8,
+            dependencyStrategy: "linear_chain",
+            firstTodoStatus: "in_progress",
+            remainingStatus: "pending",
+          })
           expect(handoffPart.metadata?.handoff?.missingSections).toEqual([])
           expect(handoffPart.metadata?.handoff?.clarificationMapping?.scope?.mappedTo).toContain(
             "implementation-spec.md#Scope",

@@ -265,4 +265,98 @@ describe("Session todo action metadata", () => {
       ).reason,
     ).toBe("target_not_active")
   })
+
+  it("preserves completed todos when a follow-up plan rewrites overlapping items", async () => {
+    const sessionID = "session_todo_merge_completed_preserved"
+    await Todo.update({
+      sessionID,
+      todos: [
+        {
+          id: "a",
+          content: "read restart docs and confirm scope",
+          status: "completed",
+          priority: "high",
+        },
+        { id: "b", content: "implement restart API", status: "completed", priority: "high" },
+        { id: "c", content: "validate restart flow", status: "in_progress", priority: "high" },
+      ],
+    })
+
+    await Todo.update({
+      sessionID,
+      todos: [
+        { id: "a", content: "read restart docs and confirm scope", status: "pending", priority: "high" },
+        { id: "b", content: "implement restart API", status: "pending", priority: "high" },
+        { id: "c", content: "validate restart flow", status: "pending", priority: "high" },
+        { id: "d", content: "update event sync notes", status: "pending", priority: "medium" },
+      ],
+    })
+
+    await expect(Todo.get(sessionID)).resolves.toEqual([
+      {
+        id: "a",
+        content: "read restart docs and confirm scope",
+        status: "completed",
+        priority: "high",
+        action: { kind: "implement", canDelegate: undefined },
+      },
+      {
+        id: "b",
+        content: "implement restart API",
+        status: "completed",
+        priority: "high",
+        action: { kind: "implement", canDelegate: undefined },
+      },
+      {
+        id: "c",
+        content: "validate restart flow",
+        status: "in_progress",
+        priority: "high",
+        action: { kind: "implement", canDelegate: undefined },
+      },
+      {
+        id: "d",
+        content: "update event sync notes",
+        status: "pending",
+        priority: "medium",
+        action: { kind: "implement", canDelegate: true },
+      },
+    ])
+  })
+
+  it("preserves cancelled todos when overlapping plans are rewritten", async () => {
+    const sessionID = "session_todo_merge_cancelled_preserved"
+    await Todo.update({
+      sessionID,
+      todos: [
+        { id: "a", content: "obsolete path", status: "cancelled", priority: "low" },
+        { id: "b", content: "active path", status: "in_progress", priority: "high" },
+      ],
+    })
+
+    await Todo.update({
+      sessionID,
+      todos: [
+        { id: "a", content: "obsolete path", status: "pending", priority: "low" },
+        { id: "b", content: "active path", status: "pending", priority: "high" },
+      ],
+    })
+
+    await expect(Todo.get(sessionID)).resolves.toEqual([
+      {
+        id: "a",
+        content: "obsolete path",
+        status: "cancelled",
+        priority: "low",
+        action: { kind: "implement", canDelegate: undefined },
+      },
+      {
+        id: "b",
+        content: "active path",
+        status: "in_progress",
+        priority: "high",
+        action: { kind: "implement", canDelegate: undefined },
+      },
+    ])
+  })
 })

@@ -65,6 +65,7 @@ export namespace Command {
     INIT: "init",
     REVIEW: "review",
     UPDATE_MODELS: "update_models",
+    PLAN: "plan",
   } as const
 
   const state = Instance.state(async () => {
@@ -102,15 +103,20 @@ export namespace Command {
           await Bus.publish(TuiEvent.ProviderRefresh, {})
           const data = await ModelsDev.get()
           const providerCount = Object.keys(data).length
-          const modelCount = Object.values(data).reduce(
-            (acc, p) => acc + Object.keys(p.models).length,
-            0,
-          )
+          const modelCount = Object.values(data).reduce((acc, p) => acc + Object.keys(p.models).length, 0)
           return {
             output: `✓ Models updated — ${providerCount} providers / ${modelCount} models`,
             title: "Models Updated",
           }
         },
+      },
+      [Default.PLAN]: {
+        name: Default.PLAN,
+        description: "enter planner-first discussion mode",
+        source: "command",
+        template:
+          "The user explicitly requested plan mode via /plan. If you are not already in plan mode, call plan_enter() immediately. If you are already in plan mode, continue planner-first discussion, spec refinement, and artifact maintenance without delegating to a planner-like subagent. Keep `/plan` aligned with the canonical plan-mode path.",
+        hints: [],
       },
     }
 

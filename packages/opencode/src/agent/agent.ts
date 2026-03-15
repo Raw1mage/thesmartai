@@ -87,7 +87,8 @@ export namespace Agent {
     return {
       build: {
         name: "build",
-        description: "The default agent. Executes tools based on configured permissions.",
+        description:
+          "Execution-first mode. Coordinates implementation work using the configured workflow and tool permissions.",
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -102,7 +103,8 @@ export namespace Agent {
       },
       plan: {
         name: "plan",
-        description: "Plan mode. Disallows all edit tools.",
+        description:
+          "Planner-first discussion agent. Maintains specs, decisions, and plan-derived todos before or during execution.",
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -111,11 +113,6 @@ export namespace Agent {
             plan_exit: "allow",
             external_directory: {
               [path.join(Global.Path.data, "plans", "*")]: "allow",
-            },
-            edit: {
-              "*": "deny",
-              [path.join(".opencode", "plans", "*.md")]: "allow",
-              [path.relative(Instance.worktree, path.join(Global.Path.data, path.join("plans", "*.md")))]: "allow",
             },
           }),
           user,

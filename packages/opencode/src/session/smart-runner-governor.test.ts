@@ -17,6 +17,7 @@ import {
   prefixSmartRunnerText,
   shouldRunSmartRunnerGovernorDryRun,
 } from "./smart-runner-governor"
+import { SessionPrompt } from "./prompt"
 
 describe("Smart Runner Governor", () => {
   it("only runs in dry-run mode when explicitly enabled and continuation is allowed", () => {
@@ -293,6 +294,63 @@ describe("Smart Runner Governor", () => {
         },
       },
     })
+  })
+
+  it("escalates adopted replan suggestions to replan_required instead of continuing", async () => {
+    const result = await SessionPrompt.handleSmartRunnerStopDecision({
+      sessionID: "ses_replan",
+      activeModel: { providerId: "openai", modelID: "gpt-5", accountId: "acct" } as any,
+      autonomousRounds: 1,
+      lastUser: { id: "m1", agent: "build", model: { providerId: "openai", modelID: "gpt-5" } } as any,
+      messages: [],
+      todos: [{ id: "t1", content: "current task", status: "pending", priority: "high" }],
+      decision: {
+        continue: true,
+        reason: "todo_pending",
+        text: "continue",
+        todo: { id: "t1", content: "current task", status: "pending", priority: "high" },
+      },
+      getConfig: async () => ({ enabled: true, assist: false }),
+      evaluateGovernor: async () =>
+        ({
+          source: "smart_runner_governor",
+          dryRun: true,
+          status: "advisory",
+          createdAt: 1,
+          deterministicReason: "todo_pending",
+          suggestion: {
+            kind: "replan",
+            replanAdoption: {
+              replaceTodoIDs: ["t1"],
+              addedTodos: [{ id: "t2", content: "replanned", status: "pending", priority: "high" }],
+            },
+          },
+          decision: {
+            situation: "plan_invalid",
+            assessment: "drift",
+            decision: "replan",
+            reason: "needs planner handback",
+            nextAction: { kind: "replan_todos", narration: "Need planner re-entry.", skillHints: ["agent-workflow"] },
+            needsUserInput: false,
+            confidence: "high",
+          },
+        }) as any,
+      listQuestions: async () => [],
+      persistTrace: async () => undefined,
+      replan: async () => ({
+        adopted: true,
+        reason: "adopted",
+        decision: {
+          continue: true,
+          reason: "todo_pending",
+          text: "continue",
+          todo: { id: "t2", content: "replanned", status: "pending", priority: "high" },
+        },
+        todos: [{ id: "t2", content: "replanned", status: "pending", priority: "high" }],
+      }),
+    } as any)
+
+    expect(result.kind).toBe("replan_required")
   })
 
   it("marks when a replan proposal was host-adopted", () => {

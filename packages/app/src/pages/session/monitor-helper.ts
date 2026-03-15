@@ -26,6 +26,7 @@ export type MonitorDisplayCard = {
 export type RunnerDisplayCard = {
   badge: "R"
   title: string
+  headline?: string
   chips: Array<{ label: string; tone: "neutral" | "info" | "success" | "warning" }>
   lines: string[]
   tools: string[]
@@ -90,14 +91,14 @@ export function buildRunnerDisplayCard(input: {
 }): RunnerDisplayCard {
   const queue = input.autonomousHealth?.queue
   const queuedLabel = queue?.hasPendingContinuation
-    ? `${queue.reason?.replaceAll("_", " ") ?? "pending continuation"}${typeof queue.roundCount === "number" ? ` (round ${queue.roundCount})` : ""}`
+    ? `Queue: ${queue.reason?.replaceAll("_", " ") ?? "pending continuation"}${typeof queue.roundCount === "number" ? ` (round ${queue.roundCount})` : ""}`
     : undefined
-  const title =
+  const headline =
     input.currentStep?.content?.trim() ||
     queuedLabel ||
     input.autonomousHealth?.summary?.label ||
     (input.status?.type && input.status.type !== "idle" ? input.status.type : undefined) ||
-    "idle"
+    "Idle"
 
   const lines = [...(input.processLines ?? [])]
   if (lines.length === 0) lines.push(`Runtime: ${input.status?.type ?? "idle"}`)
@@ -145,7 +146,8 @@ export function buildRunnerDisplayCard(input: {
 
   return {
     badge: "R",
-    title,
+    title: "Runner",
+    headline,
     chips: [...(input.methodChips ?? [])],
     lines,
     tools: [...tools],

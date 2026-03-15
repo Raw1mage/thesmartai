@@ -103,6 +103,12 @@ The `cms` branch is the primary product line for this environment, featuring sig
 - `script/runtime-init-check.ts` is a **dev-only preflight** wired into `bun run dev` variants. Its job is to ensure baseline XDG runtime dirs/files exist from `templates/manifest.json` before local development startup. Production/runtime install responsibility remains with `install.sh` + `script/install.ts`, not with this dev helper.
 - Production install normalizes `OPENCODE_FRONTEND_PATH` to the installed frontend bundle under `/usr/local/share/opencode/frontend`, so installed systemd/web runtimes do not depend on repo-local `packages/app/dist` paths.
 - `./webctl.sh web-refresh` is intentionally repo-detached for installed production runtimes: it is now restart-only, and no longer rebuilds or redeploys frontend/binary assets from the source checkout. Any production asset rollout must go through an explicit install/deploy step.
+- Controlled Web restart now has an explicit runtime control-path contract:
+  - Web settings may trigger `POST /api/v2/global/web/restart`
+  - backend restart control resolves the script path from runtime configuration (`OPENCODE_WEBCTL_PATH`, default `/etc/opencode/webctl.sh`)
+  - `webctl.sh restart` intentionally preserves the currently active runtime mode; dev returns to dev semantics, production returns to production semantics
+  - frontend then waits for `/api/v2/global/health` to recover before reloading
+  - this is **action-triggered restart recovery**, not a generic always-on auto-refresh channel
 - `./webctl.sh dev-start` now declares internal MCP source mode explicitly (`OPENCODE_INTERNAL_MCP_MODE=source` + `OPENCODE_REPO_ROOT`). In that mode, project-owned MCP entries such as `system-manager` and `refacting-merger` are deterministically normalized to `bun <repo>/packages/mcp/...` commands instead of `/usr/local/lib/opencode/mcp/*` system binaries; enable/disable still remains config-driven via each MCP entry's `enabled` flag.
 
 #### Web multi-user runtime architecture
@@ -126,8 +132,33 @@ The `cms` branch is the primary product line for this environment, featuring sig
 
 - Session records now also carry persisted workflow metadata (`workflow.autonomous`, `workflow.state`, stop reason, timestamps) as the foundation for autonomous-session continuation.
 - Session records now also carry a persisted runner mission contract (`session.mission`) that acts as the authority boundary for autonomous execution. Current mission contract shape is OpenSpec-derived: autonomous continuation is only allowed when the session carries an approved `openspec_compiled_plan` / `implementation_spec` mission marked `executionReady=true`.
+- `plan` / `build` semantics are now being reinterpreted around **discussion emphasis vs execution emphasis**, not naive readonly vs writable separation:
+  - `plan` is the planner-first discussion agent responsible for spec refinement, decision capture, and plan-derived todo maintenance
+  - `build` is the execution-first workflow mode under which coding/review/testing/docs/explore agents advance the current plan
+  - this means entering `plan` does not conceptually imply “absolutely no edits ever”, and being in `build` does not imply “planning is forbidden”; instead, the difference is the default responsibility and gate posture
 - In-process continuation is now wired inside the prompt loop: after an assistant round completes, the runtime can synthesize the next user step from outstanding todos when autonomous mode is enabled and no blocker/approval stop condition is active.
 - `plan_exit` is now the canonical bridge from planning to runner execution authority: after companion artifacts pass completeness gates and the user approves the handoff, runtime both materializes structured todos and persists the approved mission contract onto the session. This means `/specs` plans are no longer just planner-side artifacts; they are the first supported runtime mission source for autonomous runner work.
+- Todo is now treated as a **runtime projection of planner artifacts**, not the primary authoring surface for real feature work:
+  - the durable source of truth for planned work is the active planner package under `specs/<date>_<plan-title>/`
+  - `tasks.md`/handoff drive runtime todo materialization
+  - build-side agents and autorunner consume todo as the immediate execution surface
+  - sidebar/work monitor is the observability surface for that runtime todo state, not the planning source of truth
+  - visible runtime todo should remain stable unless planner artifacts/replan/status actually changed; it must not drift just because the assistant internally reorganized its own short-term working notes
+  - when the system asks the user for a decision, it should reference the same planner-derived runtime todo names shown in sidebar/work monitor
+- Planner package layout is now:
+  - root: `specs/<date>_<plan-title>/`
+  - title segment uses a slugified session title when available; default generated session titles fall back to session slug
+  - companion artifacts remain `implementation-spec.md`, `proposal.md`, `spec.md`, `design.md`, `tasks.md`, and `handoff.md`
+- Planner re-entry now prefers continuity over recomputing a fresh root:
+  - if `session.mission.artifactPaths.root` exists and still contains an implementation spec, planner reuses that package
+  - otherwise planner checks current title-derived root and immutable slug-derived root for an existing package before creating a new one
+  - this prevents the same workstream from fragmenting into multiple planner roots just because session title changed after the first real user prompt
+- `tasks.md` checklist parsing and runtime todo lineage now have an explicit shared contract:
+  - shared parser lives in `packages/opencode/src/session/tasks-checklist.ts`
+  - planner materialization uses **unchecked** checklist items as the runtime todo seed
+  - mission consumption may read both unchecked and checked items for bounded execution trace purposes
+  - current handoff metadata now exposes `todoMaterializationPolicy` with the active defaults (`maxSeedItems=8`, first todo `in_progress/high`, remaining todos `pending/medium`, `linear_chain` dependency strategy)
+- Because planner discussions are iterative, overlapping replans no longer fully overwrite todo truth. `Todo.update()` now preserves overlapping `completed`, `cancelled`, and `in_progress` items so a fresh plan skeleton cannot silently erase visible progress state.
 - Autonomous turns now also emit short transcript-visible progress narration messages (`continue` / `pause` / `complete`) so the shared session surface can explain what the runtime is doing without requiring the user to inspect only sidebar state.
 - Incoming real user prompts may now safely preempt a busy autonomous synthetic run. Runtime cleanup is keyed by per-run identity so an old aborted loop cannot accidentally clear the replacement loop.
 - A durable continuation queue foundation now exists under session storage, and the server runtime now starts an in-process autonomous supervisor that scans pending continuation records and re-enters session loops for idle autonomous sessions.
@@ -135,6 +166,14 @@ The `cms` branch is the primary product line for this environment, featuring sig
 - Delegated execution baseline is now implemented on top of that continuation path: synthetic continuation metadata includes a bounded delegation contract (role/source/todo trace), and runtime only emits bounded roles `coding` / `testing` / `docs` / `review` / `generic`.
 - When mission artifacts cannot be consumed, autonomous continuation now fail-fast stops with `stopReason=mission_not_consumable` and records `workflow.mission_not_consumable` anomaly evidence (no silent fallback to todo-only continuation).
 - `mission_not_approved` is now a first-class stop reason in the autonomous continuation pipeline. When a session lacks an approved mission contract, runtime moves workflow state to `waiting_user` with `stopReason=mission_not_approved` instead of silently continuing from todos alone.
+- Current autorunner compatibility baseline:
+  - autorunner is already structurally coupled to approved mission artifacts (`implementation-spec.md`, `tasks.md`, `handoff.md`) and current todo/workflow state
+  - this is sufficient for plan-derived continuation, queue resume, and gate-aware stopping
+  - autorunner now has a phase-1 dedicated runner-level contract asset at `packages/opencode/src/session/prompt/runner.txt`, and `workflow-runner.ts` prepends that contract to autonomous build-mode continuation instructions
+  - however, this is still not full session-governor formalization: stop-gate ownership remains deterministic in runtime code, and deeper planner-boundary/runtime-ownership binding is still pending
+- Planner/runner handback boundaries now include:
+  - `spec_dirty`: approved planner artifacts changed after approval; autonomous execution must stop and return to planner
+  - `replan_required`: host-adopted replan/governor signal requires planner re-entry instead of silent todo reshaping continuation
 - A new session-scoped runtime event journal baseline exists in `packages/opencode/src/system/runtime-event-service.ts`. It persists structured runtime events with fixed fields (`ts / level / domain / eventType / sessionID / todoID? / anomalyFlags[] / payload`) and currently serves as the minimal evidence substrate for runner/workflow anomalies.
 - First anomaly integration is now active for stale delegated-subagent waits: when workflow evaluation stops at `wait_subagent` but no active subtask remains and todo state still says `waitingOn=subagent`, runtime records `workflow.unreconciled_wait_subagent` into that event journal instead of leaving the inconsistency purely implicit in scattered state surfaces.
 - Web prompt footer now exposes a direct autonomous entrypoint in `packages/app/src/components/prompt-input.tsx`: the first footer provider label (for example `OpenAI`) doubles as the autonomous toggle. When enabled, that provider label switches to a highlighted active state; clicking it calls `POST /api/v2/session/:sessionID/autonomous`, which persists `workflow.autonomous.enabled` and, when enabling an idle session, immediately enqueues a synthetic autonomous continue turn so the in-process supervisor can resume work without waiting for a manual follow-up prompt. In per-user daemon routed mode, this same endpoint follows the existing `routeSessionMutationEnabled` path and is forwarded via `UserDaemonManager.callSessionAutonomous(...)` so autonomous toggles and continuation enqueue remain user-scoped.
@@ -1855,6 +1894,7 @@ Canonical launch paths:
 - **Dev**: `./webctl.sh dev-start` (reads `/etc/opencode/opencode.cfg`, injects `OPENCODE_LAUNCH_MODE=webctl`)
 - **Prod**: `./webctl.sh web-start` (systemd service with `EnvironmentFile=/etc/opencode/opencode.cfg`, injects `OPENCODE_LAUNCH_MODE=systemd`)
 - **Mode-aware refresh shortcut**: `./webctl.sh restart` resolves to `dev-refresh` for active dev runtime, `web-refresh` for active production runtime, and refreshes both when both modes are active.
+- Installed control-path calls still follow that same mode-preservation rule; success is defined by restart recovery back into the active mode, not by forcing a specific mode branch.
 - **Dev restart cleanup contract**: the detached dev restart worker performs `stop -> flush -> start`; `flush` targets **stale interactive runtime trees** (including stale `opencode` / internal MCP trees), while explicitly excluding active webctl-tracked trees, live-TTY interactive roots, restart workers, and systemd-owned service trees. Broad bun-wide kill patterns remain forbidden.
 
 Direct manual `opencode web` launch is guarded by launch-mode checks to prevent configuration drift.

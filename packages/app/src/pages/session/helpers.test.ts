@@ -384,7 +384,7 @@ describe("getSessionStatusSummary", () => {
     expect(summary.processLines).toContain("Stop: Wait subagent")
     expect(summary.processLines).toContain("Runtime: busy")
     expect(summary.processLines).toContain("Health: Degraded: workflow.unreconciled_wait_subagent")
-    expect(summary.processLines).toContain("Queue: todo in progress (round 2)")
+    expect(summary.processLines).toContain("Queue: Todo in progress (round 2)")
     expect(summary.processLines).toContain("Anomalies: 1")
     expect(summary.processLines).toContain("Latest anomaly: workflow.unreconciled_wait_subagent")
     expect(summary.processLines).toContain("Lease: supervisor:test")

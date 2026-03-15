@@ -73,13 +73,13 @@ It should be a small artifact set.
 
 ```text
 specs/
-  changes/
-    <change-slug>/
-      proposal.md
-      spec.md
-      design.md
-      tasks.md
-      handoff.md
+  <date>_<plan-title>/
+    implementation-spec.md
+    proposal.md
+    spec.md
+    design.md
+    tasks.md
+    handoff.md
 ```
 
 This mirrors OpenSpec's artifact layering, but is integrated into OpenCode's planner/runtime.
@@ -87,21 +87,27 @@ This mirrors OpenSpec's artifact layering, but is integrated into OpenCode's pla
 ## 4.2 Role of each artifact
 
 ### proposal.md
+
 Captures:
+
 - why this work exists
 - scope / non-goals
 - user intent and constraints
 - high-level success target
 
 ### spec.md
+
 Captures:
+
 - behavioral requirements
 - scenarios / acceptance conditions
 - externally visible contract
 - what changes, not how it is implemented
 
 ### design.md
+
 Captures:
+
 - technical approach
 - architecture boundaries
 - data flow / state flow
@@ -109,18 +115,70 @@ Captures:
 - critical files/modules
 
 ### tasks.md
+
 Captures:
+
 - execution phases
 - implementation checklist
 - ordering / dependencies
 - validation tasks
 - todo graph seed for runtime materialization
 
+Checklist contract:
+
+- unchecked checklist items (`- [ ] ...` / `* [ ] ...`) are the planner handoff seed for runtime todo materialization
+- checked items may still remain in the document for human progress readability, but they are not used as new todo seeds during planner handoff
+- runtime policy defaults should be treated as explicit contract, not hidden implementation trivia
+- once runtime todo is materialized, user-facing progress reporting and execution decisions must refer to that same planner-derived todo set rather than an assistant-invented parallel checklist
+
+## 4.3 Todo model (planner -> runtime)
+
+Todo in OpenCode planner is **not** a freeform scratchpad.
+It is the runtime projection of the approved plan.
+
+### Source of truth
+
+1. planner artifacts define the work
+2. `tasks.md` defines the execution ledger
+3. runtime todo is materialized from `tasks.md`
+
+Therefore:
+
+- todo does not become a second planning surface
+- assistant-internal thought organization does not override todo
+- conversational turns alone must not mutate visible todo truth
+
+### Stability rule
+
+Runtime todo should be relatively stable.
+It may change when:
+
+- planner artifacts change
+- a replan is explicitly adopted
+- runtime status changes (`pending` -> `in_progress` -> `completed` / `cancelled`)
+
+It should **not** change merely because:
+
+- the assistant wants to reorganize its private working notes
+- the user asks a clarifying question that has not yet been written back into the plan
+- the assistant wants a shorter temporary checklist for itself
+
+### Visibility rule
+
+Once runtime todo is visible in sidebar/work monitor:
+
+- status reporting must use that same task naming
+- user decision prompts must reference that same visible todo naming
+- if temporary internal tracking is needed, it must be reconciled back into planner-derived todo before asking the user for decisions
+
 ### handoff.md
+
 Captures:
+
 - how build/autorunner should consume the artifacts
 - what must be done before autonomous execution continues
 - any remaining approval / stop gate / unresolved risk items
+- the exact naming that execution/status reporting must reuse when referring to remaining work
 
 ---
 
@@ -134,6 +192,7 @@ Spec describes behavior and verifiable expectations.
 It should avoid implementation details whenever possible.
 
 Good content:
+
 - user-visible behavior
 - downstream/system-visible behavior
 - failure conditions
@@ -143,6 +202,7 @@ Good content:
 
 Design explains implementation approach.
 It contains:
+
 - architectural shape
 - technical decisions
 - trade-offs
@@ -183,7 +243,7 @@ Instead:
 
 1. user states intent in conversation
 2. planner explores and asks questions
-3. planner updates artifacts under `specs/changes/<slug>/`
+3. planner updates artifacts under `specs/<date>_<plan-title>/`
 4. user refines intent
 5. planner tightens artifacts again
 6. eventually artifacts become execution-ready
@@ -193,6 +253,7 @@ This makes the planner an active collaborator, not just a document generator.
 ## 6.3 Stop gates are explicit runtime constraints
 
 Artifacts must preserve runtime control information:
+
 - approval gates
 - decision gates
 - blocker conditions
@@ -231,20 +292,26 @@ The planner may revisit any earlier artifact as understanding improves.
 ## 8. Suggested Minimum Template Rules
 
 ## proposal.md
+
 Must include:
+
 - intent
 - scope
 - non-goals
 - constraints
 
 ## spec.md
+
 Must include:
+
 - requirements
 - scenarios
 - acceptance checks
 
 ## design.md
+
 Must include:
+
 - context
 - goals / non-goals
 - decisions
@@ -252,14 +319,18 @@ Must include:
 - critical files
 
 ## tasks.md
+
 Must include:
+
 - ordered execution groups
 - checkable tasks
 - validation tasks
 - dependency-aware steps
 
 ## handoff.md
+
 Must include:
+
 - what executor must read first
 - expected runtime todo seed
 - stop gates still in force
@@ -271,7 +342,7 @@ Must include:
 
 ## Phase A — planner base migration
 
-Move the planner's artifact home from ad hoc plan paths toward repo-local `specs/changes/<slug>/...`.
+Move the planner's artifact home from ad hoc plan paths toward repo-local `specs/<date>_<plan-title>/...`.
 
 ## Phase B — planner writes artifact set, not one file
 
@@ -281,6 +352,15 @@ Initially this may still be bootstrapped from one template, but it should evolve
 
 Build/autorunner should materialize `tasks.md` (or equivalent execution section) into runtime todo graph.
 
+### Phase C1 — todo alignment rule
+
+After todo materialization:
+
+- sidebar/runtime todo becomes the visible execution ledger
+- follow-up execution should update and report against those same items
+- assistants should not replace the visible todo list with a private parallel checklist
+- if internal work tracking is temporarily needed, it must be reconciled back into planner-derived runtime todo before asking the user for decisions
+
 ## Phase D — spec completeness gate
 
 Before leaving plan mode, planner should validate required sections and ask follow-up questions when artifacts are incomplete.
@@ -288,6 +368,7 @@ Before leaving plan mode, planner should validate required sections and ask foll
 ## Phase E — verify and archive loop
 
 Later, implementation should be checked against:
+
 - spec
 - design
 - tasks
@@ -323,7 +404,7 @@ This methodology is successful when:
 
 ## 12. Immediate Next Steps
 
-1. migrate planner base path into `specs/changes/<slug>/`
+1. migrate planner base path into `specs/<date>_<plan-title>/`
 2. keep the current structured template while changing storage location
 3. then split the current single implementation-spec into:
    - proposal.md

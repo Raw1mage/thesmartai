@@ -322,7 +322,13 @@ const installShellProfile = async () => {
   }
 }
 
-const installBinary = () => {
+const fileHash = async (filePath: string): Promise<string> => {
+  const hasher = new Bun.CryptoHasher("sha256")
+  hasher.update(await Bun.file(filePath).arrayBuffer())
+  return hasher.digest("hex")
+}
+
+const installBinary = async () => {
   if (!fs.existsSync(builtBinaryPath)) {
     throw new Error(`找不到建置輸出: ${builtBinaryPath}`)
   }
@@ -330,6 +336,17 @@ const installBinary = () => {
   ensureDir(installDir)
 
   const destination = path.join(installDir, binaryName)
+
+  // Skip if destination exists and has identical content
+  if (fs.existsSync(destination)) {
+    const srcHash = await fileHash(builtBinaryPath)
+    const dstHash = await fileHash(destination)
+    if (srcHash === dstHash) {
+      console.log(`Binary 已是最新: ${destination}`)
+      return
+    }
+  }
+
   console.log(`將 ${path.basename(builtBinaryPath)} 安裝到 ${destination}`)
 
   try {
@@ -351,7 +368,7 @@ const installBinary = () => {
 try {
   const entries = await loadManifestEntries()
   await runBuild()
-  installBinary()
+  await installBinary()
   await migrateLegacyOpencode(entries)
   // cleanupToCyclebin 已移除：install 不應清理使用者資料
   await installTemplates(entries)

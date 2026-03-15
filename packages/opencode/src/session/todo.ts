@@ -93,6 +93,47 @@ export namespace Todo {
     return todos.map(enrich)
   }
 
+  function normalizeContent(content: string) {
+    return content.trim().toLowerCase().replace(/\s+/g, " ")
+  }
+
+  function mergePreservingProgress(current: Info[], incoming: Info[]) {
+    if (!current.length) return enrichAll(incoming)
+    if (!incoming.length) return []
+
+    const enrichedCurrent = enrichAll(current)
+    const enrichedIncoming = enrichAll(incoming)
+    const currentByID = new Map(enrichedCurrent.map((todo) => [todo.id, todo]))
+    const currentByContent = new Map(enrichedCurrent.map((todo) => [normalizeContent(todo.content), todo]))
+
+    let overlap = 0
+    for (const todo of enrichedIncoming) {
+      if (currentByID.has(todo.id) || currentByContent.has(normalizeContent(todo.content))) overlap += 1
+    }
+
+    if (overlap === 0) return enrichedIncoming
+
+    return enrichedIncoming.map((todo) => {
+      const previous = currentByID.get(todo.id) ?? currentByContent.get(normalizeContent(todo.content))
+      if (!previous) return todo
+      if (previous.status === "completed" || previous.status === "cancelled") {
+        return {
+          ...todo,
+          status: previous.status,
+          action: previous.action ?? todo.action,
+        }
+      }
+      if (previous.status === "in_progress" && todo.status === "pending") {
+        return {
+          ...todo,
+          status: "in_progress",
+          action: previous.action ?? todo.action,
+        }
+      }
+      return todo
+    })
+  }
+
   export function isDependencyReady(todo: Info, todos: Info[]) {
     const deps = todo.action?.dependsOn
     if (!deps?.length) return true
@@ -236,7 +277,8 @@ export namespace Todo {
   }
 
   export async function update(input: { sessionID: string; todos: Info[] }) {
-    const todos = enrichAll(input.todos)
+    const current = await get(input.sessionID)
+    const todos = mergePreservingProgress(current, input.todos)
     await Storage.write(["todo", input.sessionID], todos)
     Bus.publish(Event.Updated, {
       sessionID: input.sessionID,

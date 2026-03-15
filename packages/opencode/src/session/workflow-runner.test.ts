@@ -34,16 +34,16 @@ function approvedMission() {
     source: "openspec_compiled_plan" as const,
     contract: "implementation_spec" as const,
     approvedAt: 1,
-    planPath: "specs/changes/test/implementation-spec.md",
+    planPath: "specs/20260315_test/implementation-spec.md",
     executionReady: true,
     artifactPaths: {
-      root: "specs/changes/test",
-      implementationSpec: "specs/changes/test/implementation-spec.md",
-      proposal: "specs/changes/test/proposal.md",
-      spec: "specs/changes/test/spec.md",
-      design: "specs/changes/test/design.md",
-      tasks: "specs/changes/test/tasks.md",
-      handoff: "specs/changes/test/handoff.md",
+      root: "specs/20260315_test",
+      implementationSpec: "specs/20260315_test/implementation-spec.md",
+      proposal: "specs/20260315_test/proposal.md",
+      spec: "specs/20260315_test/spec.md",
+      design: "specs/20260315_test/design.md",
+      tasks: "specs/20260315_test/tasks.md",
+      handoff: "specs/20260315_test/handoff.md",
     },
   }
 }
@@ -72,9 +72,12 @@ describe("Session workflow runner", () => {
     expect(decision).toEqual({
       continue: true,
       reason: "todo_pending",
-      text: "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision.",
+      text: expect.stringContaining(
+        "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision.",
+      ),
       todo: { id: "a", content: "next", status: "pending", priority: "high" },
     })
+    expect(decision.text).toContain("You are the runner contract for autonomous build-mode continuation.")
   })
 
   it("uses planner contract to continue in-progress work before starting new todos", () => {
@@ -96,9 +99,28 @@ describe("Session workflow runner", () => {
     ).toEqual({
       type: "continue",
       reason: "todo_in_progress",
-      text: "Continue the task already in progress. Finish or unblock it before starting new work, unless reprioritization is clearly necessary.",
+      text: expect.stringContaining(
+        "Continue the task already in progress. Finish or unblock it before starting new work, unless reprioritization is clearly necessary.",
+      ),
       todo: { id: "a", content: "finish current", status: "in_progress", priority: "high" },
     })
+    const result = planAutonomousNextAction({
+      session: {
+        parentID: undefined,
+        mission: approvedMission(),
+        workflow: {
+          ...Session.defaultWorkflow(1),
+          autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
+          state: "waiting_user",
+        },
+        time: { created: 1, updated: 1 },
+      },
+      todos: [{ id: "a", content: "finish current", status: "in_progress", priority: "high" }],
+      roundCount: 0,
+    })
+    expect(result.type).toBe("continue")
+    if (result.type !== "continue") throw new Error("expected continue action")
+    expect(result.text).toContain("You are the runner contract for autonomous build-mode continuation.")
   })
 
   it("stops autonomous enqueue when subagent task work is still active", () => {
@@ -293,7 +315,9 @@ describe("Session workflow runner", () => {
     ).toEqual({
       type: "continue",
       reason: "todo_pending",
-      text: "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision.",
+      text: expect.stringContaining(
+        "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision.",
+      ),
       todo: { id: "first", content: "finish prerequisite", status: "pending", priority: "high" },
     })
   })
@@ -331,7 +355,9 @@ describe("Session workflow runner", () => {
     ).toEqual({
       type: "continue",
       reason: "todo_pending",
-      text: "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision.",
+      text: expect.stringContaining(
+        "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision.",
+      ),
       todo: { id: "done_later", content: "prereq", status: "pending", priority: "high" },
     })
   })
@@ -346,12 +372,12 @@ describe("Session workflow runner", () => {
       }),
     ).toEqual({
       kind: "continue",
-      text: "Starting next planned step: implement replanning",
+      text: "Runner starting next planned step: implement replanning",
     })
 
     expect(describeAutonomousNextAction({ type: "stop", reason: "wait_subagent" })).toEqual({
       kind: "pause",
-      text: "Paused: a delegated subagent task is still running.",
+      text: "Runner paused: a delegated subagent task is still running.",
     })
 
     expect(describeAutonomousNextAction({ type: "stop", reason: "mission_not_approved" })).toEqual({
@@ -493,7 +519,9 @@ describe("Session workflow runner", () => {
     expect(decision).toEqual({
       continue: true,
       reason: "todo_pending",
-      text: "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision.",
+      text: expect.stringContaining(
+        "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision.",
+      ),
       todo: { id: "a", content: "next", status: "pending", priority: "high" },
     })
   })
@@ -1028,7 +1056,7 @@ describe("Session workflow runner", () => {
           title: "mission metadata test",
           directory: tmp.path,
         })
-        const planRoot = path.join(tmp.path, "specs", "changes", "test")
+        const planRoot = path.join(tmp.path, "specs", "20260315_test")
         await Bun.write(
           path.join(planRoot, "implementation-spec.md"),
           "# Implementation Spec\n\n## Goal\n- Ship mission metadata\n\n## Scope\n### IN\n- mission runtime\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- pause on artifact mismatch\n\n## Critical Files\n- packages/opencode/src/session/workflow-runner.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run workflow-runner tests\n\n## Handoff\n- Continue from approved mission\n",
@@ -1069,7 +1097,7 @@ describe("Session workflow runner", () => {
           source: "openspec_compiled_plan",
           contract: "implementation_spec",
           executionReady: true,
-          planPath: "specs/changes/test/implementation-spec.md",
+          planPath: "specs/20260315_test/implementation-spec.md",
         })
       },
     })
@@ -1085,7 +1113,7 @@ describe("Session workflow runner", () => {
           title: "mission consumption metadata test",
           directory: tmp.path,
         })
-        const planRoot = path.join(tmp.path, "specs", "changes", "test")
+        const planRoot = path.join(tmp.path, "specs", "20260315_test")
         await Bun.write(
           path.join(planRoot, "implementation-spec.md"),
           "# Implementation Spec\n\n## Goal\n- Ship mission consumption\n\n## Scope\n### IN\n- runner mission\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- pause on artifact mismatch\n\n## Critical Files\n- packages/opencode/src/session/workflow-runner.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run workflow-runner tests\n\n## Handoff\n- Continue from approved mission\n",
@@ -1129,9 +1157,9 @@ describe("Session workflow runner", () => {
           source: "openspec_compiled_plan",
           contract: "implementation_spec",
           consumedArtifacts: {
-            implementationSpec: "specs/changes/test/implementation-spec.md",
-            tasks: "specs/changes/test/tasks.md",
-            handoff: "specs/changes/test/handoff.md",
+            implementationSpec: "specs/20260315_test/implementation-spec.md",
+            tasks: "specs/20260315_test/tasks.md",
+            handoff: "specs/20260315_test/handoff.md",
           },
         })
         expect(part.metadata?.missionConsumption?.executionChecklist.length).toBeGreaterThan(0)
@@ -1149,7 +1177,7 @@ describe("Session workflow runner", () => {
           title: "delegation metadata test",
           directory: tmp.path,
         })
-        const planRoot = path.join(tmp.path, "specs", "changes", "test")
+        const planRoot = path.join(tmp.path, "specs", "20260315_test")
         await Bun.write(
           path.join(planRoot, "implementation-spec.md"),
           "# Implementation Spec\n\n## Goal\n- Ship delegation metadata\n\n## Scope\n### IN\n- workflow runner\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- pause on artifact mismatch\n\n## Critical Files\n- packages/opencode/src/session/workflow-runner.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run workflow-runner tests\n\n## Handoff\n- Continue from approved mission\n",
@@ -1336,6 +1364,35 @@ describe("Session workflow runner", () => {
           eventType: "workflow.mission_not_consumable",
           anomalyFlags: ["mission_not_consumable"],
         })
+      },
+    })
+  })
+
+  it("maps changed approved artifacts to spec_dirty stop reason", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.setMission({
+          sessionID: session.id,
+          mission: {
+            ...approvedMission(),
+            artifactIntegrity: {
+              implementationSpec: "bad_impl",
+              tasks: "bad_tasks",
+              handoff: "bad_handoff",
+            },
+          },
+        })
+        await Session.updateAutonomous({ sessionID: session.id, policy: { enabled: true } })
+        await Todo.update({
+          sessionID: session.id,
+          todos: [{ id: "todo_next", content: "next approved step", status: "pending", priority: "high" }],
+        })
+
+        const decision = await decideAutonomousContinuation({ sessionID: session.id, roundCount: 0 })
+        expect(decision).toEqual({ continue: false, reason: "spec_dirty" })
       },
     })
   })

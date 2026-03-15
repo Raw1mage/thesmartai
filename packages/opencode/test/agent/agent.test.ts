@@ -44,17 +44,17 @@ test("build agent has correct default properties", async () => {
   })
 })
 
-test("plan agent denies edits except .opencode/plans/*", async () => {
+test("plan agent remains primary and no longer models plan mode as hard readonly by description alone", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const plan = await Agent.get("plan")
       expect(plan).toBeDefined()
-      // Wildcard is denied
-      expect(evalPerm(plan, "edit")).toBe("deny")
-      // But specific path is allowed
-      expect(PermissionNext.evaluate("edit", ".opencode/plans/foo.md", plan!.permission).action).toBe("allow")
+      expect(plan?.mode).toBe("primary")
+      expect(plan?.description).toContain("Planner-first")
+      expect(evalPerm(plan, "question")).toBe("allow")
+      expect(evalPerm(plan, "plan_exit")).toBe("allow")
     },
   })
 })

@@ -4052,6 +4052,750 @@
         }
       }
     },
+    "/api/v2/session/{sessionID}/autonomous/health": {
+      "get": {
+        "operationId": "session.autonomous.health",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Get autonomous workflow health",
+        "description": "Return a converged health snapshot for autonomous execution, including queue state, supervisor retry state, and recent anomaly evidence.",
+        "responses": {
+          "200": {
+            "description": "Autonomous workflow health snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "running",
+                        "waiting_user",
+                        "blocked",
+                        "completed"
+                      ]
+                    },
+                    "stopReason": {
+                      "type": "string"
+                    },
+                    "queue": {
+                      "type": "object",
+                      "properties": {
+                        "hasPendingContinuation": {
+                          "type": "boolean"
+                        },
+                        "roundCount": {
+                          "type": "number"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "queuedAt": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "hasPendingContinuation"
+                      ]
+                    },
+                    "supervisor": {
+                      "type": "object",
+                      "properties": {
+                        "leaseOwner": {
+                          "type": "string"
+                        },
+                        "leaseExpiresAt": {
+                          "type": "number"
+                        },
+                        "retryAt": {
+                          "type": "number"
+                        },
+                        "consecutiveResumeFailures": {
+                          "type": "number"
+                        },
+                        "lastResumeCategory": {
+                          "type": "string"
+                        },
+                        "lastResumeError": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "consecutiveResumeFailures"
+                      ]
+                    },
+                    "anomalies": {
+                      "type": "object",
+                      "properties": {
+                        "recentCount": {
+                          "type": "number"
+                        },
+                        "latestEventType": {
+                          "type": "string"
+                        },
+                        "latestAt": {
+                          "type": "number"
+                        },
+                        "flags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "countsByType": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "required": [
+                        "recentCount",
+                        "flags",
+                        "countsByType"
+                      ]
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "health": {
+                          "type": "string",
+                          "enum": [
+                            "healthy",
+                            "queued",
+                            "paused",
+                            "degraded",
+                            "blocked",
+                            "completed"
+                          ]
+                        },
+                        "label": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "health",
+                        "label"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "state",
+                    "queue",
+                    "supervisor",
+                    "anomalies",
+                    "summary"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/session/{sessionID}/autonomous/queue": {
+      "get": {
+        "operationId": "session.autonomous.queue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Inspect pending autonomous continuation queue state",
+        "description": "Return queue inspection for one session, including pending continuation payload, resumable/blocked classification, and block reasons.",
+        "responses": {
+          "200": {
+            "description": "Pending continuation queue inspection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hasPendingContinuation": {
+                      "type": "boolean"
+                    },
+                    "pending": {
+                      "type": "object",
+                      "properties": {
+                        "sessionID": {
+                          "type": "string"
+                        },
+                        "messageID": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "number"
+                        },
+                        "roundCount": {
+                          "type": "number"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "todo_pending",
+                            "todo_in_progress"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "sessionID",
+                        "messageID",
+                        "createdAt",
+                        "roundCount",
+                        "reason",
+                        "text"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "busy",
+                        "retry"
+                      ]
+                    },
+                    "inFlight": {
+                      "type": "boolean"
+                    },
+                    "resumable": {
+                      "type": "boolean"
+                    },
+                    "blockedReasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "health": {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "idle",
+                            "running",
+                            "waiting_user",
+                            "blocked",
+                            "completed"
+                          ]
+                        },
+                        "stopReason": {
+                          "type": "string"
+                        },
+                        "queue": {
+                          "type": "object",
+                          "properties": {
+                            "hasPendingContinuation": {
+                              "type": "boolean"
+                            },
+                            "roundCount": {
+                              "type": "number"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "queuedAt": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "hasPendingContinuation"
+                          ]
+                        },
+                        "supervisor": {
+                          "type": "object",
+                          "properties": {
+                            "leaseOwner": {
+                              "type": "string"
+                            },
+                            "leaseExpiresAt": {
+                              "type": "number"
+                            },
+                            "retryAt": {
+                              "type": "number"
+                            },
+                            "consecutiveResumeFailures": {
+                              "type": "number"
+                            },
+                            "lastResumeCategory": {
+                              "type": "string"
+                            },
+                            "lastResumeError": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "consecutiveResumeFailures"
+                          ]
+                        },
+                        "anomalies": {
+                          "type": "object",
+                          "properties": {
+                            "recentCount": {
+                              "type": "number"
+                            },
+                            "latestEventType": {
+                              "type": "string"
+                            },
+                            "latestAt": {
+                              "type": "number"
+                            },
+                            "flags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "countsByType": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {
+                                "type": "number"
+                              }
+                            }
+                          },
+                          "required": [
+                            "recentCount",
+                            "flags",
+                            "countsByType"
+                          ]
+                        },
+                        "summary": {
+                          "type": "object",
+                          "properties": {
+                            "health": {
+                              "type": "string",
+                              "enum": [
+                                "healthy",
+                                "queued",
+                                "paused",
+                                "degraded",
+                                "blocked",
+                                "completed"
+                              ]
+                            },
+                            "label": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "health",
+                            "label"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "queue",
+                        "supervisor",
+                        "anomalies",
+                        "summary"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "hasPendingContinuation",
+                    "status",
+                    "inFlight",
+                    "resumable",
+                    "blockedReasons",
+                    "health"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "session.autonomous.queue.control",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Control pending autonomous continuation queue",
+        "description": "Apply operator control actions for one session pending queue (resume once or drop pending item), returning post-action inspection state.",
+        "responses": {
+          "200": {
+            "description": "Pending continuation queue control result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "resume_once",
+                        "drop_pending"
+                      ]
+                    },
+                    "applied": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "resumed",
+                        "dropped",
+                        "no_pending_continuation",
+                        "not_resumable",
+                        "resume_dispatch_skipped"
+                      ]
+                    },
+                    "blockedReasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "inspection": {
+                      "type": "object",
+                      "properties": {
+                        "hasPendingContinuation": {
+                          "type": "boolean"
+                        },
+                        "pending": {
+                          "type": "object",
+                          "properties": {
+                            "sessionID": {
+                              "type": "string"
+                            },
+                            "messageID": {
+                              "type": "string"
+                            },
+                            "createdAt": {
+                              "type": "number"
+                            },
+                            "roundCount": {
+                              "type": "number"
+                            },
+                            "reason": {
+                              "type": "string",
+                              "enum": [
+                                "todo_pending",
+                                "todo_in_progress"
+                              ]
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "sessionID",
+                            "messageID",
+                            "createdAt",
+                            "roundCount",
+                            "reason",
+                            "text"
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "idle",
+                            "busy",
+                            "retry"
+                          ]
+                        },
+                        "inFlight": {
+                          "type": "boolean"
+                        },
+                        "resumable": {
+                          "type": "boolean"
+                        },
+                        "blockedReasons": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "health": {
+                          "type": "object",
+                          "properties": {
+                            "state": {
+                              "type": "string",
+                              "enum": [
+                                "idle",
+                                "running",
+                                "waiting_user",
+                                "blocked",
+                                "completed"
+                              ]
+                            },
+                            "stopReason": {
+                              "type": "string"
+                            },
+                            "queue": {
+                              "type": "object",
+                              "properties": {
+                                "hasPendingContinuation": {
+                                  "type": "boolean"
+                                },
+                                "roundCount": {
+                                  "type": "number"
+                                },
+                                "reason": {
+                                  "type": "string"
+                                },
+                                "queuedAt": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "hasPendingContinuation"
+                              ]
+                            },
+                            "supervisor": {
+                              "type": "object",
+                              "properties": {
+                                "leaseOwner": {
+                                  "type": "string"
+                                },
+                                "leaseExpiresAt": {
+                                  "type": "number"
+                                },
+                                "retryAt": {
+                                  "type": "number"
+                                },
+                                "consecutiveResumeFailures": {
+                                  "type": "number"
+                                },
+                                "lastResumeCategory": {
+                                  "type": "string"
+                                },
+                                "lastResumeError": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "consecutiveResumeFailures"
+                              ]
+                            },
+                            "anomalies": {
+                              "type": "object",
+                              "properties": {
+                                "recentCount": {
+                                  "type": "number"
+                                },
+                                "latestEventType": {
+                                  "type": "string"
+                                },
+                                "latestAt": {
+                                  "type": "number"
+                                },
+                                "flags": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "countsByType": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {
+                                    "type": "number"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "recentCount",
+                                "flags",
+                                "countsByType"
+                              ]
+                            },
+                            "summary": {
+                              "type": "object",
+                              "properties": {
+                                "health": {
+                                  "type": "string",
+                                  "enum": [
+                                    "healthy",
+                                    "queued",
+                                    "paused",
+                                    "degraded",
+                                    "blocked",
+                                    "completed"
+                                  ]
+                                },
+                                "label": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "health",
+                                "label"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "state",
+                            "queue",
+                            "supervisor",
+                            "anomalies",
+                            "summary"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "hasPendingContinuation",
+                        "status",
+                        "inFlight",
+                        "resumable",
+                        "blockedReasons",
+                        "health"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "applied",
+                    "reason",
+                    "inspection"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "resume_once",
+                      "drop_pending"
+                    ]
+                  }
+                },
+                "required": [
+                  "action"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/session/{sessionID}/init": {
       "post": {
         "operationId": "session.init",
@@ -14076,6 +14820,750 @@
         }
       }
     },
+    "/session/{sessionID}/autonomous/health": {
+      "get": {
+        "operationId": "session.autonomous.health",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Get autonomous workflow health",
+        "description": "Return a converged health snapshot for autonomous execution, including queue state, supervisor retry state, and recent anomaly evidence.",
+        "responses": {
+          "200": {
+            "description": "Autonomous workflow health snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "running",
+                        "waiting_user",
+                        "blocked",
+                        "completed"
+                      ]
+                    },
+                    "stopReason": {
+                      "type": "string"
+                    },
+                    "queue": {
+                      "type": "object",
+                      "properties": {
+                        "hasPendingContinuation": {
+                          "type": "boolean"
+                        },
+                        "roundCount": {
+                          "type": "number"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "queuedAt": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "hasPendingContinuation"
+                      ]
+                    },
+                    "supervisor": {
+                      "type": "object",
+                      "properties": {
+                        "leaseOwner": {
+                          "type": "string"
+                        },
+                        "leaseExpiresAt": {
+                          "type": "number"
+                        },
+                        "retryAt": {
+                          "type": "number"
+                        },
+                        "consecutiveResumeFailures": {
+                          "type": "number"
+                        },
+                        "lastResumeCategory": {
+                          "type": "string"
+                        },
+                        "lastResumeError": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "consecutiveResumeFailures"
+                      ]
+                    },
+                    "anomalies": {
+                      "type": "object",
+                      "properties": {
+                        "recentCount": {
+                          "type": "number"
+                        },
+                        "latestEventType": {
+                          "type": "string"
+                        },
+                        "latestAt": {
+                          "type": "number"
+                        },
+                        "flags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "countsByType": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "number"
+                          }
+                        }
+                      },
+                      "required": [
+                        "recentCount",
+                        "flags",
+                        "countsByType"
+                      ]
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "health": {
+                          "type": "string",
+                          "enum": [
+                            "healthy",
+                            "queued",
+                            "paused",
+                            "degraded",
+                            "blocked",
+                            "completed"
+                          ]
+                        },
+                        "label": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "health",
+                        "label"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "state",
+                    "queue",
+                    "supervisor",
+                    "anomalies",
+                    "summary"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/session/{sessionID}/autonomous/queue": {
+      "get": {
+        "operationId": "session.autonomous.queue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Inspect pending autonomous continuation queue state",
+        "description": "Return queue inspection for one session, including pending continuation payload, resumable/blocked classification, and block reasons.",
+        "responses": {
+          "200": {
+            "description": "Pending continuation queue inspection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hasPendingContinuation": {
+                      "type": "boolean"
+                    },
+                    "pending": {
+                      "type": "object",
+                      "properties": {
+                        "sessionID": {
+                          "type": "string"
+                        },
+                        "messageID": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "number"
+                        },
+                        "roundCount": {
+                          "type": "number"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "todo_pending",
+                            "todo_in_progress"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "sessionID",
+                        "messageID",
+                        "createdAt",
+                        "roundCount",
+                        "reason",
+                        "text"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "idle",
+                        "busy",
+                        "retry"
+                      ]
+                    },
+                    "inFlight": {
+                      "type": "boolean"
+                    },
+                    "resumable": {
+                      "type": "boolean"
+                    },
+                    "blockedReasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "health": {
+                      "type": "object",
+                      "properties": {
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "idle",
+                            "running",
+                            "waiting_user",
+                            "blocked",
+                            "completed"
+                          ]
+                        },
+                        "stopReason": {
+                          "type": "string"
+                        },
+                        "queue": {
+                          "type": "object",
+                          "properties": {
+                            "hasPendingContinuation": {
+                              "type": "boolean"
+                            },
+                            "roundCount": {
+                              "type": "number"
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "queuedAt": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "hasPendingContinuation"
+                          ]
+                        },
+                        "supervisor": {
+                          "type": "object",
+                          "properties": {
+                            "leaseOwner": {
+                              "type": "string"
+                            },
+                            "leaseExpiresAt": {
+                              "type": "number"
+                            },
+                            "retryAt": {
+                              "type": "number"
+                            },
+                            "consecutiveResumeFailures": {
+                              "type": "number"
+                            },
+                            "lastResumeCategory": {
+                              "type": "string"
+                            },
+                            "lastResumeError": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "consecutiveResumeFailures"
+                          ]
+                        },
+                        "anomalies": {
+                          "type": "object",
+                          "properties": {
+                            "recentCount": {
+                              "type": "number"
+                            },
+                            "latestEventType": {
+                              "type": "string"
+                            },
+                            "latestAt": {
+                              "type": "number"
+                            },
+                            "flags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "countsByType": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {
+                                "type": "number"
+                              }
+                            }
+                          },
+                          "required": [
+                            "recentCount",
+                            "flags",
+                            "countsByType"
+                          ]
+                        },
+                        "summary": {
+                          "type": "object",
+                          "properties": {
+                            "health": {
+                              "type": "string",
+                              "enum": [
+                                "healthy",
+                                "queued",
+                                "paused",
+                                "degraded",
+                                "blocked",
+                                "completed"
+                              ]
+                            },
+                            "label": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "health",
+                            "label"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "queue",
+                        "supervisor",
+                        "anomalies",
+                        "summary"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "hasPendingContinuation",
+                    "status",
+                    "inFlight",
+                    "resumable",
+                    "blockedReasons",
+                    "health"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "session.autonomous.queue.control",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Control pending autonomous continuation queue",
+        "description": "Apply operator control actions for one session pending queue (resume once or drop pending item), returning post-action inspection state.",
+        "responses": {
+          "200": {
+            "description": "Pending continuation queue control result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "resume_once",
+                        "drop_pending"
+                      ]
+                    },
+                    "applied": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "resumed",
+                        "dropped",
+                        "no_pending_continuation",
+                        "not_resumable",
+                        "resume_dispatch_skipped"
+                      ]
+                    },
+                    "blockedReasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "inspection": {
+                      "type": "object",
+                      "properties": {
+                        "hasPendingContinuation": {
+                          "type": "boolean"
+                        },
+                        "pending": {
+                          "type": "object",
+                          "properties": {
+                            "sessionID": {
+                              "type": "string"
+                            },
+                            "messageID": {
+                              "type": "string"
+                            },
+                            "createdAt": {
+                              "type": "number"
+                            },
+                            "roundCount": {
+                              "type": "number"
+                            },
+                            "reason": {
+                              "type": "string",
+                              "enum": [
+                                "todo_pending",
+                                "todo_in_progress"
+                              ]
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "sessionID",
+                            "messageID",
+                            "createdAt",
+                            "roundCount",
+                            "reason",
+                            "text"
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "idle",
+                            "busy",
+                            "retry"
+                          ]
+                        },
+                        "inFlight": {
+                          "type": "boolean"
+                        },
+                        "resumable": {
+                          "type": "boolean"
+                        },
+                        "blockedReasons": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "health": {
+                          "type": "object",
+                          "properties": {
+                            "state": {
+                              "type": "string",
+                              "enum": [
+                                "idle",
+                                "running",
+                                "waiting_user",
+                                "blocked",
+                                "completed"
+                              ]
+                            },
+                            "stopReason": {
+                              "type": "string"
+                            },
+                            "queue": {
+                              "type": "object",
+                              "properties": {
+                                "hasPendingContinuation": {
+                                  "type": "boolean"
+                                },
+                                "roundCount": {
+                                  "type": "number"
+                                },
+                                "reason": {
+                                  "type": "string"
+                                },
+                                "queuedAt": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "hasPendingContinuation"
+                              ]
+                            },
+                            "supervisor": {
+                              "type": "object",
+                              "properties": {
+                                "leaseOwner": {
+                                  "type": "string"
+                                },
+                                "leaseExpiresAt": {
+                                  "type": "number"
+                                },
+                                "retryAt": {
+                                  "type": "number"
+                                },
+                                "consecutiveResumeFailures": {
+                                  "type": "number"
+                                },
+                                "lastResumeCategory": {
+                                  "type": "string"
+                                },
+                                "lastResumeError": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "consecutiveResumeFailures"
+                              ]
+                            },
+                            "anomalies": {
+                              "type": "object",
+                              "properties": {
+                                "recentCount": {
+                                  "type": "number"
+                                },
+                                "latestEventType": {
+                                  "type": "string"
+                                },
+                                "latestAt": {
+                                  "type": "number"
+                                },
+                                "flags": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "countsByType": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {
+                                    "type": "number"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "recentCount",
+                                "flags",
+                                "countsByType"
+                              ]
+                            },
+                            "summary": {
+                              "type": "object",
+                              "properties": {
+                                "health": {
+                                  "type": "string",
+                                  "enum": [
+                                    "healthy",
+                                    "queued",
+                                    "paused",
+                                    "degraded",
+                                    "blocked",
+                                    "completed"
+                                  ]
+                                },
+                                "label": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "health",
+                                "label"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "state",
+                            "queue",
+                            "supervisor",
+                            "anomalies",
+                            "summary"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "hasPendingContinuation",
+                        "status",
+                        "inFlight",
+                        "resumable",
+                        "blockedReasons",
+                        "health"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "applied",
+                    "reason",
+                    "inspection"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "resume_once",
+                      "drop_pending"
+                    ]
+                  }
+                },
+                "required": [
+                  "action"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/session/{sessionID}/init": {
       "post": {
         "operationId": "session.init",
@@ -23309,6 +24797,71 @@
               "state",
               "updatedAt"
             ]
+          },
+          "mission": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "const": "openspec_compiled_plan"
+              },
+              "contract": {
+                "type": "string",
+                "const": "implementation_spec"
+              },
+              "approvedAt": {
+                "type": "number"
+              },
+              "planPath": {
+                "type": "string"
+              },
+              "artifactPaths": {
+                "type": "object",
+                "properties": {
+                  "root": {
+                    "type": "string"
+                  },
+                  "implementationSpec": {
+                    "type": "string"
+                  },
+                  "proposal": {
+                    "type": "string"
+                  },
+                  "spec": {
+                    "type": "string"
+                  },
+                  "design": {
+                    "type": "string"
+                  },
+                  "tasks": {
+                    "type": "string"
+                  },
+                  "handoff": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "root",
+                  "implementationSpec",
+                  "proposal",
+                  "spec",
+                  "design",
+                  "tasks",
+                  "handoff"
+                ]
+              },
+              "executionReady": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "source",
+              "contract",
+              "approvedAt",
+              "planPath",
+              "artifactPaths",
+              "executionReady"
+            ]
           }
         },
         "required": [
@@ -27600,6 +29153,71 @@
               "autonomous",
               "state",
               "updatedAt"
+            ]
+          },
+          "mission": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "const": "openspec_compiled_plan"
+              },
+              "contract": {
+                "type": "string",
+                "const": "implementation_spec"
+              },
+              "approvedAt": {
+                "type": "number"
+              },
+              "planPath": {
+                "type": "string"
+              },
+              "artifactPaths": {
+                "type": "object",
+                "properties": {
+                  "root": {
+                    "type": "string"
+                  },
+                  "implementationSpec": {
+                    "type": "string"
+                  },
+                  "proposal": {
+                    "type": "string"
+                  },
+                  "spec": {
+                    "type": "string"
+                  },
+                  "design": {
+                    "type": "string"
+                  },
+                  "tasks": {
+                    "type": "string"
+                  },
+                  "handoff": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "root",
+                  "implementationSpec",
+                  "proposal",
+                  "spec",
+                  "design",
+                  "tasks",
+                  "handoff"
+                ]
+              },
+              "executionReady": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "source",
+              "contract",
+              "approvedAt",
+              "planPath",
+              "artifactPaths",
+              "executionReady"
             ]
           },
           "project": {

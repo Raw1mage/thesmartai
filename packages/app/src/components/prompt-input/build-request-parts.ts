@@ -41,6 +41,10 @@ const fileQuery = (selection: FileSelection | undefined) =>
 const isFileAttachment = (part: Prompt[number]): part is FileAttachmentPart => part.type === "file"
 const isAgentAttachment = (part: Prompt[number]): part is AgentPart => part.type === "agent"
 
+function normalizeAgentName(name: string) {
+  return name === "planner" ? "plan" : name
+}
+
 const commentNote = (path: string, selection: FileSelection | undefined, comment: string) => {
   const start = selection ? Math.min(selection.startLine, selection.endLine) : undefined
   const end = selection ? Math.max(selection.startLine, selection.endLine) : undefined
@@ -122,7 +126,7 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
     return {
       id: Identifier.ascending("part"),
       type: "agent",
-      name: attachment.name,
+      name: normalizeAgentName(attachment.name),
       source: {
         value: attachment.content,
         start: attachment.start,

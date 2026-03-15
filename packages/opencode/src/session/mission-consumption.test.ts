@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import path from "path"
 import { mkdir, symlink } from "fs/promises"
+import { createHash } from "crypto"
 import { tmpdir } from "../../test/fixture/fixture"
 import { Instance } from "../project/instance"
 import { consumeMissionArtifacts, deriveDelegatedExecutionRole } from "./mission-consumption"
@@ -10,18 +11,27 @@ function approvedMission() {
     source: "openspec_compiled_plan" as const,
     contract: "implementation_spec" as const,
     approvedAt: 1,
-    planPath: "specs/changes/test/implementation-spec.md",
+    planPath: "specs/20260315_test/implementation-spec.md",
     executionReady: true,
     artifactPaths: {
-      root: "specs/changes/test",
-      implementationSpec: "specs/changes/test/implementation-spec.md",
-      proposal: "specs/changes/test/proposal.md",
-      spec: "specs/changes/test/spec.md",
-      design: "specs/changes/test/design.md",
-      tasks: "specs/changes/test/tasks.md",
-      handoff: "specs/changes/test/handoff.md",
+      root: "specs/20260315_test",
+      implementationSpec: "specs/20260315_test/implementation-spec.md",
+      proposal: "specs/20260315_test/proposal.md",
+      spec: "specs/20260315_test/spec.md",
+      design: "specs/20260315_test/design.md",
+      tasks: "specs/20260315_test/tasks.md",
+      handoff: "specs/20260315_test/handoff.md",
+    },
+    artifactIntegrity: {
+      implementationSpec: "sig_impl",
+      tasks: "sig_tasks",
+      handoff: "sig_handoff",
     },
   }
+}
+
+function digest(text: string) {
+  return createHash("sha1").update(text).digest("hex")
 }
 
 describe("mission consumption", () => {
@@ -30,7 +40,7 @@ describe("mission consumption", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const planRoot = path.join(tmp.path, "specs", "changes", "test")
+        const planRoot = path.join(tmp.path, "specs", "20260315_test")
         await Bun.write(
           path.join(planRoot, "implementation-spec.md"),
           "# Implementation Spec\n\n## Goal\n- Ship mission consumption\n\n## Scope\n### IN\n- mission runtime\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- stop on mismatch\n\n## Critical Files\n- packages/opencode/src/session/mission-consumption.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run mission-consumption tests\n\n## Handoff\n- Continue from approved mission\n",
@@ -44,7 +54,17 @@ describe("mission consumption", () => {
           "# Handoff\n\n## Execution Contract\n- Read approved mission first\n\n## Required Reads\n- implementation-spec.md\n- tasks.md\n- handoff.md\n\n## Stop Gates In Force\n- Preserve approval gates\n\n## Execution-Ready Checklist\n- [ ] Mission approved\n",
         )
 
-        const result = await consumeMissionArtifacts(approvedMission())
+        const implementationSpecText = await Bun.file(path.join(planRoot, "implementation-spec.md")).text()
+        const tasksText = await Bun.file(path.join(planRoot, "tasks.md")).text()
+        const handoffText = await Bun.file(path.join(planRoot, "handoff.md")).text()
+        const result = await consumeMissionArtifacts({
+          ...approvedMission(),
+          artifactIntegrity: {
+            implementationSpec: digest(implementationSpecText),
+            tasks: digest(tasksText),
+            handoff: digest(handoffText),
+          },
+        })
         expect(result.ok).toBe(true)
         if (!result.ok) throw new Error("expected successful mission consumption")
         expect(result.trace.goal).toContain("Ship mission consumption")
@@ -91,7 +111,7 @@ describe("mission consumption", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const planRoot = path.join(tmp.path, "specs", "changes", "test")
+        const planRoot = path.join(tmp.path, "specs", "20260315_test")
         await mkdir(planRoot, { recursive: true })
         const outsidePath = path.join(path.dirname(tmp.path), `outside-${Date.now().toString(36)}.md`)
         await Bun.write(outsidePath, "# outside\n")
@@ -115,7 +135,7 @@ describe("mission consumption", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const planRoot = path.join(tmp.path, "specs", "changes", "test")
+        const planRoot = path.join(tmp.path, "specs", "20260315_test")
         await Bun.write(
           path.join(planRoot, "implementation-spec.md"),
           "# Implementation Spec\n\n## Goal\n- Ship mission consumption\n\n## Scope\n### IN\n- mission runtime\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- stop on mismatch\n\n## Critical Files\n- packages/opencode/src/session/mission-consumption.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run regression suite\n\n## Handoff\n- Continue from approved mission\n",
@@ -126,7 +146,17 @@ describe("mission consumption", () => {
           "# Handoff\n\n## Execution Contract\n- Read approved mission first\n\n## Required Reads\n- implementation-spec.md\n- tasks.md\n- handoff.md\n\n## Stop Gates In Force\n- Preserve approval gates\n\n## Execution-Ready Checklist\n- [ ] Mission approved\n",
         )
 
-        const result = await consumeMissionArtifacts(approvedMission())
+        const implementationSpecText = await Bun.file(path.join(planRoot, "implementation-spec.md")).text()
+        const tasksText = await Bun.file(path.join(planRoot, "tasks.md")).text()
+        const handoffText = await Bun.file(path.join(planRoot, "handoff.md")).text()
+        const result = await consumeMissionArtifacts({
+          ...approvedMission(),
+          artifactIntegrity: {
+            implementationSpec: digest(implementationSpecText),
+            tasks: digest(tasksText),
+            handoff: digest(handoffText),
+          },
+        })
         if (!result.ok) throw new Error("expected successful mission consumption")
 
         expect(
@@ -177,6 +207,30 @@ describe("mission consumption", () => {
             mission: result.trace,
           }),
         ).toMatchObject({ role: "generic" })
+      },
+    })
+  })
+
+  it("reports spec_dirty when approved artifacts changed after approval", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const planRoot = path.join(tmp.path, "specs", "20260315_test")
+        await Bun.write(
+          path.join(planRoot, "implementation-spec.md"),
+          "# Implementation Spec\n\n## Goal\n- Changed after approval\n\n## Scope\n### IN\n- runtime\n\n### OUT\n- rewrite\n\n## Assumptions\n- changed\n\n## Stop Gates\n- stop\n\n## Critical Files\n- file.ts\n\n## Structured Execution Phases\n- phase\n\n## Validation\n- validate\n\n## Handoff\n- handoff\n",
+        )
+        await Bun.write(path.join(planRoot, "tasks.md"), "# Tasks\n\n- [ ] Changed task\n")
+        await Bun.write(
+          path.join(planRoot, "handoff.md"),
+          "# Handoff\n\n## Execution Contract\n- contract\n\n## Required Reads\n- implementation-spec.md\n\n## Stop Gates In Force\n- stop\n\n## Execution-Ready Checklist\n- [ ] ready\n",
+        )
+
+        const result = await consumeMissionArtifacts(approvedMission())
+        expect(result.ok).toBe(false)
+        if (result.ok) throw new Error("expected failed mission consumption")
+        expect(result.issues.some((issue) => issue.startsWith("spec_dirty:"))).toBe(true)
       },
     })
   })

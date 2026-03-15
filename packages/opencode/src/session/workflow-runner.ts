@@ -14,12 +14,17 @@ import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
 import { RuntimeEventService } from "@/system/runtime-event-service"
 import { consumeMissionArtifacts } from "./mission-consumption"
+import RUNNER_CONTRACT from "./prompt/runner.txt"
 
 export const AUTONOMOUS_CONTINUE_TEXT =
   "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision."
 
 export const AUTONOMOUS_PROGRESS_TEXT =
   "Continue the task already in progress. Finish or unblock it before starting new work, unless reprioritization is clearly necessary."
+
+function applyRunnerContract(text: string) {
+  return `${RUNNER_CONTRACT.trim()}\n\n${text}`
+}
 
 function buildMissionMetadata(session: Pick<Session.Info, "mission">) {
   const mission = session.mission
@@ -39,6 +44,8 @@ export type ContinuationDecisionReason =
   | "autonomous_disabled"
   | "mission_not_approved"
   | "mission_not_consumable"
+  | "spec_dirty"
+  | "replan_required"
   | "blocked"
   | "max_continuous_rounds"
   | "todo_complete"
@@ -697,10 +704,20 @@ export function planAutonomousNextAction(input: {
     return { type: "stop", reason: "max_continuous_rounds" }
   }
   if (current?.status === "in_progress") {
-    return { type: "continue", reason: "todo_in_progress", text: AUTONOMOUS_PROGRESS_TEXT, todo: current }
+    return {
+      type: "continue",
+      reason: "todo_in_progress",
+      text: applyRunnerContract(AUTONOMOUS_PROGRESS_TEXT),
+      todo: current,
+    }
   }
   if (current?.status === "pending") {
-    return { type: "continue", reason: "todo_pending", text: AUTONOMOUS_CONTINUE_TEXT, todo: current }
+    return {
+      type: "continue",
+      reason: "todo_pending",
+      text: applyRunnerContract(AUTONOMOUS_CONTINUE_TEXT),
+      todo: current,
+    }
   }
   return { type: "stop", reason: "todo_complete" }
 }
@@ -711,8 +728,8 @@ export function describeAutonomousNextAction(action: AutonomousNextAction): Auto
       kind: "continue",
       text:
         action.reason === "todo_in_progress"
-          ? `Continuing current step: ${action.todo.content}`
-          : `Starting next planned step: ${action.todo.content}`,
+          ? `Runner continuing current step: ${action.todo.content}`
+          : `Runner starting next planned step: ${action.todo.content}`,
     }
   }
 
@@ -722,14 +739,14 @@ export function describeAutonomousNextAction(action: AutonomousNextAction): Auto
     case "product_decision_needed":
       return { kind: "pause", text: "Paused: I need a product decision before continuing." }
     case "wait_subagent":
-      return { kind: "pause", text: "Paused: a delegated subagent task is still running." }
+      return { kind: "pause", text: "Runner paused: a delegated subagent task is still running." }
     case "max_continuous_rounds":
       return {
         kind: "pause",
         text: "Paused: I hit the current autonomous round limit and am waiting for your next instruction.",
       }
     case "todo_complete":
-      return { kind: "complete", text: "Autonomous plan complete for the current todo set." }
+      return { kind: "complete", text: "Runner complete: the current planned todo set is done." }
     case "blocked":
       return { kind: "pause", text: "Paused: the workflow is currently blocked." }
     case "mission_not_approved":
@@ -741,6 +758,16 @@ export function describeAutonomousNextAction(action: AutonomousNextAction): Auto
       return {
         kind: "pause",
         text: "Paused: approved mission artifacts could not be consumed safely, so autonomous execution stopped.",
+      }
+    case "spec_dirty":
+      return {
+        kind: "pause",
+        text: "Paused: approved planner artifacts changed after approval. Re-enter plan mode before continuing.",
+      }
+    case "replan_required":
+      return {
+        kind: "pause",
+        text: "Paused: execution now requires a planner re-entry before autonomous continuation can proceed.",
       }
     case "autonomous_disabled":
       return { kind: "pause", text: "Autonomous continuation is disabled, so I am waiting for your next instruction." }
@@ -780,18 +807,22 @@ export async function decideAutonomousContinuation(input: { sessionID: string; r
   if (decision.continue && session.mission) {
     const missionConsumption = await consumeMissionArtifacts(session.mission)
     if (!missionConsumption.ok) {
+      const specDirty = missionConsumption.issues.some((issue) => issue.startsWith("spec_dirty:"))
       await RuntimeEventService.append({
         sessionID: input.sessionID,
         level: "warn",
         domain: "anomaly",
-        eventType: "workflow.mission_not_consumable",
-        anomalyFlags: ["mission_not_consumable"],
+        eventType: specDirty ? "workflow.spec_dirty" : "workflow.mission_not_consumable",
+        anomalyFlags: [specDirty ? "spec_dirty" : "mission_not_consumable"],
         payload: {
           issues: missionConsumption.issues,
           consumedArtifacts: missionConsumption.consumedArtifacts,
         },
       }).catch(() => undefined)
-      return { continue: false as const, reason: "mission_not_consumable" as const }
+      return {
+        continue: false as const,
+        reason: specDirty ? ("spec_dirty" as const) : ("mission_not_consumable" as const),
+      }
     }
   }
   const mismatch = detectWaitSubagentMismatch({
@@ -1118,8 +1149,10 @@ export async function enqueueAutonomousContinue(input: {
   const text =
     input.text ??
     (input.delegation && input.delegation.role !== "generic"
-      ? `Continue with the next planned ${input.delegation.role} step: ${input.delegation.todoContent}`
-      : AUTONOMOUS_CONTINUE_TEXT)
+      ? applyRunnerContract(
+          `Continue with the next planned ${input.delegation.role} step: ${input.delegation.todoContent}`,
+        )
+      : applyRunnerContract(AUTONOMOUS_CONTINUE_TEXT))
   const session = await Session.get(input.sessionID)
   const missionConsumption = session.mission ? await consumeMissionArtifacts(session.mission) : undefined
   if (session.mission && missionConsumption && !missionConsumption.ok) {

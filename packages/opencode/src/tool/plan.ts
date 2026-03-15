@@ -1,6 +1,7 @@
 import z from "zod"
 import path from "path"
 import fs from "fs/promises"
+import { createHash } from "crypto"
 import { Tool } from "./tool"
 import { Question } from "../question"
 import { Session } from "../session"
@@ -9,6 +10,8 @@ import { Identifier } from "../id/id"
 import { Provider } from "../provider/provider"
 import { Instance } from "../project/instance"
 import { Todo } from "../session/todo"
+import { plannerArtifacts } from "../session/planner-layout"
+import { extractChecklistItems } from "../session/tasks-checklist"
 import EXIT_DESCRIPTION from "./plan-exit.txt"
 import ENTER_DESCRIPTION from "./plan-enter.txt"
 
@@ -79,6 +82,10 @@ async function getLastModel(sessionID: string) {
   return Provider.defaultModel()
 }
 
+function digest(text: string) {
+  return createHash("sha1").update(text).digest("hex")
+}
+
 function extractSection(markdown: string, heading: string) {
   const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
   const match = markdown.match(new RegExp(`(^|\\n)##\\s+${escaped}\\s*\\n([\\s\\S]*?)(?=\\n##\\s+|$)`, "i"))
@@ -95,27 +102,58 @@ function extractBulletItems(text: string) {
 }
 
 async function readPlannerArtifacts(session: Session.Info) {
-  const implementationSpecPath = Session.plan(session)
-  const root = path.dirname(implementationSpecPath)
+  const artifactPaths = await resolvePlannerArtifacts(session)
+  const implementationSpecPath = artifactPaths.implementationSpec
+  const root = artifactPaths.root
   const implementationSpec = await Bun.file(implementationSpecPath)
     .text()
     .catch(() => "")
-  const proposal = await Bun.file(path.join(root, "proposal.md"))
+  const proposal = await Bun.file(artifactPaths.proposal)
     .text()
     .catch(() => "")
-  const spec = await Bun.file(path.join(root, "spec.md"))
+  const spec = await Bun.file(artifactPaths.spec)
     .text()
     .catch(() => "")
-  const design = await Bun.file(path.join(root, "design.md"))
+  const design = await Bun.file(artifactPaths.design)
     .text()
     .catch(() => "")
-  const tasks = await Bun.file(path.join(root, "tasks.md"))
+  const tasks = await Bun.file(artifactPaths.tasks)
     .text()
     .catch(() => "")
-  const handoff = await Bun.file(path.join(root, "handoff.md"))
+  const handoff = await Bun.file(artifactPaths.handoff)
     .text()
     .catch(() => "")
   return { root, implementationSpec, proposal, spec, design, tasks, handoff }
+}
+
+async function hasImplementationSpec(root: string) {
+  return Bun.file(path.join(root, "implementation-spec.md")).exists()
+}
+
+async function resolvePlannerArtifacts(session: Session.Info) {
+  const missionRoot = session.mission?.artifactPaths?.root
+  if (missionRoot) {
+    const absoluteMissionRoot = path.isAbsolute(missionRoot) ? missionRoot : path.join(Instance.worktree, missionRoot)
+    if (await hasImplementationSpec(absoluteMissionRoot)) {
+      return {
+        root: absoluteMissionRoot,
+        implementationSpec: path.join(absoluteMissionRoot, "implementation-spec.md"),
+        proposal: path.join(absoluteMissionRoot, "proposal.md"),
+        spec: path.join(absoluteMissionRoot, "spec.md"),
+        design: path.join(absoluteMissionRoot, "design.md"),
+        tasks: path.join(absoluteMissionRoot, "tasks.md"),
+        handoff: path.join(absoluteMissionRoot, "handoff.md"),
+      }
+    }
+  }
+
+  const titleBased = plannerArtifacts(session)
+  if (await hasImplementationSpec(titleBased.root)) return titleBased
+
+  const slugBased = plannerArtifacts({ ...session, title: undefined })
+  if (await hasImplementationSpec(slugBased.root)) return slugBased
+
+  return titleBased
 }
 
 function analyzePlanSpec(markdown: string) {
@@ -171,12 +209,7 @@ function analyzePlanSpec(markdown: string) {
 }
 
 function extractTasksChecklistItems(tasksMarkdown: string) {
-  return tasksMarkdown
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter((line) => /^-\s*\[\s\]\s+/.test(line))
-    .map((line) => line.replace(/^-\s*\[\s\]\s+/, "").trim())
-    .filter(Boolean)
+  return extractChecklistItems(tasksMarkdown)
 }
 
 function analyzeTasksArtifact(tasksMarkdown: string) {
@@ -395,19 +428,20 @@ export const PlanExitTool = Tool.define("plan_exit", {
   parameters: z.object({}),
   async execute(_params, ctx) {
     const session = await Session.get(ctx.sessionID)
-    const planFile = Session.plan(session)
-    const planRoot = path.dirname(planFile)
+    const artifactPaths = await resolvePlannerArtifacts(session)
+    const planFile = artifactPaths.implementationSpec
+    const planRoot = artifactPaths.root
     const plan = path.relative(Instance.worktree, planFile)
     const answers = await Question.ask({
       sessionID: ctx.sessionID,
       questions: [
         {
-          question: `Plan at ${plan} is complete. Would you like to switch to the build agent and start implementing?`,
+          question: `Plan at ${plan} is execution-ready. Would you like to switch to build mode and start executing it?`,
           header: "Build Agent",
           custom: false,
           options: [
-            { label: "Yes", description: "Switch to build agent and start implementing the plan" },
-            { label: "No", description: "Stay with plan agent to continue refining the plan" },
+            { label: "Yes", description: "Switch to build mode and start executing the plan" },
+            { label: "No", description: "Stay in plan mode and continue refining the plan" },
           ],
         },
       ],
@@ -473,11 +507,16 @@ export const PlanExitTool = Tool.define("plan_exit", {
         artifactPaths: {
           root: path.relative(Instance.worktree, planRoot),
           implementationSpec: plan,
-          proposal: path.relative(Instance.worktree, path.join(planRoot, "proposal.md")),
-          spec: path.relative(Instance.worktree, path.join(planRoot, "spec.md")),
-          design: path.relative(Instance.worktree, path.join(planRoot, "design.md")),
-          tasks: path.relative(Instance.worktree, path.join(planRoot, "tasks.md")),
-          handoff: path.relative(Instance.worktree, path.join(planRoot, "handoff.md")),
+          proposal: path.relative(Instance.worktree, artifactPaths.proposal),
+          spec: path.relative(Instance.worktree, artifactPaths.spec),
+          design: path.relative(Instance.worktree, artifactPaths.design),
+          tasks: path.relative(Instance.worktree, artifactPaths.tasks),
+          handoff: path.relative(Instance.worktree, artifactPaths.handoff),
+        },
+        artifactIntegrity: {
+          implementationSpec: digest(artifacts.implementationSpec),
+          tasks: digest(artifacts.tasks),
+          handoff: digest(artifacts.handoff),
         },
       },
     })
@@ -499,10 +538,10 @@ export const PlanExitTool = Tool.define("plan_exit", {
       sessionID: ctx.sessionID,
       type: "text",
       text:
-        `The plan at ${plan} has been approved. You are now in build mode and may edit files. ` +
+        `The plan at ${plan} has been approved. You are now in build mode, which is execution-first. ` +
         `Use the plan file as the implementation specification and execute it end-to-end. ` +
         `Treat the plan as the source of truth for goal, scope, assumptions, stop gates, validation, critical files, execution phases, and handoff instructions. ` +
-        `Before coding, read the plan file carefully, convert its execution phases into structured todos/action metadata, and then continue implementing from that spec.`,
+        `Before coding, read the plan file carefully, convert its execution phases into structured todos/action metadata, and then continue implementing from that spec. Update the plan artifacts when user intent or scope changes.`,
       synthetic: true,
       metadata: {
         handoff: {
@@ -533,6 +572,16 @@ export const PlanExitTool = Tool.define("plan_exit", {
             status: todo.status,
             priority: todo.priority,
           })),
+          todoMaterializationPolicy: {
+            source: "tasks.md unchecked checklist items",
+            includeChecked: false,
+            maxSeedItems: 8,
+            dependencyStrategy: "linear_chain",
+            firstTodoStatus: "in_progress",
+            remainingStatus: "pending",
+            firstPriority: "high",
+            remainingPriority: "medium",
+          },
           executionReady: true,
           artifactPaths: {
             root: path.relative(Instance.worktree, planRoot),
@@ -560,20 +609,21 @@ export const PlanEnterTool = Tool.define("plan_enter", {
   parameters: z.object({}),
   async execute(_params, ctx) {
     const session = await Session.get(ctx.sessionID)
-    const planFile = Session.plan(session)
-    const planRoot = path.dirname(planFile)
+    const artifactPaths = await resolvePlannerArtifacts(session)
+    const planFile = artifactPaths.implementationSpec
+    const planRoot = artifactPaths.root
     const plan = path.relative(Instance.worktree, planFile)
 
     const answers = await Question.ask({
       sessionID: ctx.sessionID,
       questions: [
         {
-          question: `Would you like to switch to the plan agent and create a plan saved to ${plan}?`,
+          question: `Would you like to switch to plan mode and create or refine the active plan saved to ${plan}?`,
           header: "Plan Mode",
           custom: false,
           options: [
-            { label: "Yes", description: "Switch to plan agent for research and planning" },
-            { label: "No", description: "Stay with build agent to continue making changes" },
+            { label: "Yes", description: "Switch to plan mode for spec discussion and plan maintenance" },
+            { label: "No", description: "Stay in build mode to continue execution-focused work" },
           ],
         },
       ],
@@ -588,11 +638,11 @@ export const PlanEnterTool = Tool.define("plan_enter", {
     if (!existing) {
       await fs.mkdir(planRoot, { recursive: true })
       await Bun.write(planFile, PLAN_SPEC_TEMPLATE)
-      await Bun.write(path.join(planRoot, "proposal.md"), ARTIFACT_TEMPLATES.proposal)
-      await Bun.write(path.join(planRoot, "spec.md"), ARTIFACT_TEMPLATES.spec)
-      await Bun.write(path.join(planRoot, "design.md"), ARTIFACT_TEMPLATES.design)
-      await Bun.write(path.join(planRoot, "tasks.md"), ARTIFACT_TEMPLATES.tasks)
-      await Bun.write(path.join(planRoot, "handoff.md"), ARTIFACT_TEMPLATES.handoff)
+      await Bun.write(artifactPaths.proposal, ARTIFACT_TEMPLATES.proposal)
+      await Bun.write(artifactPaths.spec, ARTIFACT_TEMPLATES.spec)
+      await Bun.write(artifactPaths.design, ARTIFACT_TEMPLATES.design)
+      await Bun.write(artifactPaths.tasks, ARTIFACT_TEMPLATES.tasks)
+      await Bun.write(artifactPaths.handoff, ARTIFACT_TEMPLATES.handoff)
     }
 
     const userMsg: MessageV2.User = {
@@ -611,13 +661,13 @@ export const PlanEnterTool = Tool.define("plan_enter", {
       messageID: userMsg.id,
       sessionID: ctx.sessionID,
       type: "text",
-      text: "User has requested to enter plan mode. Switch to plan mode and begin planning.",
+      text: "User has requested to enter plan mode. Switch to plan mode and begin planner-first discussion, spec maintenance, and plan refinement.",
       synthetic: true,
     } satisfies MessageV2.TextPart)
 
     return {
       title: "Switching to plan agent",
-      output: `User confirmed to switch to plan mode. A new message has been created to switch you to plan mode. The implementation spec will be at ${plan} and companion artifacts are available under ${path.relative(Instance.worktree, planRoot)}. Begin planning.`,
+      output: `User confirmed to switch to plan mode. A new message has been created to switch you to plan mode. The implementation spec will be at ${plan} and companion artifacts are available under ${path.relative(Instance.worktree, planRoot)}. Begin planner-first discussion and keep the artifacts aligned.`,
       metadata: {},
     }
   },

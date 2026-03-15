@@ -1023,6 +1023,12 @@ export namespace SessionPrompt {
       sessionID: input.sessionID,
       trace: tracedAssist,
     })
+    if (adoptedReplan.adopted) {
+      return {
+        kind: "replan_required" as const,
+        trace: tracedAssist,
+      }
+    }
     return {
       kind: "continue" as const,
       continueDecision: assist.applied
@@ -1592,6 +1598,21 @@ export namespace SessionPrompt {
             })
             break
           }
+          if (stopResult.kind === "replan_required") {
+            await handleSmartRunnerAdoptedStopNarration({
+              sessionID,
+              user: lastUser,
+              text:
+                stopResult.trace?.decision?.nextAction.narration ?? "Planner re-entry required before continuation.",
+            })
+            await Session.setWorkflowState({
+              sessionID,
+              state: "waiting_user",
+              stopReason: "replan_required",
+              lastRunAt: Date.now(),
+            })
+            break
+          }
           continueDecision = stopResult.continueDecision
           narrationOverride = stopResult.narrationOverride
         }
@@ -1625,6 +1646,8 @@ export namespace SessionPrompt {
             "wait_subagent",
             "mission_not_approved",
             "mission_not_consumable",
+            "spec_dirty",
+            "replan_required",
             "max_continuous_rounds",
             "todo_complete",
           ].includes(decision.reason)
@@ -1686,6 +1709,20 @@ export namespace SessionPrompt {
             sessionID,
             state: "waiting_user",
             stopReason: "mission_not_consumable",
+            lastRunAt: Date.now(),
+          })
+        } else if (decision.reason === "spec_dirty") {
+          await Session.setWorkflowState({
+            sessionID,
+            state: "waiting_user",
+            stopReason: "spec_dirty",
+            lastRunAt: Date.now(),
+          })
+        } else if (decision.reason === "replan_required") {
+          await Session.setWorkflowState({
+            sessionID,
+            state: "waiting_user",
+            stopReason: "replan_required",
             lastRunAt: Date.now(),
           })
         }

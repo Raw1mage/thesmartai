@@ -166,7 +166,8 @@ describe("buildMonitorEntries", () => {
       }),
     ).toEqual({
       badge: "R",
-      title: "wait for subagent result",
+      title: "Runner",
+      headline: "wait for subagent result",
       chips: [{ label: "wait", tone: "info" }],
       lines: ["Workflow: Waiting", "Stop: Wait subagent", "Tools: task", "Delegated: coding", "MCP: system-manager"],
       tools: ["task"],
@@ -176,7 +177,8 @@ describe("buildMonitorEntries", () => {
 
     expect(buildRunnerDisplayCard({ status: { type: "idle" } })).toEqual({
       badge: "R",
-      title: "idle",
+      title: "Runner",
+      headline: "Idle",
       chips: [],
       lines: ["Runtime: idle"],
       tools: [],
