@@ -1989,8 +1989,6 @@ export default function Layout(props: ParentProps) {
                   onOpenSettings={openSettings}
                   logoutLabel={() => "Logout"}
                   onLogout={logout}
-                  helpLabel={() => language.t("sidebar.help")}
-                  onOpenHelp={() => platform.openLink("https://opencode.ai/desktop-feedback")}
                   renderPanel={() => (
                     <Show when={currentProject()} keyed>
                       {(project) => <SidebarPanel project={project} />}
@@ -2068,8 +2066,6 @@ export default function Layout(props: ParentProps) {
               onOpenSettings={openSettings}
               logoutLabel={() => "Logout"}
               onLogout={logout}
-              helpLabel={() => language.t("sidebar.help")}
-              onOpenHelp={() => platform.openLink("https://opencode.ai/desktop-feedback")}
               renderPanel={() => <SidebarPanel project={currentProject()} mobile />}
             />
           </nav>
