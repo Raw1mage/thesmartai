@@ -201,7 +201,7 @@ Status: Completed
 
 ## Runner contract draft follow-up
 
-- 新增 artifact：`specs/changes/20260315-web-monitor-restart-control/runner-contract.md`
+- 新增 artifact：`specs/20260315_openspec-like-planner/runner-contract.md`
 - 目的：先把 autorunner 升級為 explicit session governor 所缺的 runner-level contract 補成正式設計稿，再進入後續 `/plan` / `@planner` 收斂與 runtime 綁定。
 - 本次定義的核心結論：
   - planner 擁有 planning truth（spec / decision / handoff）
@@ -228,8 +228,8 @@ Status: Completed
 
 - Validation type: doc/design sync only
 - Compared against:
-  - `specs/changes/20260315-web-monitor-restart-control/plan-build-target-model.md`
-  - `specs/changes/20260315-web-monitor-restart-control/autorunner-compat-analysis.md`
+  - `specs/20260315_openspec-like-planner/plan-build-target-model.md`
+  - `specs/20260315_openspec-like-planner/autorunner-compat-analysis.md`
   - `packages/opencode/src/session/workflow-runner.ts`
   - `packages/opencode/src/session/smart-runner-governor.ts`
 - Result: runner contract draft is consistent with current runtime baseline and cleanly separates deterministic runner from advisory Smart Runner.
@@ -280,9 +280,9 @@ Status: Completed
 
 ### Baseline
 
-- planner runtime 之前將 plan root 固定落在 `specs/changes/<change-slug>/`。
+- planner runtime 之前將 plan root 固定落在 `specs/<change-slug>/`。
 - change slug 由 `session.time.created + session.slug(adjective-noun)` 組成，對人與 AI 都不易閱讀。
-- 多數 runtime/test/docs 都直接硬編碼 `specs/changes/...`，使 planner 結構難以治理與重構。
+- 多數 runtime/test/docs 都直接硬編碼 `specs/...`，使 planner 結構難以治理與重構。
 
 ### Design decision
 
@@ -320,7 +320,7 @@ Status: Completed
 ### Architecture Sync
 
 - Architecture Sync: Updated
-- `docs/ARCHITECTURE.md` 現已同步 planner durable root 由 `specs/changes/<change-slug>/` 改為 `specs/<date>_<plan-title>/`。
+- `docs/ARCHITECTURE.md` 現已同步 planner durable root 由 `specs/<change-slug>/` 改為 `specs/<date>_<plan-title>/`。
 
 ## Planner root reuse + tasks→todo lineage hardening
 
@@ -393,8 +393,8 @@ Status: Completed
 - `packages/opencode/src/session/prompt/runner.txt`
 - `packages/opencode/src/session/workflow-runner.ts`
 - `packages/opencode/src/session/workflow-runner.test.ts`
-- `specs/changes/20260315-web-monitor-restart-control/runner-contract.md`
-- `specs/changes/20260315-web-monitor-restart-control/autorunner-compat-analysis.md`
+- `specs/20260315_openspec-like-planner/runner-contract.md`
+- `specs/20260315_openspec-like-planner/autorunner-compat-analysis.md`
 - `docs/ARCHITECTURE.md`
 
 ### Validation
@@ -437,7 +437,7 @@ Status: Completed
 - `packages/opencode/src/session/mission-consumption.test.ts`
 - `packages/opencode/src/session/workflow-runner.test.ts`
 - `packages/opencode/src/session/smart-runner-governor.test.ts`
-- `specs/changes/20260315-web-monitor-restart-control/runner-contract.md`
+- `specs/20260315_openspec-like-planner/runner-contract.md`
 - `docs/ARCHITECTURE.md`
 
 ### Validation
@@ -457,8 +457,8 @@ Status: Completed
 
 - 使用者明確要求：往後回報與執行都必須**明確對齊 todolist 與 plan 文件**，不能口頭用另一套 phase 名稱造成追蹤困難。
 - 因此已同步修正：
-  - `specs/changes/1773389007712-misty-rocket/tasks.md`
-  - `specs/changes/1773389007712-misty-rocket/handoff.md`
+  - `specs/20260315_openspec-like-planner/tasks.md`
+  - `specs/20260315_openspec-like-planner/handoff.md`
 - 對齊規則：
   - runner 相關工作一律以 `tasks.md` section 4 與 `runner-contract.md` 的同名 phase 條目回報
   - 不再使用脫離任務檔的模糊「phase2 / phase3 已做一些」說法
@@ -469,8 +469,8 @@ Status: Completed
 - 已同步更新到以下硬編碼工作流程來源：
   - `docs/specs/planner_spec_methodology.md`
   - `packages/opencode/src/session/prompt/plan.txt`
-  - `specs/changes/1773389007712-misty-rocket/implementation-spec.md`
-  - `specs/changes/1773389007712-misty-rocket/handoff.md`
+  - `specs/20260315_openspec-like-planner/implementation-spec.md`
+  - `specs/20260315_openspec-like-planner/handoff.md`
 - 新規則摘要：
   - `tasks.md` 是 planner naming source
   - runtime todo materialize 後，sidebar/runtime todo 是 visible execution ledger

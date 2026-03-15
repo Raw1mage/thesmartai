@@ -100,7 +100,7 @@ Therefore:
 
 ### 4.1 Specs are the source of truth
 
-The active plan lives under `specs/changes/<change-slug>/`.
+The active plan lives under `specs/<plan-root>/`.
 
 Artifacts:
 

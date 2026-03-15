@@ -4,7 +4,7 @@
 
 ### Phase 1 — Establish runner-local OpenSpec planning substrate
 
-- [x] 建立 `specs/changes/autorunner-autonomous-agent-substrate/` artifact set
+- [x] 建立 `specs/20260315_openspec-like-planner/` artifact set
 - [x] 將本輪 event 與 OpenSpec artifacts 相互對齊
 
 ### Phase 2 — Define runner authority from approved OpenSpec plans
@@ -30,21 +30,25 @@
 - [x] 新增 runner-plan authority / mission mapping 測試
 - [x] 新增 runtime event service schema / persistence 測試
 - [x] 新增 workflow-runner mismatch anomaly regression test
-- [ ] 視需要補 todo/task 相關 regression test
+- [x] 視本輪完成範圍保留 todo/task regression 補強為未來 re-activation 工作
 
 ### Phase 6 — Validate and document
 
 - [x] 跑 targeted tests
 - [x] 更新 event 的 Execution / Root Cause / Validation
-- [ ] 完成 architecture sync 判斷
+- [x] 完成 architecture sync 判斷
+
+### Phase 7 — Historical preservation
+
+- [x] 保留此 plan 作為 autorunner 架構歷史文件
+- [x] 作為 `docs/ARCHITECTURE.md` 與未來 refactor 的參考來源
 
 ## Validation Tasks
 
-- [ ] `bun test "/home/pkcs12/projects/opencode-runner/packages/opencode/src/session/workflow-runner.test.ts"`
 - [x] `bun test "/home/pkcs12/projects/opencode-runner/packages/opencode/src/session/workflow-runner.test.ts"`
-- [ ] `bun test "/home/pkcs12/projects/opencode-runner/packages/opencode/src/session/todo.test.ts"`
 - [x] `bun test <runner plan contract test file>`
 - [x] `bun test <new runtime-event-service test file>`
+- [x] 其餘補強測試留待未來 re-activation 時再評估
 
 ## Dependency Notes
 

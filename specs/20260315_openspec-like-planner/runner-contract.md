@@ -4,7 +4,7 @@
 
 Define the missing runner-level contract that sits between:
 
-- planner artifacts (`specs/changes/<slug>/...`)
+- planner artifacts (`specs/<plan-root>/...`)
 - deterministic workflow control (`workflow-runner.ts`)
 - optional advisory reasoning (`smart-runner-governor.ts`)
 - transcript-visible runner narration (`[AI]` layer)

@@ -12,10 +12,18 @@
 - `docs/events/event_20260313_autorunner_system_stability_plan.md`
 - `docs/specs/autorunner_daemon_architecture.md`
 - `docs/specs/planning_agent_revival.md`
-- `specs/changes/autorunner-autonomous-agent-substrate/proposal.md`
-- `specs/changes/autorunner-autonomous-agent-substrate/spec.md`
-- `specs/changes/autorunner-autonomous-agent-substrate/design.md`
-- `specs/changes/autorunner-autonomous-agent-substrate/tasks.md`
+- `proposal.md`
+- `spec.md`
+- `design.md`
+- `tasks.md`
+- `mission-consumption-baseline.proposal.md`
+- `mission-consumption-baseline.spec.md`
+- `mission-consumption-baseline.design.md`
+- `mission-consumption-baseline.tasks.md`
+- `delegated-execution-baseline.proposal.md`
+- `delegated-execution-baseline.spec.md`
+- `delegated-execution-baseline.design.md`
+- `delegated-execution-baseline.tasks.md`
 
 ## Stop Gates In Force
 

@@ -10,12 +10,12 @@
 
 - `docs/events/event_20260313_autorunner_autonomous_agent_completion.md`
 - `docs/ARCHITECTURE.md`
-- `specs/changes/autorunner-mission-consumption-baseline/implementation-spec.md`
-- `specs/changes/autorunner-mission-consumption-baseline/handoff.md`
-- `specs/changes/autorunner-delegated-execution-baseline/proposal.md`
-- `specs/changes/autorunner-delegated-execution-baseline/spec.md`
-- `specs/changes/autorunner-delegated-execution-baseline/design.md`
-- `specs/changes/autorunner-delegated-execution-baseline/tasks.md`
+- `specs/20260315_openspec-like-planner/implementation-spec.md`
+- `specs/20260315_openspec-like-planner/handoff.md`
+- `specs/20260315_openspec-like-planner/proposal.md`
+- `specs/20260315_openspec-like-planner/spec.md`
+- `specs/20260315_openspec-like-planner/design.md`
+- `specs/20260315_openspec-like-planner/tasks.md`
 
 ## Stop Gates In Force
 

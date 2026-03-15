@@ -14,7 +14,7 @@ This slice spans three related concerns that were handled too informally in-sess
 - Represent Runner as a concrete orchestration unit
 - Allow user-triggered restart with automatic recovery reload
 - Prevent session todo truth from being overwritten by overlapping replans
-- Re-anchor future work in planner artifacts under `specs/changes/...`
+- Re-anchor future work in planner artifacts under `specs/...`
 
 ## Non-goals
 

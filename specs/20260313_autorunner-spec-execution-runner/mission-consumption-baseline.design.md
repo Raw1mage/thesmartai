@@ -54,7 +54,7 @@
 - `packages/opencode/src/session/prompt.ts`
 - `packages/opencode/src/session/workflow-runner.test.ts`
 - `packages/opencode/test/session/planner-reactivation.test.ts`
-- `specs/changes/autorunner-autonomous-agent-substrate/*`
+- `specs/20260315_openspec-like-planner/*`
 
 ## Proposed First Slice Shape
 
