@@ -10,17 +10,17 @@ describe("Lanes", () => {
 
   it("registers lanes with default concurrency", () => {
     const info = Lanes.info()
-    expect(info.main.maxConcurrent).toBe(1)
-    expect(info.cron.maxConcurrent).toBe(1)
-    expect(info.subagent.maxConcurrent).toBe(2)
-    expect(info.nested.maxConcurrent).toBe(1)
+    expect(info["default:main"].maxConcurrent).toBe(1)
+    expect(info["default:cron"].maxConcurrent).toBe(1)
+    expect(info["default:subagent"].maxConcurrent).toBe(2)
+    expect(info["default:nested"].maxConcurrent).toBe(1)
   })
 
   it("registers with custom concurrency", () => {
     Lanes.register({ [Lanes.CommandLane.Cron]: 3 })
     const info = Lanes.info()
-    expect(info.cron.maxConcurrent).toBe(3)
-    expect(info.main.maxConcurrent).toBe(1) // unchanged
+    expect(info["default:cron"].maxConcurrent).toBe(3)
+    expect(info["default:main"].maxConcurrent).toBe(1) // unchanged
   })
 
   it("enqueues and executes a task", async () => {
@@ -109,11 +109,11 @@ describe("Lanes", () => {
   describe("resetAll", () => {
     it("bumps generation numbers", () => {
       const before = Lanes.info()
-      expect(before.main.generation).toBe(0)
+      expect(before["default:main"].generation).toBe(0)
 
       Lanes.resetAll()
       const after = Lanes.info()
-      expect(after.main.generation).toBe(1)
+      expect(after["default:main"].generation).toBe(1)
     })
 
     it("rejects queued tasks with CommandLaneClearedError", async () => {
@@ -136,5 +136,94 @@ describe("Lanes", () => {
       // The slow task may or may not complete — it's already running
       await slowTask.catch(() => {})
     })
+  })
+})
+
+// --- Per-channel lane isolation tests (Phase 3) ---
+
+describe("Per-channel lane isolation", () => {
+  beforeEach(() => {
+    Drain.reset()
+    Lanes.register()
+  })
+
+  it("buildLaneKey creates composite key", () => {
+    expect(Lanes.buildLaneKey("ch-a", Lanes.CommandLane.Main)).toBe("ch-a:main")
+    expect(Lanes.buildLaneKey("default", Lanes.CommandLane.Cron)).toBe("default:cron")
+  })
+
+  it("parseLaneKey extracts channelId and lane", () => {
+    const parsed = Lanes.parseLaneKey("ch-a:main")
+    expect(parsed).toEqual({ channelId: "ch-a", lane: Lanes.CommandLane.Main })
+  })
+
+  it("cross-channel isolation: channel A full does not block channel B", async () => {
+    // Register channel A with main=1 and channel B with main=1
+    Lanes.registerChannel({ channelId: "ch-a", concurrency: { main: 1 } })
+    Lanes.registerChannel({ channelId: "ch-b", concurrency: { main: 1 } })
+
+    const order: string[] = []
+
+    // Occupy channel A's main lane
+    const pA = Lanes.enqueue(
+      Lanes.CommandLane.Main,
+      async () => {
+        await new Promise((r) => setTimeout(r, 100))
+        order.push("a-done")
+        return "a"
+      },
+      "ch-a",
+    )
+
+    // Channel B should execute immediately despite channel A being full
+    const pB = Lanes.enqueue(
+      Lanes.CommandLane.Main,
+      async () => {
+        order.push("b-done")
+        return "b"
+      },
+      "ch-b",
+    )
+
+    await pB
+    expect(order).toContain("b-done")
+    // Channel A should still be running
+    expect(Lanes.channelActiveTasks("ch-a")).toBe(1)
+
+    await pA
+    expect(order).toEqual(["b-done", "a-done"])
+  })
+
+  it("channel-scoped active task count", async () => {
+    Lanes.registerChannel({ channelId: "ch-x" })
+
+    const p = Lanes.enqueue(
+      Lanes.CommandLane.Main,
+      () => new Promise((r) => setTimeout(r, 100)),
+      "ch-x",
+    )
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(Lanes.channelActiveTasks("ch-x")).toBe(1)
+    expect(Lanes.channelActiveTasks("default")).toBe(0) // default unaffected
+
+    await p
+    expect(Lanes.channelActiveTasks("ch-x")).toBe(0)
+  })
+
+  it("unregisterChannel clears channel lanes", () => {
+    Lanes.registerChannel({ channelId: "ephemeral" })
+    const info = Lanes.info()
+    expect(info["ephemeral:main"]).toBeDefined()
+
+    Lanes.unregisterChannel("ephemeral")
+    const infoAfter = Lanes.info()
+    expect(infoAfter["ephemeral:main"]).toBeUndefined()
+  })
+
+  it("default channel backward compatibility", async () => {
+    // enqueue without channelId should use default channel
+    const result = await Lanes.enqueue(Lanes.CommandLane.Main, async () => "default-works")
+    expect(result).toBe("default-works")
   })
 })
