@@ -85,7 +85,30 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     })
   }
 
+  let lastAbortMs = 0
+  const DOUBLE_CLICK_WINDOW_MS = 500
+
+  const abortAll = async () => {
+    try {
+      const res = await sdk.fetch(`${sdk.url}/api/v2/session/abort-all`, { method: "POST" })
+      if (res.ok) {
+        const body = (await res.json()) as { aborted: number }
+        showToast({
+          title: language.t("prompt.action.stop"),
+          description: `Emergency stop: ${body.aborted} session(s) aborted`,
+        })
+      }
+    } catch {}
+  }
+
   const abort = async () => {
+    const now = Date.now()
+    if (now - lastAbortMs < DOUBLE_CLICK_WINDOW_MS) {
+      lastAbortMs = 0
+      return abortAll()
+    }
+    lastAbortMs = now
+
     const sessionID = params.id
     if (!sessionID) return Promise.resolve()
     const queued = pending.get(sessionID)

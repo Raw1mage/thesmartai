@@ -521,7 +521,11 @@ export function Prompt(props: PromptProps) {
             setStore("interrupt", 0)
           }, 5000)
 
-          if (store.interrupt >= 2) {
+          if (store.interrupt >= 3) {
+            // Triple-Esc: emergency abort-all (kill switch)
+            fetch(`${sdk.url}/api/v2/session/abort-all`, { method: "POST" }).catch(() => {})
+            setStore("interrupt", 0)
+          } else if (store.interrupt >= 2) {
             sdk.client.session.abort({
               sessionID: props.sessionID,
             })
@@ -1512,7 +1516,7 @@ export function Prompt(props: PromptProps) {
               <text fg={store.interrupt > 0 ? theme.primary : theme.text}>
                 esc{" "}
                 <span style={{ fg: store.interrupt > 0 ? theme.primary : theme.textMuted }}>
-                  {store.interrupt > 0 ? "again to interrupt" : "interrupt"}
+                  {store.interrupt >= 2 ? "again to stop all" : store.interrupt > 0 ? "again to interrupt" : "interrupt"}
                 </span>
               </text>
             </box>

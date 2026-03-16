@@ -1013,6 +1013,55 @@ export const SessionRoutes = lazy(() =>
       },
     )
     .post(
+      "/abort-all",
+      describeRoute({
+        summary: "Abort all sessions",
+        description:
+          "Emergency stop: abort every busy session and activate the kill-switch to block new work. No MFA required — designed for double-click emergency use.",
+        operationId: "session.abortAll",
+        responses: {
+          200: {
+            description: "All sessions aborted",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    aborted: z.number(),
+                    killSwitchActive: z.boolean(),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        const busyIDs = KillSwitchService.listBusySessionIDs()
+        for (const id of busyIDs) {
+          SessionPrompt.cancel(id)
+        }
+        const requestID = await KillSwitchService.idempotentRequestID("emergency_stop", "double-click stop", 5000)
+        await KillSwitchService.setState({
+          active: true,
+          state: "soft_paused",
+          requestID,
+          initiator: "emergency_stop",
+          reason: "Double-click emergency stop",
+          initiatedAt: Date.now(),
+          mode: "global",
+          scope: "global",
+        })
+        await KillSwitchService.writeAudit({
+          requestID,
+          initiator: "emergency_stop",
+          action: "emergency_abort_all",
+          result: "ok",
+          meta: { aborted: busyIDs.length },
+        })
+        return c.json({ aborted: busyIDs.length, killSwitchActive: true })
+      },
+    )
+    .post(
       "/:sessionID/share",
       describeRoute({
         summary: "Share session",
