@@ -19,11 +19,13 @@
 
 ## Current State (2026-03-17)
 
-- **Phase 1** (Scheduler Recovery): not started
-- **Phase 2** (Channel Model): not started
-- **Phase 3** (Per-channel Lanes): not started
-- **Phase 4** (Channel Kill-switch): not started
-- **Phase 5** (API + Health): not started
+- **Phase 1** (Scheduler Recovery): **complete** — `4a433f41` on `scheduler-daemon` branch, 5 recovery tests passing
+- **Phase 2** (Channel Model): **complete** — `44dfd4ba`, ChannelStore CRUD + default bootstrap, 10 tests passing
+- **Phase 3** (Per-channel Lanes): **complete** — `0738c9c4`, composite key namespace, cross-channel isolation, 6 new tests
+- **Phase 4** (Channel Kill-switch): **complete** — `a124c6d5` + `485f0c7b`, assertSchedulingAllowed + abort-all with channelId + listBusySessionIDs filter, 5 tests
+- **Phase 5** (API + Health): **complete** — `a3ff2f02` + `485f0c7b`, channel CRUD routes + health endpoint + session channelId + daemon boot wiring, 9 API tests
+
+Total: 56 tests passing across 5 test files (heartbeat, channel store, lanes, killswitch service, channel API).
 
 ### Prerequisites met
 
@@ -42,7 +44,7 @@
 
 ## Build Entry Recommendation
 
-Start with **Phase 1** (Scheduler Recovery) — it's self-contained, has clear test criteria, and doesn't depend on channel work. Phase 1 can ship independently even if channel work is deferred.
+All phases complete. Ready for integration verification and PR.
 
 ### Dependency chain
 
@@ -120,10 +122,15 @@ Three-level decomposition in `diagrams/`:
 - [x] Prerequisites met (CronStore, RetryPolicy, Schedule, Daemon D.3, Kill-switch)
 - [x] IDEF0 functional decomposition (3 levels, 9 files)
 - [x] GRAFCET state machines (5 files, traceable to IDEF0)
-- [ ] Phase 1 build started
-- [ ] Phase 1 tests passing
-- [ ] Phase 2 channel schema approved
-- [ ] Phase 2 build started
+- [x] Phase 1 build started
+- [x] Phase 1 tests passing
+- [x] Phase 2 channel schema approved
+- [x] Phase 2 build started
+- [x] Phase 3 per-channel lanes implemented
+- [x] Phase 4 channel kill-switch (core logic)
+- [x] Phase 5 API + health + daemon boot wiring
+- [x] Phase 4 deferred: abort-all channelId, listBusySessionIDs
+- [x] Phase 5 deferred: session channelId, integration tests
 - [ ] Full integration verified
 
 ## Completion / Retrospective Contract
