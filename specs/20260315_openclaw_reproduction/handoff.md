@@ -46,7 +46,7 @@
 
 - **All phases through Stage 3 complete** — Phases 0-6 + D.1-D.3 delivered (93/101 tests passing across 13 test files)
 - **Remaining**: D.3.10 retry policy + aws4fetch lazy import tech debt
-- **Next milestone**: merge `openclaw` → `main`, then new spec for recurring scheduler persistence
+- **Next milestone**: merge `openclaw` → `cms`, then new spec for recurring scheduler persistence
 
 ### Short-term (D.3.10 + tech debt)
 
@@ -104,7 +104,7 @@ None — all design decisions resolved.
 - [x] Stage 3 D.3 build complete (except D.3.10) — 28 tests passing (commit `2247dfd677`)
 - [x] D.3.10 retry policy implemented — 20 tests passing
 - [x] aws4fetch lazy import resolved — `client.sign()` + manual `fetch()` (fixes `client.fetch()` hang)
-- [ ] openclaw branch merged to main
+- [ ] openclaw branch merged to cms
 
 ## Completion / Retrospective Contract
 
