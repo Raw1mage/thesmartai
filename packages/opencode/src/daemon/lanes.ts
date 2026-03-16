@@ -1,5 +1,6 @@
 import { Log } from "../util/log"
 import { Drain } from "./drain"
+import { DEFAULT_CHANNEL_ID } from "../channel/types"
 
 /**
  * Command lane queue with concurrency control (D.3.4-D.3.5, D.3.7).
@@ -7,9 +8,12 @@ import { Drain } from "./drain"
  * Each lane has its own FIFO queue, concurrency limit, and generation number.
  * Generation numbers are bumped on restart to invalidate stale task completions.
  *
- * IDEF0 reference: A41-A44 (Govern Command Lane Execution)
- * GRAFCET reference: opencode_a4_grafcet.json (full state machine)
- * Design decision: DD-12 (lane concurrency defaults)
+ * Lanes are namespaced per channel using composite keys: `<channelId>:<lane>` (DD-15).
+ * The default channel preserves backward-compatible behavior.
+ *
+ * IDEF0 reference: A3 (Allocate Per-Channel Lane Resources), A41-A44
+ * GRAFCET reference: opencode_a3_grafcet.json (lane allocation state machine)
+ * Design decisions: DD-12 (lane concurrency defaults), DD-15 (channel:lane composite key)
  * Benchmark: refs/openclaw/src/process/command-queue.ts
  */
 export namespace Lanes {
@@ -30,6 +34,25 @@ export namespace Lanes {
     [CommandLane.Nested]: 1,
   }
 
+  /**
+   * Build composite lane key: `<channelId>:<lane>` (DD-15).
+   */
+  export function buildLaneKey(channelId: string, lane: CommandLane): string {
+    return `${channelId}:${lane}`
+  }
+
+  /**
+   * Parse composite lane key back to channelId and lane.
+   */
+  export function parseLaneKey(key: string): { channelId: string; lane: CommandLane } | undefined {
+    const idx = key.lastIndexOf(":")
+    if (idx === -1) return undefined
+    const channelId = key.slice(0, idx)
+    const lane = key.slice(idx + 1) as CommandLane
+    if (!Object.values(CommandLane).includes(lane)) return undefined
+    return { channelId, lane }
+  }
+
   type QueueEntry<T = unknown> = {
     id: number
     task: () => Promise<T>
@@ -47,15 +70,30 @@ export namespace Lanes {
   }
 
   let taskIdCounter = 0
-  const lanes = new Map<CommandLane, LaneState>()
+  const lanes = new Map<string, LaneState>()
+
+  export type ChannelLaneConfig = {
+    channelId: string
+    concurrency?: Partial<Record<CommandLane, number>>
+  }
 
   /**
-   * Initialize all lanes with default concurrency (D.3.4, GRAFCET step S0).
+   * Initialize lanes for the default channel (D.3.4, GRAFCET step S0).
+   * Backward-compatible: creates `default:<lane>` entries.
    */
   export function register(overrides?: Partial<Record<CommandLane, number>>): void {
+    registerChannel({ channelId: DEFAULT_CHANNEL_ID, concurrency: overrides })
+  }
+
+  /**
+   * Register lanes for a specific channel with its own concurrency policy.
+   * Each channel gets isolated lane queues (DD-15).
+   */
+  export function registerChannel(config: ChannelLaneConfig): void {
     for (const lane of Object.values(CommandLane)) {
-      const maxConcurrent = overrides?.[lane] ?? DEFAULT_CONCURRENCY[lane]
-      lanes.set(lane, {
+      const key = buildLaneKey(config.channelId, lane)
+      const maxConcurrent = config.concurrency?.[lane] ?? DEFAULT_CONCURRENCY[lane]
+      lanes.set(key, {
         queue: [],
         activeTaskIds: new Set(),
         maxConcurrent,
@@ -63,40 +101,63 @@ export namespace Lanes {
         draining: false,
       })
     }
-    log.info("lanes registered", {
+    log.info("channel lanes registered", {
+      channelId: config.channelId,
       lanes: Object.fromEntries(
-        [...lanes.entries()].map(([k, v]) => [k, v.maxConcurrent]),
+        [...lanes.entries()]
+          .filter(([k]) => k.startsWith(config.channelId + ":"))
+          .map(([k, v]) => [k, v.maxConcurrent]),
       ),
     })
   }
 
   /**
+   * Unregister all lanes for a specific channel.
+   */
+  export function unregisterChannel(channelId: string): void {
+    for (const lane of Object.values(CommandLane)) {
+      const key = buildLaneKey(channelId, lane)
+      const laneState = lanes.get(key)
+      if (laneState) {
+        for (const entry of laneState.queue) {
+          entry.reject(new CommandLaneClearedError())
+        }
+        lanes.delete(key)
+      }
+    }
+    log.info("channel lanes unregistered", { channelId })
+  }
+
+  /**
    * Enqueue a task in a lane (D.3.4, GRAFCET steps S1-S2).
    * Rejects with GatewayDrainingError if daemon is draining.
+   * Defaults to the default channel if channelId is not specified.
    */
   export function enqueue<T>(
     lane: CommandLane,
     task: () => Promise<T>,
+    channelId: string = DEFAULT_CHANNEL_ID,
   ): Promise<T> {
     if (Drain.isDraining()) {
       return Promise.reject(new GatewayDrainingError())
     }
 
-    const laneState = getLane(lane)
+    const key = buildLaneKey(channelId, lane)
+    const laneState = getLane(key)
     const id = ++taskIdCounter
     const generation = laneState.generation
 
     return new Promise<T>((resolve, reject) => {
       laneState.queue.push({ id, task: task as () => Promise<unknown>, resolve: resolve as (v: unknown) => void, reject, generation })
-      pump(lane)
+      pump(key)
     })
   }
 
   /**
    * Pump the lane: execute queued tasks up to maxConcurrent (D.3.5, GRAFCET step S4).
    */
-  function pump(lane: CommandLane): void {
-    const laneState = getLane(lane)
+  function pump(laneKey: string): void {
+    const laneState = getLane(laneKey)
     if (laneState.draining) return
 
     while (
@@ -106,12 +167,12 @@ export namespace Lanes {
       const entry = laneState.queue.shift()!
       laneState.activeTaskIds.add(entry.id)
 
-      void executeEntry(lane, laneState, entry)
+      void executeEntry(laneKey, laneState, entry)
     }
   }
 
   async function executeEntry<T>(
-    lane: CommandLane,
+    laneKey: string,
     laneState: LaneState,
     entry: QueueEntry<T>,
   ): Promise<void> {
@@ -121,7 +182,7 @@ export namespace Lanes {
       // Validate generation before resolving (D.3.7, GRAFCET step S6)
       if (entry.generation !== laneState.generation) {
         log.warn("stale task completion — generation mismatch", {
-          lane,
+          lane: laneKey,
           taskId: entry.id,
           taskGen: entry.generation,
           currentGen: laneState.generation,
@@ -135,7 +196,7 @@ export namespace Lanes {
       entry.reject(e instanceof Error ? e : new Error(String(e)))
     } finally {
       laneState.activeTaskIds.delete(entry.id)
-      pump(lane)
+      pump(laneKey)
     }
   }
 
@@ -174,12 +235,27 @@ export namespace Lanes {
   }
 
   /**
-   * Get queue size for a specific lane.
+   * Get queue size for a specific lane (defaults to default channel).
    */
-  export function queueSize(lane: CommandLane): number {
-    const laneState = lanes.get(lane)
+  export function queueSize(lane: CommandLane, channelId: string = DEFAULT_CHANNEL_ID): number {
+    const key = buildLaneKey(channelId, lane)
+    const laneState = lanes.get(key)
     if (!laneState) return 0
     return laneState.queue.length + laneState.activeTaskIds.size
+  }
+
+  /**
+   * Get active task count for a specific channel.
+   */
+  export function channelActiveTasks(channelId: string): number {
+    let total = 0
+    const prefix = channelId + ":"
+    for (const [key, laneState] of lanes.entries()) {
+      if (key.startsWith(prefix)) {
+        total += laneState.activeTaskIds.size
+      }
+    }
+    return total
   }
 
   /**
@@ -187,6 +263,13 @@ export namespace Lanes {
    */
   export function isIdle(): boolean {
     return totalActiveTasks() === 0
+  }
+
+  /**
+   * Check if a specific channel has no active tasks.
+   */
+  export function isChannelIdle(channelId: string): boolean {
+    return channelActiveTasks(channelId) === 0
   }
 
   /**
@@ -205,18 +288,20 @@ export namespace Lanes {
     return result
   }
 
-  function getLane(lane: CommandLane): LaneState {
-    let laneState = lanes.get(lane)
+  function getLane(laneKey: string): LaneState {
+    let laneState = lanes.get(laneKey)
     if (!laneState) {
       // Auto-register with defaults if not yet registered
+      const parsed = parseLaneKey(laneKey)
+      const maxConcurrent = parsed ? (DEFAULT_CONCURRENCY[parsed.lane] ?? 1) : 1
       laneState = {
         queue: [],
         activeTaskIds: new Set(),
-        maxConcurrent: DEFAULT_CONCURRENCY[lane] ?? 1,
+        maxConcurrent,
         generation: 0,
         draining: false,
       }
-      lanes.set(lane, laneState)
+      lanes.set(laneKey, laneState)
     }
     return laneState
   }
