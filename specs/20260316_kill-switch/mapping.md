@@ -2,37 +2,42 @@
 
 This file maps kill-switch spec items to concrete code locations and owners in the opencode repo.
 
-## High-level mappings
+## High-level mappings (runtime authoritative)
 
-- Control protocol (seq/ACK): specs/20260316_kill-switch/control-protocol.md
-  - Implementation: server/control/control_channel.ts (orchestrator side) and server/worker/worker_control_handler.ts (worker side)
-  - Transport: Redis pub/sub (recommended prototype)
+- Control protocol (seq/ACK): `specs/20260316_kill-switch/control-protocol.md`
+  - Implementation: `packages/opencode/src/server/killswitch/service.ts` + `packages/opencode/src/server/routes/killswitch.ts`
 
-- RBAC hooks: specs/20260316_kill-switch/rbac-hooks.md
-  - Implementation: server/middleware/rbac_middleware.ts and API routers under src/server/routes/admin/kill_switch.ts and src/server/routes/tasks.ts
+- RBAC/capability hooks: `specs/20260316_kill-switch/rbac-hooks.md`
+  - Implementation: `packages/opencode/src/server/routes/killswitch.ts`
 
-- Persistent state (kill_switch:state, last_seq, pendingAcks, audit):
-  - Implementation: Redis (keys: kill_switch:state, control:last_seq:{request_id}, control:pending:{request_id}:{seq}, audit:ledger list)
+- Persistent state / audit / snapshot placeholder:
+  - Implementation: `packages/opencode/src/server/killswitch/service.ts`
+  - Backend substrate: `packages/opencode/src/storage/storage.ts`
 
-- Snapshot orchestration: specs/20260316_kill-switch/snapshot-orchestration.md
-  - Implementation hooks: src/server/services/snapshot_service.ts (MinIO / S3 adapter), callsites in routes/admin/kill_switch.ts
+- Scheduling gate:
+  - Implementation: `packages/opencode/src/server/routes/session.ts`
 
-## Files to modify / create (owner suggestions)
+## Files currently in active scope
 
-- src/server/control/control_channel.ts — replace EventEmitter-based channel with Redis-backed pub/sub + pending ack keys. (Owner: backend)
-- src/server/services/redis_client.ts — new Redis client wrapper and util functions. (Owner: infra/backend)
-- src/server/services/audit_service.ts — replace in-memory audit with Redis list append and optional durable export. (Owner: backend)
-- src/server/services/snapshot*service.ts — add MinIO upload adapter, configurable via env OPENCODE_SNAPSHOT*\* vars. (Owner: backend)
-- src/server/worker/worker_control_handler.ts — worker-side ack handler, last_seq enforcement, persist last_seq to Redis. (Owner: workers)
-- src/server/worker/worker_manager.ts — implement forceKill that can call container/PID kill via orchestrator or system API. (Owner: infra)
-- src/server/routes/admin/kill_switch.ts — ensure RBAC + request_id + snapshot_url writeback to audit. (Owner: api)
+- `packages/opencode/src/server/routes/killswitch.ts`
+- `packages/opencode/src/server/killswitch/service.ts`
+- `packages/opencode/src/server/routes/session.ts`
+- `packages/opencode/src/server/app.ts`
+- `packages/opencode/src/server/routes/killswitch.test.ts`
+- `packages/opencode/src/server/routes/session.killswitch-gate.test.ts`
+- `packages/opencode/src/server/killswitch/service.test.ts`
 
-## Config / Environment
+## Deferred adapter targets (phase-2)
 
-- OPENCODE_REDIS_URL — Redis connection string
-- OPENCODE_MINIO_ENDPOINT, OPENCODE_MINIO_ACCESS_KEY, OPENCODE_MINIO_SECRET_KEY, OPENCODE_MINIO_BUCKET — MinIO config
+- Redis control transport adapter
+- MinIO/S3 snapshot adapter
+- Enhanced worker runtime termination adapter (container/process specific)
 
-## Notes and next steps
+## Config / policy knobs
 
-- This mapping assumes Redis is available in target environment. If not, fallback to in-memory prototype must remain behind feature flag.
-- MFA integration is deferred; add MFA hooks in rbac_middleware but keep stubs for now.
+- `permission.kill_switch.trigger` (global config) — required allow for authorized operation
+- MFA dev behavior: controlled by runtime env flags already used in route path
+
+## Notes
+
+- 本 mapping 以 `packages/opencode/**` 為唯一真相來源；舊 `src/server/**` prototype 路徑不再作為交付目標。

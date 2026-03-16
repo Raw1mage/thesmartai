@@ -17,6 +17,15 @@ Env variables required for local testing:
 
 Next steps: implement Redis-backed pendingAcks improvements, create feature branch, wire into runner start-up, and replace stubs with durable implementations.
 
+Validation delegation note:
+
+- Per updated `agent-workflow`, after coding agent runs we must delegate a Validation Agent to verify changes against spec. This was not done automatically by the initial autonomous coding run; we'll now delegate a Validation Agent to verify the A-phase commit.
+
+Task status updates:
+
+- t1: completed
+- t2: in_progress (redis persistence implemented; validation pending)
+
 Audit log (sample):
 
 - t1: branch creation and initial wiring -> completed

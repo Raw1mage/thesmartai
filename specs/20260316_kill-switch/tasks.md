@@ -1,48 +1,59 @@
-# Tasks for Kill-switch Implementation
+# Tasks for Kill-switch Implementation (phase-1 canonical)
 
-1-spec: 完成 planner artifacts（implementation-spec.md, spec.md, design.md） — owner: planner — status: done
+## Milestone-1: Backend + tests convergence
 
-2-core-api: 實作 state store 與 API endpoints
+1. `rewrite-spec-bundle` (planner) — **done**
+   - proposal/spec/design/implementation-spec/tasks/handoff/control-protocol/rbac-hooks/snapshot-orchestration/mapping 對齊 runtime 現況
 
-- files: src/server/services/kill*switch_state.* , src/server/routes/admin/kill*switch.* — owner: backend — est: 1d
+2. `integrate-runtime-routes` (backend) — **done**
+   - kill-switch route mount in `packages/opencode/src/server/app.ts`
+   - runtime routes/service moved to `packages/opencode/src/server/**`
 
-3-rbac-mfa: 整合 RBAC 與 MFA 檢查到 API — owner: backend/security — est: 1d
+3. `enforce-scheduling-gate` (backend) — **done**
+   - block new scheduling in session message/prompt_async when kill-switch active
 
-4-agent-check: 在 agent 啟動與 scheduler path 加入 check（短路新任務） — owner: infra — est: 0.5d
+4. `harden-auth-gate` (backend/security) — **done**
+   - replace header role with auth-bound operator gate
 
-5-soft-kill: 實作 soft-pause signaling (redis pubsub / control channel) — owner: infra — est: 0.5d
+5. `harden-capability-gate` (backend/security) — **done**
+   - explicit capability `kill_switch.trigger`, deny-by-default
 
-6-hard-kill: 實作 timeout 驅動的 force termination — owner: infra — est: 0.5d
+6. `validate-killswitch-test-matrix` (qa/backend) — **done**
+   - route/service/session-gate tests pass + typecheck pass
 
-7-snapshot: snapshot generator 與上傳（object store） — owner: infra/ops — est: 0.5d
+7. `finalize-deploy-policy-doc` (ops/security) — **done**
+   - document required global config permission (`kill_switch.trigger = allow`) and rollout checklist
+   - output: `docs/policies/kill-switch-deployment-policy.md`
 
-8-web-ui: admin button 與 modal — owner: frontend — est: 1d
+8. `build-runbook` (ops) — **done**
+   - incident runbook + postmortem template for trigger/cancel/fallback handling
+   - output: `docs/runbooks/kill-switch-incident-runbook.md`
 
-9-tui: TUI hotkey + confirmation flow — owner: tui — est: 0.5d
+## Milestone-2: Deferred adapters and UI
 
-10-tests: 單元與集成測試 + E2E — owner: qa — est: 1d
+9. `adapterize-control-transport` (infra/backend) — done
+   - Redis/NATS transport adapter with same seq/ACK contract
+   - output: adapterized selection in `packages/opencode/src/server/killswitch/service.ts`
+   - default: `local`, explicit `redis` mode fail-fast without required config
 
-11-runbook: 撰寫 runbook 與 postmortem template — owner: ops — est: 0.5d
+10. `adapterize-snapshot-backend` (infra/ops) — done
+    - MinIO/S3 upload adapter + signed URL policy
+    - output: backend selection in `packages/opencode/src/server/killswitch/service.ts`
+    - default: `local`, explicit `minio|s3` mode fail-fast without required config
 
-12-security-review: 安全團隊 review 並 sign-off — owner: security — est: 0.5d
+11. `web-admin-killswitch-ui` (frontend) — done
+    - output: `packages/app/src/components/settings-general.tsx` + helper/test files
 
-依賴關係與順序：2 -> 3 -> 4,5 -> 6 -> 7 -> 8,9 -> 10 -> 11 -> 12
+12. `tui-killswitch-control` (tui) — done
+    - output: `packages/opencode/src/cli/cmd/killswitch.ts` + CLI tests
 
-Implementation phases (priority)
+## Dependency order
 
-- A - seq/ACK + orchestrator fallback (HIGH, in_progress)
-  - Deliverable: worker handler demo, control_channel ack watcher, worker_manager.forceKill stub, audit writes on fallback
-  - Owner: backend (opencode-runner killswitch branch)
+- milestone-1: `1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8`
+- milestone-2: `9 -> 10 -> 11,12`
 
-- B - snapshot orchestration (MEDIUM)
-  - Deliverable: snapshot job -> upload -> snapshot_url returned and written to audit/state
+## Validation-oriented closure gates
 
-- C - cooldown / anti-flood (MEDIUM)
-  - Deliverable: per-user cooldown middleware (5s) and optional token-bucket implementation
-
-- D - tests & hardening (MEDIUM)
-  - Deliverable: unit/integration/E2E tests covering seq/ack/timeout, snapshot flow, RBAC flows
-
-Notes:
-
-- Execution order: A -> B -> C -> D. A is the current development priority and will be implemented in the opencode-runner killswitch branch.
+- Gate-A: backend tests + typecheck green
+- Gate-B: deploy policy documented and reviewed
+- Gate-C: runbook completed and linked in events

@@ -29,6 +29,7 @@ import {
   getPendingContinuationQueueInspection,
   mutatePendingContinuationQueue,
 } from "@/session/workflow-runner"
+import { KillSwitchService } from "../killswitch/service"
 
 const AutonomousWorkflowHealthSchema = z.object({
   state: z.enum(["idle", "running", "waiting_user", "blocked", "completed"]),
@@ -1549,6 +1550,17 @@ export const SessionRoutes = lazy(() =>
       ),
       validator("json", SessionPrompt.PromptInput.omit({ sessionID: true })),
       async (c) => {
+        const gate = await KillSwitchService.assertSchedulingAllowed()
+        if (!gate.ok) {
+          return c.json(
+            {
+              code: "KILL_SWITCH_ACTIVE",
+              message: "Kill-switch is active; new task scheduling is paused",
+              state: gate.state,
+            },
+            409,
+          )
+        }
         const sessionID = c.req.valid("param").sessionID
         const body = c.req.valid("json")
         const username = RequestUser.username()
@@ -1596,6 +1608,17 @@ export const SessionRoutes = lazy(() =>
       ),
       validator("json", SessionPrompt.PromptInput.omit({ sessionID: true })),
       async (c) => {
+        const gate = await KillSwitchService.assertSchedulingAllowed()
+        if (!gate.ok) {
+          return c.json(
+            {
+              code: "KILL_SWITCH_ACTIVE",
+              message: "Kill-switch is active; new task scheduling is paused",
+              state: gate.state,
+            },
+            409,
+          )
+        }
         c.status(204)
         c.header("Content-Type", "application/json")
         const sessionID = c.req.valid("param").sessionID

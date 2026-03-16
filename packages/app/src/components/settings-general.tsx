@@ -3,12 +3,14 @@ import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Select } from "@opencode-ai/ui/select"
 import { Switch } from "@opencode-ai/ui/switch"
+import { TextField } from "@opencode-ai/ui/text-field"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useSettings, monoFontFamily } from "@/context/settings"
+import { buildTriggerPayload, normalizeKillSwitchStatus } from "./settings-kill-switch"
 import { formatRestartErrorResponse } from "@/utils/restart-errors"
 import { playSound, SOUND_OPTIONS } from "@/utils/sound"
 import { Link } from "./link"
@@ -45,6 +47,21 @@ export const SettingsGeneral: Component = () => {
   const settings = useSettings()
   const [restartState, setRestartState] = createSignal<"idle" | "restarting" | "waiting" | "error">("idle")
   const [restartMessage, setRestartMessage] = createSignal<string>("")
+  const [killSwitchReason, setKillSwitchReason] = createSignal("")
+  const [killSwitchMfa, setKillSwitchMfa] = createSignal("")
+  const [killSwitchRequestID, setKillSwitchRequestID] = createSignal<string | null>(null)
+  const [killSwitchMessage, setKillSwitchMessage] = createSignal("")
+  const [killSwitchBusy, setKillSwitchBusy] = createSignal(false)
+
+  const [killSwitchStatus, killSwitchActions] = createResource(async () => {
+    const response = await globalSDK.fetch(`${globalSDK.url}/api/v2/admin/kill-switch/status`, {
+      method: "GET",
+      cache: "no-store",
+    })
+    if (!response.ok) throw new Error(`Status failed (${response.status})`)
+    const data = await response.json()
+    return normalizeKillSwitchStatus(data)
+  })
 
   const linux = createMemo(() => platform.platform === "desktop" && platform.os === "linux")
   const web = createMemo(() => platform.platform === "web")
@@ -112,6 +129,116 @@ export const SettingsGeneral: Component = () => {
     } catch (error) {
       setRestartState("error")
       setRestartMessage(error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  const readError = async (response: Response) => {
+    try {
+      const data = await response.json()
+      if (typeof data?.reason === "string" && data.reason) return data.reason
+      if (typeof data?.error === "string" && data.error) return data.error
+      if (typeof data?.message === "string" && data.message) return data.message
+      return `Request failed (${response.status})`
+    } catch {
+      return `Request failed (${response.status})`
+    }
+  }
+
+  const triggerKillSwitch = async () => {
+    if (killSwitchBusy()) return
+    const reason = killSwitchReason().trim()
+    if (!reason) {
+      setKillSwitchMessage("Reason is required.")
+      return
+    }
+    if (!window.confirm("Trigger kill-switch now? This will pause/cancel ongoing work.")) return
+
+    setKillSwitchBusy(true)
+    setKillSwitchMessage("")
+    try {
+      const first = await globalSDK.fetch(`${globalSDK.url}/api/v2/admin/kill-switch/trigger`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(buildTriggerPayload({ reason })),
+      })
+
+      if (first.status === 202) {
+        const challenge = (await first.json()) as { mfa_required?: boolean; request_id?: string }
+        if (challenge?.mfa_required && challenge.request_id) {
+          setKillSwitchRequestID(challenge.request_id)
+          if (!killSwitchMfa().trim()) {
+            setKillSwitchMessage(`MFA required. Enter code for request_id ${challenge.request_id}.`)
+            return
+          }
+          const second = await globalSDK.fetch(`${globalSDK.url}/api/v2/admin/kill-switch/trigger`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(
+              buildTriggerPayload({
+                reason,
+                requestID: challenge.request_id,
+                mfaCode: killSwitchMfa().trim(),
+              }),
+            ),
+          })
+          if (!second.ok) {
+            setKillSwitchMessage(await readError(second))
+            return
+          }
+          const done = (await second.json()) as { request_id?: string; snapshot_url?: string | null }
+          setKillSwitchRequestID(done.request_id ?? challenge.request_id)
+          setKillSwitchMessage(
+            `Triggered. request_id=${done.request_id ?? challenge.request_id}${done.snapshot_url ? ` snapshot=${done.snapshot_url}` : ""}`,
+          )
+          setKillSwitchMfa("")
+          await killSwitchActions.refetch()
+          return
+        }
+        setKillSwitchMessage("MFA required but challenge payload is invalid.")
+        return
+      }
+
+      if (!first.ok) {
+        setKillSwitchMessage(await readError(first))
+        return
+      }
+
+      const done = (await first.json()) as { request_id?: string; snapshot_url?: string | null }
+      setKillSwitchRequestID(done.request_id ?? null)
+      setKillSwitchMessage(
+        `Triggered. request_id=${done.request_id ?? "n/a"}${done.snapshot_url ? ` snapshot=${done.snapshot_url}` : ""}`,
+      )
+      await killSwitchActions.refetch()
+    } catch (error) {
+      setKillSwitchMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setKillSwitchBusy(false)
+    }
+  }
+
+  const cancelKillSwitch = async () => {
+    if (killSwitchBusy()) return
+    if (!window.confirm("Cancel kill-switch and resume new scheduling?")) return
+
+    setKillSwitchBusy(true)
+    setKillSwitchMessage("")
+    try {
+      const response = await globalSDK.fetch(`${globalSDK.url}/api/v2/admin/kill-switch/cancel`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ requestID: killSwitchRequestID() ?? undefined }),
+      })
+      if (!response.ok) {
+        setKillSwitchMessage(await readError(response))
+        return
+      }
+      const done = (await response.json()) as { request_id?: string | null }
+      setKillSwitchMessage(`Canceled.${done.request_id ? ` request_id=${done.request_id}` : ""}`)
+      await killSwitchActions.refetch()
+    } catch (error) {
+      setKillSwitchMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setKillSwitchBusy(false)
     }
   }
 
@@ -452,6 +579,78 @@ export const SettingsGeneral: Component = () => {
                 >
                   {message()}
                 </span>
+              )}
+            </Show>
+          </div>
+        </SettingsRow>
+
+        <SettingsRow
+          title="Kill-Switch"
+          description="Emergency control for global pause/resume. Trigger supports MFA challenge flow."
+        >
+          <div class="flex flex-col items-end gap-2 w-[420px] max-w-full">
+            <div class="text-11-regular text-text-weak text-right break-all">
+              status: {killSwitchStatus.loading ? "loading…" : killSwitchStatus()?.active ? "active" : "inactive"}
+              <br />
+              request_id: {killSwitchStatus()?.requestID ?? killSwitchRequestID() ?? "-"}
+              <br />
+              state: {killSwitchStatus()?.state ?? "-"}
+              <br />
+              snapshot_url: {killSwitchStatus()?.snapshotURL ?? "-"}
+            </div>
+
+            <div class="w-full">
+              <TextField
+                value={killSwitchReason()}
+                onChange={setKillSwitchReason}
+                placeholder="Reason (required)"
+                hideLabel
+                disabled={killSwitchBusy()}
+              />
+            </div>
+
+            <Show when={killSwitchRequestID()}>
+              <div class="w-full">
+                <TextField
+                  value={killSwitchMfa()}
+                  onChange={setKillSwitchMfa}
+                  placeholder="MFA code"
+                  hideLabel
+                  disabled={killSwitchBusy()}
+                />
+              </div>
+            </Show>
+
+            <div class="flex items-center gap-2">
+              <Button
+                size="small"
+                variant="secondary"
+                onClick={() => void killSwitchActions.refetch()}
+                disabled={killSwitchBusy()}
+              >
+                Refresh
+              </Button>
+              <Button
+                size="small"
+                variant="secondary"
+                onClick={() => void cancelKillSwitch()}
+                disabled={killSwitchBusy()}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="small"
+                variant="primary"
+                onClick={() => void triggerKillSwitch()}
+                disabled={killSwitchBusy()}
+              >
+                Trigger
+              </Button>
+            </div>
+
+            <Show when={killSwitchMessage()}>
+              {(message) => (
+                <span class="max-w-full text-right text-11-regular text-text-danger-base break-words">{message()}</span>
               )}
             </Show>
           </div>
