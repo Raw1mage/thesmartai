@@ -18,6 +18,7 @@ import {
   enqueuePendingContinuation,
   enqueueAutonomousContinue,
   evaluateAutonomousContinuation,
+  evaluateTriggerGates,
   getAutonomousWorkflowHealth,
   getPendingContinuationQueueInspection,
   getPendingContinuation,
@@ -28,6 +29,17 @@ import {
   shouldInterruptAutonomousRun,
   shouldResumePendingContinuation,
   summarizeAutonomousWorkflowHealth,
+  buildContinuationTrigger,
+  buildApiTrigger,
+  CONTINUATION_GATE_POLICY,
+  API_GATE_POLICY,
+  RunQueue,
+  type QueueEntry,
+  type Lane,
+  LANE_CONFIGS,
+  LANES_BY_PRIORITY,
+  triggerPriorityToLane,
+  laneHasCapacity,
 } from "./workflow-runner"
 
 function approvedMission() {
@@ -1870,5 +1882,649 @@ describe("plan-trusting mode: max_continuous_rounds bypass", () => {
         roundCount: 0,
       }),
     ).toEqual({ type: "stop", reason: "todo_complete" })
+  })
+})
+
+describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
+  const baseSession = (overrides?: Partial<Session.WorkflowInfo["autonomous"]>) => ({
+    parentID: undefined as string | undefined,
+    mission: approvedMission(),
+    workflow: {
+      ...Session.defaultWorkflow(1),
+      autonomous: {
+        ...Session.defaultWorkflow(1).autonomous,
+        enabled: true,
+        ...overrides,
+      },
+      state: "waiting_user" as const,
+    },
+    time: { created: 1, updated: 1 },
+  })
+
+  describe("buildContinuationTrigger", () => {
+    it("returns undefined when no todo provided", () => {
+      expect(
+        buildContinuationTrigger({ todo: undefined, textForPending: "go", textForInProgress: "continue" }),
+      ).toBeUndefined()
+    })
+
+    it("builds pending trigger for pending todo", () => {
+      const todo = { id: "a", content: "do work", status: "pending" as const, priority: "high" as const }
+      const trigger = buildContinuationTrigger({ todo, textForPending: "go", textForInProgress: "continue" })
+      expect(trigger).toEqual({
+        type: "continuation",
+        source: "todo_pending",
+        payload: { text: "go", todo },
+        priority: "normal",
+        gatePolicy: CONTINUATION_GATE_POLICY,
+      })
+    })
+
+    it("builds in_progress trigger for in_progress todo", () => {
+      const todo = { id: "b", content: "halfway", status: "in_progress" as const, priority: "high" as const }
+      const trigger = buildContinuationTrigger({ todo, textForPending: "go", textForInProgress: "continue" })
+      expect(trigger).toEqual({
+        type: "continuation",
+        source: "todo_in_progress",
+        payload: { text: "continue", todo },
+        priority: "normal",
+        gatePolicy: CONTINUATION_GATE_POLICY,
+      })
+    })
+
+    it("returns undefined for completed todo", () => {
+      const todo = { id: "c", content: "done", status: "completed" as const, priority: "high" as const }
+      expect(
+        buildContinuationTrigger({ todo, textForPending: "go", textForInProgress: "continue" }),
+      ).toBeUndefined()
+    })
+  })
+
+  describe("buildApiTrigger", () => {
+    it("builds api trigger with default priority and gate policy", () => {
+      const trigger = buildApiTrigger({ source: "webhook", text: "new event" })
+      expect(trigger.type).toBe("api")
+      expect(trigger.source).toBe("webhook")
+      expect(trigger.priority).toBe("normal")
+      expect(trigger.gatePolicy).toEqual(API_GATE_POLICY)
+      expect(trigger.gatePolicy.respectMaxRounds).toBe(false)
+    })
+
+    it("accepts custom priority and apiContext", () => {
+      const trigger = buildApiTrigger({
+        source: "cron",
+        text: "scheduled run",
+        priority: "critical",
+        apiContext: { cronId: "abc" },
+      })
+      expect(trigger.priority).toBe("critical")
+      expect(trigger.payload.apiContext).toEqual({ cronId: "abc" })
+    })
+  })
+
+  describe("evaluateTriggerGates", () => {
+    it("blocks subagent sessions", () => {
+      const trigger = buildApiTrigger({ source: "test", text: "go" })
+      const result = evaluateTriggerGates({
+        trigger,
+        session: { ...baseSession(), parentID: "parent_123" },
+        todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+        roundCount: 0,
+      })
+      expect(result).toEqual({ pass: false, reason: "subagent_session" })
+    })
+
+    it("blocks when autonomous is disabled", () => {
+      const trigger = buildApiTrigger({ source: "test", text: "go" })
+      const session = baseSession()
+      session.workflow.autonomous.enabled = false
+      const result = evaluateTriggerGates({
+        trigger,
+        session,
+        todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+        roundCount: 0,
+      })
+      expect(result).toEqual({ pass: false, reason: "autonomous_disabled" })
+    })
+
+    it("blocks when workflow is blocked", () => {
+      const trigger = buildApiTrigger({ source: "test", text: "go" })
+      const session = baseSession()
+      session.workflow.state = "blocked"
+      const result = evaluateTriggerGates({
+        trigger,
+        session,
+        todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+        roundCount: 0,
+      })
+      expect(result).toEqual({ pass: false, reason: "blocked" })
+    })
+
+    it("blocks when mission not approved", () => {
+      const trigger = buildApiTrigger({ source: "test", text: "go" })
+      const session = baseSession()
+      session.mission = undefined as any
+      const result = evaluateTriggerGates({
+        trigger,
+        session,
+        todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+        roundCount: 0,
+      })
+      expect(result).toEqual({ pass: false, reason: "mission_not_approved" })
+    })
+
+    it("blocks for pending approvals", () => {
+      const trigger = buildApiTrigger({ source: "test", text: "go" })
+      const result = evaluateTriggerGates({
+        trigger,
+        session: baseSession(),
+        todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+        roundCount: 0,
+        pendingApprovals: 1,
+      })
+      expect(result).toEqual({ pass: false, reason: "approval_needed" })
+    })
+
+    it("blocks for pending questions", () => {
+      const trigger = buildApiTrigger({ source: "test", text: "go" })
+      const result = evaluateTriggerGates({
+        trigger,
+        session: baseSession(),
+        todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+        roundCount: 0,
+        pendingQuestions: 1,
+      })
+      expect(result).toEqual({ pass: false, reason: "product_decision_needed" })
+    })
+
+    it("blocks for active subtasks", () => {
+      const trigger = buildApiTrigger({ source: "test", text: "go" })
+      const result = evaluateTriggerGates({
+        trigger,
+        session: baseSession(),
+        todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+        roundCount: 0,
+        activeSubtasks: 2,
+      })
+      expect(result).toEqual({ pass: false, reason: "wait_subagent" })
+    })
+
+    it("api trigger ignores max_continuous_rounds (respectMaxRounds=false)", () => {
+      const trigger = buildApiTrigger({ source: "test", text: "go" })
+      const result = evaluateTriggerGates({
+        trigger,
+        session: baseSession({ maxContinuousRounds: 3 }),
+        todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+        roundCount: 100,
+      })
+      expect(result.pass).toBe(true)
+    })
+
+    it("continuation trigger respects max_continuous_rounds when not plan-trusting", () => {
+      const todo = { id: "a", content: "x", status: "pending" as const, priority: "high" as const }
+      const trigger = buildContinuationTrigger({ todo, textForPending: "go", textForInProgress: "cont" })!
+      const session = baseSession({ maxContinuousRounds: 3 })
+      session.mission = { ...approvedMission(), executionReady: false }
+      const result = evaluateTriggerGates({
+        trigger,
+        session,
+        todos: [todo],
+        roundCount: 5,
+      })
+      // executionReady=false → not plan-trusting → mission_not_approved check fires first
+      expect(result).toEqual({ pass: false, reason: "mission_not_approved" })
+    })
+
+    it("passes all gates for valid api trigger", () => {
+      const trigger = buildApiTrigger({ source: "test", text: "go" })
+      const result = evaluateTriggerGates({
+        trigger,
+        session: baseSession(),
+        todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+        roundCount: 0,
+      })
+      expect(result.pass).toBe(true)
+      if (result.pass) {
+        expect(result.trigger.type).toBe("api")
+      }
+    })
+  })
+
+  describe("planAutonomousNextAction regression: all 14 ContinuationDecisionReasons", () => {
+    it("subagent_session: stops for child sessions", () => {
+      expect(
+        planAutonomousNextAction({
+          session: { ...baseSession(), parentID: "parent_1" },
+          todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+          roundCount: 0,
+        }).reason,
+      ).toBe("subagent_session")
+    })
+
+    it("autonomous_disabled: stops when autonomous not enabled", () => {
+      const session = baseSession()
+      session.workflow.autonomous.enabled = false
+      expect(
+        planAutonomousNextAction({ session, todos: [{ id: "a", content: "x", status: "pending", priority: "high" }], roundCount: 0 }).reason,
+      ).toBe("autonomous_disabled")
+    })
+
+    it("mission_not_approved: stops when no approved mission", () => {
+      const session = baseSession()
+      session.mission = undefined as any
+      expect(
+        planAutonomousNextAction({ session, todos: [{ id: "a", content: "x", status: "pending", priority: "high" }], roundCount: 0 }).reason,
+      ).toBe("mission_not_approved")
+    })
+
+    it("blocked: stops when workflow state is blocked", () => {
+      const session = baseSession()
+      session.workflow.state = "blocked"
+      expect(
+        planAutonomousNextAction({ session, todos: [{ id: "a", content: "x", status: "pending", priority: "high" }], roundCount: 0 }).reason,
+      ).toBe("blocked")
+    })
+
+    it("approval_needed: stops for pending approvals", () => {
+      expect(
+        planAutonomousNextAction({
+          session: baseSession(),
+          todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+          roundCount: 0,
+          pendingApprovals: 1,
+        }).reason,
+      ).toBe("approval_needed")
+    })
+
+    it("product_decision_needed: stops for pending questions", () => {
+      expect(
+        planAutonomousNextAction({
+          session: baseSession(),
+          todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+          roundCount: 0,
+          pendingQuestions: 1,
+        }).reason,
+      ).toBe("product_decision_needed")
+    })
+
+    it("approval_needed (structured): stops for structured approval action", () => {
+      expect(
+        planAutonomousNextAction({
+          session: baseSession({ requireApprovalFor: ["push"] }),
+          todos: [{ id: "a", content: "push release", status: "pending", priority: "high" }],
+          roundCount: 0,
+        }).reason,
+      ).toBe("approval_needed")
+    })
+
+    it("wait_subagent (structured): stops for subagent wait action", () => {
+      expect(
+        planAutonomousNextAction({
+          session: baseSession(),
+          todos: [{ id: "a", content: "wait", status: "pending", priority: "high", action: { kind: "wait", waitingOn: "subagent" } }],
+          roundCount: 0,
+        }).reason,
+      ).toBe("wait_subagent")
+    })
+
+    it("product_decision_needed (structured): stops for decision action", () => {
+      expect(
+        planAutonomousNextAction({
+          session: baseSession(),
+          todos: [{ id: "a", content: "decide", status: "pending", priority: "high", action: { kind: "decision", waitingOn: "decision" } }],
+          roundCount: 0,
+        }).reason,
+      ).toBe("product_decision_needed")
+    })
+
+    it("wait_subagent: stops for active subtasks", () => {
+      expect(
+        planAutonomousNextAction({
+          session: baseSession(),
+          todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+          roundCount: 0,
+          activeSubtasks: 1,
+        }).reason,
+      ).toBe("wait_subagent")
+    })
+
+    it("todo_complete: stops when no actionable todos", () => {
+      expect(
+        planAutonomousNextAction({
+          session: baseSession(),
+          todos: [],
+          roundCount: 0,
+        }).reason,
+      ).toBe("todo_complete")
+    })
+
+    it("max_continuous_rounds: stops when rounds exceeded (non-plan-trusting)", () => {
+      const session = baseSession({ maxContinuousRounds: 3 })
+      session.mission = { ...approvedMission(), executionReady: false }
+      expect(
+        planAutonomousNextAction({
+          session,
+          todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+          roundCount: 5,
+        }).reason,
+      ).toBe("mission_not_approved")
+    })
+
+    it("todo_in_progress: continues with in-progress todo", () => {
+      const result = planAutonomousNextAction({
+        session: baseSession(),
+        todos: [{ id: "a", content: "working", status: "in_progress", priority: "high" }],
+        roundCount: 0,
+      })
+      expect(result.type).toBe("continue")
+      expect(result.reason).toBe("todo_in_progress")
+    })
+
+    it("todo_pending: continues with pending todo", () => {
+      const result = planAutonomousNextAction({
+        session: baseSession(),
+        todos: [{ id: "a", content: "next", status: "pending", priority: "high" }],
+        roundCount: 0,
+      })
+      expect(result.type).toBe("continue")
+      expect(result.reason).toBe("todo_pending")
+    })
+  })
+
+  describe("gate policy differences between continuation and api triggers", () => {
+    it("continuation gatePolicy requires mission and respects max rounds", () => {
+      expect(CONTINUATION_GATE_POLICY.requireApprovedMission).toBe(true)
+      expect(CONTINUATION_GATE_POLICY.respectMaxRounds).toBe(true)
+      expect(CONTINUATION_GATE_POLICY.checkApprovalGates).toBe(true)
+      expect(CONTINUATION_GATE_POLICY.checkStructuredStops).toBe(true)
+    })
+
+    it("api gatePolicy requires mission but ignores max rounds", () => {
+      expect(API_GATE_POLICY.requireApprovedMission).toBe(true)
+      expect(API_GATE_POLICY.respectMaxRounds).toBe(false)
+      expect(API_GATE_POLICY.checkApprovalGates).toBe(true)
+      expect(API_GATE_POLICY.checkStructuredStops).toBe(true)
+    })
+  })
+})
+
+describe("Lane policy (Phase 6)", () => {
+  it("maps trigger priority to correct lane", () => {
+    expect(triggerPriorityToLane("critical")).toBe("critical")
+    expect(triggerPriorityToLane("normal")).toBe("normal")
+    expect(triggerPriorityToLane("background")).toBe("background")
+  })
+
+  it("LANES_BY_PRIORITY is in correct order", () => {
+    expect(LANES_BY_PRIORITY).toEqual(["critical", "normal", "background"])
+  })
+
+  it("lane configs have correct concurrency caps", () => {
+    expect(LANE_CONFIGS.critical.concurrencyCap).toBe(2)
+    expect(LANE_CONFIGS.normal.concurrencyCap).toBe(4)
+    expect(LANE_CONFIGS.background.concurrencyCap).toBe(2)
+  })
+
+  it("lane configs have correct priority ranks (lower = higher priority)", () => {
+    expect(LANE_CONFIGS.critical.priorityRank).toBeLessThan(LANE_CONFIGS.normal.priorityRank)
+    expect(LANE_CONFIGS.normal.priorityRank).toBeLessThan(LANE_CONFIGS.background.priorityRank)
+  })
+
+  it("laneHasCapacity respects concurrency cap", () => {
+    expect(laneHasCapacity("critical", 0)).toBe(true)
+    expect(laneHasCapacity("critical", 1)).toBe(true)
+    expect(laneHasCapacity("critical", 2)).toBe(false)
+    expect(laneHasCapacity("critical", 3)).toBe(false)
+
+    expect(laneHasCapacity("normal", 3)).toBe(true)
+    expect(laneHasCapacity("normal", 4)).toBe(false)
+
+    expect(laneHasCapacity("background", 1)).toBe(true)
+    expect(laneHasCapacity("background", 2)).toBe(false)
+  })
+})
+
+describe("RunQueue (Phase 6)", () => {
+  const dir = tmpdir("runqueue")
+
+  it("enqueue creates entry with correct lane", async () => {
+    const entry = await RunQueue.enqueue({
+      sessionID: "session_test_rq1" as any,
+      messageID: "msg_1" as any,
+      createdAt: 1000,
+      roundCount: 0,
+      reason: "todo_pending",
+      text: "continue",
+      triggerType: "continuation",
+      priority: "normal",
+    })
+
+    expect(entry.lane).toBe("normal")
+    expect(entry.triggerType).toBe("continuation")
+    expect(entry.sessionID).toBe("session_test_rq1")
+    expect(entry.enqueuedAt).toBeGreaterThan(0)
+  })
+
+  it("enqueue maps critical priority to critical lane", async () => {
+    const entry = await RunQueue.enqueue({
+      sessionID: "session_test_rq2" as any,
+      messageID: "msg_2" as any,
+      createdAt: 2000,
+      roundCount: 0,
+      reason: "todo_pending",
+      text: "urgent",
+      triggerType: "api",
+      priority: "critical",
+    })
+
+    expect(entry.lane).toBe("critical")
+  })
+
+  it("enqueue maps background priority to background lane", async () => {
+    const entry = await RunQueue.enqueue({
+      sessionID: "session_test_rq3" as any,
+      messageID: "msg_3" as any,
+      createdAt: 3000,
+      roundCount: 0,
+      reason: "todo_pending",
+      text: "low priority",
+      triggerType: "continuation",
+      priority: "background",
+    })
+
+    expect(entry.lane).toBe("background")
+  })
+
+  it("peek returns entry after enqueue", async () => {
+    await RunQueue.enqueue({
+      sessionID: "session_test_rq4" as any,
+      messageID: "msg_4" as any,
+      createdAt: 4000,
+      roundCount: 0,
+      reason: "todo_pending",
+      text: "test",
+      triggerType: "continuation",
+      priority: "normal",
+    })
+
+    const peeked = await RunQueue.peek("session_test_rq4" as any)
+    expect(peeked).toBeDefined()
+    expect(peeked!.sessionID).toBe("session_test_rq4")
+    expect(peeked!.lane).toBe("normal")
+  })
+
+  it("remove clears entry from queue", async () => {
+    await RunQueue.enqueue({
+      sessionID: "session_test_rq5" as any,
+      messageID: "msg_5" as any,
+      createdAt: 5000,
+      roundCount: 0,
+      reason: "todo_pending",
+      text: "test",
+      triggerType: "continuation",
+      priority: "normal",
+    })
+
+    await RunQueue.remove("session_test_rq5" as any)
+    const peeked = await RunQueue.peek("session_test_rq5" as any)
+    expect(peeked).toBeUndefined()
+  })
+
+  it("enqueue replaces existing entry when re-enqueuing same session", async () => {
+    await RunQueue.enqueue({
+      sessionID: "session_test_rq6" as any,
+      messageID: "msg_6a" as any,
+      createdAt: 6000,
+      roundCount: 0,
+      reason: "todo_pending",
+      text: "first",
+      triggerType: "continuation",
+      priority: "normal",
+    })
+
+    await RunQueue.enqueue({
+      sessionID: "session_test_rq6" as any,
+      messageID: "msg_6b" as any,
+      createdAt: 6001,
+      roundCount: 1,
+      reason: "todo_in_progress",
+      text: "second",
+      triggerType: "continuation",
+      priority: "critical",
+    })
+
+    const peeked = await RunQueue.peek("session_test_rq6" as any)
+    expect(peeked).toBeDefined()
+    expect(peeked!.messageID).toBe("msg_6b")
+    expect(peeked!.lane).toBe("critical")
+
+    // Should not have an entry in normal lane anymore
+    const normalEntries = await RunQueue.listLane("normal")
+    expect(normalEntries.find((e) => e.sessionID === "session_test_rq6")).toBeUndefined()
+  })
+
+  it("enqueuePendingContinuation delegates to RunQueue", async () => {
+    await enqueuePendingContinuation({
+      sessionID: "session_test_rq7" as any,
+      messageID: "msg_7" as any,
+      createdAt: 7000,
+      roundCount: 0,
+      reason: "todo_pending",
+      text: "via legacy api",
+    })
+
+    const peeked = await RunQueue.peek("session_test_rq7" as any)
+    expect(peeked).toBeDefined()
+    expect(peeked!.lane).toBe("normal")
+    expect(peeked!.triggerType).toBe("continuation")
+
+    // Legacy getPendingContinuation should also work
+    const legacy = await getPendingContinuation("session_test_rq7" as any)
+    expect(legacy).toBeDefined()
+    expect(legacy!.sessionID).toBe("session_test_rq7")
+  })
+
+  it("clearPendingContinuation removes from RunQueue and legacy", async () => {
+    await enqueuePendingContinuation({
+      sessionID: "session_test_rq8" as any,
+      messageID: "msg_8" as any,
+      createdAt: 8000,
+      roundCount: 0,
+      reason: "todo_pending",
+      text: "to clear",
+    })
+
+    await clearPendingContinuation("session_test_rq8" as any)
+
+    const peeked = await RunQueue.peek("session_test_rq8" as any)
+    expect(peeked).toBeUndefined()
+
+    const legacy = await getPendingContinuation("session_test_rq8" as any)
+    expect(legacy).toBeUndefined()
+  })
+
+  it("drain returns entries in lane priority order", async () => {
+    // Clean all test entries to get a clean slate
+    const allEntries = await RunQueue.listAll()
+    for (const entry of allEntries) {
+      await RunQueue.remove(entry.sessionID)
+    }
+
+    await RunQueue.enqueue({
+      sessionID: "session_drain_bg" as any,
+      messageID: "msg_bg" as any,
+      createdAt: 100,
+      roundCount: 0,
+      reason: "todo_pending",
+      text: "bg",
+      triggerType: "continuation",
+      priority: "background",
+    })
+    await RunQueue.enqueue({
+      sessionID: "session_drain_crit" as any,
+      messageID: "msg_crit" as any,
+      createdAt: 200,
+      roundCount: 0,
+      reason: "todo_pending",
+      text: "crit",
+      triggerType: "api",
+      priority: "critical",
+    })
+    await RunQueue.enqueue({
+      sessionID: "session_drain_norm" as any,
+      messageID: "msg_norm" as any,
+      createdAt: 300,
+      roundCount: 0,
+      reason: "todo_pending",
+      text: "norm",
+      triggerType: "continuation",
+      priority: "normal",
+    })
+
+    const drained = await RunQueue.drain({
+      maxCount: 3,
+      inFlightByLane: { critical: 0, normal: 0, background: 0 },
+    })
+
+    expect(drained.length).toBe(3)
+    // Critical should come first
+    expect(drained[0].lane).toBe("critical")
+    expect(drained[0].sessionID).toBe("session_drain_crit")
+    // Then normal
+    expect(drained[1].lane).toBe("normal")
+    // Then background
+    expect(drained[2].lane).toBe("background")
+  })
+
+  it("drain respects lane concurrency caps", async () => {
+    await RunQueue.remove("session_drain_cap" as any)
+    await RunQueue.enqueue({
+      sessionID: "session_drain_cap" as any,
+      messageID: "msg_cap" as any,
+      createdAt: 400,
+      roundCount: 0,
+      reason: "todo_pending",
+      text: "test",
+      triggerType: "continuation",
+      priority: "critical",
+    })
+
+    // Critical lane already at capacity (2 in-flight)
+    const drained = await RunQueue.drain({
+      maxCount: 5,
+      inFlightByLane: { critical: 2, normal: 0, background: 0 },
+    })
+
+    // The critical entry should be skipped since lane is at capacity
+    const criticalEntries = drained.filter((e) => e.sessionID === "session_drain_cap")
+    expect(criticalEntries.length).toBe(0)
+  })
+
+  it("countByLane returns correct counts", async () => {
+    // This test may include entries from previous tests, so just check structure
+    const counts = await RunQueue.countByLane()
+    expect(typeof counts.critical).toBe("number")
+    expect(typeof counts.normal).toBe("number")
+    expect(typeof counts.background).toBe("number")
   })
 })

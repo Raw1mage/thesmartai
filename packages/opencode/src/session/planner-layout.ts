@@ -52,5 +52,7 @@ export function plannerArtifacts(input: PlannerInput) {
     design: path.join(root, "design.md"),
     tasks: path.join(root, "tasks.md"),
     handoff: path.join(root, "handoff.md"),
+    idef0: path.join(root, "idef0.json"),
+    grafcet: path.join(root, "grafcet.json"),
   }
 }

@@ -15,6 +15,17 @@ import { Question } from "@/question"
 import { RuntimeEventService } from "@/system/runtime-event-service"
 import { consumeMissionArtifacts } from "./mission-consumption"
 import RUNNER_CONTRACT from "./prompt/runner.txt"
+import {
+  type RunTrigger,
+  type TriggerGateResult,
+  evaluateGates,
+  buildContinuationTrigger,
+  buildApiTrigger,
+  CONTINUATION_GATE_POLICY,
+  API_GATE_POLICY,
+} from "./trigger"
+import { RunQueue, type QueueEntry } from "./queue"
+import { type Lane, LANES_BY_PRIORITY, LANE_CONFIGS } from "./lane-policy"
 
 export const AUTONOMOUS_CONTINUE_TEXT =
   "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision."
@@ -663,6 +674,17 @@ export function evaluateAutonomousContinuation(input: {
     : { continue: false as const, reason: next.reason }
 }
 
+/**
+ * Plan the next autonomous action for a session.
+ *
+ * Internally delegates to the trigger system (Phase 5B):
+ * 1. Build a continuation trigger from the next actionable todo
+ * 2. Evaluate session-level gates via TriggerEvaluator
+ * 3. Convert the result back to AutonomousNextAction format
+ *
+ * External signature and semantics are unchanged — all 14 ContinuationDecisionReasons
+ * are preserved with identical evaluation order.
+ */
 export function planAutonomousNextAction(input: {
   session: Pick<Session.Info, "parentID" | "workflow" | "time" | "mission">
   todos: Todo.Info[]
@@ -671,70 +693,82 @@ export function planAutonomousNextAction(input: {
   pendingApprovals?: number
   pendingQuestions?: number
 }): AutonomousNextAction {
-  const workflow = input.session.workflow ?? Session.defaultWorkflow(input.session.time.updated)
-  if (input.session.parentID) {
-    return { type: "stop", reason: "subagent_session" }
-  }
-  if (!workflow.autonomous.enabled) {
-    return { type: "stop", reason: "autonomous_disabled" }
-  }
-  if (
-    !input.session.mission ||
-    input.session.mission.source !== "openspec_compiled_plan" ||
-    input.session.mission.contract !== "implementation_spec" ||
-    !input.session.mission.executionReady
-  ) {
-    return { type: "stop", reason: "mission_not_approved" }
-  }
-  if (workflow.state === "blocked") {
-    return { type: "stop", reason: "blocked" }
-  }
-  if ((input.pendingApprovals ?? 0) > 0) {
-    return { type: "stop", reason: "approval_needed" }
-  }
-  if ((input.pendingQuestions ?? 0) > 0) {
-    return { type: "stop", reason: "product_decision_needed" }
-  }
-  const structuredStop = detectStructuredStopReason(input.todos)
-  if (structuredStop) {
-    return { type: "stop", reason: structuredStop }
-  }
-  const approvalGate = detectApprovalRequiredForTodos({
-    gates: workflow.autonomous.requireApprovalFor,
-    todos: input.todos,
-  })
-  if (approvalGate) {
-    return { type: "stop", reason: "approval_needed" }
-  }
-  if ((input.activeSubtasks ?? 0) > 0) {
-    return { type: "stop", reason: "wait_subagent" }
-  }
+  // Build a continuation trigger from the next actionable todo
   const current = Todo.nextActionableTodo(input.todos)
-  if (!current) {
+  const trigger = buildContinuationTrigger({
+    todo: current,
+    textForPending: applyRunnerContract(AUTONOMOUS_CONTINUE_TEXT),
+    textForInProgress: applyRunnerContract(AUTONOMOUS_PROGRESS_TEXT),
+  })
+
+  // If no actionable todo, we still need to run gates first (they may stop earlier)
+  // Use a placeholder trigger for gate evaluation when no todo exists
+  const triggerForGates: RunTrigger = trigger ?? {
+    type: "continuation",
+    source: "todo_pending",
+    payload: { text: "", todo: { id: "", content: "", status: "pending", priority: "low" } as Todo.Info },
+    priority: "normal",
+    gatePolicy: CONTINUATION_GATE_POLICY,
+  }
+
+  const gateResult = evaluateGates({
+    trigger: triggerForGates,
+    session: input.session,
+    todos: input.todos,
+    roundCount: input.roundCount,
+    activeSubtasks: input.activeSubtasks,
+    pendingApprovals: input.pendingApprovals,
+    pendingQuestions: input.pendingQuestions,
+    isPlanTrusting: isPlanTrusting(input.session.mission),
+    detectStructuredStopReason,
+    detectApprovalGate: detectApprovalRequiredForTodos,
+  })
+
+  if (!gateResult.pass) {
+    // Gate evaluator never produces "todo_pending" or "todo_in_progress" as stop reasons
+    return { type: "stop", reason: gateResult.reason as Exclude<ContinuationDecisionReason, "todo_pending" | "todo_in_progress"> }
+  }
+
+  // Gates passed — check if we have a real todo to continue with
+  if (!trigger) {
     return { type: "stop", reason: "todo_complete" }
   }
-  const planTrusting = isPlanTrusting(input.session.mission)
-  const maxRounds = workflow.autonomous.maxContinuousRounds
-  if (!planTrusting && typeof maxRounds === "number" && input.roundCount >= maxRounds) {
-    return { type: "stop", reason: "max_continuous_rounds" }
+
+  return {
+    type: "continue",
+    reason: trigger.source,
+    text: trigger.payload.text,
+    todo: trigger.payload.todo,
   }
-  if (current?.status === "in_progress") {
-    return {
-      type: "continue",
-      reason: "todo_in_progress",
-      text: applyRunnerContract(AUTONOMOUS_PROGRESS_TEXT),
-      todo: current,
-    }
-  }
-  if (current?.status === "pending") {
-    return {
-      type: "continue",
-      reason: "todo_pending",
-      text: applyRunnerContract(AUTONOMOUS_CONTINUE_TEXT),
-      todo: current,
-    }
-  }
-  return { type: "stop", reason: "todo_complete" }
+}
+
+/**
+ * Evaluate gates for an arbitrary RunTrigger.
+ *
+ * This is the generic entry point for non-continuation triggers (e.g. API triggers).
+ * Continuation triggers should use planAutonomousNextAction() which wraps this.
+ */
+export function evaluateTriggerGates(input: {
+  trigger: RunTrigger
+  session: Pick<Session.Info, "parentID" | "workflow" | "time" | "mission">
+  todos: Todo.Info[]
+  roundCount: number
+  activeSubtasks?: number
+  pendingApprovals?: number
+  pendingQuestions?: number
+}): TriggerGateResult {
+  return evaluateGates({
+    trigger: input.trigger,
+    session: input.session,
+    todos: input.todos,
+    roundCount: input.roundCount,
+    activeSubtasks: input.activeSubtasks,
+    pendingApprovals: input.pendingApprovals,
+    pendingQuestions: input.pendingQuestions,
+    isPlanTrusting: isPlanTrusting(input.session.mission),
+    detectStructuredStopReason,
+    detectApprovalGate: detectApprovalRequiredForTodos,
+  })
 }
 
 export function describeAutonomousNextAction(action: AutonomousNextAction): AutonomousNarration {
@@ -892,12 +926,26 @@ export async function getPendingContinuation(sessionID: string) {
 }
 
 export async function clearPendingContinuation(sessionID: string) {
-  await Storage.remove(queueKey(sessionID)).catch(() => undefined)
+  // Clear from both RunQueue (all lanes) and legacy key
+  await RunQueue.remove(sessionID)
 }
 
 export async function listPendingContinuations() {
+  // Read from RunQueue (lane-aware) with legacy fallback
+  const queueEntries = await RunQueue.listAll()
+  if (queueEntries.length > 0) {
+    return queueEntries.map((entry): PendingContinuationInfo => ({
+      sessionID: entry.sessionID,
+      messageID: entry.messageID,
+      createdAt: entry.createdAt,
+      roundCount: entry.roundCount,
+      reason: entry.reason,
+      text: entry.text,
+    }))
+  }
+  // Legacy fallback: read from old storage keys
   const result: PendingContinuationInfo[] = []
-  for (const item of await Storage.list(["session_workflow_queue"])) {
+  for (const item of await Storage.list(["session_workflow_queue"]).catch(() => [])) {
     const entry = await Storage.read<PendingContinuationInfo>(item).catch(() => undefined)
     if (entry) result.push(entry)
   }
@@ -1028,8 +1076,19 @@ export async function mutatePendingContinuationQueue(input: {
   }
 }
 
-export async function enqueuePendingContinuation(input: PendingContinuationInfo) {
-  await Storage.write(queueKey(input.sessionID), PendingContinuationInfo.parse(input))
+export async function enqueuePendingContinuation(input: PendingContinuationInfo & { triggerType?: string; priority?: "critical" | "normal" | "background" }) {
+  const validated = PendingContinuationInfo.parse(input)
+  // Write to RunQueue (lane-aware) + legacy key (backward compat handled inside RunQueue)
+  await RunQueue.enqueue({
+    sessionID: validated.sessionID,
+    messageID: validated.messageID,
+    createdAt: validated.createdAt,
+    roundCount: validated.roundCount,
+    reason: validated.reason,
+    text: validated.text,
+    triggerType: input.triggerType ?? "continuation",
+    priority: input.priority ?? "normal",
+  })
 }
 
 export async function resumePendingContinuations(input?: { maxCount?: number; preferredSessionID?: string }) {
@@ -1242,3 +1301,11 @@ export async function enqueueAutonomousContinue(input: {
   })
   return message
 }
+
+// Re-export trigger types for consumers
+export { type RunTrigger, type TriggerGateResult, type TriggerPriority, type TriggerGatePolicy } from "./trigger"
+export { buildContinuationTrigger, buildApiTrigger, CONTINUATION_GATE_POLICY, API_GATE_POLICY } from "./trigger"
+
+// Re-export queue and lane types for consumers
+export { RunQueue, type QueueEntry } from "./queue"
+export { type Lane, LANE_CONFIGS, LANES_BY_PRIORITY, triggerPriorityToLane, laneHasCapacity } from "./lane-policy"

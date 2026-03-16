@@ -61,19 +61,19 @@
 
 ### 5B — Multi-source Trigger（P1）
 
-- [ ] 5B.1 定義 RunTrigger 介面（type, source, payload, priority, gatePolicy）
-- [ ] 5B.2 提取 TriggerEvaluator：gate evaluation 從 planAutonomousNextAction() 分離
-- [ ] 5B.3 Mission continuation 降階為 RunTrigger { type: "continuation" }
-- [ ] 5B.4 新增 type: "api" trigger scaffold + gate evaluation 驗證
-- [ ] 5B.5 回歸測試：14 種 ContinuationDecisionReason 全部覆蓋，gate 語意不變
+- [x] 5B.1 定義 RunTrigger 介面（type, source, payload, priority, gatePolicy）— `session/trigger.ts`: RunTrigger union (Continuation | Api), TriggerGatePolicy, TriggerPriority
+- [x] 5B.2 提取 TriggerEvaluator：gate evaluation 從 planAutonomousNextAction() 分離 — `trigger.ts:evaluateGates()` + `workflow-runner.ts:evaluateTriggerGates()`
+- [x] 5B.3 Mission continuation 降階為 RunTrigger { type: "continuation" } — `planAutonomousNextAction()` internally builds continuation trigger via `buildContinuationTrigger()`
+- [x] 5B.4 新增 type: "api" trigger scaffold + gate evaluation 驗證 — `buildApiTrigger()` with `API_GATE_POLICY` (respectMaxRounds=false)
+- [x] 5B.5 回歸測試：14 種 ContinuationDecisionReason 全部覆蓋，gate 語意不變 — 83 tests passing (51 existing + 32 new)
 
 ## Phase 6 — Lane-aware Run Queue
 
-- [ ] 6.1 Define `RunQueue` interface spec with priority lanes (critical, normal, background)
-- [ ] 6.2 Upgrade pending continuation queue to generic RunQueue
-- [ ] 6.3 Refactor workflow-runner to generic run orchestrator consuming from RunQueue
-- [ ] 6.4 Define and implement lane policy (concurrency limits, priority preemption)
-- [ ] 6.5 Unit + integration tests for RunQueue and lane policy
+- [x] 6.1 Define `RunQueue` interface spec with priority lanes — `session/queue.ts`: QueueEntry schema, enqueue/remove/peek/listLane/listAll/drain/countByLane
+- [x] 6.2 Upgrade pending continuation queue to generic RunQueue — `enqueuePendingContinuation()` delegates to `RunQueue.enqueue()`, `clearPendingContinuation()` delegates to `RunQueue.remove()`, legacy key compat preserved
+- [x] 6.3 Refactor workflow-runner to generic run orchestrator — `listPendingContinuations()` reads from RunQueue with legacy fallback, `resumePendingContinuations()` benefits from lane-ordered listing
+- [x] 6.4 Define and implement lane policy — `session/lane-policy.ts`: critical(cap 2)/normal(cap 4)/background(cap 2), `triggerPriorityToLane()`, `laneHasCapacity()`, `RunQueue.drain()` respects caps
+- [x] 6.5 Unit + integration tests — 99 tests passing (83 Phase 5B + 16 Phase 6: lane policy 5 + RunQueue 11)
 
 ## Deferred（requires explicit approval to enter build）
 

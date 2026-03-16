@@ -134,7 +134,7 @@ Deliverables: security sign-off、E2E test、runbook + postmortem template。
 - runbook: 運維手冊 + postmortem template — delivered ✅
 - Tests: 39 tests passing across 6 test files ✅
 
-### Phase 5 — Continuous Worker（5A done, 5B pending）
+### Phase 5 — Continuous Worker（done）
 
 **核心痛點**：有完整 implementation spec + approved mission + tasks.md，AI 還是每一步都停下來問「要不要繼續」。
 
@@ -181,28 +181,17 @@ Deliverables: plan-trusting continuation mode、smart-runner-governor 降權、`
 - 5A.4 `consumeMissionArtifacts()` tasks.md integrity 豁免（根因修復：tasks.md 改變是進度不是汙染）✅
 - 5A.5 測試：84 tests passing across 3 test files ✅
 
-#### 5B — Multi-source Trigger（P1：擴展性）
-
-**要解決的問題**：目前啟動 run 只能透過 chat 訊息 → continuation。想讓不同 session 扮演不同角色（開發執行者、收信助手、YouTube 小編），需要多源觸發。
+#### 5B — Multi-source Trigger（done）
 
 Deliverables: `RunTrigger` 介面定義、`TriggerEvaluator` gate evaluation、mission continuation 降階、新 trigger type scaffold。
 
-**影響的核心檔案**：
-- `packages/opencode/src/session/workflow-runner.ts` — 重構 `planAutonomousNextAction()` 為 `TriggerEvaluator`
-- `packages/opencode/src/session/prompt.ts` — 重構 `enqueueAutonomousContinue()` 為通用 trigger → queue 路徑
-- 新增 `packages/opencode/src/session/trigger.ts` — `RunTrigger` 型別定義 + `TriggerEvaluator`
+- `session/trigger.ts`: RunTrigger union (Continuation | Api), TriggerGatePolicy, evaluateGates(), buildContinuationTrigger(), buildApiTrigger() ✅
+- `workflow-runner.ts`: planAutonomousNextAction() refactored to delegate to trigger system, evaluateTriggerGates() generic entry point ✅
+- API trigger scaffold: API_GATE_POLICY (respectMaxRounds=false), buildApiTrigger() ✅
+- Tests: 83 tests passing (51 existing + 32 new trigger/gate tests) ✅
+- Stop gate verified: all 14 ContinuationDecisionReasons produce identical results ✅
 
-**實作步驟**：
-- 5B.1 定義 `RunTrigger` 介面（type, source, payload, priority, gatePolicy）
-- 5B.2 提取 `TriggerEvaluator`：gate evaluation 從 `planAutonomousNextAction()` 分離
-- 5B.3 Mission continuation 降階：改為 `RunTrigger { type: "continuation" }` 走通用路徑
-- 5B.4 新增 `type: "api"` trigger scaffold + gate evaluation 驗證
-- 5B.5 回歸測試：14 種 `ContinuationDecisionReason` 全部覆蓋，gate 語意不變
-
-**Prerequisite**: 5A complete — continuation 先要能持續跑，多源觸發才有意義
-**Stop gate**: 若 gate evaluation 重構破壞現有 approved mission / approval / decision gate 語意，必須停下
-
-### Phase 6 — Lane-aware Run Queue（pending）
+### Phase 6 — Lane-aware Run Queue（done）
 
 Deliverables: `RunQueue` 介面、lane policy、supervisor 重構、workflow-runner 改為 queue consumer。
 
@@ -213,14 +202,13 @@ Deliverables: `RunQueue` 介面、lane policy、supervisor 重構、workflow-run
 - 新增 `packages/opencode/src/session/queue.ts` — `RunQueue` 介面 + lane 實作
 - 新增 `packages/opencode/src/session/lane-policy.ts` — 並發限制、搶佔、overflow 策略
 
-**實作步驟**：
-- 6.1 定義 `RunQueue` 介面（enqueue, dequeue, peek, drain）+ `QueueEntry` 型別
-- 6.2 實作三道 lane：critical（cap 2）, normal（cap 4）, background（cap 2）
-- 6.3 遷移 `enqueuePendingContinuation()` → `RunQueue.enqueue()`，保留 lease + failure state
-- 6.4 重構 supervisor：從全掃改為 `RunQueue.drain()` 按 lane 優先級消費
-- 6.5 測試：lane policy enforcement、per-session 序列化、failure backoff、kill-switch 阻擋 dequeue
-
-**Prerequisite**: Phase 5 complete — `RunTrigger` 介面必須先定義，queue 才能根據 trigger type 分配 lane
+- `session/queue.ts`: RunQueue namespace — enqueue/remove/peek/listLane/listAll/drain/countByLane, QueueEntry Zod schema ✅
+- `session/lane-policy.ts`: 3 lanes (critical cap 2, normal cap 4, background cap 2), triggerPriorityToLane(), laneHasCapacity() ✅
+- `enqueuePendingContinuation()` → delegates to `RunQueue.enqueue()`, legacy key backward compat ✅
+- `clearPendingContinuation()` → delegates to `RunQueue.remove()` (all lanes + legacy) ✅
+- `listPendingContinuations()` → reads from RunQueue with legacy fallback ✅
+- `RunQueue.drain()` respects per-lane concurrency caps and preferred session ✅
+- Tests: 99 tests passing (83 Phase 5B + 16 Phase 6) ✅
 
 ### Deferred Phases（requires explicit approval）
 

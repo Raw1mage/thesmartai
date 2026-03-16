@@ -21,6 +21,8 @@ The primary artifact is `implementation-spec.md`, but you must keep the companio
 - `design.md` — technical approach, decisions, risks
 - `tasks.md` — execution checklist and validation-oriented task breakdown
 - `handoff.md` — executor instructions, stop gates, and runtime handoff notes
+- `idef0.json` — IDEF0 functional decomposition (drawmiat-compatible JSON)
+- `grafcet.json` — Grafcet state machine model (drawmiat-compatible JSON)
 
 The implementation spec is not a loose summary. It must become a standardized execution contract that another AI can execute end-to-end with minimal reinterpretation.
 
@@ -47,4 +49,81 @@ Treat plan mode as discussion-first, not execution-first. Prefer spec mutation, 
 When planner artifacts include `tasks.md`, treat it as the canonical naming source for remaining work. Once runtime todo is materialized from that plan, future status reporting, user decision points, and execution sequencing must align with the same visible todo/task names. Do not invent a second private checklist that diverges from the sidebar/runtime todo.
 
 When writing `tasks.md`, prefer delegation-aware slices (`rewrite`, `delegate`, `integrate`, `validate`, `sync docs`) over vague generic bullets like `implement feature`. The build-side runner should be able to continue directly from these task names.
+
+---
+
+## Formal Modeling Artifacts (IDEF0 + Grafcet)
+
+In addition to markdown artifacts, you MUST produce two JSON modeling files that formally describe the system being planned. These files use the drawmiat-compatible format and are validated at `plan_exit`.
+
+### idef0.json — Functional Decomposition (IEEE 1320.1 style)
+
+Decompose the planned system into hierarchical functional modules using IDEF0 conventions.
+
+**Structure**:
+- `diagram_title`: descriptive title of the system
+- `node_reference`: root node ID (`A0`)
+- `activities[]`: functional modules, each with `id`, `title`, `description`, optional `decomposition`
+- `arrows[]`: data/control flows, each with `id`, `source`, `target`, `label`, `type`
+
+**Activity naming rules**:
+- Active verb phrase, Title Case (e.g. "Process Sensor Data", "Validate User Input")
+- No generic words: "function", "activity", "process", "module", "system"
+- No abbreviations, prepositions, conjunctions, or articles
+- Each activity title must be unique across the entire model
+
+**Hierarchy convention**:
+- Root: `A0` (context — exactly 1 activity at this level)
+- Level 1: `A1`..`A9` (2-9 activities per decomposition level)
+- Children of `A1`: `A11`..`A19`; children of `A11`: `A111`..`A119`; and so on
+
+**ICOM arrow rules**:
+- Arrow `type` is one of: `input`, `control`, `output`, `mechanism`, `call`
+- Every activity MUST have at least one `control` arrow and one `output` arrow
+- `input` and `mechanism` arrows are optional but recommended
+- Arrow `source`/`target` format: `"A1:output"`, `"A2:input"`, `"EXTERNAL"` for boundary
+- Parent-child boundary consistency: parent boundary arrows must map to child boundary arrows
+
+**Decomposition rules**:
+- Each level contains 2-9 child activities (no more than 9)
+- Use `decomposition: null` for leaf activities (no further breakdown)
+- Use `decomposition: { ... }` (recursive IDEF0 structure) for activities that need breakdown
+
+### grafcet.json — State Machine Model (IEC 60848 style)
+
+Model the runtime behavior of each IDEF0 module as a step-transition state machine using Grafcet conventions.
+
+**Structure**: JSON array of step objects, each with:
+- `StepNumber`: unique integer ID (0-based)
+- `ModuleRef`: IDEF0 activity ID this step belongs to (e.g. `"A1"`) — MUST exist in idef0.json
+- `StepType`: `"initial"` | `"normal"` | `"sub_grafcet"`
+- `StepAction`: action executed when step is active (stable behavior description)
+- `LinkInputType`: array of incoming link types
+- `LinkInputNumber`: array of predecessor step IDs
+- `LinkOutputNumber`: array of successor step IDs
+- `LinkOutputType`: `"track"` | `"divergence_or"` | `"divergence_and"` | `"convergence_and"` | `"convergence_or"`
+- `Condition`: array of transition guard expressions (boolean conditions)
+- `SubGrafcet`: array of nested step objects (for `sub_grafcet` type)
+
+**Grafcet evolution rules** (IEC 60848):
+1. **Strict alternation**: Steps and Transitions must alternate. No Step→Step or Transition→Transition.
+2. **Minimum model**: At least 2 Steps + 1 Transition per module. Exactly one Initial Step per independent graph.
+3. **Step semantics**: Each Step represents a stable behavior. Actions execute only when the Step is active.
+4. **Transition semantics**: Every Transition must have an explicit, evaluable boolean condition. No ambiguous or empty conditions.
+5. **Transition firing**: A Transition fires only when ALL preceding Steps are active AND the condition is True.
+6. **Synchronous evolution**: Firing simultaneously deactivates all preceding Steps and activates all succeeding Steps.
+7. **Simultaneous clearing**: If multiple Transitions are armed+triggered at the same instant, ALL must fire simultaneously.
+8. **Activation priority**: If a Step is simultaneously commanded to activate AND deactivate, activation wins.
+
+**Traceability rules**:
+- Every `ModuleRef` in grafcet.json MUST reference an existing activity `id` in idef0.json
+- IDEF0 hierarchy defines allowed Grafcet module scopes — a Grafcet module cannot cross parent boundaries
+- If Grafcet module `A11` exists, its parent chain (`A1` → `A11`) must exist in IDEF0 hierarchy
+- MVP: at minimum, each Level-1 IDEF0 activity should have corresponding Grafcet behavioral coverage
+
+### Workflow
+
+1. **During planning**: Build `idef0.json` first (functional decomposition from user requirements), then derive `grafcet.json` (behavioral model for each module).
+2. **Iterative refinement**: As the plan evolves, keep both JSON files synchronized with `design.md` and `implementation-spec.md`.
+3. **At plan_exit**: Both files are validated for structural correctness and cross-referential integrity.
 </system-reminder>

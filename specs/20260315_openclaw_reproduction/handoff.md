@@ -26,8 +26,8 @@
 - **Phase 3** (Kill-switch Infra): **done** — Redis pub/sub transport + MinIO/S3 snapshot backend implemented, 34 tests passing
 - **Phase 4** (Security & Ops): **done** — security sign-off approved (2026-03-16), E2E tests (5), runbook delivered, 39 tests passing
 - **Phase 5A** (Plan-trusting Continuation): **done** — isPlanTrusting() + max_continuous_rounds bypass + smart-runner short-circuit + tasks.md integrity exemption, 84 tests passing
-- **Phase 5B** (Multi-source Trigger): pending
-- **Phase 6** (Lane-aware Queue): pending
+- **Phase 5B** (Multi-source Trigger): **done** — RunTrigger union type (Continuation | Api), TriggerEvaluator extracted from planAutonomousNextAction(), buildApiTrigger scaffold, 83 tests passing
+- **Phase 6** (Lane-aware Queue): **done** — RunQueue with 3 lanes (critical/normal/background), lane policy with concurrency caps, supervisor drain integration, 99 tests passing
 - **Deferred**: isolated jobs, heartbeat, daemon lifecycle
 
 ## Stop Gates In Force
@@ -41,8 +41,8 @@
 
 ## Build Entry Recommendation
 
-- **Next**: Phase 5B — Multi-source Trigger (tasks 5B.1 → 5B.5)
-- **Then**: Phase 6 — Lane-aware Run Queue (tasks 6.1 → 6.5)
+- **All non-deferred phases complete** — Phases 0-6 delivered
+- **Next**: Deferred phases (D.1-D.3) require explicit user approval to enter build
 - Kill-switch Phases 1-4 fully delivered; control plane stable for trigger abstraction
 - Phase 5A plan-trusting mode delivered; root cause of 40+ hour autonomous runner failure identified and fixed
 
@@ -80,6 +80,8 @@
 - [x] Phase 3 delivered and verified — Redis transport + MinIO snapshot, 34 tests passing
 - [x] Phase 4 security sign-off obtained — APPROVED (2026-03-16)
 - [x] Phase 5A plan-trusting continuation mode delivered — 84 tests passing
+- [x] Phase 5B multi-source trigger delivered — RunTrigger + TriggerEvaluator + API scaffold, 83 tests passing
+- [x] Phase 6 lane-aware run queue delivered — RunQueue + lane policy + supervisor integration, 99 tests passing
 
 ## Completion / Retrospective Contract
 

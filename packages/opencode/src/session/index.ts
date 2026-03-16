@@ -218,6 +218,8 @@ export namespace Session {
     design: z.string(),
     tasks: z.string(),
     handoff: z.string(),
+    idef0: z.string().optional(),
+    grafcet: z.string().optional(),
   })
   export type MissionArtifactPaths = z.output<typeof MissionArtifactPaths>
 

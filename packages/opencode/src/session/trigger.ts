@@ -1,0 +1,217 @@
+import { Session } from "./index"
+import { Todo } from "./todo"
+import type { ApprovalGate, ContinuationDecisionReason } from "./workflow-runner"
+
+/**
+ * RunTrigger — represents an intent to start or continue work in a session.
+ *
+ * Decouples "what wants to run" from "should it be allowed to run" (gate evaluation).
+ * Currently two trigger types exist:
+ *   - continuation: the existing todo-driven autonomous continuation path
+ *   - api: scaffold for external API-initiated triggers (Phase 5B.4)
+ *
+ * Future types (scheduled, webhook, etc.) extend this union.
+ */
+export type RunTrigger =
+  | RunTrigger.Continuation
+  | RunTrigger.Api
+
+export namespace RunTrigger {
+  export type Continuation = {
+    type: "continuation"
+    source: "todo_pending" | "todo_in_progress"
+    payload: {
+      text: string
+      todo: Todo.Info
+    }
+    priority: TriggerPriority
+    gatePolicy: TriggerGatePolicy
+  }
+
+  export type Api = {
+    type: "api"
+    source: string
+    payload: {
+      text: string
+      todo?: Todo.Info
+      apiContext?: Record<string, unknown>
+    }
+    priority: TriggerPriority
+    gatePolicy: TriggerGatePolicy
+  }
+}
+
+export type TriggerPriority = "critical" | "normal" | "background"
+
+export type TriggerGatePolicy = {
+  requireApprovedMission: boolean
+  respectMaxRounds: boolean
+  checkApprovalGates: boolean
+  checkStructuredStops: boolean
+}
+
+export const CONTINUATION_GATE_POLICY: TriggerGatePolicy = {
+  requireApprovedMission: true,
+  respectMaxRounds: true,
+  checkApprovalGates: true,
+  checkStructuredStops: true,
+}
+
+export const API_GATE_POLICY: TriggerGatePolicy = {
+  requireApprovedMission: true,
+  respectMaxRounds: false,
+  checkApprovalGates: true,
+  checkStructuredStops: true,
+}
+
+/**
+ * TriggerGateResult — outcome of gate evaluation for a trigger.
+ */
+export type TriggerGateResult =
+  | { pass: true; trigger: RunTrigger }
+  | { pass: false; reason: ContinuationDecisionReason }
+
+/**
+ * TriggerEvaluator — evaluates whether a trigger should be allowed to proceed.
+ *
+ * Extracted from the gate-checking portion of planAutonomousNextAction().
+ * The evaluator checks session-level gates (autonomous enabled, mission approved,
+ * workflow state, approvals, questions, structured stops, approval policies,
+ * active subtasks, max rounds) independently of what *type* of trigger is requesting.
+ */
+export function evaluateGates(input: {
+  trigger: RunTrigger
+  session: Pick<Session.Info, "parentID" | "workflow" | "time" | "mission">
+  todos: Todo.Info[]
+  roundCount: number
+  activeSubtasks?: number
+  pendingApprovals?: number
+  pendingQuestions?: number
+  isPlanTrusting: boolean
+  detectStructuredStopReason: (todos: Todo.Info[]) => ContinuationDecisionReason | undefined
+  detectApprovalGate: (input: { gates?: string[]; todos: Todo.Info[] }) => ApprovalGate | undefined
+}): TriggerGateResult {
+  const workflow = input.session.workflow ?? Session.defaultWorkflow(input.session.time.updated)
+  const policy = input.trigger.gatePolicy
+
+  // Universal gates — always checked regardless of trigger type or policy
+  if (input.session.parentID) {
+    return { pass: false, reason: "subagent_session" }
+  }
+  if (!workflow.autonomous.enabled) {
+    return { pass: false, reason: "autonomous_disabled" }
+  }
+  if (workflow.state === "blocked") {
+    return { pass: false, reason: "blocked" }
+  }
+
+  // Mission gate
+  if (policy.requireApprovedMission) {
+    if (
+      !input.session.mission ||
+      input.session.mission.source !== "openspec_compiled_plan" ||
+      input.session.mission.contract !== "implementation_spec" ||
+      !input.session.mission.executionReady
+    ) {
+      return { pass: false, reason: "mission_not_approved" }
+    }
+  }
+
+  // Pending approvals / questions
+  if ((input.pendingApprovals ?? 0) > 0) {
+    return { pass: false, reason: "approval_needed" }
+  }
+  if ((input.pendingQuestions ?? 0) > 0) {
+    return { pass: false, reason: "product_decision_needed" }
+  }
+
+  // Structured stop reasons from todo action metadata
+  if (policy.checkStructuredStops) {
+    const structuredStop = input.detectStructuredStopReason(input.todos)
+    if (structuredStop) {
+      return { pass: false, reason: structuredStop }
+    }
+  }
+
+  // Approval gate policy (push / destructive / architecture_change)
+  if (policy.checkApprovalGates) {
+    const approvalGate = input.detectApprovalGate({
+      gates: workflow.autonomous.requireApprovalFor,
+      todos: input.todos,
+    })
+    if (approvalGate) {
+      return { pass: false, reason: "approval_needed" }
+    }
+  }
+
+  // Active subtasks
+  if ((input.activeSubtasks ?? 0) > 0) {
+    return { pass: false, reason: "wait_subagent" }
+  }
+
+  // Max rounds (only when policy says so, and not in plan-trusting mode)
+  if (policy.respectMaxRounds && !input.isPlanTrusting) {
+    const maxRounds = workflow.autonomous.maxContinuousRounds
+    if (typeof maxRounds === "number" && input.roundCount >= maxRounds) {
+      return { pass: false, reason: "max_continuous_rounds" }
+    }
+  }
+
+  return { pass: true, trigger: input.trigger }
+}
+
+/**
+ * Build a continuation trigger from todo state.
+ * Returns undefined if no actionable todo exists (todo_complete).
+ */
+export function buildContinuationTrigger(input: {
+  todo: Todo.Info | undefined
+  textForPending: string
+  textForInProgress: string
+}): RunTrigger.Continuation | undefined {
+  if (!input.todo) return undefined
+
+  if (input.todo.status === "in_progress") {
+    return {
+      type: "continuation",
+      source: "todo_in_progress",
+      payload: { text: input.textForInProgress, todo: input.todo },
+      priority: "normal",
+      gatePolicy: CONTINUATION_GATE_POLICY,
+    }
+  }
+  if (input.todo.status === "pending") {
+    return {
+      type: "continuation",
+      source: "todo_pending",
+      payload: { text: input.textForPending, todo: input.todo },
+      priority: "normal",
+      gatePolicy: CONTINUATION_GATE_POLICY,
+    }
+  }
+  return undefined
+}
+
+/**
+ * Build an API trigger scaffold.
+ * The caller provides text and optional todo; gate policy uses API defaults.
+ */
+export function buildApiTrigger(input: {
+  source: string
+  text: string
+  todo?: Todo.Info
+  priority?: TriggerPriority
+  apiContext?: Record<string, unknown>
+}): RunTrigger.Api {
+  return {
+    type: "api",
+    source: input.source,
+    payload: {
+      text: input.text,
+      todo: input.todo,
+      apiContext: input.apiContext,
+    },
+    priority: input.priority ?? "normal",
+    gatePolicy: API_GATE_POLICY,
+  }
+}

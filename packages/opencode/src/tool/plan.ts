@@ -73,6 +73,84 @@ const ARTIFACT_TEMPLATES = {
   handoff: `# Handoff\n\n## Execution Contract\n- Build agent must read implementation-spec.md first\n- Build agent must read proposal.md / spec.md / design.md / tasks.md before coding\n- Materialize tasks.md into runtime todos before coding\n- Preserve planner task naming in user-visible progress and runtime todo\n- Prefer delegation-first execution when a task slice can be safely handed off\n\n## Required Reads\n- implementation-spec.md\n- proposal.md\n- spec.md\n- design.md\n- tasks.md\n\n## Stop Gates In Force\n- Preserve approval, decision, and blocker gates from implementation-spec.md\n- Return to planning if a new implementation slice is not represented in planner artifacts\n\n## Execution-Ready Checklist\n- [ ] Implementation spec is complete\n- [ ] Companion artifacts are aligned\n- [ ] Validation plan is explicit\n- [ ] Runtime todo seed is present in tasks.md\n`,
 } as const
 
+const IDEF0_TEMPLATE = JSON.stringify(
+  {
+    diagram_title: "System Context",
+    node_reference: "A0",
+    activities: [
+      {
+        id: "A1",
+        title: "Deliver Core Function",
+        description: "Top-priority function derived from user requirement",
+        decomposition: null,
+      },
+    ],
+    arrows: [
+      { id: "AR1", source: "EXTERNAL", target: "A1:input", label: "Primary Request", type: "input" },
+      { id: "AR2", source: "EXTERNAL", target: "A1:control", label: "Policy And Constraints", type: "control" },
+      { id: "AR3", source: "A1:output", target: "EXTERNAL", label: "Deliverable", type: "output" },
+      { id: "AR4", source: "EXTERNAL", target: "A1:mechanism", label: "Execution Resources", type: "mechanism" },
+    ],
+  },
+  null,
+  2,
+)
+
+const GRAFCET_TEMPLATE = JSON.stringify(
+  [
+    {
+      StepNumber: 0,
+      ModuleRef: "A1",
+      StepType: "initial",
+      StepAction: "Initialize",
+      LinkInputType: [],
+      LinkInputNumber: [2],
+      LinkOutputNumber: [1],
+      LinkOutputType: "track",
+      Condition: ["start"],
+      SubGrafcet: [],
+    },
+    {
+      StepNumber: 1,
+      ModuleRef: "A1",
+      StepType: "normal",
+      StepAction: "Execute Core Function",
+      LinkInputType: [],
+      LinkInputNumber: [0],
+      LinkOutputNumber: [2, 3],
+      LinkOutputType: "divergence_or",
+      Condition: ["ok", "error"],
+      SubGrafcet: [],
+    },
+    {
+      StepNumber: 2,
+      ModuleRef: "A1",
+      StepType: "normal",
+      StepAction: "Complete",
+      LinkInputType: ["convergence_or"],
+      LinkInputNumber: [1, 3],
+      LinkOutputNumber: [0],
+      LinkOutputType: "track",
+      Condition: ["reset"],
+      SubGrafcet: [],
+    },
+    {
+      StepNumber: 3,
+      ModuleRef: "A1",
+      StepType: "normal",
+      StepAction: "Recover",
+      LinkInputType: [],
+      LinkInputNumber: [1],
+      LinkOutputNumber: [2],
+      LinkOutputType: "convergence_or",
+      Condition: ["retry"],
+      SubGrafcet: [],
+    },
+  ],
+  null,
+  2,
+)
+
 async function loadPlannerTemplate(relativePath: string, fallback: string) {
   const candidates = [
     process.env.OPENCODE_PLANNER_TEMPLATE_DIR || "/etc/opencode/specs",
@@ -99,6 +177,8 @@ async function loadArtifactTemplates() {
     design: await loadPlannerTemplate("design.md", ARTIFACT_TEMPLATES.design),
     tasks: await loadPlannerTemplate("tasks.md", ARTIFACT_TEMPLATES.tasks),
     handoff: await loadPlannerTemplate("handoff.md", ARTIFACT_TEMPLATES.handoff),
+    idef0: await loadPlannerTemplate("idef0.json", IDEF0_TEMPLATE),
+    grafcet: await loadPlannerTemplate("grafcet.json", GRAFCET_TEMPLATE),
   }
 }
 
@@ -158,7 +238,13 @@ async function readPlannerArtifacts(session: Session.Info) {
   const handoff = await Bun.file(artifactPaths.handoff)
     .text()
     .catch(() => "")
-  return { root, implementationSpec, proposal, spec, design, tasks, handoff }
+  const idef0 = await Bun.file(artifactPaths.idef0)
+    .text()
+    .catch(() => "")
+  const grafcet = await Bun.file(artifactPaths.grafcet)
+    .text()
+    .catch(() => "")
+  return { root, implementationSpec, proposal, spec, design, tasks, handoff, idef0, grafcet }
 }
 
 async function hasImplementationSpec(root: string) {
@@ -178,6 +264,8 @@ async function resolvePlannerArtifacts(session: Session.Info) {
         design: path.join(absoluteMissionRoot, "design.md"),
         tasks: path.join(absoluteMissionRoot, "tasks.md"),
         handoff: path.join(absoluteMissionRoot, "handoff.md"),
+        idef0: path.join(absoluteMissionRoot, "idef0.json"),
+        grafcet: path.join(absoluteMissionRoot, "grafcet.json"),
       }
     }
   }
@@ -345,6 +433,160 @@ function analyzeHandoffArtifact(handoffMarkdown: string) {
   return { issues }
 }
 
+function analyzeIdef0Artifact(jsonText: string) {
+  const issues: string[] = []
+  if (!jsonText.trim()) {
+    issues.push("idef0.json is empty")
+    return { issues }
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(jsonText)
+  } catch {
+    issues.push("idef0.json is not valid JSON")
+    return { issues }
+  }
+  const obj = parsed as Record<string, unknown>
+  if (!obj.diagram_title || typeof obj.diagram_title !== "string") {
+    issues.push("idef0.json must have a non-empty diagram_title string")
+  }
+  if (!obj.node_reference || typeof obj.node_reference !== "string" || !/^A\d+$/.test(obj.node_reference)) {
+    issues.push("idef0.json must have a node_reference matching pattern A0, A1, etc.")
+  }
+  if (!Array.isArray(obj.activities) || obj.activities.length === 0) {
+    issues.push("idef0.json must have at least one activity")
+  } else {
+    const ids = new Set<string>()
+    for (const act of obj.activities as Array<Record<string, unknown>>) {
+      if (!act.id || typeof act.id !== "string" || !/^A\d+$/.test(act.id)) {
+        issues.push(`idef0.json activity has invalid id: ${String(act.id)}`)
+      } else if (ids.has(act.id)) {
+        issues.push(`idef0.json has duplicate activity id: ${act.id}`)
+      } else {
+        ids.add(act.id)
+      }
+      if (!act.title || typeof act.title !== "string") {
+        issues.push(`idef0.json activity ${String(act.id)} must have a non-empty title`)
+      }
+    }
+  }
+  if (!Array.isArray(obj.arrows)) {
+    issues.push("idef0.json must have an arrows array")
+  } else {
+    const validTypes = ["input", "control", "output", "mechanism", "call"]
+    for (const arrow of obj.arrows as Array<Record<string, unknown>>) {
+      if (!arrow.id || !arrow.source || !arrow.target || !arrow.label) {
+        issues.push(`idef0.json arrow missing required fields (id/source/target/label): ${JSON.stringify(arrow)}`)
+      }
+      if (arrow.type && !validTypes.includes(arrow.type as string)) {
+        issues.push(`idef0.json arrow ${String(arrow.id)} has invalid type: ${String(arrow.type)}`)
+      }
+    }
+  }
+  // Check that placeholder template content has been replaced
+  if (obj.diagram_title === "System Context" && Array.isArray(obj.activities) && obj.activities.length === 1) {
+    const act = (obj.activities as Array<Record<string, unknown>>)[0]
+    if (act?.title === "Deliver Core Function") {
+      issues.push("idef0.json still contains template placeholder content — replace with actual functional decomposition")
+    }
+  }
+  return { issues }
+}
+
+function analyzeGrafcetArtifact(jsonText: string, idef0Text: string) {
+  const issues: string[] = []
+  if (!jsonText.trim()) {
+    issues.push("grafcet.json is empty")
+    return { issues }
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(jsonText)
+  } catch {
+    issues.push("grafcet.json is not valid JSON")
+    return { issues }
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    issues.push("grafcet.json must be a non-empty array of step objects")
+    return { issues }
+  }
+  const steps = parsed as Array<Record<string, unknown>>
+  const stepNumbers = new Set<number>()
+  const validStepTypes = ["initial", "normal", "sub_grafcet"]
+  const validLinkTypes = ["track", "divergence_or", "divergence_and", "convergence_and", "convergence_or"]
+  let hasInitial = false
+
+  for (const step of steps) {
+    const num = step.StepNumber
+    if (typeof num !== "number" || num < 0) {
+      issues.push(`grafcet.json step has invalid StepNumber: ${String(num)}`)
+    } else if (stepNumbers.has(num)) {
+      issues.push(`grafcet.json has duplicate StepNumber: ${num}`)
+    } else {
+      stepNumbers.add(num)
+    }
+    if (!step.ModuleRef || typeof step.ModuleRef !== "string" || !/^A\d+$/.test(step.ModuleRef)) {
+      issues.push(`grafcet.json step ${String(num)} has invalid ModuleRef: ${String(step.ModuleRef)}`)
+    }
+    if (!step.StepType || !validStepTypes.includes(step.StepType as string)) {
+      issues.push(`grafcet.json step ${String(num)} has invalid StepType: ${String(step.StepType)}`)
+    }
+    if (step.StepType === "initial") hasInitial = true
+    if (!step.StepAction || typeof step.StepAction !== "string") {
+      issues.push(`grafcet.json step ${String(num)} must have a non-empty StepAction`)
+    }
+    if (step.LinkOutputType && !validLinkTypes.includes(step.LinkOutputType as string)) {
+      issues.push(`grafcet.json step ${String(num)} has invalid LinkOutputType: ${String(step.LinkOutputType)}`)
+    }
+    if (!Array.isArray(step.Condition)) {
+      issues.push(`grafcet.json step ${String(num)} must have a Condition array`)
+    }
+  }
+
+  if (!hasInitial) {
+    issues.push("grafcet.json must have at least one step with StepType 'initial'")
+  }
+
+  // Minimum model: at least 2 steps + 1 transition (implied by conditions)
+  if (steps.length < 2) {
+    issues.push("grafcet.json must have at least 2 steps (minimum Grafcet model)")
+  }
+
+  // Traceability: check ModuleRef references exist in idef0.json
+  if (idef0Text.trim()) {
+    try {
+      const idef0 = JSON.parse(idef0Text) as Record<string, unknown>
+      const activityIds = new Set<string>()
+      function collectIds(obj: Record<string, unknown>) {
+        if (Array.isArray(obj.activities)) {
+          for (const act of obj.activities as Array<Record<string, unknown>>) {
+            if (typeof act.id === "string") activityIds.add(act.id)
+            if (act.decomposition && typeof act.decomposition === "object") {
+              collectIds(act.decomposition as Record<string, unknown>)
+            }
+          }
+        }
+      }
+      collectIds(idef0)
+      for (const step of steps) {
+        const ref = step.ModuleRef as string
+        if (ref && /^A\d+$/.test(ref) && !activityIds.has(ref)) {
+          issues.push(`grafcet.json step ${String(step.StepNumber)} references ModuleRef '${ref}' not found in idef0.json`)
+        }
+      }
+    } catch {
+      // idef0 parse failed — already caught by analyzeIdef0Artifact
+    }
+  }
+
+  // Check that placeholder template content has been replaced
+  if (steps.length === 4 && steps[0]?.StepAction === "Initialize" && steps[1]?.StepAction === "Execute Core Function") {
+    issues.push("grafcet.json still contains template placeholder content — replace with actual state machine model")
+  }
+
+  return { issues }
+}
+
 function buildClarificationMapping(input: {
   implementationSpec: ReturnType<typeof analyzePlanSpec>
   proposal: string
@@ -495,6 +737,8 @@ export const PlanExitTool = Tool.define("plan_exit", {
     const designArtifact = analyzeDesignArtifact(artifacts.design)
     const taskArtifact = analyzeTasksArtifact(artifacts.tasks)
     const handoffArtifact = analyzeHandoffArtifact(artifacts.handoff)
+    const idef0Artifact = analyzeIdef0Artifact(artifacts.idef0)
+    const grafcetArtifact = analyzeGrafcetArtifact(artifacts.grafcet, artifacts.idef0)
     const clarificationMapping = buildClarificationMapping({
       implementationSpec: spec,
       proposal: artifacts.proposal,
@@ -510,7 +754,9 @@ export const PlanExitTool = Tool.define("plan_exit", {
       behaviorSpecArtifact.issues.length ||
       designArtifact.issues.length ||
       taskArtifact.issues.length ||
-      handoffArtifact.issues.length
+      handoffArtifact.issues.length ||
+      idef0Artifact.issues.length ||
+      grafcetArtifact.issues.length
     ) {
       const details = [
         spec.missingSections.length ? `missing sections: ${spec.missingSections.join(", ")}` : undefined,
@@ -522,6 +768,8 @@ export const PlanExitTool = Tool.define("plan_exit", {
         designArtifact.issues.length ? `design artifact issues: ${designArtifact.issues.join("; ")}` : undefined,
         taskArtifact.issues.length ? `tasks artifact issues: ${taskArtifact.issues.join("; ")}` : undefined,
         handoffArtifact.issues.length ? `handoff artifact issues: ${handoffArtifact.issues.join("; ")}` : undefined,
+        idef0Artifact.issues.length ? `idef0 artifact issues: ${idef0Artifact.issues.join("; ")}` : undefined,
+        grafcetArtifact.issues.length ? `grafcet artifact issues: ${grafcetArtifact.issues.join("; ")}` : undefined,
       ]
         .filter(Boolean)
         .join(" | ")
@@ -547,6 +795,8 @@ export const PlanExitTool = Tool.define("plan_exit", {
           design: path.relative(Instance.worktree, artifactPaths.design),
           tasks: path.relative(Instance.worktree, artifactPaths.tasks),
           handoff: path.relative(Instance.worktree, artifactPaths.handoff),
+          idef0: path.relative(Instance.worktree, artifactPaths.idef0),
+          grafcet: path.relative(Instance.worktree, artifactPaths.grafcet),
         },
         artifactIntegrity: {
           implementationSpec: digest(artifacts.implementationSpec),
@@ -600,6 +850,8 @@ export const PlanExitTool = Tool.define("plan_exit", {
             design: designArtifact.issues,
             tasks: taskArtifact.issues,
             handoff: handoffArtifact.issues,
+            idef0: idef0Artifact.issues,
+            grafcet: grafcetArtifact.issues,
           },
           clarificationMapping,
           materializedTodos: planTodos.map((todo) => ({
@@ -627,6 +879,8 @@ export const PlanExitTool = Tool.define("plan_exit", {
             design: path.relative(Instance.worktree, path.join(planRoot, "design.md")),
             tasks: path.relative(Instance.worktree, path.join(planRoot, "tasks.md")),
             handoff: path.relative(Instance.worktree, path.join(planRoot, "handoff.md")),
+            idef0: path.relative(Instance.worktree, path.join(planRoot, "idef0.json")),
+            grafcet: path.relative(Instance.worktree, path.join(planRoot, "grafcet.json")),
           },
         },
       },
@@ -680,6 +934,8 @@ export const PlanEnterTool = Tool.define("plan_enter", {
       await Bun.write(artifactPaths.design, templates.design)
       await Bun.write(artifactPaths.tasks, templates.tasks)
       await Bun.write(artifactPaths.handoff, templates.handoff)
+      await Bun.write(artifactPaths.idef0, templates.idef0)
+      await Bun.write(artifactPaths.grafcet, templates.grafcet)
     }
 
     const userMsg: MessageV2.User = {
