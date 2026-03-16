@@ -20,6 +20,7 @@ export namespace KillSwitchService {
     initiatedAt: z.number(),
     mode: z.string(),
     scope: z.string(),
+    channelId: z.string().optional(),
     ttl: z.number().nullable().optional(),
     snapshotURL: z.string().nullable().optional(),
   })
@@ -312,9 +313,28 @@ export namespace KillSwitchService {
       .map(([sessionID]) => sessionID)
   }
 
-  export async function assertSchedulingAllowed() {
+  /**
+   * Assert scheduling is allowed, with optional channel scope (DD-16).
+   *
+   * - Global kill-switch (no channelId) blocks everything.
+   * - Channel-scoped kill-switch (channelId set) only blocks that channel.
+   * - If caller provides channelId, a channel-scoped kill-switch for a
+   *   different channel does NOT block.
+   */
+  export async function assertSchedulingAllowed(channelId?: string) {
     const state = await getState()
     if (!state || !state.active) return { ok: true as const }
+
+    // Global kill-switch blocks all channels
+    if (state.scope === "global" || !state.channelId) {
+      return { ok: false as const, state }
+    }
+
+    // Channel-scoped kill-switch: only block the target channel
+    if (channelId && state.channelId !== channelId) {
+      return { ok: true as const }
+    }
+
     return { ok: false as const, state }
   }
 
