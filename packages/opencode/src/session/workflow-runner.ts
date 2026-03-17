@@ -1093,6 +1093,12 @@ export async function enqueuePendingContinuation(input: PendingContinuationInfo 
 
 export async function resumePendingContinuations(input?: { maxCount?: number; preferredSessionID?: string }) {
   using _lock = await Lock.write(RESUME_LOCK)
+
+  // Kill-switch gate: if active, skip all resume attempts (Slice 3: kill-switch blocks dequeue)
+  const { KillSwitchService } = await import("@/server/killswitch/service")
+  const globalGate = await KillSwitchService.assertSchedulingAllowed()
+  if (!globalGate.ok) return
+
   const items = await listPendingContinuations()
   const resumable: ResumeCandidate[] = []
   for (const item of items) {
@@ -1103,6 +1109,14 @@ export async function resumePendingContinuations(input?: { maxCount?: number; pr
       await clearPendingContinuation(item.sessionID)
       continue
     }
+
+    // Workspace-scoped kill-switch: check per-session workspace
+    const workspaceId = await resolveWorkspaceIdForSession(session)
+    if (workspaceId) {
+      const wsGate = await KillSwitchService.assertSchedulingAllowed(workspaceId)
+      if (!wsGate.ok) continue
+    }
+
     resumable.push({
       pending: item,
       session,
@@ -1141,59 +1155,101 @@ export async function resumePendingContinuations(input?: { maxCount?: number; pr
       },
       clear: ["retryAt", "lastResumeError"],
     }).catch(() => undefined)
-    void (async () => {
-      try {
-        const { SessionPrompt } = await import("./prompt")
-        await SessionPrompt.loop(sessionID)
-        await Session.updateWorkflowSupervisor({
-          sessionID,
-          patch: {
-            consecutiveResumeFailures: 0,
-          },
-          clear: ["leaseOwner", "leaseExpiresAt", "retryAt", "lastResumeError"],
-        }).catch(() => undefined)
-      } catch (error) {
-        const current = await Session.get(sessionID).catch(() => undefined)
-        const nextFailures = (current?.workflow?.supervisor?.consecutiveResumeFailures ?? 0) + 1
-        const classified = classifyResumeFailure(error)
-        const retryAt = computeResumeRetryAt({
-          now: Date.now(),
-          consecutiveFailures: nextFailures,
-          category: classified.category,
-          budgetWaitTimeMs: item.budget?.waitTimeMs,
-        })
-        const blocked =
-          classified.shouldBlockImmediately ||
-          (!classified.shouldRetry && nextFailures >= 1) ||
-          shouldBlockAfterResumeFailure(nextFailures)
-        if (blocked) {
-          await clearPendingContinuation(sessionID)
-        } else {
-          await enqueuePendingContinuation(item.pending).catch(() => undefined)
-        }
-        await Session.setWorkflowState({
-          sessionID,
-          state: blocked ? "blocked" : "waiting_user",
-          stopReason: blocked
-            ? `resume_blocked:${classified.category}:${classified.reason}`
-            : `resume_retry_scheduled:${classified.category}:${classified.reason}`,
-          lastRunAt: Date.now(),
-        }).catch(() => undefined)
-        await Session.updateWorkflowSupervisor({
-          sessionID,
-          patch: {
-            consecutiveResumeFailures: nextFailures,
-            retryAt: blocked ? undefined : retryAt,
-            lastResumeCategory: classified.category,
-            lastResumeError: classified.reason,
-          },
-          clear: blocked ? ["leaseOwner", "leaseExpiresAt", "retryAt"] : ["leaseOwner", "leaseExpiresAt"],
-        }).catch(() => undefined)
-      } finally {
-        resumeInFlight.delete(sessionID)
-      }
-    })()
+
+    // Resolve workspace and route through workspace command lane
+    const workspaceId = await resolveWorkspaceIdForSession(item.session)
+    void executeResumeInLane(sessionID, workspaceId, item)
   }
+}
+
+/**
+ * Resolve workspaceId from a session's directory.
+ * Returns undefined if resolution fails (graceful degradation to default workspace).
+ */
+async function resolveWorkspaceIdForSession(session: Pick<Session.Info, "directory">): Promise<string | undefined> {
+  try {
+    const { resolveWorkspace } = await import("@/project/workspace/resolver")
+    const ws = await resolveWorkspace({ directory: session.directory })
+    return ws.workspaceId
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Execute a resume through the workspace's command lane for concurrency control.
+ * Falls back to direct execution if lane routing fails.
+ */
+async function executeResumeInLane(
+  sessionID: string,
+  workspaceId: string | undefined,
+  item: ResumeCandidate,
+) {
+  const doResume = async () => {
+    try {
+      const { SessionPrompt } = await import("./prompt")
+      await SessionPrompt.loop(sessionID)
+      await Session.updateWorkflowSupervisor({
+        sessionID,
+        patch: {
+          consecutiveResumeFailures: 0,
+        },
+        clear: ["leaseOwner", "leaseExpiresAt", "retryAt", "lastResumeError"],
+      }).catch(() => undefined)
+    } catch (error) {
+      const current = await Session.get(sessionID).catch(() => undefined)
+      const nextFailures = (current?.workflow?.supervisor?.consecutiveResumeFailures ?? 0) + 1
+      const classified = classifyResumeFailure(error)
+      const retryAt = computeResumeRetryAt({
+        now: Date.now(),
+        consecutiveFailures: nextFailures,
+        category: classified.category,
+        budgetWaitTimeMs: item.budget?.waitTimeMs,
+      })
+      const blocked =
+        classified.shouldBlockImmediately ||
+        (!classified.shouldRetry && nextFailures >= 1) ||
+        shouldBlockAfterResumeFailure(nextFailures)
+      if (blocked) {
+        await clearPendingContinuation(sessionID)
+      } else {
+        await enqueuePendingContinuation(item.pending).catch(() => undefined)
+      }
+      await Session.setWorkflowState({
+        sessionID,
+        state: blocked ? "blocked" : "waiting_user",
+        stopReason: blocked
+          ? `resume_blocked:${classified.category}:${classified.reason}`
+          : `resume_retry_scheduled:${classified.category}:${classified.reason}`,
+        lastRunAt: Date.now(),
+      }).catch(() => undefined)
+      await Session.updateWorkflowSupervisor({
+        sessionID,
+        patch: {
+          consecutiveResumeFailures: nextFailures,
+          retryAt: blocked ? undefined : retryAt,
+          lastResumeCategory: classified.category,
+          lastResumeError: classified.reason,
+        },
+        clear: blocked ? ["leaseOwner", "leaseExpiresAt", "retryAt"] : ["leaseOwner", "leaseExpiresAt"],
+      }).catch(() => undefined)
+    } finally {
+      resumeInFlight.delete(sessionID)
+    }
+  }
+
+  // Route through workspace command lane if available
+  if (workspaceId) {
+    try {
+      const { Lanes } = await import("@/daemon/lanes")
+      await Lanes.enqueue(Lanes.CommandLane.Main, doResume, workspaceId)
+      return
+    } catch {
+      // Fallback: daemon not started or lane not registered — execute directly
+    }
+  }
+
+  void doResume()
 }
 
 export function ensureAutonomousSupervisor(input?: { intervalMs?: number }) {
