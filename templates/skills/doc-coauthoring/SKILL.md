@@ -22,7 +22,7 @@ When this skill is used as a documentation agent inside a development workflow, 
 
 ### Hard-coded file responsibilities
 
-1. **`docs/ARCHITECTURE.md`** = long-lived framework knowledge
+1. **`specs/architecture.md`** = long-lived framework knowledge
    - system overview
    - module boundaries
    - runtime flows
@@ -42,7 +42,7 @@ When this skill is used as a documentation agent inside a development workflow, 
 
 ### Default behavior as documentation subagent
 
-- Read the relevant section of `docs/ARCHITECTURE.md` first.
+- Read the relevant section of `specs/architecture.md` first.
 - Read the active event file next.
 - Update only the sections affected by the current task.
 - Prefer concise structural knowledge over long narrative.

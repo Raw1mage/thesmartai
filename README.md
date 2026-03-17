@@ -340,7 +340,7 @@ Planning mode 不只是文件撰寫，而是 autorunner 的前置 substrate：pl
 - `packages/opencode/src/plugin/`：provider 擴充插件
 - `docs/specs/autorunner_daemon_architecture.md`：Autorunner Daemon 架構規劃
 - `docs/specs/planning_agent_runtime_reactivation.md`：Planning Agent 啟動規格
-- `docs/ARCHITECTURE.md`：完整架構細節（本 README 的延伸）
+- `specs/architecture.md`：完整架構細節（本 README 的延伸）
 
 ---
 
@@ -362,7 +362,7 @@ bun test
 
 如需完整架構、路由與模組說明，請讀：
 
-- `docs/ARCHITECTURE.md`
+- `specs/architecture.md`
 - `docs/specs/`
 - `docs/events/`
 

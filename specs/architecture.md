@@ -1255,7 +1255,7 @@ This section translates the decoupling draft into executable engineering tickets
   - `templates/package.json`
   - `.opencode/package.json`
   - `packages/opencode/.opencode/package.json`
-  - docs: `docs/ARCHITECTURE.md` (policy reference)
+  - docs: `specs/architecture.md` (policy reference)
 - **Work items**:
   1. Replace `"@opencode-ai/plugin": "*"` with policy-compliant baseline/range.
   2. Define update rule for template baseline version bump.
@@ -1375,7 +1375,7 @@ If a test validates behavior that is intentionally removed by current architectu
 
 A test is eligible for retirement when all conditions hold:
 
-1. The behavior is explicitly replaced/disabled in current architecture policy (`docs/ARCHITECTURE.md`) or recorded event decisions.
+1. The behavior is explicitly replaced/disabled in current architecture policy (`specs/architecture.md`) or recorded event decisions.
 2. The test asserts legacy contract semantics that no longer represent production responsibilities.
 3. Keeping the test causes persistent false alarms and reduces CI signal quality.
 
@@ -1924,7 +1924,7 @@ Direct manual `opencode web` launch is guarded by launch-mode checks to prevent 
 
 Bundled skills are part of the runtime contract, not only documentation. The bootstrap posture is now **minimal-by-default**: `agent-workflow` remains the default workflow substrate, while skills such as `software-architect`, `model-selector`, `mcp-finder`, and `skill-finder` are routed on-demand instead of being implied bootstrap dependencies. In particular, `skills/agent-workflow/SKILL.md` now carries the autorunner-centered contract for conversation-to-plan conversion, structured todo metadata, stop gates, delegation-first execution, narration-as-visibility (not a pause boundary), interrupt-safe replanning, the standardized system-level debug contract, and the requirement to treat framework documentation as a persistent system model. `code-thinker` shares that same debug contract for high-risk code/debug tasks, while `doc-coauthoring` remains the documentation-agent workflow for keeping framework docs synchronized during development/debug work. Therefore any changes to those skills must be synchronized with their counterparts under `templates/skills/**`.
 
-`docs/ARCHITECTURE.md` is the hard-coded long-lived framework document for this repo. It should capture module boundaries, runtime/data flows, state machines, core directory trees, and debug/observability maps. `docs/events/event_<date>_<topic>.md` is the task-local ledger for requirements, conversation highlights, checkpoints, decisions, validation, and architecture-sync results. Complex development/debug sessions should prefer these docs first, then source exploration.
+`specs/architecture.md` is the hard-coded long-lived framework document for this repo. It should capture module boundaries, runtime/data flows, state machines, core directory trees, and debug/observability maps. `docs/events/event_<date>_<topic>.md` is the task-local ledger for requirements, conversation highlights, checkpoints, decisions, validation, and architecture-sync results. Complex development/debug sessions should prefer these docs first, then source exploration.
 
 ### D. Initialization Flow (post-refactor)
 

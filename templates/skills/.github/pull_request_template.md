@@ -14,4 +14,4 @@
 ## Notes
 
 - Event log updated if this is a non-trivial change
-- Architecture sync checked (`docs/ARCHITECTURE.md`)
+- Architecture sync checked (`specs/architecture.md`)

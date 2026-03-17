@@ -211,7 +211,7 @@ todo authority 依 session mode 而定：
 
 ### 核心文件責任分工（Hard-coded Repo Contract）
 
-1. **`docs/ARCHITECTURE.md`**
+1. **`specs/architecture.md`**
    - 全 repo 長期文件 / 單一真相來源
    - 用於保存：
      - system overview
@@ -238,7 +238,7 @@ todo authority 依 session mode 而定：
 
 複雜開發或 debug 任務，不要直接從原始碼開始猜。優先順序應為：
 
-1. 讀 `docs/ARCHITECTURE.md` 的相關章節
+1. 讀 `specs/architecture.md` 的相關章節
 2. 讀相關 `docs/events/` 歷史事件
 3. 再 search/read 原始碼
 4. 再建立當前 issue 的 instrumentation plan
@@ -418,7 +418,7 @@ Next after reply:
 1. 相關 todo 已收斂
 2. 驗證已執行
 3. event 已更新
-4. `docs/ARCHITECTURE.md` 已同步或註記 `Verified (No doc changes)`
+4. `specs/architecture.md` 已同步或註記 `Verified (No doc changes)`
 5. 若任務涉及框架知識變動，已完成 documentation agent 同步或明確記錄不需要同步的理由
 
 ---

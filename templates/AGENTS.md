@@ -33,11 +33,11 @@
 
 ### 核心文件責任分工（Hard-coded）
 
-- `docs/ARCHITECTURE.md`
+- `specs/architecture.md`
   - 記錄全 repo 長期框架知識：模組邊界、資料流、狀態機、runtime flows、核心目錄樹、debug/observability map。
 - `docs/events/event_<YYYYMMDD>_<topic>.md`
   - 記錄每次任務的需求、範圍、對話重點摘要、debug checkpoints、決策、驗證與 architecture sync。
-- 所有複雜 debug / 開發任務，應優先先讀 `docs/ARCHITECTURE.md` 與相關 `docs/events/`，再進入原始碼偵查。
+- 所有複雜 debug / 開發任務，應優先先讀 `specs/architecture.md` 與相關 `docs/events/`，再進入原始碼偵查。
 
 ### 全域 Debug / Syslog 契約（Mandatory）
 
@@ -158,8 +158,8 @@
    - 規範變更需同步 `templates/**` 與對應 runtime 檔案，避免跨專案漂移。
 
 5. **Architecture 文件同步門檻**
-   - `docs/ARCHITECTURE.md` 採**全貌同步**原則，不採累進式變更流水帳。
-   - 每次非瑣碎開發任務收尾前，都必須重新比對程式現況並嚴格同步 `docs/ARCHITECTURE.md`（必要時直接改寫相關章節）。
+   - `specs/architecture.md` 採**全貌同步**原則，不採累進式變更流水帳。
+   - 每次非瑣碎開發任務收尾前，都必須重新比對程式現況並嚴格同步 `specs/architecture.md`（必要時直接改寫相關章節）。
    - 即使判定無內容變更，也必須在對應 event 的 Validation 區塊註記 `Architecture Sync: Verified (No doc changes)` 與比對依據。
    - 未完成 Architecture 同步檢查與紀錄，不得宣告完成。
 

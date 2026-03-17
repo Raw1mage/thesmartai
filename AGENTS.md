@@ -31,11 +31,11 @@
 
 ### 核心文件責任分工（Hard-coded）
 
-- `docs/ARCHITECTURE.md`
+- `specs/architecture.md`
   - 記錄全 repo 長期框架知識：模組邊界、資料流、狀態機、runtime flows、核心目錄樹、debug/observability map。
 - `docs/events/event_<YYYYMMDD>_<topic>.md`
   - 記錄每次任務的需求、範圍、對話重點摘要、debug checkpoints、決策、驗證與 architecture sync。
-- 所有複雜 debug / 開發任務，應優先先讀 `docs/ARCHITECTURE.md` 與相關 `docs/events/`，再進入原始碼偵查。
+- 所有複雜 debug / 開發任務，應優先先讀 `specs/architecture.md` 與相關 `docs/events/`，再進入原始碼偵查。
 
 ### 全域 Debug / Syslog 契約（Mandatory）
 
@@ -120,7 +120,7 @@
    - `runtime` 對應檔案（例如 `$XDG_CONFIG_HOME/opencode/skills/**`）
 3. **避免僅改 Global**：`~/.config/opencode/*` 屬本機執行環境，不作為 repo 交付依據。
 4. **變更留痕**：所有重大決策與同步範圍需記錄於 `docs/events/`。
-5. **Session 啟動必讀 Architecture**：每次開啟新 session（Main Agent）處理本專案前，必須先讀取 `docs/ARCHITECTURE.md`，再進行分析與規劃。
+5. **Session 啟動必讀 Architecture**：每次開啟新 session（Main Agent）處理本專案前，必須先讀取 `specs/architecture.md`，再進行分析與規劃。
 6. **Documentation Agent 同步門檻**：凡任務影響模組邊界、資料流、狀態機、觀測點或關鍵 root cause 沉澱，必須同步委派 documentation agent 更新長期文件。
 
 ### 跨專案 SOP 基線（Mandatory）
@@ -144,8 +144,8 @@
    - 未同步 `templates/**` 的規範變更不得進入 release。
 
 5. **Architecture 文件同步門檻**：
-   - `docs/ARCHITECTURE.md` 採**全貌同步**原則，不採累進式變更流水帳。
-   - 每次非瑣碎開發任務收尾前，都必須重新比對程式現況並嚴格同步 `docs/ARCHITECTURE.md`（必要時直接改寫相關章節）。
+   - `specs/architecture.md` 採**全貌同步**原則，不採累進式變更流水帳。
+   - 每次非瑣碎開發任務收尾前，都必須重新比對程式現況並嚴格同步 `specs/architecture.md`（必要時直接改寫相關章節）。
    - 即使判定無內容變更，也必須在對應 event 的 Validation 區塊記錄 `Architecture Sync: Verified (No doc changes)` 與比對依據。
    - 未完成 Architecture 同步檢查與紀錄，不得宣告完成。
 6. **文件優先於重建心智模型**：
@@ -158,7 +158,7 @@
 - [ ] 若調整初始化行為，已確認 `templates/AGENTS.md` 與 `templates/prompts/SYSTEM.md` 一致。
 - [ ] 若調整執行時技能，已確認 `$XDG_CONFIG_HOME/opencode/skills/**` 與 `templates/skills/**` 無漂移。
 - [ ] 已在 `docs/events/` 記錄：變更目的、範圍、同步面、風險。
-- [ ] 本次任務已完成 `docs/ARCHITECTURE.md` 全貌同步檢查；若無內容變更，已在 event Validation 註記 `Architecture Sync: Verified (No doc changes)` 與依據。
+- [ ] 本次任務已完成 `specs/architecture.md` 全貌同步檢查；若無內容變更，已在 event Validation 註記 `Architecture Sync: Verified (No doc changes)` 與依據。
 - [ ] 僅將 `~/.config/opencode/*` 視為本機環境，不作為 release 交付來源。
 
 ### 驗證基準排除（暫行）
