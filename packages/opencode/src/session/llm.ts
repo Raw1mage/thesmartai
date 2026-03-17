@@ -55,6 +55,24 @@ export const LlmErrorEvent = BusEvent.define(
   }),
 )
 
+/**
+ * Bus event for rotation chain tracking.
+ * Fires every time a fallback rotation executes (from → to).
+ */
+export const RotationExecutedEvent = BusEvent.define(
+  "rotation.executed",
+  z.object({
+    fromProviderId: z.string(),
+    fromModelId: z.string(),
+    fromAccountId: z.string(),
+    toProviderId: z.string(),
+    toModelId: z.string(),
+    toAccountId: z.string(),
+    reason: z.string(),
+    timestamp: z.number(),
+  }),
+)
+
 export namespace LLM {
   const log = Log.create({ service: "llm" })
 
@@ -767,61 +785,21 @@ export namespace LLM {
     // provider/account, rotation must NOT escape to a different provider or
     // account. This prevents subagent account drift during rate-limit rotation.
     //
-    // FIX(Bug #5): Use iterative loop instead of recursion to avoid O(N)
-    // recursive findFallback3D calls (each doing synchronous file I/O).
-    // Session identity blocks most candidates → recursion scanned 179 vectors
-    // → 179 synchronous readFileSync of rotation-state.json → event loop blocked.
-    const MAX_IDENTITY_FILTER_ITERATIONS = 20
-    let identityFilterIterations = 0
-    let currentFallback: typeof fallback | null = fallback
-    while (currentFallback && sessionIdentity?.accountId && identityFilterIterations < MAX_IDENTITY_FILTER_ITERATIONS) {
-      const blocked =
-        currentFallback.providerId !== sessionIdentity.providerId ||
-        currentFallback.accountId !== sessionIdentity.accountId
-      if (!blocked) break
-
-      const reason = currentFallback.providerId !== sessionIdentity.providerId ? "cross-provider" : "cross-account"
-      if (identityFilterIterations === 0) {
-        debugCheckpoint("syslog.rotation", `handleRateLimitFallback: filtering ${reason} candidates by session identity`, {
-          sessionIdentity,
-          firstBlocked: `${currentFallback.providerId}:${currentFallback.accountId}:${currentFallback.modelID}`,
-        })
-      }
-
-      const blockedKey = `${currentFallback.providerId}:${currentFallback.accountId}:${currentFallback.modelID}`
-      triedVectors.add(blockedKey)
-      identityFilterIterations++
-
-      // Get next candidate without recursion
-      const nextFallback = await findFallback(
-        { providerId: currentModel.providerId, accountId: currentAccountId, modelID: currentModel.id },
-        { strategy, allowSameProviderFallback: true },
-        triedVectors,
-      )
-      currentFallback = nextFallback
-    }
-
-    if (identityFilterIterations >= MAX_IDENTITY_FILTER_ITERATIONS) {
-      debugCheckpoint("syslog.rotation", "handleRateLimitFallback: identity filter exhausted max iterations", {
-        sessionIdentity,
-        iterations: identityFilterIterations,
-        triedCount: triedVectors.size,
-        note: "all same-identity candidates exhausted",
+    // Allow cross-provider and cross-account fallback.
+    // rotation3d.ts already filters candidates to only include enabled providers
+    // with active accounts. The previous identity filter blocked these valid
+    // candidates, causing stuck sessions when all same-provider accounts
+    // were rate-limited.
+    if (fallback.providerId !== currentModel.providerId || fallback.accountId !== currentAccountId) {
+      debugCheckpoint("syslog.rotation", "Cross-provider/account fallback selected", {
+        fromProviderId: currentModel.providerId,
+        fromAccountId: currentAccountId,
+        fromModelID: currentModel.id,
+        toProviderId: fallback.providerId,
+        toAccountId: fallback.accountId,
+        toModelID: fallback.modelID,
       })
-      return null
     }
-
-    if (!currentFallback) {
-      debugCheckpoint("syslog.rotation", "handleRateLimitFallback: no same-identity fallback found", {
-        sessionIdentity,
-        identityFilterIterations,
-        triedCount: triedVectors.size,
-      })
-      return null
-    }
-
-    // Use the identity-filtered fallback from here on
-    fallback = currentFallback
 
     // Add the selected fallback to tried vectors to avoid immediate retry in subsequent attempts
     const fallbackKey = `${fallback.providerId}:${fallback.accountId}:${fallback.modelID}`
@@ -893,6 +871,18 @@ export namespace LLM {
         model: !isSameModel,
       },
     })
+
+    // Publish rotation event for LLM status card history chain
+    Bus.publish(RotationExecutedEvent, {
+      fromProviderId: currentModel.providerId,
+      fromModelId: currentModel.id,
+      fromAccountId: currentAccountId,
+      toProviderId: fallback.providerId,
+      toModelId: fallback.modelID,
+      toAccountId: fallback.accountId,
+      reason: fallbackReason === "rate-limit" ? "RATE_LIMIT_EXCEEDED" : "UNKNOWN",
+      timestamp: Date.now(),
+    }).catch(() => {})
 
     if (isSameProvider && (!isSameAccount || !isSameModel)) {
       const { getSameProviderRotationGuard, SAME_PROVIDER_ROTATE_COOLDOWN_MS } = await import("@/account/rotation")

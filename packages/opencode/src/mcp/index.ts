@@ -191,34 +191,18 @@ export namespace MCP {
       const status: Record<string, Status> = {}
       const skipAutoConnect = process.env.OPENCODE_SKIP_MCP_AUTO === "1"
 
-      await Promise.all(
-        Object.entries(config).map(async ([key, mcp]) => {
-          if (!isMcpConfigured(mcp)) {
-            log.error("Ignoring MCP config entry without type", { key })
-            return
-          }
-
-          if (skipAutoConnect) {
-            status[key] = { status: "disabled" }
-            return
-          }
-
-          // If disabled by config, mark as disabled without trying to connect
-          if (mcp.enabled === false) {
-            status[key] = { status: "disabled" }
-            return
-          }
-
-          const result = await create(key, mcp).catch(() => undefined)
-          if (!result) return
-
-          status[key] = result.status
-
-          if (result.mcpClient) {
-            clients[key] = result.mcpClient
-          }
-        }),
-      )
+      // Phase 1: Register all servers as disabled immediately (fast)
+      const pendingAutoConnect: Array<{ key: string; mcp: Config.Mcp }> = []
+      for (const [key, mcp] of Object.entries(config)) {
+        if (!isMcpConfigured(mcp)) {
+          log.error("Ignoring MCP config entry without type", { key })
+          continue
+        }
+        status[key] = { status: "disabled" }
+        if (!skipAutoConnect && mcp.enabled !== false) {
+          pendingAutoConnect.push({ key, mcp: mcp as Config.Mcp })
+        }
+      }
 
       const toolsCache: ToolsCacheEntry = {
         value: {},
@@ -229,6 +213,28 @@ export namespace MCP {
       const unsubscribeToolsChanged = Bus.subscribe(ToolsChanged, () => {
         invalidateToolsCache(toolsCache)
       })
+
+      // Phase 2: Auto-connect enabled servers in background (progressive)
+      if (pendingAutoConnect.length > 0) {
+        Promise.resolve().then(async () => {
+          for (const { key, mcp } of pendingAutoConnect) {
+            try {
+              const result = await create(key, mcp)
+              if (result) {
+                status[key] = result.status
+                if (result.mcpClient) {
+                  clients[key] = result.mcpClient
+                }
+                invalidateToolsCache(toolsCache)
+                Bus.publish(ToolsChanged, { server: key })
+              }
+            } catch (e) {
+              log.error("background auto-connect failed", { key, error: e })
+              status[key] = { status: "failed", error: e instanceof Error ? e.message : String(e) }
+            }
+          }
+        })
+      }
 
       return {
         status,

@@ -277,7 +277,7 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
               )}
             </For>
           </Show>
-          {/* History rotation — last 5 state changes */}
+          {/* History — rotation chain + state changes */}
           <Show
             when={history.length > 0}
             fallback={
@@ -296,30 +296,69 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
               <span class="text-11-regular text-text-weak uppercase tracking-wide">Recent</span>
             </div>
             <For each={history}>
-              {(h) => (
-                <div class="flex items-center gap-2 py-0.5 px-1">
-                  <div
-                    classList={{
-                      "size-1.5 rounded-full shrink-0": true,
-                      "bg-icon-success-base": h.state === "recovered",
-                      "bg-icon-critical-base": h.state === "auth_failed",
-                      "bg-icon-warning-base": h.state === "error" || h.state === "ratelimit",
-                    }}
-                  />
-                  <span class="text-11-regular text-text-base truncate flex-1">{h.modelId}</span>
-                  <span
-                    classList={{
-                      "text-11-regular shrink-0": true,
-                      "text-success": h.state === "recovered",
-                      "text-text-critical": h.state === "auth_failed",
-                      "text-text-warning": h.state === "error" || h.state === "ratelimit",
-                    }}
-                  >
-                    {h.state === "recovered" ? "OK" : h.state === "auth_failed" ? "AUTH" : h.state === "ratelimit" ? "RATE" : "ERR"}
-                  </span>
-                  <span class="text-11-regular text-text-weak shrink-0">{formatAge(h.timestamp)}</span>
-                </div>
-              )}
+              {(h) => {
+                const shortModel = (id: string) => {
+                  const parts = id.split("/")
+                  return parts[parts.length - 1] ?? id
+                }
+                if (h.state === "rotated") {
+                  return (
+                    <div class="flex flex-col gap-0 py-0.5 px-1">
+                      <div class="flex items-center gap-1.5">
+                        <div class="size-1.5 rounded-full bg-icon-warning-base shrink-0" />
+                        <span class="text-11-regular text-text-warning truncate">
+                          {shortModel(h.modelId)} rate limited
+                        </span>
+                        <span class="text-11-regular text-text-weak shrink-0">{formatAge(h.timestamp)}</span>
+                      </div>
+                      <div class="flex items-center gap-1.5 pl-[14px]">
+                        <span class="text-11-regular text-text-weak">→</span>
+                        <span class="text-11-regular text-text-base truncate">
+                          {shortModel(h.toModelId ?? h.modelId)}
+                        </span>
+                        <Show when={h.toAccountId && h.toAccountId !== h.accountId}>
+                          <span class="text-11-regular text-text-weak truncate">
+                            ({h.toAccountId?.split("@")[0]?.split("-")[0]})
+                          </span>
+                        </Show>
+                      </div>
+                    </div>
+                  )
+                }
+                if (h.state === "recovered") {
+                  return (
+                    <div class="flex items-center gap-1.5 py-0.5 px-1">
+                      <div class="size-1.5 rounded-full bg-icon-success-base shrink-0" />
+                      <span class="text-11-regular text-success truncate flex-1">
+                        {shortModel(h.modelId)} operational
+                      </span>
+                      <span class="text-11-regular text-text-weak shrink-0">{formatAge(h.timestamp)}</span>
+                    </div>
+                  )
+                }
+                return (
+                  <div class="flex items-center gap-1.5 py-0.5 px-1">
+                    <div
+                      classList={{
+                        "size-1.5 rounded-full shrink-0": true,
+                        "bg-icon-critical-base": h.state === "auth_failed",
+                        "bg-icon-warning-base": h.state === "error" || h.state === "ratelimit",
+                      }}
+                    />
+                    <span class="text-11-regular text-text-base truncate flex-1">{shortModel(h.modelId)}</span>
+                    <span
+                      classList={{
+                        "text-11-regular shrink-0": true,
+                        "text-text-critical": h.state === "auth_failed",
+                        "text-text-warning": h.state === "error" || h.state === "ratelimit",
+                      }}
+                    >
+                      {h.state === "auth_failed" ? "AUTH" : h.state === "ratelimit" ? "RATE" : "ERR"}
+                    </span>
+                    <span class="text-11-regular text-text-weak shrink-0">{formatAge(h.timestamp)}</span>
+                  </div>
+                )
+              }}
             </For>
           </Show>
         </div>

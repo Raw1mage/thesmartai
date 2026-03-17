@@ -440,10 +440,34 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   // @event_20260216_phase5 — Bus-driven instant rate limit updates
   // Subscribe to RateLimitEvent so the activity panel refreshes immediately
   // when a rate limit is detected or cleared, instead of waiting for the 1s poll.
-  const unsubDetected = Bus.subscribe(RateLimitEvent.Detected, () => {
+  type RateLimitHistoryEntry = {
+    providerId: string
+    accountId: string
+    modelId: string
+    reason: string
+    backoffMs: number
+    source: string
+    timestamp: number
+  }
+  const MAX_HISTORY = 5
+  const [rateLimitHistory, setRateLimitHistory] = createSignal<RateLimitHistoryEntry[]>([])
+  const unsubDetected = Bus.subscribe(RateLimitEvent.Detected, (evt) => {
     setActivityTick((t) => t + 1)
     // Also trigger quota refresh so cockpit/Codex data stays current
     setQuotaRefresh((t) => t + 1)
+    // Accumulate last N rate limit events for history display
+    setRateLimitHistory((prev) => {
+      const entry: RateLimitHistoryEntry = {
+        providerId: evt.properties.providerId,
+        accountId: evt.properties.accountId,
+        modelId: evt.properties.modelId,
+        reason: evt.properties.reason,
+        backoffMs: evt.properties.backoffMs,
+        source: evt.properties.source,
+        timestamp: evt.properties.timestamp,
+      }
+      return [entry, ...prev].slice(0, MAX_HISTORY)
+    })
   })
   const unsubCleared = Bus.subscribe(RateLimitEvent.Cleared, () => {
     setActivityTick((t) => t + 1)
@@ -1044,11 +1068,39 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       })
     }
 
+    // Append recent rate limit / rotation history
+    const history = rateLimitHistory()
+    if (history.length > 0) {
+      items.push({
+        value: "_history_header",
+        title: "── Recent Events ──",
+        description: "",
+        category: "",
+        footer: "",
+        truncate: "none",
+      })
+      for (const evt of history) {
+        const ago = Math.round((Date.now() - evt.timestamp) / 1000)
+        const agoStr = ago < 60 ? `${ago}s` : ago < 3600 ? `${Math.floor(ago / 60)}m` : `${Math.floor(ago / 3600)}h`
+        const providerLabel = Account.getProviderLabel(providerKeyFromId(evt.providerId) || evt.providerId) || evt.providerId
+        const reasonStr = formatReason(evt.reason)
+        const backoffStr = formatWait(evt.backoffMs)
+        items.push({
+          value: `_history_${evt.timestamp}`,
+          title: `  ${agoStr.padStart(4)} ago  ${providerLabel}  ${evt.modelId}  ${reasonStr}  ⏳${backoffStr}`,
+          description: "",
+          category: "",
+          footer: "",
+          truncate: "none",
+        })
+      }
+    }
+
     return { items, stats: { ready, limited, total: ready + limited } }
   })
 
   const selectActivity = async (value: string) => {
-    if (!value || value === "_header" || value === "empty") return
+    if (!value || value === "_header" || value === "empty" || value.startsWith("_history_")) return
     const [accountId, providerId, ...rest] = value.split(":")
     const modelID = rest.join(":")
     if (!providerId || !modelID) return
@@ -1248,7 +1300,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
     if (currentPage === "activities") {
       return activityData().items.map((item) => {
-        const disabled = item.value === "_header" || item.value === "empty"
+        const disabled = item.value === "_header" || item.value === "empty" || item.value.startsWith("_history_")
         return {
           ...item,
           disabled,
@@ -2946,13 +2998,34 @@ function formatReason(reason: string): string {
       return "Quota (429)"
     case "RATE_LIMIT_EXCEEDED":
       return "Rate Limit (429)"
+    case "RATE_LIMIT_SHORT":
+      return "Rate Limit RPM/TPM"
+    case "RATE_LIMIT_LONG":
+      return "Rate Limit Daily"
     case "MODEL_CAPACITY_EXHAUSTED":
       return "Overloaded (503)"
+    case "SERVICE_UNAVAILABLE_503":
+      return "Service Unavailable (503)"
+    case "SITE_OVERLOADED_529":
+      return "Site Overloaded (529)"
     case "SERVER_ERROR":
       return "Server Error (500)"
+    case "AUTH_FAILED":
+      return "Auth Failed (401/403)"
+    case "TOKEN_REFRESH_FAILED":
+      return "Token Refresh Failed"
+    case "BAD_REQUEST":
+      return "Bad Request (400)"
     case "TIMEOUT":
       return "Timeout (408)"
+    case "UNKNOWN":
+      return "Unknown Error"
     default:
+      // Handle HTTP_${number} pattern
+      if (reason.startsWith("HTTP_")) {
+        const code = reason.slice(5)
+        return `HTTP ${code}`
+      }
       return reason
   }
 }

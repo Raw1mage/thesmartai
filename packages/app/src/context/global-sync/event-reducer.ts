@@ -545,5 +545,33 @@ export function applyDirectoryEvent(input: {
       )
       break
     }
+    case "rotation.executed": {
+      const props = event.properties as {
+        fromProviderId: string
+        fromModelId: string
+        fromAccountId: string
+        toProviderId: string
+        toModelId: string
+        toAccountId: string
+        reason: string
+        timestamp: number
+      }
+      input.setStore(
+        produce((draft) => {
+          pushLlmHistory(draft, {
+            providerId: props.fromProviderId,
+            modelId: props.fromModelId,
+            accountId: props.fromAccountId,
+            timestamp: props.timestamp,
+            state: "rotated",
+            message: props.reason,
+            toProviderId: props.toProviderId,
+            toModelId: props.toModelId,
+            toAccountId: props.toAccountId,
+          })
+        }),
+      )
+      break
+    }
   }
 }

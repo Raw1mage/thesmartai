@@ -187,6 +187,7 @@ export namespace SessionProcessor {
         }
 
         while (true) {
+          if (input.abort.aborted) break
           try {
             // Pre-flight rate-limit check: read shared rotation-state.json
             // before hitting the API. If the current vector is already marked
@@ -1119,6 +1120,17 @@ export namespace SessionProcessor {
                 retry === "Rate Limited" ||
                 retry === "Provider is overloaded" ||
                 isRateLimitError(e)
+              if (isRateLimitRetry && fallbackAttempts > MAX_FALLBACK_ATTEMPTS) {
+                // All fallback attempts exhausted — surface error, don't retry
+                log.error("Rate limit retry: fallback attempts exhausted", { fallbackAttempts })
+                input.assistantMessage.error = error
+                Bus.publish(Session.Event.Error, {
+                  sessionID: input.assistantMessage.sessionID,
+                  error: input.assistantMessage.error,
+                })
+                SessionStatus.set(input.sessionID, { type: "idle" })
+                break
+              }
               if (isRateLimitRetry && fallbackAttempts <= MAX_FALLBACK_ATTEMPTS) {
                 fallbackAttempts++
                 const fallback = await LLM.handleRateLimitFallback(
@@ -1197,6 +1209,7 @@ export namespace SessionProcessor {
                 next: Date.now() + delay,
               })
               await SessionRetry.sleep(delay, input.abort).catch(() => {})
+              if (input.abort.aborted) break
               continue
             }
             input.assistantMessage.error = error

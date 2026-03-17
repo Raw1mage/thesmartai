@@ -31,6 +31,7 @@ import { createChildStoreManager } from "./global-sync/child-store"
 import { trimSessions } from "./global-sync/session-trim"
 import { estimateRootSessionTotal, loadRootSessionsWithFallback } from "./global-sync/session-load"
 import { applyDirectoryEvent, applyGlobalEvent } from "./global-sync/event-reducer"
+import { LLM_HISTORY_CAP, type LlmHistoryEntry } from "./global-sync/types"
 import {
   bootstrapDirectory,
   bootstrapGlobal,
@@ -393,6 +394,50 @@ function createGlobalSync() {
         variant,
         duration,
       })
+      // Capture rotation/ratelimit toasts into LLM status card history.
+      // Toast is the only event guaranteed to bypass directory routing,
+      // so we piggyback structured history onto it.
+      if (typeof message === "string" && message.includes("->")) {
+        const lines = message.split("\n").map((l: string) => l.trim()).filter(Boolean)
+        // lines[0] = "(reason)detail", lines[1] = "from->", lines[2] = "to"
+        if (lines.length >= 2) {
+          const reason = lines[0] ?? ""
+          // Find the line with "->" and extract from/to
+          const arrowIdx = lines.findIndex((l: string) => l.includes("->"))
+          if (arrowIdx !== -1) {
+            const fromPart = lines[arrowIdx]!.replace("->", "").trim()
+            const toPart = lines[arrowIdx + 1]?.trim() ?? fromPart
+            const [fromProvider, fromModel, fromAccount] = fromPart.split(",")
+            const [toProvider, toModel, toAccount] = toPart.split(",")
+            // Find child store for this directory and push history
+            const resolved = children.children[directory]
+              ?? children.children[Object.keys(children.children).find((k) => normalizeDirectoryKey(k) === directory) ?? ""]
+            if (resolved) {
+              const [, setStore] = resolved
+              const entry: LlmHistoryEntry = {
+                providerId: fromProvider ?? "",
+                modelId: fromModel ?? "",
+                accountId: fromAccount,
+                timestamp: Date.now(),
+                state: "rotated",
+                message: reason,
+                toProviderId: toProvider,
+                toModelId: toModel,
+                toAccountId: toAccount,
+              }
+              setStore(
+                produce((draft) => {
+                  if (!draft.llm_history) draft.llm_history = []
+                  draft.llm_history.push(entry)
+                  if (draft.llm_history.length > LLM_HISTORY_CAP) {
+                    draft.llm_history = draft.llm_history.slice(-LLM_HISTORY_CAP)
+                  }
+                }),
+              )
+            }
+          }
+        }
+      }
       return
     }
 

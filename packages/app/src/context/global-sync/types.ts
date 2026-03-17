@@ -123,13 +123,18 @@ export type LlmErrorEntry = {
 export type LlmHistoryEntry = {
   providerId: string
   modelId: string
+  accountId?: string
   timestamp: number
-  /** "error" | "ratelimit" | "auth_failed" | "recovered" */
+  /** "error" | "ratelimit" | "auth_failed" | "recovered" | "rotated" */
   state: string
   message?: string
+  /** For "rotated" state: the target model/provider/account */
+  toProviderId?: string
+  toModelId?: string
+  toAccountId?: string
 }
 
-export const LLM_HISTORY_CAP = 5
+export const LLM_HISTORY_CAP = 10
 
 export type VcsCache = {
   store: Store<{ value: VcsInfo | undefined }>

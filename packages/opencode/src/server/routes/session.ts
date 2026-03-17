@@ -996,19 +996,13 @@ export const SessionRoutes = lazy(() =>
       ),
       async (c) => {
         const sessionID = c.req.valid("param").sessionID
+        // Cancel immediately — don't block on daemon call
+        SessionPrompt.cancel(sessionID)
         const username = RequestUser.username()
         if (username && UserDaemonManager.routeSessionMutationEnabled()) {
-          const response = await UserDaemonManager.callSessionAbort<boolean>(username, sessionID)
-          if (response.ok) return c.json(true)
-          return c.json(
-            {
-              code: response.error.code,
-              message: response.error.message,
-            },
-            503,
-          )
+          // Fire-and-forget: notify daemon but don't wait
+          UserDaemonManager.callSessionAbort<boolean>(username, sessionID).catch(() => {})
         }
-        SessionPrompt.cancel(sessionID)
         return c.json(true)
       },
     )

@@ -33,7 +33,9 @@ export type RateLimitReason =
   | "SERVER_ERROR"
   | "AUTH_FAILED"
   | "TOKEN_REFRESH_FAILED"
+  | "BAD_REQUEST"
   | "UNKNOWN"
+  | `HTTP_${number}`
 
 // ============================================================================
 // State Interfaces
