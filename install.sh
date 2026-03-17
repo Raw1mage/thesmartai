@@ -236,6 +236,8 @@ EOF
   local runtime_cfg_file="${env_dir}/opencode.cfg"
   local runtime_cfg_template="${ROOT_DIR}/templates/system/opencode.cfg"
   local tmp_runtime_cfg="/tmp/opencode.cfg.$$"
+  local runtime_env_file="${env_dir}/opencode.env"
+  local runtime_env_template="${ROOT_DIR}/templates/system/opencode.env"
   local installed_frontend_path="/usr/local/share/opencode/frontend"
   local runtime_webctl_dst="${env_dir}/webctl.sh"
   local planner_templates_src="${ROOT_DIR}/templates/specs"
@@ -311,6 +313,17 @@ EOF
     log_ok "Created runtime config: ${runtime_cfg_file}"
   fi
 
+  # Install opencode.env (per-user daemon routing config) — only if not present.
+  # Preserves local operator customizations on subsequent reinstalls.
+  if [[ -f "${runtime_env_template}" ]]; then
+    if run_as_root test -f "${runtime_env_file}"; then
+      log_ok "Runtime env config present (not overwritten): ${runtime_env_file}"
+    else
+      run_as_root install -m 644 "${runtime_env_template}" "${runtime_env_file}"
+      log_ok "Created runtime env config: ${runtime_env_file}"
+    fi
+  fi
+
   local bin_src="${ROOT_DIR}/dist/opencode-linux-x64/bin/opencode"
   local bin_dst="/usr/local/bin/opencode"
   if files_identical_root "${bin_src}" "${bin_dst}"; then
@@ -377,6 +390,7 @@ Environment=XDG_STATE_HOME=/var/lib/opencode/state
 Environment=XDG_CACHE_HOME=/var/lib/opencode/cache
 Environment=OPENCODE_LAUNCH_MODE=systemd
 EnvironmentFile=-/etc/opencode/opencode.cfg
+EnvironmentFile=-/etc/opencode/opencode.env
 ExecStart=/usr/local/bin/opencode web --port \$OPENCODE_PORT --hostname \$OPENCODE_HOSTNAME
 Restart=on-failure
 RestartSec=2

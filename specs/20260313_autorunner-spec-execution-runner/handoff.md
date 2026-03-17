@@ -1,5 +1,7 @@
 # Handoff
 
+> **ARCHIVED (2026-03-17)** — Predecessor spec superseded by `specs/20260315_openclaw_reproduction/`. This spec is reference-only; do not resume execution from here.
+
 ## Execution Contract
 
 - 此 change 是 `autorunner` branch 的 autonomous-agent 大計畫第一個 substrate 切片。

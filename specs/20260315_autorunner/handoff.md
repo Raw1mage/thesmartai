@@ -1,5 +1,7 @@
 # Handoff
 
+> **ARCHIVED (2026-03-17)** — All work from this spec was absorbed into `specs/20260315_openclaw_reproduction/`. This spec is reference-only; do not resume execution from here.
+
 ## Execution Contract
 
 - Build agent must read `implementation-spec.md` first and treat it as the authority for this autorunner optimization slice.
