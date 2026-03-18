@@ -11,7 +11,7 @@ import { Storage } from "../storage/storage"
 import { fn } from "../util/fn"
 import { Log } from "../util/log"
 import { BusEvent } from "@/bus/bus-event"
-import { Bus } from "@/bus"
+import { GlobalBus } from "@/bus/global"
 
 export namespace Worktree {
   const log = Log.create({ service: "worktree" })
@@ -358,7 +358,15 @@ export namespace Worktree {
         if (populated.exitCode !== 0) {
           const message = errorText(populated) || "Failed to populate worktree"
           log.error("worktree checkout failed", { directory: info.directory, message })
-          await Bus.publish(Event.Failed, { message }, { directory: info.directory })
+          GlobalBus.emit("event", {
+            directory: info.directory,
+            payload: {
+              type: Event.Failed.type,
+              properties: {
+                message,
+              },
+            },
+          })
           return
         }
 
@@ -368,15 +376,32 @@ export namespace Worktree {
           fn: () => undefined,
         })
           .then(() => true)
-          .catch(async (error) => {
+          .catch((error) => {
             const message = error instanceof Error ? error.message : String(error)
             log.error("worktree bootstrap failed", { directory: info.directory, message })
-            await Bus.publish(Event.Failed, { message }, { directory: info.directory })
+            GlobalBus.emit("event", {
+              directory: info.directory,
+              payload: {
+                type: Event.Failed.type,
+                properties: {
+                  message,
+                },
+              },
+            })
             return false
           })
         if (!booted) return
 
-        await Bus.publish(Event.Ready, { name: info.name, branch: info.branch }, { directory: info.directory })
+        GlobalBus.emit("event", {
+          directory: info.directory,
+          payload: {
+            type: Event.Ready.type,
+            properties: {
+              name: info.name,
+              branch: info.branch,
+            },
+          },
+        })
 
         await runStartScripts(info.directory, { projectID, extra })
       }

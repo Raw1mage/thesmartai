@@ -10,7 +10,7 @@ import { work } from "../util/queue"
 import { fn } from "@opencode-ai/util/fn"
 import { BusEvent } from "@/bus/bus-event"
 import { iife } from "@/util/iife"
-import { Bus } from "@/bus"
+import { GlobalBus } from "@/bus/global"
 import { existsSync } from "fs"
 import { git } from "../util/git"
 
@@ -222,7 +222,12 @@ export namespace Project {
     if (sandbox !== result.worktree && !result.sandboxes.includes(sandbox)) result.sandboxes.push(sandbox)
     result.sandboxes = result.sandboxes.filter((x) => existsSync(x))
     await Storage.write<Info>(["project", id], result)
-    await Bus.publish(Event.Updated, result, { directory: "global" })
+    GlobalBus.emit("event", {
+      payload: {
+        type: Event.Updated.type,
+        properties: result,
+      },
+    })
     return { project: result, sandbox }
   }
 
@@ -325,7 +330,12 @@ export namespace Project {
 
         draft.time.updated = Date.now()
       })
-      await Bus.publish(Event.Updated, result, { directory: "global" })
+      GlobalBus.emit("event", {
+        payload: {
+          type: Event.Updated.type,
+          properties: result,
+        },
+      })
       return result
     },
   )
@@ -348,7 +358,12 @@ export namespace Project {
       draft.sandboxes = sandboxes
       draft.time.updated = Date.now()
     })
-    await Bus.publish(Event.Updated, result, { directory: "global" })
+    GlobalBus.emit("event", {
+      payload: {
+        type: Event.Updated.type,
+        properties: result,
+      },
+    })
     return result
   }
 
@@ -358,7 +373,12 @@ export namespace Project {
       draft.sandboxes = sandboxes.filter((sandbox) => sandbox !== directory)
       draft.time.updated = Date.now()
     })
-    await Bus.publish(Event.Updated, result, { directory: "global" })
+    GlobalBus.emit("event", {
+      payload: {
+        type: Event.Updated.type,
+        properties: result,
+      },
+    })
     return result
   }
 }
