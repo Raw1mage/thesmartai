@@ -229,7 +229,7 @@ export async function bootstrapDirectory(input: {
 
   if (input.store.status !== "complete") input.setStore("status", "partial")
 
-  Promise.all([
+  Promise.allSettled([
     input.sdk.path.get().then((x) => input.setStore("path", x.data!)),
     input.sdk.command.list().then((x) => input.setStore("command", x.data ?? [])),
     fetchWorkspaceCurrent({ baseUrl: input.baseUrl, fetch: input.fetch }).then((x) => {
@@ -284,7 +284,11 @@ export async function bootstrapDirectory(input: {
         }
       })
     }),
-  ]).then(() => {
+  ]).then((results) => {
+    const errors = results.filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => r.reason)
+    if (errors.length > 0) {
+      console.warn("[bootstrapDirectory] Some non-blocking requests failed:", errors)
+    }
     input.setStore("status", "complete")
   })
 }
