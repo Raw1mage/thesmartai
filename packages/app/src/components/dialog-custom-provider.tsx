@@ -244,6 +244,7 @@ export function DialogCustomProvider(props: Props) {
           auth: {
             type: "api",
             key: result.key,
+            name: result.name,
           },
         })
       : Promise.resolve()
