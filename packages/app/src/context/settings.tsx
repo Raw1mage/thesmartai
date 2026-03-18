@@ -66,12 +66,12 @@ const defaultSettings: Settings = {
     errors: false,
   },
   sounds: {
-    agentEnabled: true,
-    agent: "staplebops-01",
-    permissionsEnabled: true,
-    permissions: "staplebops-02",
-    errorsEnabled: true,
-    errors: "nope-03",
+    agentEnabled: false,
+    agent: "none",
+    permissionsEnabled: false,
+    permissions: "none",
+    errorsEnabled: false,
+    errors: "none",
   },
 }
 
