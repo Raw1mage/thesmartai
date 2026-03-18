@@ -15,11 +15,22 @@ import { WebAuth } from "../web-auth"
 
 const log = Log.create({ service: "server" })
 
+type RestartRuntimeMode = "dev-source" | "dev-standalone" | "service" | "unknown"
+
+function resolveRestartRuntimeMode(): RestartRuntimeMode {
+  const launchMode = process.env.OPENCODE_LAUNCH_MODE
+  if (launchMode === "webctl") {
+    return process.env.OPENCODE_REPO_ROOT ? "dev-source" : "dev-standalone"
+  }
+  if (launchMode === "service") return "service"
+  return "unknown"
+}
+
 function resolveWebctlPath() {
-  if (process.env.OPENCODE_WEBCTL_PATH) return process.env.OPENCODE_WEBCTL_PATH
   if (process.env.OPENCODE_LAUNCH_MODE === "webctl" && process.env.OPENCODE_REPO_ROOT) {
     return path.join(process.env.OPENCODE_REPO_ROOT, "webctl.sh")
   }
+  if (process.env.OPENCODE_WEBCTL_PATH) return process.env.OPENCODE_WEBCTL_PATH
   return "/etc/opencode/webctl.sh"
 }
 
@@ -361,9 +372,11 @@ export const GlobalRoutes = lazy(() =>
                     ok: z.literal(true),
                     accepted: z.literal(true),
                     mode: z.literal("controlled_restart"),
+                    runtimeMode: z.enum(["dev-source", "dev-standalone", "service", "unknown"]),
                     probePath: z.literal("/api/v2/global/health"),
                     recommendedInitialDelayMs: z.number(),
                     fallbackReloadAfterMs: z.number(),
+                    recoveryDeadlineMs: z.number(),
                   }),
                 ),
               },
@@ -374,6 +387,7 @@ export const GlobalRoutes = lazy(() =>
       }),
       async (c) => {
         const webctlPath = resolveWebctlPath()
+        const runtimeMode = resolveRestartRuntimeMode()
         const txid = `web-${Date.now()}-${process.pid}`
         const runtimeTmp = process.env.XDG_RUNTIME_DIR || "/tmp"
         const errorLogPath = path.join(runtimeTmp, `opencode-web-restart-${txid}.error.log`)
@@ -405,9 +419,11 @@ export const GlobalRoutes = lazy(() =>
         const stderr = (await stderrText).trim()
         if (exitCode !== 0) {
           const hint =
-            process.env.OPENCODE_LAUNCH_MODE === "webctl"
-              ? "Current runtime appears to be webctl/dev mode; restart may rebuild frontend before restarting. See the restart error log for full output."
-              : undefined
+            runtimeMode === "dev-source" || runtimeMode === "dev-standalone"
+              ? "Current runtime is dev/webctl mode; restart may include rebuild/startup delay. See restart error log for full output."
+              : runtimeMode === "service"
+                ? "Current runtime is service mode; check system service and restart error log for details."
+                : undefined
           log.error("web restart failed to schedule", { webctlPath, exitCode, stderr, txid, errorLogPath })
           return c.json(
             {
@@ -423,14 +439,20 @@ export const GlobalRoutes = lazy(() =>
           )
         }
 
+        const recommendedInitialDelayMs = runtimeMode === "service" ? 2500 : 1500
+        const fallbackReloadAfterMs = runtimeMode === "service" ? 15000 : 10000
+        const recoveryDeadlineMs = runtimeMode === "service" ? 90000 : 70000
+
         return c.json({
           ok: true,
           accepted: true,
           mode: "controlled_restart",
+          runtimeMode,
           probePath: "/api/v2/global/health",
           txid,
-          recommendedInitialDelayMs: 1500,
-          fallbackReloadAfterMs: 10000,
+          recommendedInitialDelayMs,
+          fallbackReloadAfterMs,
+          recoveryDeadlineMs,
         })
       },
     )

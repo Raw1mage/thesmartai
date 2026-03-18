@@ -61,7 +61,13 @@ export const SettingsGeneral: Component = () => {
     const sse = sync.data.killswitch_status
     if (sse) return { active: sse.active, state: sse.state, requestID: sse.requestID, snapshotURL: sse.snapshotURL }
     const fetched = killSwitchStatus()
-    if (fetched) return { active: fetched.active, state: fetched.state, requestID: fetched.requestID, snapshotURL: fetched.snapshotURL }
+    if (fetched)
+      return {
+        active: fetched.active,
+        state: fetched.state,
+        requestID: fetched.requestID,
+        snapshotURL: fetched.snapshotURL,
+      }
     return undefined
   })
 
@@ -80,9 +86,13 @@ export const SettingsGeneral: Component = () => {
 
   const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-  const waitForRestartRecovery = async (input: { initialDelayMs: number; fallbackReloadAfterMs: number }) => {
+  const waitForRestartRecovery = async (input: {
+    initialDelayMs: number
+    fallbackReloadAfterMs: number
+    recoveryDeadlineMs: number
+  }) => {
     const healthUrl = `${globalSDK.url}/api/v2/global/health`
-    const deadline = Date.now() + 30_000
+    const deadline = Date.now() + input.recoveryDeadlineMs
     const fallbackAt = Date.now() + input.fallbackReloadAfterMs
 
     await wait(input.initialDelayMs)
@@ -129,14 +139,25 @@ export const SettingsGeneral: Component = () => {
         throw new Error(formatRestartErrorResponse(text, response.status))
       }
       const data = (await response.json()) as {
+        runtimeMode: "dev-source" | "dev-standalone" | "service" | "unknown"
         recommendedInitialDelayMs: number
         fallbackReloadAfterMs: number
+        recoveryDeadlineMs: number
       }
       setRestartState("waiting")
-      setRestartMessage("Restarting web runtime… this page will reload automatically.")
+      const modeLabel =
+        data.runtimeMode === "service"
+          ? "service"
+          : data.runtimeMode === "dev-standalone"
+            ? "dev-standalone"
+            : data.runtimeMode === "dev-source"
+              ? "dev-source"
+              : "runtime"
+      setRestartMessage(`Restarting ${modeLabel}… this page will reload automatically after recovery.`)
       await waitForRestartRecovery({
         initialDelayMs: data.recommendedInitialDelayMs,
         fallbackReloadAfterMs: data.fallbackReloadAfterMs,
+        recoveryDeadlineMs: data.recoveryDeadlineMs,
       })
     } catch (error) {
       setRestartState("error")
@@ -636,7 +657,10 @@ export const SettingsGeneral: Component = () => {
             <div class="w-full">
               <TextField
                 value={killSwitchReason()}
-                onChange={(v) => { setKillSwitchReason(v); setKillSwitchConfirm("idle") }}
+                onChange={(v) => {
+                  setKillSwitchReason(v)
+                  setKillSwitchConfirm("idle")
+                }}
                 placeholder="Reason (required)"
                 hideLabel
                 disabled={killSwitchBusy()}

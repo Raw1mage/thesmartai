@@ -118,3 +118,19 @@ Workspace: /home/pkcs12/projects/opencode
     - 即使 reload 瞬間部分非阻塞 API (non-blocking requests) 暫時失敗，也會印出 warn log，並保證執行 `input.setStore("status", "complete")`，讓畫面可以順利顯示出來。
 - Architecture Sync: Verified (No doc changes)
   - 比對依據：本次主要修復了前端 reload 邏輯的 Promise 處理缺失，未新增模組或改變 web/runtime 邊界與控制契約，符合當前架構。
+
+## 追加 RCA（runtime mode 判斷）
+
+- 使用者回報：webapp 不一定永遠在 dev mode，Restart UI 必須可判斷實際 runtime。
+- 新證據（2026-03-18 17:00 失敗交易）：
+  - `opencode-web-restart-web-1773824405431-31610.error.log` 顯示啟動路徑為 `Starting standalone server ...`，`Source=/home/pkcs12/.local/bin/opencode`。
+  - 同日 17:02 成功交易則顯示 `Starting server from source ...`。
+- 根因：`/api/v2/global/web/restart` 的 `resolveWebctlPath()` 先吃 `OPENCODE_WEBCTL_PATH`，可能優先走 `/etc/opencode/webctl.sh`，進而在某些情況下走到 standalone binary；當程式剛更新時，這條路徑更容易與當前執行版本不一致，放大 timeout/啟動失敗機率。
+- 修補：
+  1. 後端 `/api/v2/global/web/restart` 新增 runtime 判斷欄位 `runtimeMode`（`dev-source` / `dev-standalone` / `service` / `unknown`）。
+  2. 回傳值新增 `recoveryDeadlineMs`，由後端依 runtime mode 下發合適等待窗口。
+  3. UI restart 流程改為依後端回傳 `runtimeMode` 顯示狀態文案，並使用 `recoveryDeadlineMs` 取代固定 30 秒 deadline。
+  4. `resolveWebctlPath()` 優先序調整為：`webctl + OPENCODE_REPO_ROOT`（repo webctl）優先，其次 `OPENCODE_WEBCTL_PATH`，最後 `/etc/opencode/webctl.sh`。
+- 驗證：
+  - `packages/app` typecheck 通過。
+  - `packages/opencode` typecheck 目前有既存錯誤（與本次變更無關，分布於 cron/session/workflow-runner 既有檔）。
