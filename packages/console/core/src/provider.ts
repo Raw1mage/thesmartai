@@ -18,9 +18,10 @@ export namespace Provider {
   export const create = fn(
     z.object({
       provider: z.string().min(1).max(64),
+      name: z.string().min(1).max(255),
       credentials: z.string(),
     }),
-    async ({ provider, credentials }) => {
+    async ({ provider, name, credentials }) => {
       Actor.assertAdmin()
       return Database.use((tx) =>
         tx
@@ -29,10 +30,12 @@ export namespace Provider {
             id: Identifier.create("provider"),
             workspaceID: Actor.workspace(),
             provider,
+            name,
             credentials,
           })
           .onDuplicateKeyUpdate({
             set: {
+              name,
               credentials,
               timeDeleted: null,
             },

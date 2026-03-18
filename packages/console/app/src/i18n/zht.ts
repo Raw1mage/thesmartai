@@ -310,6 +310,7 @@ export const dict = {
 
   "workspace.providers.title": "自帶金鑰",
   "workspace.providers.subtitle": "設定你自己的 AI 供應商 API 金鑰。",
+  "workspace.providers.namePlaceholder": "輸入 {{provider}} 帳號名稱",
   "workspace.providers.placeholder": "輸入 {{provider}} API 金鑰（{{prefix}}...）",
   "workspace.providers.configure": "設定",
   "workspace.providers.edit": "編輯",
@@ -317,6 +318,7 @@ export const dict = {
   "workspace.providers.saving": "儲存中...",
   "workspace.providers.save": "儲存",
   "workspace.providers.table.provider": "供應商",
+  "workspace.providers.table.name": "名稱",
   "workspace.providers.table.apiKey": "API 金鑰",
 
   "workspace.usage.title": "使用紀錄",

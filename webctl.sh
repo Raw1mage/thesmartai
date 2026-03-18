@@ -1465,6 +1465,10 @@ do_restart_worker() {
 # refresh helpers
 # ---------------------------------------------------------------------------
 do_dev_refresh() {
+    # Ensure FRONTEND_DIST uses server SSOT (/etc/opencode/opencode.cfg)
+    # so build output is synced to the actual runtime bundle path.
+    load_server_cfg
+
     if [ "${IS_SOURCE_REPO:-0}" -ne 1 ]; then
         log_warn "Source repo unavailable; skipping frontend build and performing controlled dev restart."
         if [ "$#" -gt 0 ]; then
@@ -1477,11 +1481,48 @@ do_dev_refresh() {
 
     log_info "Refreshing dev webapp (build frontend + restart)..."
     do_build_frontend
+    sync_frontend_dist_if_needed
     if [ "$#" -gt 0 ]; then
         do_dev_restart "$@"
     else
         do_dev_restart --graceful
     fi
+}
+
+sync_frontend_dist_if_needed() {
+    if [ "${IS_SOURCE_REPO:-0}" -ne 1 ]; then
+        return 0
+    fi
+
+    local source_dist
+    source_dist="${PROJECT_ROOT}/packages/app/dist"
+
+    if [ "${FRONTEND_DIST}" = "${source_dist}" ]; then
+        return 0
+    fi
+
+    if [ ! -f "${source_dist}/index.html" ]; then
+        log_error "Source frontend dist missing at ${source_dist}; run ./webctl.sh build-frontend first."
+        return 1
+    fi
+
+    if ! command -v rsync >/dev/null 2>&1; then
+        log_error "rsync is required to sync frontend dist to ${FRONTEND_DIST}."
+        return 1
+    fi
+
+    log_info "Syncing frontend dist: ${source_dist} -> ${FRONTEND_DIST}"
+    mkdir -p "${FRONTEND_DIST}" || {
+        log_error "Failed to prepare frontend target directory: ${FRONTEND_DIST}"
+        return 1
+    }
+
+    if ! rsync -a --delete "${source_dist}/" "${FRONTEND_DIST}/"; then
+        log_error "Frontend sync failed: ${source_dist} -> ${FRONTEND_DIST}"
+        return 1
+    fi
+
+    log_success "Frontend synced to ${FRONTEND_DIST}"
 }
 
 do_web_refresh() {

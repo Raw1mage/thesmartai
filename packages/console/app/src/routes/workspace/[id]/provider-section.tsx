@@ -33,15 +33,17 @@ const removeProvider = action(async (form: FormData) => {
 const saveProvider = action(async (form: FormData) => {
   "use server"
   const provider = form.get("provider")?.toString()
+  const name = form.get("name")?.toString()?.trim()
   const credentials = form.get("credentials")?.toString()
   if (!provider) return { error: formError.providerRequired }
+  if (!name) return { error: formError.nameRequired }
   if (!credentials) return { error: formError.apiKeyRequired }
   const workspaceID = form.get("workspaceID")?.toString()
   if (!workspaceID) return { error: formError.workspaceRequired }
   return json(
     await withActor(
       () =>
-        Provider.create({ provider, credentials })
+        Provider.create({ provider, name, credentials })
           .then(() => ({ error: undefined }))
           .catch((e) => ({ error: e.message as string })),
       workspaceID,
@@ -66,7 +68,7 @@ function ProviderRow(props: { provider: Provider }) {
   )
   const [store, setStore] = createStore({ editing: false })
 
-  let input: HTMLInputElement
+  let nameInput: HTMLInputElement
 
   const providerData = () => providers()?.find((p) => p.provider === props.provider.key)
 
@@ -82,7 +84,7 @@ function ProviderRow(props: { provider: Provider }) {
       if (!saveSubmission.result) break
     }
     setStore("editing", true)
-    setTimeout(() => input?.focus(), 0)
+    setTimeout(() => nameInput?.focus(), 0)
   }
 
   function hide() {
@@ -92,6 +94,28 @@ function ProviderRow(props: { provider: Provider }) {
   return (
     <tr data-slot="provider-row">
       <td data-slot="provider-name">{props.provider.name}</td>
+      <td data-slot="provider-account-name">
+        <Show when={store.editing} fallback={<span>{providerData()?.name ?? "-"}</span>}>
+          <form id={`provider-form-${props.provider.key}`} action={saveProvider} method="post" data-slot="edit-form">
+            <div data-slot="input-wrapper">
+              <input
+                ref={(r) => (nameInput = r)}
+                name="name"
+                type="text"
+                placeholder={i18n.t("workspace.providers.namePlaceholder", {
+                  provider: props.provider.name,
+                })}
+                autocomplete="off"
+                data-form-type="other"
+                data-lpignore="true"
+                value={providerData()?.name ?? ""}
+              />
+            </div>
+            <input type="hidden" name="provider" value={props.provider.key} />
+            <input type="hidden" name="workspaceID" value={params.id} />
+          </form>
+        </Show>
+      </td>
       <td data-slot="provider-key">
         <Show
           when={store.editing}
@@ -100,7 +124,6 @@ function ProviderRow(props: { provider: Provider }) {
           <form id={`provider-form-${props.provider.key}`} action={saveProvider} method="post" data-slot="edit-form">
             <div data-slot="input-wrapper">
               <input
-                ref={(r) => (input = r)}
                 name="credentials"
                 type="text"
                 placeholder={i18n.t("workspace.providers.placeholder", {
@@ -182,6 +205,7 @@ export function ProviderSection() {
           <thead>
             <tr>
               <th>{i18n.t("workspace.providers.table.provider")}</th>
+              <th>{i18n.t("workspace.providers.table.name")}</th>
               <th>{i18n.t("workspace.providers.table.apiKey")}</th>
               <th></th>
             </tr>

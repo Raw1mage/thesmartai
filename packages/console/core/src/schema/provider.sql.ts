@@ -8,6 +8,7 @@ export const ProviderTable = mysqlTable(
     ...workspaceColumns,
     ...timestamps,
     provider: varchar("provider", { length: 64 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
     credentials: text("credentials").notNull(),
   },
   (table) => [...workspaceIndexes(table), uniqueIndex("workspace_provider").on(table.workspaceID, table.provider)],

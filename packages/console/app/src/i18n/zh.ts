@@ -310,6 +310,7 @@ export const dict = {
 
   "workspace.providers.title": "自带密钥 (BYOK)",
   "workspace.providers.subtitle": "配置您自己的 AI 提供商 API 密钥。",
+  "workspace.providers.namePlaceholder": "输入 {{provider}} 账号名称",
   "workspace.providers.placeholder": "输入 {{provider}} API 密钥 ({{prefix}}...)",
   "workspace.providers.configure": "配置",
   "workspace.providers.edit": "编辑",
@@ -317,6 +318,7 @@ export const dict = {
   "workspace.providers.saving": "正在保存...",
   "workspace.providers.save": "保存",
   "workspace.providers.table.provider": "提供商",
+  "workspace.providers.table.name": "名称",
   "workspace.providers.table.apiKey": "API 密钥",
 
   "workspace.usage.title": "使用历史",

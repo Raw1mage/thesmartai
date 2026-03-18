@@ -317,6 +317,7 @@ export const dict = {
 
   "workspace.providers.title": "Bring Your Own Key",
   "workspace.providers.subtitle": "Configure your own API keys from AI providers.",
+  "workspace.providers.namePlaceholder": "Enter account name for {{provider}}",
   "workspace.providers.placeholder": "Enter {{provider}} API key ({{prefix}}...)",
   "workspace.providers.configure": "Configure",
   "workspace.providers.edit": "Edit",
@@ -324,6 +325,7 @@ export const dict = {
   "workspace.providers.saving": "Saving...",
   "workspace.providers.save": "Save",
   "workspace.providers.table.provider": "Provider",
+  "workspace.providers.table.name": "Name",
   "workspace.providers.table.apiKey": "API Key",
 
   "workspace.usage.title": "Usage History",
