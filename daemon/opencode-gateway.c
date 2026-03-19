@@ -302,6 +302,63 @@ static int wait_for_socket(const char *path, int timeout_ms) {
     }
 }
 
+/**
+ * Try to adopt an already-running daemon by reading its discovery file.
+ * This covers daemons spawned by TUI --attach or other mechanisms.
+ * Returns 1 if a live daemon was adopted into d, 0 otherwise.
+ */
+static int try_adopt_from_discovery(DaemonInfo *d) {
+    char discovery_path[256];
+    snprintf(discovery_path, sizeof(discovery_path),
+             "/run/user/%u/opencode/daemon.json", d->uid);
+
+    FILE *f = fopen(discovery_path, "r");
+    if (!f) {
+        /* Try fallback: /tmp/opencode-<uid>/daemon.json */
+        char fallback[256];
+        snprintf(fallback, sizeof(fallback),
+                 "/tmp/opencode-%u/daemon.json", d->uid);
+        f = fopen(fallback, "r");
+        if (!f) return 0;
+    }
+
+    char buf[1024];
+    size_t n = fread(buf, 1, sizeof(buf)-1, f);
+    fclose(f);
+    buf[n] = '\0';
+
+    /* Minimal JSON parse: extract "socketPath" and "pid" */
+    char *sp = strstr(buf, "\"socketPath\"");
+    char *pp = strstr(buf, "\"pid\"");
+    if (!sp || !pp) return 0;
+
+    /* socketPath value */
+    char *colon = strchr(sp + 12, '"');
+    if (!colon) return 0;
+    colon++; /* skip opening quote */
+    char *end = strchr(colon, '"');
+    if (!end) return 0;
+    size_t pathlen = (size_t)(end - colon);
+    if (pathlen >= sizeof(d->socket_path)) return 0;
+    memcpy(d->socket_path, colon, pathlen);
+    d->socket_path[pathlen] = '\0';
+
+    /* pid value */
+    char *pval = strchr(pp + 5, ':');
+    if (!pval) return 0;
+    pid_t pid = (pid_t)atoi(pval + 1);
+    if (pid <= 0) return 0;
+
+    /* Verify PID is alive */
+    if (kill(pid, 0) != 0) return 0;
+
+    d->pid   = pid;
+    d->state = DAEMON_READY;
+    LOGI("adopted existing daemon for %s (pid %d, socket %s)",
+         d->username, pid, d->socket_path);
+    return 1;
+}
+
 static int ensure_daemon_running(DaemonInfo *d) {
     if (d->state == DAEMON_READY) {
         /* Verify still alive */
@@ -310,6 +367,9 @@ static int ensure_daemon_running(DaemonInfo *d) {
     }
 
     if (d->state == DAEMON_DEAD || d->state == DAEMON_NONE) {
+        /* Before spawning, check if a daemon was started externally (e.g. TUI --attach) */
+        if (try_adopt_from_discovery(d)) return 1;
+
         /* Remove stale socket if any */
         unlink(d->socket_path);
 
