@@ -2,35 +2,35 @@
 
 ## Phase α — C Root Daemon
 
-- [ ] α.1 建立 `daemon/` 目錄結構 + Makefile
-- [ ] α.2 C daemon 骨架：main() + epoll event loop + signal handling (SIGTERM, SIGCHLD)
-- [ ] α.3 TCP listener：bind :1080 + listen + accept
-- [ ] α.4 Login page serve：靜態 HTML 回應（嵌入或從檔案讀取 login.html）
-- [ ] α.5 PAM 整合：
-  - [ ] α.5a pam_start + pam_authenticate + pam_acct_mgmt + pam_end
-  - [ ] α.5b POST /auth/login endpoint 解析（minimal HTTP parsing for auth route only）
-  - [ ] α.5c 認證成功 → 簽發 JWT（HMAC-SHA256，含 uid, username, exp）
-  - [ ] α.5d 認證失敗 → 401 JSON response
-- [ ] α.6 Per-user daemon spawn：
-  - [ ] α.6a 維護 UID → daemon_info (pid, socket_path, state) 的 registry
-  - [ ] α.6b 首次 auth → fork() + setgid() + setuid() + exec("opencode serve --unix-socket ...")
-  - [ ] α.6c 等待 per-user daemon 的 Unix socket 出現（poll with timeout）
-  - [ ] α.6d SIGCHLD handler：偵測 per-user daemon crash → 從 registry 移除
-  - [x] α.6e **Gateway adopt**：spawn 前先讀 discovery file（`/run/user/<uid>/opencode/daemon.json`），若 PID alive 則 adopt 進 registry（支援 TUI --attach 預先啟動的 daemon）
-- [ ] α.7 splice() proxy：
-  - [ ] α.7a 連接到 per-user daemon 的 Unix socket
-  - [ ] α.7b 建立 pipe pair（splice 需要中繼 pipe）
-  - [ ] α.7c epoll 管理：client_fd + daemon_fd 雙向
-  - [ ] α.7d splice() 雙向轉發（client → daemon, daemon → client）
-  - [ ] α.7e Connection cleanup：任一端斷開 → close 另一端 + 釋放 pipe
-- [ ] α.8 JWT cookie 驗證（後續請求）：
-  - [ ] α.8a 新 TCP 連線 → 解析 Cookie header → 驗證 JWT
-  - [ ] α.8b JWT 有效 → 直接 splice 到對應 per-user daemon（跳過 PAM）
-  - [ ] α.8c JWT 無效/過期 → 返回 login page
-- [ ] α.9 Graceful shutdown：SIGTERM → stop accept → drain splice → SIGTERM per-user daemons → exit
-- [ ] α.10 驗證：編譯成功 + PAM auth 通過 → splice proxy → per-user daemon API 正常回應
-- [ ] α.11 驗證：splice 對 SSE event stream 正確轉發（長連線）
-- [ ] α.12 驗證：splice 對 WebSocket upgrade + 雙向通訊正確轉發（SG-2）
+- [x] α.1 建立 `daemon/` 目錄結構 + Makefile
+- [x] α.2 C daemon 骨架：main() + epoll event loop + signal handling (SIGTERM, SIGCHLD)
+- [x] α.3 TCP listener：bind :1080 + listen + accept
+- [x] α.4 Login page serve：靜態 HTML 回應（嵌入或從檔案讀取 login.html）
+- [x] α.5 PAM 整合：
+  - [x] α.5a pam_start + pam_authenticate + pam_acct_mgmt + pam_end
+  - [x] α.5b POST /auth/login endpoint 解析
+  - [x] α.5c 認證成功 → 簽發 JWT（HMAC-SHA256，含 uid, username, exp）
+  - [x] α.5d 認證失敗 → 303 redirect back to login page
+- [x] α.6 Per-user daemon spawn：
+  - [x] α.6a 維護 UID → daemon_info (pid, socket_path, state) 的 registry
+  - [x] α.6b 首次 auth → fork() + setgid() + setuid() + exec("opencode serve --unix-socket ...")
+  - [x] α.6c 等待 per-user daemon 的 Unix socket 出現（wait_for_socket）
+  - [x] α.6d SIGCHLD handler：偵測 per-user daemon crash → 從 registry 移除
+  - [x] α.6e Gateway adopt：spawn 前先讀 discovery file，若 PID alive 則 adopt
+- [x] α.7 splice() proxy：
+  - [x] α.7a 連接到 per-user daemon 的 Unix socket
+  - [x] α.7b 建立 pipe pair（splice 需要中繼 pipe）
+  - [x] α.7c epoll 管理：client_fd + daemon_fd 雙向
+  - [x] α.7d splice() 雙向轉發（client → daemon, daemon → client）
+  - [x] α.7e Connection cleanup：任一端斷開 → close_conn
+- [x] α.8 JWT cookie 驗證（後續請求）：
+  - [x] α.8a 新 TCP 連線 → 解析 Cookie header → 驗證 JWT
+  - [x] α.8b JWT 有效 → 直接 splice 到對應 per-user daemon
+  - [x] α.8c JWT 無效/過期 → 返回 login page
+- [x] α.9 Graceful shutdown：SIGTERM → stop accept → SIGTERM per-user daemons → exit
+- [ ] α.10 驗證：編譯成功 ✓ (27KB binary) + PAM auth 通過 → splice → per-user daemon API (runtime)
+- [ ] α.11 驗證：splice 對 SSE event stream 正確轉發（runtime）
+- [ ] α.12 驗證：splice 對 WebSocket upgrade + 雙向通訊正確轉發（runtime, SG-2）
 
 ## Phase β — Per-user Daemon Mode
 

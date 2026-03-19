@@ -27,6 +27,9 @@
 #   gateway-start     Compile + start the gateway daemon
 #   gateway-stop      Stop the gateway daemon
 #   gateway-status    Show gateway daemon status
+#   daemon-list       List all per-user daemons (alias: daemons)
+#   daemon-kill <user> Stop a specific user's daemon (by username or uid)
+#   daemon-killall    Stop all per-user daemons
 #   help              Show this help message
 #
 # =============================================================================
@@ -1632,11 +1635,49 @@ do_logs() {
 # ---------------------------------------------------------------------------
 # build-frontend
 # ---------------------------------------------------------------------------
+_frontend_needs_build() {
+    # Returns 0 (true) if frontend source is newer than dist, 1 otherwise.
+    local app_dir="${PROJECT_ROOT}/packages/app"
+    local dist_marker="${app_dir}/dist/index.html"
+
+    # No dist at all → must build
+    [ ! -f "${dist_marker}" ] && return 0
+
+    local dist_ts
+    dist_ts=$(stat -c '%Y' "${dist_marker}" 2>/dev/null) || return 0
+
+    # Check if any source file is newer than dist
+    # Covers: src/, index.html, vite.config, tsconfig, package.json
+    local newer
+    newer=$(find "${app_dir}/src" "${app_dir}/index.html" \
+        "${app_dir}/vite.config"* "${app_dir}/tsconfig"* \
+        "${app_dir}/package.json" \
+        -newer "${dist_marker}" -print -quit 2>/dev/null)
+    [ -n "${newer}" ] && return 0
+
+    # Also check shared packages that feed into the frontend build
+    for dep_dir in "${PROJECT_ROOT}/packages/ui/src" "${PROJECT_ROOT}/packages/theme/src"; do
+        if [ -d "${dep_dir}" ]; then
+            newer=$(find "${dep_dir}" -newer "${dist_marker}" -print -quit 2>/dev/null)
+            [ -n "${newer}" ] && return 0
+        fi
+    done
+
+    return 1
+}
+
 do_build_frontend() {
     if [ "${IS_SOURCE_REPO:-0}" -ne 1 ]; then
         log_error "build-frontend is only available when running from source repo."
         exit 1
     fi
+
+    # Skip build if source unchanged (unless --force)
+    if [ "${1:-}" != "--force" ] && ! _frontend_needs_build; then
+        log_info "Frontend source unchanged since last build — skipping. (Use build-frontend --force to override)"
+        return 0
+    fi
+
     log_info "Building frontend..."
 
     local BUN_BIN
@@ -1825,6 +1866,192 @@ do_gateway_status() {
 }
 
 # ---------------------------------------------------------------------------
+# Per-user daemon management
+# ---------------------------------------------------------------------------
+
+# Resolve discovery dir for a given user (by username or uid)
+_daemon_discovery_dir() {
+    local user="$1"
+    local uid=""
+
+    # Resolve uid from username
+    if [[ "${user}" =~ ^[0-9]+$ ]]; then
+        uid="${user}"
+    else
+        uid="$(id -u "${user}" 2>/dev/null)" || { log_error "User not found: ${user}"; return 1; }
+    fi
+
+    # XDG_RUNTIME_DIR standard path, then fallback
+    local xdg_dir="/run/user/${uid}/opencode"
+    local tmp_dir="/tmp/opencode-${uid}"
+
+    if [ -d "${xdg_dir}" ]; then
+        echo "${xdg_dir}"
+    elif [ -d "${tmp_dir}" ]; then
+        echo "${tmp_dir}"
+    else
+        echo "${xdg_dir}"  # return canonical even if missing
+    fi
+}
+
+# Read daemon.json and return "pid socketPath" or empty
+_daemon_read_discovery() {
+    local dir="$1"
+    local json="${dir}/daemon.json"
+    [ -f "${json}" ] || return 1
+
+    local pid sock
+    pid="$(grep -o '"pid"[[:space:]]*:[[:space:]]*[0-9]*' "${json}" | grep -o '[0-9]*$')"
+    sock="$(grep -o '"socketPath"[[:space:]]*:[[:space:]]*"[^"]*"' "${json}" | sed 's/.*"\([^"]*\)"$/\1/')"
+
+    [ -n "${pid}" ] && [ -n "${sock}" ] && echo "${pid} ${sock}"
+}
+
+# List all per-user daemons
+do_daemon_list() {
+    local found=0
+    local header_printed=0
+
+    # Scan /run/user/*/opencode and /tmp/opencode-*
+    for dir in /run/user/*/opencode /tmp/opencode-*; do
+        [ -d "${dir}" ] || continue
+        local json="${dir}/daemon.json"
+        [ -f "${json}" ] || continue
+
+        local info
+        info="$(_daemon_read_discovery "${dir}")" || continue
+        local pid sock
+        pid="${info%% *}"
+        sock="${info#* }"
+
+        if [ "${header_printed}" -eq 0 ]; then
+            printf "%-12s %-8s %-6s %s\n" "USER" "PID" "ALIVE" "SOCKET"
+            printf "%-12s %-8s %-6s %s\n" "----" "---" "-----" "------"
+            header_printed=1
+        fi
+
+        local alive="no"
+        kill -0 "${pid}" 2>/dev/null && alive="yes"
+
+        # Resolve username from dir path
+        local username="?"
+        local uid_from_path=""
+        if [[ "${dir}" =~ /run/user/([0-9]+)/ ]]; then
+            uid_from_path="${BASH_REMATCH[1]}"
+        elif [[ "${dir}" =~ /tmp/opencode-([0-9]+) ]]; then
+            uid_from_path="${BASH_REMATCH[1]}"
+        fi
+        if [ -n "${uid_from_path}" ]; then
+            username="$(getent passwd "${uid_from_path}" 2>/dev/null | cut -d: -f1)" || username="uid:${uid_from_path}"
+            [ -z "${username}" ] && username="uid:${uid_from_path}"
+        fi
+
+        printf "%-12s %-8s %-6s %s\n" "${username}" "${pid}" "${alive}" "${sock}"
+        found=$((found + 1))
+    done
+
+    if [ "${found}" -eq 0 ]; then
+        log_info "No per-user daemons found"
+    else
+        echo ""
+        log_info "${found} daemon(s) found"
+    fi
+}
+
+# Kill a specific user's daemon
+do_daemon_kill() {
+    local user="$1"
+    if [ -z "${user}" ]; then
+        log_error "Usage: ./webctl.sh daemon-kill <username|uid>"
+        exit 1
+    fi
+
+    local dir
+    dir="$(_daemon_discovery_dir "${user}")" || exit 1
+
+    local info
+    info="$(_daemon_read_discovery "${dir}")" || {
+        log_info "No daemon found for ${user} (no discovery file in ${dir})"
+        return 0
+    }
+
+    local pid="${info%% *}"
+    local sock="${info#* }"
+
+    if ! kill -0 "${pid}" 2>/dev/null; then
+        log_info "Daemon for ${user} (pid ${pid}) already dead. Cleaning up discovery files..."
+        rm -f "${dir}/daemon.json" "${dir}/daemon.pid" "${sock}" 2>/dev/null
+        return 0
+    fi
+
+    log_info "Stopping daemon for ${user} (pid ${pid})..."
+    kill "${pid}" 2>/dev/null || true
+
+    # Wait for graceful shutdown
+    local i=0
+    while kill -0 "${pid}" 2>/dev/null && [ "${i}" -lt 10 ]; do
+        sleep 0.5
+        i=$((i + 1))
+    done
+
+    if kill -0 "${pid}" 2>/dev/null; then
+        log_warn "Daemon still alive, sending SIGKILL..."
+        kill -9 "${pid}" 2>/dev/null || true
+        sleep 0.5
+    fi
+
+    # Clean up discovery files (daemon may not have cleaned up if killed)
+    rm -f "${dir}/daemon.json" "${dir}/daemon.pid" "${sock}" 2>/dev/null
+    log_success "Daemon for ${user} stopped"
+}
+
+# Kill all per-user daemons
+do_daemon_killall() {
+    local killed=0
+
+    for dir in /run/user/*/opencode /tmp/opencode-*; do
+        [ -d "${dir}" ] || continue
+        local json="${dir}/daemon.json"
+        [ -f "${json}" ] || continue
+
+        local info
+        info="$(_daemon_read_discovery "${dir}")" || continue
+        local pid="${info%% *}"
+        local sock="${info#* }"
+
+        # Resolve username for display
+        local username="?"
+        local uid_from_path=""
+        if [[ "${dir}" =~ /run/user/([0-9]+)/ ]]; then
+            uid_from_path="${BASH_REMATCH[1]}"
+        elif [[ "${dir}" =~ /tmp/opencode-([0-9]+) ]]; then
+            uid_from_path="${BASH_REMATCH[1]}"
+        fi
+        if [ -n "${uid_from_path}" ]; then
+            username="$(getent passwd "${uid_from_path}" 2>/dev/null | cut -d: -f1)" || username="uid:${uid_from_path}"
+            [ -z "${username}" ] && username="uid:${uid_from_path}"
+        fi
+
+        if kill -0 "${pid}" 2>/dev/null; then
+            log_info "Stopping daemon for ${username} (pid ${pid})..."
+            kill "${pid}" 2>/dev/null || true
+            killed=$((killed + 1))
+        fi
+
+        # Clean up regardless
+        rm -f "${dir}/daemon.json" "${dir}/daemon.pid" "${sock}" 2>/dev/null
+    done
+
+    if [ "${killed}" -gt 0 ]; then
+        # Brief wait for graceful shutdown
+        sleep 1
+        log_success "Sent SIGTERM to ${killed} daemon(s)"
+    else
+        log_info "No running daemons found"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # help
 # ---------------------------------------------------------------------------
 do_help() {
@@ -1853,6 +2080,9 @@ do_help() {
     echo "  gateway-start     Compile + start the gateway daemon"
     echo "  gateway-stop      Stop the gateway daemon"
     echo "  gateway-status    Show gateway daemon status"
+    echo "  daemon-list       List all per-user daemons (alias: daemons)"
+    echo "  daemon-kill <user> Stop a specific user's daemon"
+    echo "  daemon-killall    Stop all per-user daemons"
     echo "  help              Show this help message"
     echo ""
     echo "Environment Variables:"
@@ -1928,6 +2158,9 @@ case "${1:-}" in
     gateway-start)  do_gateway_start "${@:2}" ;;
     gateway-stop)   do_gateway_stop   ;;
     gateway-status) do_gateway_status ;;
+    daemon-list|daemons) do_daemon_list ;;
+    daemon-kill)    do_daemon_kill "${2:-}" ;;
+    daemon-killall) do_daemon_killall ;;
     help|--help|-h|"") do_help        ;;
     *)
         log_error "Unknown command: $1"
