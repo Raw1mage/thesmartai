@@ -110,4 +110,49 @@ export namespace Daemon {
     await fs.rm(pidPath(), { force: true })
     return null
   }
+
+  /**
+   * Spawn a detached per-user daemon process and wait until its discovery
+   * file appears with a live PID.
+   *
+   * Resolution order for the opencode executable:
+   *   1. OPENCODE_BIN env (set by webctl.sh / gateway)
+   *   2. Bun.argv[0] — the same binary/script that the current process uses
+   *
+   * Returns the daemon Info on success, throws on timeout.
+   */
+  export async function spawn(opts?: { timeoutMs?: number }): Promise<Info> {
+    const timeout = opts?.timeoutMs ?? 10_000
+    const sock = socketPath()
+
+    // Determine the executable: honour OPENCODE_BIN, else re-use ourselves
+    const bin = process.env.OPENCODE_BIN ?? Bun.argv[0]
+    const args = ["serve", "--unix-socket", sock]
+
+    // If running via bun (argv[0] is bun), the real entry is argv[1]
+    const spawnArgs = Bun.argv[0].endsWith("bun") || Bun.argv[0].endsWith("bun.exe")
+      ? [Bun.argv[0], ...Bun.argv.slice(1, 2), ...args]  // bun <entry> serve --unix-socket ...
+      : [bin, ...args]
+
+    await ensureDir()
+
+    const child = Bun.spawn(spawnArgs, {
+      stdio: ["ignore", "ignore", "ignore"],
+      env: { ...process.env },
+    })
+    // Detach: unref so the TUI process can exit without waiting for daemon
+    child.unref()
+
+    // Poll for discovery file readiness
+    const deadline = Date.now() + timeout
+    while (Date.now() < deadline) {
+      const info = await readDiscovery()
+      if (info) return info
+      await Bun.sleep(150)
+    }
+
+    throw new Error(
+      `Timed out waiting for daemon to become ready (${timeout}ms). Socket: ${sock}`,
+    )
+  }
 }

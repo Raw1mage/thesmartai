@@ -150,11 +150,17 @@ export const TuiThreadCommand = cmd({
 
     // @event_20260319_daemonization Phase γ.4a-c: --attach mode
     if (args.attach) {
-      const daemonInfo = await Daemon.readDiscovery()
+      let daemonInfo = await Daemon.readDiscovery()
       if (!daemonInfo) {
-        // γ.4b: fail fast — no fallback
-        UI.error("No running opencode daemon found. Start one with: opencode serve --unix-socket " + Daemon.socketPath())
-        process.exit(1)
+        // No daemon running — auto-spawn one, then attach
+        UI.println("No running daemon found. Spawning per-user daemon...")
+        try {
+          daemonInfo = await Daemon.spawn()
+          UI.println(`Daemon ready (pid ${daemonInfo.pid})`)
+        } catch (e: any) {
+          UI.error(`Failed to spawn daemon: ${e.message}`)
+          process.exit(1)
+        }
       }
       const { socketPath } = daemonInfo
       const url = "http://opencode.daemon"
