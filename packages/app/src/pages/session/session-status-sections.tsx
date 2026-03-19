@@ -30,6 +30,9 @@ import { useSDK } from "@/context/sdk"
 import { normalizeServerUrl, useServer } from "@/context/server"
 import { useSync } from "@/context/sync"
 import { useLayout } from "@/context/layout"
+import { useLocal } from "@/context/local"
+import { useGlobalSync } from "@/context/global-sync"
+import { providerKeyOf } from "@/components/model-selector-state"
 import { DialogSelectServer } from "@/components/dialog-select-server"
 import { ServerRow } from "@/components/server/server-row"
 import { checkServerHealth, type ServerHealth } from "@/utils/server-health"
@@ -178,6 +181,8 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
   const dialog = useDialog()
   const language = useLanguage()
   const navigate = useNavigate()
+  const local = useLocal()
+  const globalSync = useGlobalSync()
 
   const fetcher = platform.fetch ?? globalThis.fetch
   const servers = createMemo(() => {
@@ -212,8 +217,6 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
     )
   }
 
-  const ERROR_TTL_MS = 5 * 60 * 1000 // show generic errors for 5 minutes
-
   // Tick signal MUST be declared before any memo that references it (TDZ)
   const [llmTick, setLlmTick] = createSignal(0)
   {
@@ -221,16 +224,24 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
     onCleanup(() => clearInterval(id))
   }
 
-  const llmErrors = createMemo(() => sync.data.llm_errors ?? [])
-  const activeLlmErrors = createMemo(() => {
-    llmTick() // reactive dependency
-    const now = Date.now()
-    return llmErrors().filter((e) => {
-      if (e.backoffMs) return e.timestamp + e.backoffMs > now
-      return e.timestamp + ERROR_TTL_MS > now
-    })
+  const llmHistory = createMemo(() => {
+    const raw = sync.data.llm_history ?? []
+    // Deduplicate: skip consecutive entries with same provider+model+account+state
+    const deduped: typeof raw = []
+    for (const entry of raw) {
+      const prev = deduped[deduped.length - 1]
+      if (
+        prev &&
+        prev.providerId === entry.providerId &&
+        prev.modelId === entry.modelId &&
+        prev.accountId === entry.accountId &&
+        prev.state === entry.state
+      )
+        continue
+      deduped.push(entry)
+    }
+    return deduped.slice(-5)
   })
-  const llmHistory = createMemo(() => sync.data.llm_history ?? [])
 
   const formatAge = (timestamp: number) => {
     llmTick()
@@ -240,67 +251,64 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
     return `${Math.round(ago / 3_600_000 * 10) / 10}h ago`
   }
 
+  const shortModel = (id: string) => {
+    const parts = id.split("/")
+    return parts[parts.length - 1] ?? id
+  }
+
+  const resolveAccountLabel = (accountId?: string, providerId?: string) => {
+    if (!accountId) return undefined
+    const familyKey = providerId ? providerKeyOf(providerId) : undefined
+    if (familyKey) {
+      const info = globalSync.data.account_families?.[familyKey]?.accounts?.[accountId] as { name?: string } | undefined
+      if (info?.name) return info.name
+    }
+    return accountId
+  }
+
   const cards = createMemo(() => {
     const result: Array<{ key: StatusCardKey; title: string; content: JSX.Element }> = []
 
-    // LLM status card — shows active errors + recent history rotation
-    const activeCount = activeLlmErrors().length
+    // LLM status card — current model + recent 5 status log (deduplicated)
+    const currentModel = local.model.current()
+    const familyKey = currentModel ? providerKeyOf(currentModel.provider.id) : undefined
+    const activeAccountId = familyKey
+      ? globalSync.data.account_families?.[familyKey]?.activeAccount
+      : undefined
     const history = llmHistory()
+
     result.push({
       key: "llm",
-      title: `LLM 狀態${activeCount > 0 ? ` (${activeCount})` : ""}`,
+      title: "LLM 狀態",
       content: (
         <div class="flex flex-col gap-1">
-          {/* Active errors — shown first when present */}
-          <Show when={activeCount > 0}>
-            <For each={activeLlmErrors()}>
-              {(entry) => (
-                <div class="flex items-start gap-2 py-1 px-1 rounded-md text-left">
-                  <div
-                    classList={{
-                      "size-1.5 rounded-full shrink-0 mt-1.5": true,
-                      "bg-icon-critical-base": entry.type === "auth_failed",
-                      "bg-icon-warning-base": entry.type === "ratelimit" || entry.type === "error",
-                    }}
-                  />
-                  <div class="flex flex-col gap-0.5 min-w-0 flex-1">
-                    <div class="flex items-center gap-1.5">
-                      <span class="text-12-medium text-text-base truncate">{entry.modelId}</span>
-                      <span class="text-11-regular text-text-weak shrink-0">{formatAge(entry.timestamp)}</span>
-                    </div>
-                    <span class="text-11-regular text-text-weak truncate">{entry.providerId}</span>
-                    <span class="text-11-regular text-text-critical break-words whitespace-pre-wrap">
-                      {entry.message}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </For>
-          </Show>
-          {/* History — rotation chain + state changes */}
+          {/* Current model + account */}
           <Show
-            when={history.length > 0}
+            when={currentModel}
             fallback={
-              <Show when={activeCount === 0}>
-                <div class="flex items-center gap-2 py-1">
-                  <div class="size-1.5 rounded-full bg-icon-success-base shrink-0" />
-                  <span class="text-12-regular text-text-weak">All models operational</span>
-                </div>
-              </Show>
+              <div class="flex items-center gap-2 py-1">
+                <div class="size-1.5 rounded-full bg-icon-warning-base shrink-0" />
+                <span class="text-12-regular text-text-weak">No model selected</span>
+              </div>
             }
           >
-            <Show when={activeCount > 0}>
-              <div class="border-t border-border-weak-base my-1" />
-            </Show>
-            <div class="flex items-center gap-1 py-0.5">
-              <span class="text-11-regular text-text-weak uppercase tracking-wide">Recent</span>
-            </div>
+            {(model) => (
+              <div class="flex items-center gap-2 py-1 px-1">
+                <div class="size-1.5 rounded-full bg-icon-success-base shrink-0" />
+                <span class="text-12-medium text-text-base truncate">
+                  {model().provider.name ?? model().provider.id}{" "}
+                  {model().name ?? shortModel(model().id)}
+                  {activeAccountId ? ` (${resolveAccountLabel(activeAccountId, currentModel?.provider.id)})` : ""}
+                </span>
+                <span class="text-11-regular text-success shrink-0">OK</span>
+              </div>
+            )}
+          </Show>
+          {/* Recent status log — last 5 deduplicated entries */}
+          <Show when={history.length > 0}>
+            <div class="border-t border-border-weak-base my-1" />
             <For each={history}>
               {(h) => {
-                const shortModel = (id: string) => {
-                  const parts = id.split("/")
-                  return parts[parts.length - 1] ?? id
-                }
                 if (h.state === "rotated") {
                   return (
                     <div class="flex flex-col gap-0 py-0.5 px-1">
@@ -318,7 +326,7 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
                         </span>
                         <Show when={h.toAccountId && h.toAccountId !== h.accountId}>
                           <span class="text-11-regular text-text-weak truncate">
-                            ({h.toAccountId?.split("@")[0]?.split("-")[0]})
+                            ({resolveAccountLabel(h.toAccountId, h.toProviderId)})
                           </span>
                         </Show>
                       </div>
@@ -330,32 +338,42 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
                     <div class="flex items-center gap-1.5 py-0.5 px-1">
                       <div class="size-1.5 rounded-full bg-icon-success-base shrink-0" />
                       <span class="text-11-regular text-success truncate flex-1">
-                        {shortModel(h.modelId)} operational
+                        {shortModel(h.modelId)}{h.accountId ? ` (${resolveAccountLabel(h.accountId, h.providerId)})` : ""} OK
                       </span>
                       <span class="text-11-regular text-text-weak shrink-0">{formatAge(h.timestamp)}</span>
                     </div>
                   )
                 }
+                // error / ratelimit / auth_failed — show full message
                 return (
-                  <div class="flex items-center gap-1.5 py-0.5 px-1">
-                    <div
-                      classList={{
-                        "size-1.5 rounded-full shrink-0": true,
-                        "bg-icon-critical-base": h.state === "auth_failed",
-                        "bg-icon-warning-base": h.state === "error" || h.state === "ratelimit",
-                      }}
-                    />
-                    <span class="text-11-regular text-text-base truncate flex-1">{shortModel(h.modelId)}</span>
-                    <span
-                      classList={{
-                        "text-11-regular shrink-0": true,
-                        "text-text-critical": h.state === "auth_failed",
-                        "text-text-warning": h.state === "error" || h.state === "ratelimit",
-                      }}
-                    >
-                      {h.state === "auth_failed" ? "AUTH" : h.state === "ratelimit" ? "RATE" : "ERR"}
-                    </span>
-                    <span class="text-11-regular text-text-weak shrink-0">{formatAge(h.timestamp)}</span>
+                  <div class="flex flex-col gap-0.5 py-0.5 px-1">
+                    <div class="flex items-center gap-1.5">
+                      <div
+                        classList={{
+                          "size-1.5 rounded-full shrink-0": true,
+                          "bg-icon-critical-base": h.state === "auth_failed",
+                          "bg-icon-warning-base": h.state === "error" || h.state === "ratelimit",
+                        }}
+                      />
+                      <span class="text-11-regular text-text-base truncate flex-1">
+                        {shortModel(h.modelId)}{h.accountId ? ` (${resolveAccountLabel(h.accountId, h.providerId)})` : ""}
+                      </span>
+                      <span
+                        classList={{
+                          "text-11-regular shrink-0": true,
+                          "text-text-critical": h.state === "auth_failed",
+                          "text-text-warning": h.state === "error" || h.state === "ratelimit",
+                        }}
+                      >
+                        {h.state === "auth_failed" ? "AUTH" : h.state === "ratelimit" ? "RATE" : "ERR"}
+                      </span>
+                      <span class="text-11-regular text-text-weak shrink-0">{formatAge(h.timestamp)}</span>
+                    </div>
+                    <Show when={h.message}>
+                      <span class="text-11-regular text-text-critical break-words whitespace-pre-wrap pl-[14px]">
+                        {h.message}
+                      </span>
+                    </Show>
                   </div>
                 )
               }}

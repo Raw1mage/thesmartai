@@ -238,7 +238,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           mode: "changes" as "files" | "status" | "changes" | "context",
         },
         statusSidebar: {
-          order: ["llm", "monitor", "todo", "servers", "mcp"] as Array<"monitor" | "todo" | "servers" | "mcp" | "llm">,
+          order: ["servers", "monitor", "todo", "mcp", "llm"] as Array<"monitor" | "todo" | "servers" | "mcp" | "llm">,
           expanded: {
             llm: true,
             monitor: true,
@@ -681,7 +681,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       statusSidebar: {
-        order: createMemo(() => store.statusSidebar?.order ?? ["llm", "monitor", "todo", "servers", "mcp"]),
+        order: createMemo(() => store.statusSidebar?.order ?? ["servers", "monitor", "todo", "mcp", "llm"]),
         setOrder(order: Array<"monitor" | "todo" | "servers" | "mcp" | "llm">) {
           setStore("statusSidebar", "order", order)
         },
