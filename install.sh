@@ -428,6 +428,45 @@ EOF
     log_warn "Per-user daemon unit template not found: ${daemon_template_src}"
   fi
 
+  # Gateway (C root daemon) service unit + binary
+  local gateway_unit_src="${ROOT_DIR}/daemon/opencode-gateway.service"
+  local gateway_unit_dst="/etc/systemd/system/opencode-gateway.service"
+  local gateway_user_unit_src="${ROOT_DIR}/daemon/opencode-user@.service"
+  local gateway_user_unit_dst="/etc/systemd/system/opencode-user@.service"
+  local gateway_bin_src="${ROOT_DIR}/daemon/opencode-gateway"
+  local gateway_login_src="${ROOT_DIR}/daemon/login.html"
+
+  if [[ -f "${gateway_unit_src}" ]]; then
+    if files_identical_root "${gateway_unit_src}" "${gateway_unit_dst}"; then
+      log_ok "Gateway unit up-to-date: ${gateway_unit_dst}"
+    else
+      run_as_root install -m 644 "${gateway_unit_src}" "${gateway_unit_dst}"
+      log_ok "Installed gateway unit: ${gateway_unit_dst}"
+      units_changed=1
+    fi
+  fi
+
+  if [[ -f "${gateway_user_unit_src}" ]]; then
+    if files_identical_root "${gateway_user_unit_src}" "${gateway_user_unit_dst}"; then
+      log_ok "Gateway per-user unit up-to-date: ${gateway_user_unit_dst}"
+    else
+      run_as_root install -m 644 "${gateway_user_unit_src}" "${gateway_user_unit_dst}"
+      log_ok "Installed gateway per-user unit: ${gateway_user_unit_dst}"
+      units_changed=1
+    fi
+  fi
+
+  if [[ -x "${gateway_bin_src}" ]]; then
+    run_as_root install -m 755 "${gateway_bin_src}" /usr/local/bin/opencode-gateway
+    log_ok "Installed gateway binary: /usr/local/bin/opencode-gateway"
+  fi
+
+  if [[ -f "${gateway_login_src}" ]]; then
+    run_as_root mkdir -p /usr/local/share/opencode
+    run_as_root install -m 644 "${gateway_login_src}" /usr/local/share/opencode/login.html
+    log_ok "Installed gateway login page: /usr/local/share/opencode/login.html"
+  fi
+
   if [[ "${units_changed}" -eq 1 ]]; then
     run_as_root systemctl daemon-reload
   fi

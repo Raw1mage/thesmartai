@@ -15,6 +15,38 @@ export namespace Bus {
     }),
   )
 
+  // @event_20260319_daemonization Phase ε.1 — Account lifecycle events
+  // Payload is sanitized (no apiKey / refreshToken / accessToken)
+  export const AccountAdded = BusEvent.define(
+    "account.added",
+    z.object({
+      providerKey: z.string(),
+      accountId: z.string(),
+      info: z.object({
+        type: z.enum(["api", "subscription"]),
+        name: z.string(),
+        addedAt: z.number(),
+      }),
+    }),
+  )
+
+  export const AccountRemoved = BusEvent.define(
+    "account.removed",
+    z.object({
+      providerKey: z.string(),
+      accountId: z.string(),
+    }),
+  )
+
+  export const AccountActivated = BusEvent.define(
+    "account.activated",
+    z.object({
+      providerKey: z.string(),
+      accountId: z.string(),
+      previousAccountId: z.string().optional(),
+    }),
+  )
+
   const state = Instance.state(
     () => {
       const subscriptions = new Map<any, Subscription[]>()

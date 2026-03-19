@@ -12,12 +12,65 @@ import type { EventSource } from "./context/sdk"
 import { Env } from "@/env"
 import { ProcessSupervisor } from "@/process/supervisor"
 import { TerminalMonitor } from "@/process/terminal-monitor"
+import { Daemon } from "@/server/daemon"
 
 declare global {
   const OPENCODE_WORKER_PATH: string
 }
 
 type RpcClient = ReturnType<typeof Rpc.client<typeof rpc>>
+
+// @event_20260319_daemonization Phase γ.3
+// Custom fetch that routes HTTP requests over a Unix domain socket.
+function createUnixFetch(socketPath: string): typeof fetch {
+  const fn = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    return fetch(input, { ...init, unix: socketPath } as RequestInit & { unix: string })
+  }
+  return Object.assign(fn, { preconnect: fetch.preconnect }) as typeof fetch
+}
+
+// @event_20260319_daemonization Phase γ.3
+// SSE-based EventSource over Unix domain socket.
+function createUnixEventSource(socketPath: string, baseUrl: string): EventSource {
+  return {
+    on: (handler: (event: Event) => void) => {
+      const abort = new AbortController()
+      const sseUrl = baseUrl.replace(/\/$/, "") + "/v2/event"
+      ;(async () => {
+        try {
+          const res = await fetch(sseUrl, {
+            signal: abort.signal,
+            headers: { Accept: "text/event-stream" },
+            unix: socketPath,
+          } as RequestInit & { unix: string })
+          if (!res.ok || !res.body) return
+          const reader = res.body.getReader()
+          const decoder = new TextDecoder()
+          let buf = ""
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buf += decoder.decode(value, { stream: true })
+            const lines = buf.split("\n")
+            buf = lines.pop() ?? ""
+            let data = ""
+            for (const line of lines) {
+              if (line.startsWith("data:")) {
+                data += line.slice(5).trimStart()
+              } else if (line === "" && data) {
+                try { handler(JSON.parse(data) as Event) } catch {}
+                data = ""
+              }
+            }
+          }
+        } catch {
+          // SSE disconnected — caller will handle reconnect
+        }
+      })()
+      return () => abort.abort()
+    },
+  }
+}
 
 function createWorkerFetch(client: RpcClient): typeof fetch {
   const fn = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -78,6 +131,10 @@ export const TuiThreadCommand = cmd({
       .option("agent", {
         type: "string",
         describe: "agent to use",
+      })
+      .option("attach", {
+        type: "boolean",
+        describe: "attach to a running opencode daemon via Unix socket (discovered automatically)",
       }),
   handler: async (args) => {
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -91,6 +148,38 @@ export const TuiThreadCommand = cmd({
       process.exit(1)
     }
 
+    // @event_20260319_daemonization Phase γ.4a-c: --attach mode
+    if (args.attach) {
+      const daemonInfo = await Daemon.readDiscovery()
+      if (!daemonInfo) {
+        // γ.4b: fail fast — no fallback
+        UI.error("No running opencode daemon found. Start one with: opencode serve --unix-socket " + Daemon.socketPath())
+        process.exit(1)
+      }
+      const { socketPath } = daemonInfo
+      const url = "http://opencode.daemon"
+      const customFetch = createUnixFetch(socketPath)
+      const events = createUnixEventSource(socketPath, url)
+      await tui({
+        url,
+        fetch: customFetch,
+        events,
+        args: {
+          continue: args.continue,
+          sessionID: args.session,
+          agent: args.agent,
+          model: args.model,
+          prompt: undefined,
+          fork: args.fork,
+        },
+        onExit: async () => {
+          // γ.5d: TUI disconnect only — daemon keeps running
+        },
+      })
+      return
+    }
+
+    // γ.4d: No --attach — maintain existing Worker thread mode
     // Resolve relative paths against PWD to preserve behavior when using --cwd flag
     const baseCwd = Env.get("PWD") ?? process.cwd()
     const cwd = args.project ? path.resolve(baseCwd, args.project) : process.cwd()

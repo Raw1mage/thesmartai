@@ -23,6 +23,10 @@
 #   logs              Follow the PTY debug log (/tmp/pty-debug.log)
 #   build-frontend    Build packages/app/dist/ (run after frontend changes)
 #   build-binary      Build the native opencode binary (for distribution)
+#   compile-gateway   Compile the C root gateway daemon
+#   gateway-start     Compile + start the gateway daemon
+#   gateway-stop      Stop the gateway daemon
+#   gateway-status    Show gateway daemon status
 #   help              Show this help message
 #
 # =============================================================================
@@ -1676,6 +1680,151 @@ do_build_binary() {
 }
 
 # ---------------------------------------------------------------------------
+# Gateway (C root daemon) — Phase ω
+# ---------------------------------------------------------------------------
+GATEWAY_SRC="${PROJECT_ROOT}/daemon/opencode-gateway.c"
+GATEWAY_BIN="${PROJECT_ROOT}/daemon/opencode-gateway"
+GATEWAY_INSTALL_BIN="/usr/local/bin/opencode-gateway"
+GATEWAY_SERVICE_NAME="opencode-gateway"
+GATEWAY_PID_FILE="${RUNTIME_TMP_BASE}/opencode-gateway-${PROFILE_SAFE}.pid"
+GATEWAY_LOG_FILE="${RUNTIME_TMP_BASE}/opencode-gateway-${PROFILE_SAFE}.log"
+
+compile_gateway() {
+    if [ ! -f "${GATEWAY_SRC}" ]; then
+        log_error "Gateway source not found: ${GATEWAY_SRC}"
+        exit 1
+    fi
+
+    log_info "Compiling gateway daemon..."
+    if ! command -v gcc >/dev/null 2>&1; then
+        log_error "gcc not found. Install build-essential (apt) or gcc."
+        exit 1
+    fi
+
+    gcc -O2 -Wall -D_GNU_SOURCE \
+        -o "${GATEWAY_BIN}" "${GATEWAY_SRC}" \
+        -lpam -lpam_misc -lcrypto
+
+    log_success "Gateway compiled: ${GATEWAY_BIN}"
+}
+
+start_gateway() {
+    local mode="${1:-prod}"
+
+    if [ ! -x "${GATEWAY_BIN}" ] && [ ! -x "${GATEWAY_INSTALL_BIN}" ]; then
+        log_error "Gateway binary not found. Run: ./webctl.sh compile-gateway"
+        exit 1
+    fi
+
+    local gw_bin="${GATEWAY_BIN}"
+    [ ! -x "${gw_bin}" ] && gw_bin="${GATEWAY_INSTALL_BIN}"
+
+    # Resolve opencode binary for per-user daemon spawning
+    local oc_bin=""
+    if [ "${IS_SOURCE_REPO:-0}" -eq 1 ]; then
+        local BUN_BIN
+        BUN_BIN="$(find_bun)"
+        oc_bin="${BUN_BIN} --conditions=browser ${PROJECT_ROOT}/packages/opencode/src/index.ts"
+    elif [ -n "${OPENCODE_BIN}" ] && [ -x "${OPENCODE_BIN}" ]; then
+        oc_bin="${OPENCODE_BIN}"
+    else
+        oc_bin="$(command -v opencode || echo '/usr/local/bin/opencode')"
+    fi
+
+    local gw_port="${OPENCODE_GATEWAY_PORT:-${WEB_PORT:-1080}}"
+    local login_html="${PROJECT_ROOT}/daemon/login.html"
+    [ ! -f "${login_html}" ] && login_html="/usr/local/share/opencode/login.html"
+
+    log_info "Starting gateway daemon on port ${gw_port} (mode=${mode})..."
+
+    if [ -f "${GATEWAY_PID_FILE}" ]; then
+        local old_pid
+        old_pid=$(cat "${GATEWAY_PID_FILE}")
+        if kill -0 "${old_pid}" 2>/dev/null; then
+            log_warn "Gateway already running (pid ${old_pid}). Stopping first..."
+            kill "${old_pid}" 2>/dev/null || true
+            sleep 1
+        fi
+        rm -f "${GATEWAY_PID_FILE}"
+    fi
+
+    nohup env \
+        OPENCODE_BIN="${oc_bin}" \
+        OPENCODE_LOGIN_HTML="${login_html}" \
+        OPENCODE_GATEWAY_PORT="${gw_port}" \
+        OPENCODE_LAUNCH_MODE="webctl" \
+        OPENCODE_REPO_ROOT="${PROJECT_ROOT}" \
+        "${gw_bin}" \
+        >"${GATEWAY_LOG_FILE}" 2>&1 < /dev/null &
+
+    local pid=$!
+    echo "${pid}" > "${GATEWAY_PID_FILE}"
+    sleep 1
+
+    if kill -0 "${pid}" 2>/dev/null; then
+        log_success "Gateway started (pid ${pid})"
+    else
+        log_error "Gateway failed to start. Check: ${GATEWAY_LOG_FILE}"
+        rm -f "${GATEWAY_PID_FILE}"
+        return 1
+    fi
+}
+
+stop_gateway() {
+    if [ -f "${GATEWAY_PID_FILE}" ]; then
+        local gw_pid
+        gw_pid=$(cat "${GATEWAY_PID_FILE}")
+        if kill -0 "${gw_pid}" 2>/dev/null; then
+            log_info "Stopping gateway (pid ${gw_pid})..."
+            kill "${gw_pid}" 2>/dev/null || true
+            local i=0
+            while kill -0 "${gw_pid}" 2>/dev/null && [ "${i}" -lt 10 ]; do
+                sleep 0.5
+                i=$((i+1))
+            done
+            if kill -0 "${gw_pid}" 2>/dev/null; then
+                log_warn "Gateway still alive, sending SIGKILL..."
+                kill -9 "${gw_pid}" 2>/dev/null || true
+            fi
+            log_success "Gateway stopped"
+        else
+            log_info "Gateway (pid ${gw_pid}) not running"
+        fi
+        rm -f "${GATEWAY_PID_FILE}"
+    else
+        log_info "No gateway PID file found"
+    fi
+}
+
+do_compile_gateway() {
+    compile_gateway
+}
+
+do_gateway_start() {
+    load_server_cfg
+    compile_gateway
+    start_gateway "${1:-prod}"
+}
+
+do_gateway_stop() {
+    stop_gateway
+}
+
+do_gateway_status() {
+    if [ -f "${GATEWAY_PID_FILE}" ]; then
+        local gw_pid
+        gw_pid=$(cat "${GATEWAY_PID_FILE}")
+        if kill -0 "${gw_pid}" 2>/dev/null; then
+            log_success "Gateway running (pid ${gw_pid})"
+        else
+            log_warn "Gateway PID file exists but process ${gw_pid} not running"
+        fi
+    else
+        log_info "Gateway not running (no PID file)"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # help
 # ---------------------------------------------------------------------------
 do_help() {
@@ -1700,6 +1849,10 @@ do_help() {
     echo "  logs              Follow PTY debug log (/tmp/pty-debug.log)"
     echo "  build-frontend    Build packages/app/dist/ (run after frontend changes)"
     echo "  build-binary      Build native binary for current platform"
+    echo "  compile-gateway   Compile the C root gateway daemon"
+    echo "  gateway-start     Compile + start the gateway daemon"
+    echo "  gateway-stop      Stop the gateway daemon"
+    echo "  gateway-status    Show gateway daemon status"
     echo "  help              Show this help message"
     echo ""
     echo "Environment Variables:"
@@ -1771,6 +1924,10 @@ case "${1:-}" in
     logs)           do_logs           ;;
     build-frontend) do_build_frontend ;;
     build-binary)   do_build_binary   ;;
+    compile-gateway) do_compile_gateway ;;
+    gateway-start)  do_gateway_start "${@:2}" ;;
+    gateway-stop)   do_gateway_stop   ;;
+    gateway-status) do_gateway_status ;;
     help|--help|-h|"") do_help        ;;
     *)
         log_error "Unknown command: $1"

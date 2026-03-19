@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenCode — Login</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; background: #0d1117; color: #e6edf3;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", monospace;
+  }
+  .card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 2rem; width: 360px;
+  }
+  h1 { font-size: 1.25rem; margin-bottom: 1.5rem; color: #58a6ff; }
+  label { display: block; font-size: 0.85rem; margin-bottom: 0.25rem; color: #8b949e; }
+  input {
+    width: 100%; padding: 0.5rem 0.75rem; margin-bottom: 1rem;
+    background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    color: #e6edf3; font-size: 0.95rem;
+  }
+  input:focus { outline: none; border-color: #58a6ff; }
+  button {
+    width: 100%; padding: 0.6rem; background: #238636; border: none;
+    border-radius: 6px; color: #fff; font-size: 0.95rem; cursor: pointer;
+  }
+  button:hover { background: #2ea043; }
+  .error { color: #f85149; font-size: 0.85rem; margin-top: 0.5rem; display: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>OpenCode Gateway</h1>
+  <form id="f" method="POST" action="/auth/login">
+    <label>Username</label>
+    <input type="text" name="username" autocomplete="username" required>
+    <label>Password</label>
+    <input type="password" name="password" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+    <p class="error" id="err">Invalid credentials.</p>
+  </form>
+</div>
+</body>
+</html>

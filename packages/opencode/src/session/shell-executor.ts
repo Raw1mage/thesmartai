@@ -3,7 +3,6 @@ import { spawn } from "child_process"
 import { Shell } from "@/shell/shell"
 import { Env } from "@/env"
 import { RequestUser } from "@/runtime/request-user"
-import { LinuxUserExec } from "@/system/linux-user-exec"
 
 const MAX_LIVE_OUTPUT_METADATA = 50_000
 
@@ -65,41 +64,19 @@ export function formatLiveOutput(output: string) {
 export async function executeShellCommand(input: ShellExecutionInput): Promise<ShellExecutionResult> {
   const shellPath = Shell.preferred()
   const args = buildInvocationArgs(shellPath, input.command)
-  const requestUser = RequestUser.username()
-  const runAsUser = LinuxUserExec.resolveExecutionUser(requestUser)
+  // @event_20260319_daemonization Phase δ.3c — per-user daemon runs as correct UID;
+  // sudo invocation removed.
+  void RequestUser.username() // retained for potential future audit logging
 
-  const baseEnv = {
-    TERM: "dumb",
-    LANG: process.env.LANG,
-    LC_ALL: process.env.LC_ALL,
-    LC_CTYPE: process.env.LC_CTYPE,
-  }
-
-  const proc = (() => {
-    if (runAsUser) {
-      const invocation = LinuxUserExec.buildSudoInvocation({
-        user: runAsUser,
-        cwd: input.cwd,
-        executable: shellPath,
-        args,
-        env: baseEnv,
-      })
-      return spawn(invocation.command, invocation.args, {
-        detached: process.platform !== "win32",
-        stdio: ["ignore", "pipe", "pipe"],
-      })
-    }
-
-    return spawn(shellPath, args, {
-      cwd: input.cwd,
-      detached: process.platform !== "win32",
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...Env.all(),
-        TERM: "dumb",
-      },
-    })
-  })()
+  const proc = spawn(shellPath, args, {
+    cwd: input.cwd,
+    detached: process.platform !== "win32",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...Env.all(),
+      TERM: "dumb",
+    },
+  })
 
   let output = ""
   let aborted = false

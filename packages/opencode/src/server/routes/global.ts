@@ -43,6 +43,35 @@ function applyProxyFriendlySSEHeaders(c: { header: (name: string, value: string)
 
 export const GlobalDisposedEvent = BusEvent.define("global.disposed", z.object({}))
 
+// @event_20260319_daemonization Phase ζ — SSE Event ID + Catch-up ring buffer
+const SSE_BUFFER_MAX = 1000
+let _sseCounter = 0
+const _sseBuffer: Array<{ id: number; event: unknown }> = []
+
+function sseNextId(): number {
+  return ++_sseCounter
+}
+
+function ssePush(event: unknown): number {
+  const id = sseNextId()
+  _sseBuffer.push({ id, event })
+  if (_sseBuffer.length > SSE_BUFFER_MAX) _sseBuffer.shift()
+  return id
+}
+
+/**
+ * Returns events since `lastId`, or null if lastId is older than our buffer.
+ * null → client must do full sync.
+ */
+function sseGetSince(lastId: number): Array<{ id: number; event: unknown }> | null {
+  if (_sseBuffer.length === 0) return []
+  const oldest = _sseBuffer[0].id
+  if (lastId < oldest - 1) return null // buffer overflow, full resync needed
+  return _sseBuffer.filter((e) => e.id > lastId)
+}
+
+const SyncRequiredEvent = BusEvent.define("sync.required", z.object({}))
+
 export const GlobalRoutes = lazy(() =>
   new Hono()
     .get(
@@ -270,17 +299,46 @@ export const GlobalRoutes = lazy(() =>
       async (c) => {
         log.info("global event connected")
         applyProxyFriendlySSEHeaders(c)
+
+        // @event_20260319_daemonization Phase ζ.4 — parse Last-Event-ID for catch-up
+        const lastEventIdHeader = c.req.header("last-event-id") ?? c.req.header("Last-Event-ID")
+        const lastEventId = lastEventIdHeader ? parseInt(lastEventIdHeader, 10) : undefined
+
         return streamSSE(c, async (stream) => {
-          await stream.writeSSE({
-            data: JSON.stringify({
-              payload: {
-                type: "server.connected",
-                properties: {},
-              },
-            }),
-          })
-          async function handler(event: any) {
+          // ζ.5: replay missed events or request full sync
+          if (lastEventId !== undefined && !isNaN(lastEventId)) {
+            const missed = sseGetSince(lastEventId)
+            if (missed === null) {
+              // ζ.5b: buffer overflow → sync.required
+              const id = sseNextId()
+              await stream.writeSSE({
+                id: String(id),
+                data: JSON.stringify({ payload: { type: SyncRequiredEvent.type, properties: {} } }),
+              })
+            } else {
+              // ζ.5a: replay missed events
+              for (const entry of missed) {
+                await stream.writeSSE({
+                  id: String(entry.id),
+                  data: JSON.stringify(entry.event),
+                })
+              }
+            }
+          } else {
+            // ζ.5c: no Last-Event-ID — send connected event
+            const connId = sseNextId()
             await stream.writeSSE({
+              id: String(connId),
+              data: JSON.stringify({
+                payload: { type: "server.connected", properties: {} },
+              }),
+            })
+          }
+
+          async function handler(event: unknown) {
+            const id = ssePush(event)
+            await stream.writeSSE({
+              id: String(id),
               data: JSON.stringify(event),
             })
           }
@@ -290,10 +348,7 @@ export const GlobalRoutes = lazy(() =>
           const heartbeat = setInterval(() => {
             void stream.writeSSE({
               data: JSON.stringify({
-                payload: {
-                  type: "server.heartbeat",
-                  properties: {},
-                },
+                payload: { type: "server.heartbeat", properties: {} },
               }),
             })
           }, 30000)

@@ -5,6 +5,7 @@ import { lazy } from "../util/lazy"
 import { websocket } from "hono/bun"
 import { MDNS } from "./mdns"
 import { createApp } from "./app"
+import { Daemon } from "./daemon"
 
 globalThis.AI_SDK_LOG_WARNINGS = false
 
@@ -47,7 +48,7 @@ export namespace Server {
 
     const args = {
       hostname: opts.hostname,
-      idleTimeout: 0,
+      idleTimeout: 120, // @event_20260319_daemonization Phase θ.4
       fetch: App().fetch,
       websocket: websocket,
     } as const
@@ -80,6 +81,54 @@ export namespace Server {
       if (shouldPublishMDNS) MDNS.unpublish()
       return originalStop(closeActiveConnections)
     }
+
+    return server
+  }
+
+  /**
+   * Start server listening on a Unix domain socket.
+   * Writes discovery file after binding.
+   *
+   * @event_20260319_daemonization Phase β.2 / β.3
+   */
+  export async function listenUnix(socketPath: string): Promise<ReturnType<typeof Bun.serve>> {
+    log.info("starting unix socket daemon", { socketPath })
+
+    // Check single-instance guard
+    const existingPid = await Daemon.checkSingleInstance()
+    if (existingPid !== null) {
+      throw new Error(`opencode daemon already running (pid ${existingPid}). Use --attach to connect.`)
+    }
+
+    // Bun's TypeScript overloads for unix vs TCP are separate union types that
+    // don't overlap; double-cast via unknown to satisfy the compiler.
+    const server = Bun.serve({
+      unix: socketPath,
+      idleTimeout: 120, // @event_20260319_daemonization Phase θ.4
+      fetch: App().fetch,
+      websocket: websocket,
+    } as unknown as Parameters<typeof Bun.serve>[0])
+
+    _url = new URL(`http://localhost`)
+
+    // Write discovery file so TUI and other clients can find us
+    await Daemon.writeDiscovery({
+      socketPath,
+      pid: process.pid,
+      startedAt: Date.now(),
+      version: process.env.npm_package_version ?? "unknown",
+    })
+
+    log.info("daemon ready", { socketPath, pid: process.pid })
+
+    // Register cleanup handlers (β.4)
+    const cleanup = async () => {
+      log.info("daemon shutting down, removing discovery files")
+      await Daemon.removeDiscovery().catch(() => {})
+    }
+    process.once("exit", () => { Daemon.removeDiscovery().catch(() => {}) })
+    process.once("SIGTERM", async () => { await cleanup(); process.exit(0) })
+    process.once("SIGINT", async () => { await cleanup(); process.exit(0) })
 
     return server
   }

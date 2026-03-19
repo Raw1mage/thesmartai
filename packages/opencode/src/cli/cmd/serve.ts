@@ -1,4 +1,5 @@
 import { Server } from "../../server/server"
+import { Daemon } from "../../server/daemon"
 import { cmd } from "./cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { WebAuthCredentials } from "../../server/web-auth-credentials"
@@ -24,9 +25,25 @@ async function waitForShutdownSignal() {
 
 export const ServeCommand = cmd({
   command: "serve",
-  builder: (yargs) => withNetworkOptions(yargs),
+  builder: (yargs) =>
+    withNetworkOptions(yargs).option("unix-socket", {
+      type: "string",
+      describe: "listen on a Unix domain socket path instead of TCP (daemon mode)",
+    }),
   describe: "starts a headless opencode server",
   handler: async (args) => {
+    // Unix socket (daemon) mode — bypass TCP + auth config
+    if (args["unix-socket"]) {
+      const socketPath = args["unix-socket"]
+      console.log(`opencode daemon starting on unix:${socketPath}`)
+      const server = await Server.listenUnix(socketPath)
+      console.log(`opencode daemon ready (pid ${process.pid})`)
+      await waitForShutdownSignal()
+      await server.stop(true)
+      return
+    }
+
+    // TCP mode (existing behaviour)
     const authMode = WebAuthCredentials.mode()
     if (!WebAuthCredentials.enabled()) {
       console.log(`Warning: Web auth is not configured for mode '${authMode}'.`)

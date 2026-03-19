@@ -19,7 +19,6 @@ import { Truncate } from "./truncation"
 import { Plugin } from "@/plugin"
 import { Env } from "@/env"
 import { RequestUser } from "@/runtime/request-user"
-import { LinuxUserExec } from "@/system/linux-user-exec"
 
 const MAX_METADATA_LENGTH = 30_000
 const DEFAULT_TIMEOUT = Flag.OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
@@ -176,43 +175,19 @@ export const BashTool = Tool.define("bash", async () => {
       }
 
       const shellEnv = await Plugin.trigger("shell.env", { cwd }, { env: {} })
-      const requestUser = RequestUser.username()
-      const runAsUser = LinuxUserExec.resolveExecutionUser(requestUser)
+      // @event_20260319_daemonization Phase δ.3a — per-user daemon already runs as
+      // the correct UID; sudo invocation removed.
 
-      const proc = (() => {
-        if (runAsUser) {
-          const invocation = LinuxUserExec.buildSudoInvocation({
-            user: runAsUser,
-            cwd,
-            executable: shell,
-            args: ["-lc", params.command],
-            env: {
-              ...shellEnv.env,
-              TERM: "xterm-256color",
-              OPENCODE_TERMINAL: "1",
-              LANG: process.env.LANG,
-              LC_ALL: process.env.LC_ALL,
-              LC_CTYPE: process.env.LC_CTYPE,
-            },
-          })
-
-          return spawn(invocation.command, invocation.args, {
-            stdio: ["ignore", "pipe", "pipe"],
-            detached: process.platform !== "win32",
-          })
-        }
-
-        return spawn(params.command, {
-          shell,
-          cwd,
-          env: {
-            ...Env.all(),
-            ...shellEnv.env,
-          },
-          stdio: ["ignore", "pipe", "pipe"],
-          detached: process.platform !== "win32",
-        })
-      })()
+      const proc = spawn(params.command, {
+        shell,
+        cwd,
+        env: {
+          ...Env.all(),
+          ...shellEnv.env,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: process.platform !== "win32",
+      })
 
       let output = ""
 

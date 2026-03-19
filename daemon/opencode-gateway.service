@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenCode Gateway (root daemon)
+Documentation=https://github.com/sst/opencode
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/opencode-gateway
+Restart=on-failure
+RestartSec=3
+Environment=OPENCODE_BIN=/usr/local/bin/opencode
+Environment=OPENCODE_LOGIN_HTML=/usr/local/share/opencode/login.html
+# Override port if needed:
+# Environment=OPENCODE_GATEWAY_PORT=1080
+
+[Install]
+WantedBy=multi-user.target

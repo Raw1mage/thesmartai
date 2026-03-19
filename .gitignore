@@ -55,3 +55,4 @@ __pycache__/
 # local build output logs
 /build.log
 /recyclebin/
+daemon/opencode-gateway

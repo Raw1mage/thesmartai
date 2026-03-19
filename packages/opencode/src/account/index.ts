@@ -6,6 +6,7 @@ import { Log } from "../util/log"
 import { debugCheckpoint } from "../util/debug"
 import { Instance } from "../project/instance"
 import type { AccountCandidate, RateLimitReason } from "./rotation"
+import { Bus } from "../bus"
 
 // Re-export rotation modules for global account rotation
 export * from "./rotation"
@@ -378,6 +379,29 @@ export namespace Account {
 
   const normalizeFamilyKeys = normalizeProviderKeys
 
+  // @event_20260319_daemonization Phase ε.7 — In-process mutex for account mutations
+  // Serializes all read-modify-write operations so concurrent TUI + webapp calls
+  // within the same per-user daemon cannot race on accounts.json.
+  let _mutexChain: Promise<void> = Promise.resolve()
+  function withMutex<T>(fn: () => Promise<T>): Promise<T> {
+    const result = _mutexChain.then(fn, fn)
+    _mutexChain = result.then(
+      () => {},
+      () => {},
+    )
+    return result
+  }
+
+  // @event_20260319_daemonization Phase ε.2 — Sanitize account info before publishing
+  // Strips secret fields so events are safe to broadcast over SSE.
+  function sanitizeInfo(info: Info): { type: "api" | "subscription"; name: string; addedAt: number } {
+    return {
+      type: info.type,
+      name: info.name,
+      addedAt: info.addedAt,
+    }
+  }
+
   async function save(storage: Storage): Promise<void> {
     debugCheckpoint("Account.save", "Writing", { path: filepath })
     try {
@@ -444,47 +468,58 @@ export namespace Account {
   /**
    * Add a new account
    */
-  export async function add(provider: string, accountId: string, info: Info): Promise<void> {
-    debugCheckpoint("Account.add", "Starting", { provider, accountId, type: info.type })
-    const storage = await state()
-    debugCheckpoint("Account.add", "Got state", { existingProviderKeys: providerKeysOf(storage) })
+  export function add(provider: string, accountId: string, info: Info): Promise<void> {
+    return withMutex(async () => {
+      debugCheckpoint("Account.add", "Starting", { provider, accountId, type: info.type })
+      const storage = await state()
+      debugCheckpoint("Account.add", "Got state", { existingProviderKeys: providerKeysOf(storage) })
 
-    if (!providersOf(storage)[provider]) {
-      providersOf(storage)[provider] = { accounts: {} }
-      debugCheckpoint("Account.add", "Created new provider entry", { provider })
-    }
+      if (!providersOf(storage)[provider]) {
+        providersOf(storage)[provider] = { accounts: {} }
+        debugCheckpoint("Account.add", "Created new provider entry", { provider })
+      }
 
-    if (providersOf(storage)[provider].accounts[accountId]) {
-      throw new Error(`Account ID ${accountId} already exists for provider ${provider}. Account.add does not permit silent overwrites.`)
-    }
+      if (providersOf(storage)[provider].accounts[accountId]) {
+        throw new Error(`Account ID ${accountId} already exists for provider ${provider}. Account.add does not permit silent overwrites.`)
+      }
 
-    providersOf(storage)[provider].accounts[accountId] = info
-    debugCheckpoint("Account.add", "Added account", { accounts: Object.keys(providersOf(storage)[provider].accounts) })
+      providersOf(storage)[provider].accounts[accountId] = info
+      debugCheckpoint("Account.add", "Added account", { accounts: Object.keys(providersOf(storage)[provider].accounts) })
 
-    // If this is the first account, make it active
-    if (!providersOf(storage)[provider].activeAccount) {
-      providersOf(storage)[provider].activeAccount = accountId
-      debugCheckpoint("Account.add", "Set as active account", { accountId })
-    }
+      // If this is the first account, make it active
+      if (!providersOf(storage)[provider].activeAccount) {
+        providersOf(storage)[provider].activeAccount = accountId
+        debugCheckpoint("Account.add", "Set as active account", { accountId })
+      }
 
-    await save(storage)
-    debugCheckpoint("Account.add", "Save completed", { provider, accountId })
-    log.info("Account added", { provider, accountId, type: info.type })
+      await save(storage)
+      debugCheckpoint("Account.add", "Save completed", { provider, accountId })
+      log.info("Account added", { provider, accountId, type: info.type })
+
+      // @event_20260319_daemonization Phase ε.3 — publish account.added
+      await Bus.publish(Bus.AccountAdded, {
+        providerKey: provider,
+        accountId,
+        info: sanitizeInfo(info),
+      }).catch(() => {})
+    })
   }
 
   /**
    * Update an existing account
    */
-  export async function update(provider: string, accountId: string, info: Partial<Info>): Promise<void> {
-    const storage = await state()
-    const existing = providersOf(storage)[provider]?.accounts[accountId]
+  export function update(provider: string, accountId: string, info: Partial<Info>): Promise<void> {
+    return withMutex(async () => {
+      const storage = await state()
+      const existing = providersOf(storage)[provider]?.accounts[accountId]
 
-    if (!existing) {
-      throw new Error(`Account not found: ${provider}/${accountId}`)
-    }
+      if (!existing) {
+        throw new Error(`Account not found: ${provider}/${accountId}`)
+      }
 
-    providersOf(storage)[provider].accounts[accountId] = { ...existing, ...info } as Info
-    await save(storage)
+      providersOf(storage)[provider].accounts[accountId] = { ...existing, ...info } as Info
+      await save(storage)
+    })
   }
 
   /**
@@ -542,23 +577,28 @@ export namespace Account {
   /**
    * Remove an account
    */
-  export async function remove(provider: string, accountId: string): Promise<void> {
-    const storage = await state()
+  export function remove(provider: string, accountId: string): Promise<void> {
+    return withMutex(async () => {
+      const storage = await state()
 
-    if (!providersOf(storage)[provider]?.accounts[accountId]) {
-      return
-    }
+      if (!providersOf(storage)[provider]?.accounts[accountId]) {
+        return
+      }
 
-    delete providersOf(storage)[provider].accounts[accountId]
+      delete providersOf(storage)[provider].accounts[accountId]
 
-    // If we removed the active account, pick another
-    if (providersOf(storage)[provider].activeAccount === accountId) {
-      const remaining = Object.keys(providersOf(storage)[provider].accounts)
-      providersOf(storage)[provider].activeAccount = remaining[0]
-    }
+      // If we removed the active account, pick another
+      if (providersOf(storage)[provider].activeAccount === accountId) {
+        const remaining = Object.keys(providersOf(storage)[provider].accounts)
+        providersOf(storage)[provider].activeAccount = remaining[0]
+      }
 
-    await save(storage)
-    log.info("Account removed", { provider, accountId })
+      await save(storage)
+      log.info("Account removed", { provider, accountId })
+
+      // @event_20260319_daemonization Phase ε.4 — publish account.removed
+      await Bus.publish(Bus.AccountRemoved, { providerKey: provider, accountId }).catch(() => {})
+    })
   }
 
   /**
@@ -628,16 +668,26 @@ export namespace Account {
   /**
    * Set the active account for a provider
    */
-  export async function setActive(provider: string, accountId: string): Promise<void> {
-    const storage = await state()
+  export function setActive(provider: string, accountId: string): Promise<void> {
+    return withMutex(async () => {
+      const storage = await state()
 
-    if (!providersOf(storage)[provider]?.accounts[accountId]) {
-      throw new Error(`Account not found: ${provider}/${accountId}`)
-    }
+      if (!providersOf(storage)[provider]?.accounts[accountId]) {
+        throw new Error(`Account not found: ${provider}/${accountId}`)
+      }
 
-    providersOf(storage)[provider].activeAccount = accountId
-    await save(storage)
-    log.info("Active account changed", { provider, accountId })
+      const previousAccountId = providersOf(storage)[provider].activeAccount
+      providersOf(storage)[provider].activeAccount = accountId
+      await save(storage)
+      log.info("Active account changed", { provider, accountId })
+
+      // @event_20260319_daemonization Phase ε.5 — publish account.activated
+      await Bus.publish(Bus.AccountActivated, {
+        providerKey: provider,
+        accountId,
+        previousAccountId: previousAccountId !== accountId ? previousAccountId : undefined,
+      }).catch(() => {})
+    })
   }
 
   /**

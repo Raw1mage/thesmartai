@@ -1006,7 +1006,17 @@ export namespace Provider {
     const modelLoaders: {
       [providerId: string]: CustomModelLoader
     } = {}
+    // @event_20260319_daemonization Phase θ.2 — SDK cache with LRU eviction (MAX=50)
+    const SDK_CACHE_MAX = 50
     const sdk = new Map<number, SDK>()
+    function sdkSet(key: number, value: SDK) {
+      if (sdk.has(key)) sdk.delete(key)
+      sdk.set(key, value)
+      if (sdk.size > SDK_CACHE_MAX) {
+        const oldest = sdk.keys().next().value
+        if (oldest !== undefined) sdk.delete(oldest)
+      }
+    }
 
     log.info("init")
 
@@ -1807,6 +1817,7 @@ export namespace Provider {
       models: languages,
       providers,
       sdk,
+      sdkSet,
       modelLoaders,
     }
   }
@@ -2108,7 +2119,7 @@ export namespace Provider {
           name: model.providerId,
           ...sdkOptions,
         })
-        s.sdk.set(key, loaded)
+        s.sdkSet(key, loaded)
         return loaded as SDK
       }
 

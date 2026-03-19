@@ -11,7 +11,6 @@ import { Plugin } from "@/plugin"
 import { debugCheckpoint } from "@/util/debug"
 import * as fs from "fs"
 import { RequestUser } from "@/runtime/request-user"
-import { LinuxUserExec } from "@/system/linux-user-exec"
 
 const debugLog = (...args: any[]) => {
   try {
@@ -234,31 +233,16 @@ export namespace Pty {
       env.LC_CTYPE = "C.UTF-8"
       env.LANG = "C.UTF-8"
     }
-    const runAsUser = LinuxUserExec.resolveExecutionUser(owner)
-    log.info("creating session", { id, cmd: command, args, cwd, owner, runAsUser })
+    // @event_20260319_daemonization Phase δ.3b — per-user daemon runs as correct UID;
+    // sudo invocation removed.
+    log.info("creating session", { id, cmd: command, args, cwd, owner })
 
     const spawn = await pty()
-    const ptyProcess = (() => {
-      if (runAsUser) {
-        const invocation = LinuxUserExec.buildSudoInvocation({
-          user: runAsUser,
-          cwd,
-          executable: command,
-          args,
-          env: baseEnv,
-        })
-        return spawn(invocation.command, invocation.args, {
-          name: "xterm-256color",
-          env,
-        })
-      }
-
-      return spawn(command, args, {
-        name: "xterm-256color",
-        cwd,
-        env,
-      })
-    })()
+    const ptyProcess = spawn(command, args, {
+      name: "xterm-256color",
+      cwd,
+      env,
+    })
 
     const info = {
       id,
