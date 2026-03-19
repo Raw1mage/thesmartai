@@ -23,6 +23,7 @@
 #   logs              Follow the PTY debug log (/tmp/pty-debug.log)
 #   build-frontend    Build packages/app/dist/ (run after frontend changes)
 #   build-binary      Build the native opencode binary (for distribution)
+#   compile-mcp       Recompile stale internal MCP server binaries
 #   compile-gateway   Compile the C root gateway daemon
 #   gateway-start     Compile + start the gateway daemon
 #   gateway-stop      Stop the gateway daemon
@@ -191,7 +192,7 @@ ensure_clean_repo_deploy_source() {
 
 is_owner_scoped_command() {
     case "${1:-}" in
-        install|dev-start|dev-up|dev-stop|dev-down|stop|flush|restart|dev-refresh|web-refresh|_restart-worker|status|logs|build-frontend|build-binary)
+        install|dev-start|dev-up|dev-stop|dev-down|stop|flush|restart|dev-refresh|web-refresh|_restart-worker|status|logs|build-frontend|build-binary|compile-mcp)
             return 0
             ;;
         *)
@@ -580,6 +581,82 @@ flush_mcp() {
     done <<< "${candidates}"
 
     log_success "Flushed ${count} MCP server process(es)"
+}
+
+# ---------------------------------------------------------------------------
+# Internal MCP binary management
+# ---------------------------------------------------------------------------
+INTERNAL_MCP_INSTALL_DIR="/usr/local/lib/opencode/mcp"
+
+# Registry: name → source entry point (relative to PROJECT_ROOT)
+declare -A INTERNAL_MCP_ENTRIES=(
+    [system-manager]="packages/mcp/system-manager/src/index.ts"
+    [refacting-merger]="packages/mcp/refacting-merger/src/index.ts"
+    [gcp-grounding]="packages/mcp/gcp-grounding/index.ts"
+)
+
+# Check if any internal MCP binary is stale (source newer than binary)
+# and recompile + install as needed.
+# Only meaningful in source repo; skipped in standalone mode.
+compile_internal_mcp_if_stale() {
+    if [ "${IS_SOURCE_REPO:-0}" -ne 1 ]; then
+        return 0
+    fi
+
+    local BUN_BIN
+    BUN_BIN="$(find_bun)"
+    local recompiled=0
+
+    for name in "${!INTERNAL_MCP_ENTRIES[@]}"; do
+        local src_entry="${PROJECT_ROOT}/${INTERNAL_MCP_ENTRIES[$name]}"
+        local bin_path="${INTERNAL_MCP_INSTALL_DIR}/${name}"
+
+        if [ ! -f "${src_entry}" ]; then
+            continue
+        fi
+
+        local needs_compile=0
+
+        if [ ! -f "${bin_path}" ]; then
+            needs_compile=1
+            log_info "MCP binary missing: ${name} — will compile"
+        else
+            # Compare mtime: any source file in the MCP package dir newer than the binary?
+            local src_dir
+            src_dir="$(dirname "${src_entry}")"
+            # Walk up to package root (parent of src/)
+            if [ "$(basename "${src_dir}")" = "src" ]; then
+                src_dir="$(dirname "${src_dir}")"
+            fi
+
+            local newest_src
+            newest_src="$(find "${src_dir}" -name '*.ts' -newer "${bin_path}" -print -quit 2>/dev/null || true)"
+            if [ -n "${newest_src}" ]; then
+                needs_compile=1
+                log_info "MCP binary stale: ${name} — source updated (${newest_src})"
+            fi
+        fi
+
+        if [ "${needs_compile}" -eq 1 ]; then
+            local tmp_bin="/tmp/opencode-mcp-${name}-$$"
+            log_info "Compiling MCP: ${name}..."
+            # Build from /tmp so bun won't pick up project-level bunfig.toml preload
+            # (e.g. @opentui/solid/preload is for the main app, not MCP servers)
+            if (cd /tmp && "${BUN_BIN}" build --compile --outfile "${tmp_bin}" "${src_entry}") >/dev/null 2>&1; then
+                sudo cp "${tmp_bin}" "${bin_path}" && sudo chmod 755 "${bin_path}"
+                rm -f "${tmp_bin}"
+                log_success "MCP binary installed: ${name} → ${bin_path}"
+                recompiled=$((recompiled + 1))
+            else
+                log_error "MCP compile failed: ${name}"
+                rm -f "${tmp_bin}"
+            fi
+        fi
+    done
+
+    if [ "${recompiled}" -gt 0 ]; then
+        log_success "Recompiled ${recompiled} MCP binary(ies)"
+    fi
 }
 
 tracked_dev_pids() {
@@ -1043,10 +1120,10 @@ do_dev_start() {
         log_info "Starting server from source on port ${WEB_PORT}..."
         if command -v script >/dev/null 2>&1; then
             nohup script -qefc \
-                "env OPENCODE_LAUNCH_MODE=\"webctl\" OPENCODE_INTERNAL_MCP_MODE=\"source\" OPENCODE_REPO_ROOT=\"${PROJECT_ROOT}\" OPENCODE_ALLOW_GLOBAL_FS_BROWSE=\"${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}\" OPENCODE_FRONTEND_PATH=\"${FRONTEND_DIST}\" OPENCODE_WEB_NO_OPEN=\"${OPENCODE_WEB_NO_OPEN:-1}\" OPENCODE_AUTH_MODE=\"${AUTH_MODE}\" \"${BUN_BIN}\" --conditions=browser \"${PROJECT_ROOT}/packages/opencode/src/index.ts\" web --port \"${WEB_PORT}\" --hostname \"${WEB_HOSTNAME}\"" \
+                "env OPENCODE_LAUNCH_MODE=\"webctl\" OPENCODE_REPO_ROOT=\"${PROJECT_ROOT}\" OPENCODE_ALLOW_GLOBAL_FS_BROWSE=\"${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}\" OPENCODE_FRONTEND_PATH=\"${FRONTEND_DIST}\" OPENCODE_WEB_NO_OPEN=\"${OPENCODE_WEB_NO_OPEN:-1}\" OPENCODE_AUTH_MODE=\"${AUTH_MODE}\" \"${BUN_BIN}\" --conditions=browser \"${PROJECT_ROOT}/packages/opencode/src/index.ts\" web --port \"${WEB_PORT}\" --hostname \"${WEB_HOSTNAME}\"" \
                 /dev/null >"${SERVER_LOG_FILE}" 2>&1 < /dev/null &
         else
-            nohup env OPENCODE_LAUNCH_MODE="webctl" OPENCODE_INTERNAL_MCP_MODE="source" OPENCODE_REPO_ROOT="${PROJECT_ROOT}" OPENCODE_ALLOW_GLOBAL_FS_BROWSE="${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}" OPENCODE_FRONTEND_PATH="${FRONTEND_DIST}" OPENCODE_WEB_NO_OPEN="${OPENCODE_WEB_NO_OPEN:-1}" OPENCODE_AUTH_MODE="${AUTH_MODE}" \
+            nohup env OPENCODE_LAUNCH_MODE="webctl" OPENCODE_REPO_ROOT="${PROJECT_ROOT}" OPENCODE_ALLOW_GLOBAL_FS_BROWSE="${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}" OPENCODE_FRONTEND_PATH="${FRONTEND_DIST}" OPENCODE_WEB_NO_OPEN="${OPENCODE_WEB_NO_OPEN:-1}" OPENCODE_AUTH_MODE="${AUTH_MODE}" \
                 "${BUN_BIN}" --conditions=browser \
                 "${PROJECT_ROOT}/packages/opencode/src/index.ts" \
                 web --port "${WEB_PORT}" --hostname "${WEB_HOSTNAME}" \
@@ -1533,7 +1610,8 @@ sync_frontend_dist_if_needed() {
 }
 
 do_web_refresh() {
-    log_info "Refreshing production web runtime (restart only; install/deploy is separate)."
+    log_info "Refreshing production web runtime..."
+    compile_internal_mcp_if_stale
     do_web_restart
 }
 
@@ -2076,6 +2154,7 @@ do_help() {
     echo "  logs              Follow PTY debug log (/tmp/pty-debug.log)"
     echo "  build-frontend    Build packages/app/dist/ (run after frontend changes)"
     echo "  build-binary      Build native binary for current platform"
+    echo "  compile-mcp       Recompile stale internal MCP server binaries"
     echo "  compile-gateway   Compile the C root gateway daemon"
     echo "  gateway-start     Compile + start the gateway daemon"
     echo "  gateway-stop      Stop the gateway daemon"
@@ -2154,6 +2233,7 @@ case "${1:-}" in
     logs)           do_logs           ;;
     build-frontend) do_build_frontend ;;
     build-binary)   do_build_binary   ;;
+    compile-mcp)    compile_internal_mcp_if_stale ;;
     compile-gateway) do_compile_gateway ;;
     gateway-start)  do_gateway_start "${@:2}" ;;
     gateway-stop)   do_gateway_stop   ;;

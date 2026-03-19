@@ -39,9 +39,25 @@ async function pathExists(targetPath: string) {
   }
 }
 
+// Resolve the daemon unix socket path (same logic as server/daemon.ts)
+function getDaemonSocketPath(): string {
+  const xdg = process.env.XDG_RUNTIME_DIR
+  const runtimeDir = xdg
+    ? path.join(xdg, "opencode")
+    : path.join(HOME, ".local", "state", "opencode", "run")
+  return path.join(runtimeDir, "daemon.sock")
+}
+
+// Prefer unix socket (works in both TUI and web mode), fallback to TCP HTTP
 async function getServerApiBaseUrl() {
   const explicit = process.env.OPENCODE_SERVER_URL?.trim()
   if (explicit) return explicit.replace(/\/+$/, "")
+
+  // Check if daemon socket exists — prefer IPC over TCP
+  const sock = getDaemonSocketPath()
+  if (existsSync(sock)) {
+    return `http://localhost/api/v2`  // URL is nominal; actual transport is unix socket
+  }
 
   const raw = await fs.readFile(OPENCODE_SERVER_CFG, "utf-8").catch(() => "")
   const portLine = raw
@@ -54,6 +70,15 @@ async function getServerApiBaseUrl() {
       .trim()
       .replace(/^['\"]|['\"]$/g, "") || "1080"
   return `http://127.0.0.1:${port}/api/v2`
+}
+
+// Wrap fetch to use unix socket when available
+async function serverFetch(url: string, init?: RequestInit): Promise<Response> {
+  const sock = getDaemonSocketPath()
+  if (existsSync(sock)) {
+    return fetch(url, { ...init, unix: sock } as any)
+  }
+  return fetch(url, init)
 }
 
 async function readServerRuntimeConfig() {
@@ -602,7 +627,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const baseUrl = await getServerApiBaseUrl()
       const headers = await getServerRequestHeaders("POST")
       headers.set("Content-Type", "application/json")
-      const response = await fetch(`${baseUrl}/tui/select-session`, {
+      const response = await serverFetch(`${baseUrl}/tui/select-session`, {
         method: "POST",
         headers,
         body: JSON.stringify({ sessionID }),
@@ -632,7 +657,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const baseUrl = await getServerApiBaseUrl()
       const headers = await getServerRequestHeaders("PATCH")
       await patchSessionExecutionViaApi({
-        fetchImpl: fetch as any,
+        fetchImpl: serverFetch as any,
         baseUrl,
         headers,
         sessionID,
@@ -659,7 +684,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const baseUrl = await getServerApiBaseUrl()
       const headers = await getServerRequestHeaders("PATCH")
       await patchSessionExecutionViaApi({
-        fetchImpl: fetch as any,
+        fetchImpl: serverFetch as any,
         baseUrl,
         headers,
         sessionID,
@@ -682,7 +707,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const baseUrl = await getServerApiBaseUrl()
       const headers = await getServerRequestHeaders("PATCH")
       await patchSessionExecutionViaApi({
-        fetchImpl: fetch as any,
+        fetchImpl: serverFetch as any,
         baseUrl,
         headers,
         sessionID,
@@ -700,7 +725,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const baseUrl = await getServerApiBaseUrl()
       const headers = await getServerRequestHeaders("PATCH")
       await patchSessionViaApi({
-        fetchImpl: fetch as any,
+        fetchImpl: serverFetch as any,
         baseUrl,
         headers,
         sessionID,
@@ -884,7 +909,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const baseUrl = await getServerApiBaseUrl()
         const headers = await getServerRequestHeaders("POST")
         headers.set("content-type", "application/json")
-        const rawCreate = await fetch(`${baseUrl}/session`, {
+        const rawCreate = await serverFetch(`${baseUrl}/session`, {
           method: "POST",
           headers,
           body: JSON.stringify({ title: title ?? "New Session" }),
@@ -1114,7 +1139,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (action === "get") {
         try {
           headers.set("Accept", "application/json")
-          const res = await fetch(`${apiBase}/global/log-level`, { headers })
+          const res = await serverFetch(`${apiBase}/global/log-level`, { headers })
           if (res.ok) {
             const data = (await res.json()) as { level: number; name: string }
             return {
@@ -1137,7 +1162,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       try {
         headers.set("Content-Type", "application/json")
-        const res = await fetch(`${apiBase}/global/log-level`, {
+        const res = await serverFetch(`${apiBase}/global/log-level`, {
           method: "POST",
           headers,
           body: JSON.stringify({ level }),

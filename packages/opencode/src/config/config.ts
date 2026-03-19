@@ -87,9 +87,12 @@ export namespace Config {
     return name in INTERNAL_MCP_SOURCES
   }
 
-  function getInternalMcpMode() {
+  function getInternalMcpMode(): "source" | "binary" | "auto" {
+    // Explicit override takes precedence
     const raw = Env.get("OPENCODE_INTERNAL_MCP_MODE")
     if (raw === "source" || raw === "binary") return raw
+    // Running from source repo → always use source (no env juggling required)
+    if (detectRepoRoot()) return "source"
     return "auto"
   }
 
@@ -97,10 +100,20 @@ export namespace Config {
     return path.join("/usr/local/lib/opencode/mcp", name)
   }
 
+  function detectRepoRoot(): string | undefined {
+    const explicit = Env.get("OPENCODE_REPO_ROOT")
+    if (explicit) return explicit
+    // Auto-detect from this file's location: config.ts is at packages/opencode/src/config/
+    const thisDir = path.dirname(new URL(import.meta.url).pathname)
+    const candidate = path.resolve(thisDir, "../../../..")
+    if (existsSync(path.join(candidate, "packages/mcp"))) return candidate
+    return undefined
+  }
+
   function getInternalMcpSourceCommand(name: InternalMcpName) {
-    const repoRoot = Env.get("OPENCODE_REPO_ROOT")
+    const repoRoot = detectRepoRoot()
     if (!repoRoot) {
-      throw new Error(`OPENCODE_INTERNAL_MCP_MODE=source requires OPENCODE_REPO_ROOT for internal MCP ${name}`)
+      throw new Error(`Cannot resolve repo root for internal MCP ${name} — set OPENCODE_REPO_ROOT`)
     }
     const entry = path.join(repoRoot, INTERNAL_MCP_SOURCES[name])
     if (!existsSync(entry)) {
