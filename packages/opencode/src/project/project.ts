@@ -178,10 +178,15 @@ export namespace Project {
         }
       }
 
+      // Non-git directory: use the directory itself as worktree/sandbox
+      // and derive a unique ID so different non-git dirs don't collide.
+      const nogitDir = path.resolve(directory)
+      const hasher = new Bun.CryptoHasher("sha1")
+      hasher.update("nogit:" + nogitDir)
       return {
-        id: "global",
-        worktree: "/",
-        sandbox: "/",
+        id: hasher.digest("hex"),
+        worktree: nogitDir,
+        sandbox: nogitDir,
         vcs: Info.shape.vcs.parse(Flag.OPENCODE_FAKE_VCS),
       }
     })
