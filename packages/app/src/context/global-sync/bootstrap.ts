@@ -42,14 +42,20 @@ async function getWorkspaceJson<T>(input: {
   baseUrl?: string
   fetch?: typeof fetch
   path: string
+  directory?: string
 }): Promise<T | undefined> {
   if (!input.baseUrl || !input.fetch) return undefined
-  const response = await input.fetch(`${input.baseUrl}/api/v2/workspace${input.path}`)
+  const headers: Record<string, string> = {}
+  if (input.directory) {
+    const isNonASCII = /[^\x00-\x7F]/.test(input.directory)
+    headers["x-opencode-directory"] = isNonASCII ? encodeURIComponent(input.directory) : input.directory
+  }
+  const response = await input.fetch(`${input.baseUrl}/api/v2/workspace${input.path}`, { headers })
   if (!response.ok) return undefined
   return (await response.json()) as T
 }
 
-export function fetchWorkspaceCurrent(input: { baseUrl?: string; fetch?: typeof fetch }) {
+export function fetchWorkspaceCurrent(input: { baseUrl?: string; fetch?: typeof fetch; directory?: string }) {
   return getWorkspaceJson<WorkspaceSnapshot>({ ...input, path: "/current" })
 }
 
@@ -232,7 +238,7 @@ export async function bootstrapDirectory(input: {
   Promise.allSettled([
     input.sdk.path.get().then((x) => input.setStore("path", x.data!)),
     input.sdk.command.list().then((x) => input.setStore("command", x.data ?? [])),
-    fetchWorkspaceCurrent({ baseUrl: input.baseUrl, fetch: input.fetch }).then((x) => {
+    fetchWorkspaceCurrent({ baseUrl: input.baseUrl, fetch: input.fetch, directory: input.directory }).then((x) => {
       if (x) input.setStore("workspace", x)
     }),
     input.sdk.session.status().then((x) => input.setStore("session_status", x.data!)),

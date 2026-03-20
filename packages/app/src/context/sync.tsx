@@ -119,6 +119,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       sessionTotal: 0,
       session_status: {},
       session_diff: {},
+      workspace_diff: {},
       todo: {},
       permission: {},
       question: {},
@@ -201,11 +202,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const key = keyFor(input.directory, input.sessionID)
       if (meta.loading[key]) return
 
-      if (false /* disabled */) console.debug("[session-reload-debug] loadMessages:start", {
-        directory: input.directory,
-        sessionID: input.sessionID,
-        limit: input.limit,
-      })
+      if (false /* disabled */)
+        console.debug("[session-reload-debug] loadMessages:start", {
+          directory: input.directory,
+          sessionID: input.sessionID,
+          limit: input.limit,
+        })
       sendSessionReloadDebugBeacon({
         sdk,
         event: "loadMessages:start",
@@ -218,12 +220,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       setMeta("loading", key, true)
       await fetchMessages(input)
         .then((next) => {
-          if (false /* disabled */) console.debug("[session-reload-debug] loadMessages:success", {
-            directory: input.directory,
-            sessionID: input.sessionID,
-            messageCount: next.session.length,
-            complete: next.complete,
-          })
+          if (false /* disabled */)
+            console.debug("[session-reload-debug] loadMessages:success", {
+              directory: input.directory,
+              sessionID: input.sessionID,
+              messageCount: next.session.length,
+              complete: next.complete,
+            })
           sendSessionReloadDebugBeacon({
             sdk,
             event: "loadMessages:success",
@@ -244,11 +247,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           })
         })
         .catch((error) => {
-          if (false /* disabled */) console.debug("[session-reload-debug] loadMessages:error", {
-            directory: input.directory,
-            sessionID: input.sessionID,
-            error: error instanceof Error ? error.message : String(error),
-          })
+          if (false /* disabled */)
+            console.debug("[session-reload-debug] loadMessages:error", {
+              directory: input.directory,
+              sessionID: input.sessionID,
+              error: error instanceof Error ? error.message : String(error),
+            })
           sendSessionReloadDebugBeacon({
             sdk,
             event: "loadMessages:error",
@@ -261,10 +265,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           throw error
         })
         .finally(() => {
-          if (false /* disabled */) console.debug("[session-reload-debug] loadMessages:done", {
-            directory: input.directory,
-            sessionID: input.sessionID,
-          })
+          if (false /* disabled */)
+            console.debug("[session-reload-debug] loadMessages:done", {
+              directory: input.directory,
+              sessionID: input.sessionID,
+            })
           sendSessionReloadDebugBeacon({
             sdk,
             event: "loadMessages:done",
@@ -343,14 +348,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           const hasMessages = store.message[sessionID] !== undefined
           const hydrated = meta.limit[key] !== undefined
-          if (false /* disabled */) console.debug("[session-reload-debug] session.sync:start", {
-            directory,
-            sessionID,
-            force,
-            hasSession,
-            hasMessages,
-            hydrated,
-          })
+          if (false /* disabled */)
+            console.debug("[session-reload-debug] session.sync:start", {
+              directory,
+              sessionID,
+              force,
+              hasSession,
+              hasMessages,
+              hydrated,
+            })
           sendSessionReloadDebugBeacon({
             sdk,
             event: "session.sync:start",
@@ -373,12 +379,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               ? Promise.resolve()
               : retry(() => client.session.get({ directory, sessionID })).then((session) => {
                   const data = session.data
-                  if (false /* disabled */) console.debug("[session-reload-debug] session.sync:get", {
-                    directory,
-                    sessionID,
-                    found: !!data,
-                    resolvedDirectory: data?.directory,
-                  })
+                  if (false /* disabled */)
+                    console.debug("[session-reload-debug] session.sync:get", {
+                      directory,
+                      sessionID,
+                      found: !!data,
+                      resolvedDirectory: data?.directory,
+                    })
                   sendSessionReloadDebugBeacon({
                     sdk,
                     event: "session.sync:get",
@@ -417,10 +424,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           return runInflight(inflight, key, () =>
             Promise.all([sessionReq, messagesReq])
               .then(() => {
-                if (false /* disabled */) console.debug("[session-reload-debug] session.sync:done", {
-                  directory,
-                  sessionID,
-                })
+                if (false /* disabled */)
+                  console.debug("[session-reload-debug] session.sync:done", {
+                    directory,
+                    sessionID,
+                  })
                 sendSessionReloadDebugBeacon({
                   sdk,
                   event: "session.sync:done",
@@ -431,11 +439,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                 })
               })
               .catch((error) => {
-                if (false /* disabled */) console.debug("[session-reload-debug] session.sync:error", {
-                  directory,
-                  sessionID,
-                  error: error instanceof Error ? error.message : String(error),
-                })
+                if (false /* disabled */)
+                  console.debug("[session-reload-debug] session.sync:error", {
+                    directory,
+                    sessionID,
+                    error: error instanceof Error ? error.message : String(error),
+                  })
                 sendSessionReloadDebugBeacon({
                   sdk,
                   event: "session.sync:error",
@@ -468,6 +477,21 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               setStore("session_diff", cacheKey, reconcile(response.data ?? [], { key: "file" }))
             })
           })
+        },
+        async workspaceDiff(sessionID: string, options?: { force?: boolean }) {
+          const directory = sdk.directory
+          const client = sdk.client
+          const [store, setStore] = globalSync.child(directory)
+          if (!options?.force && store.workspace_diff[sessionID] !== undefined) return
+
+          const session = getSession(sessionID)
+          const targetDirectory = session?.directory ?? directory
+          const key = keyFor(directory, `workspace:${sessionID}`)
+          return runInflight(inflightDiff, key, () =>
+            retry(() => client.file.status({ directory: targetDirectory })).then((response) => {
+              setStore("workspace_diff", sessionID, reconcile(response.data ?? [], { key: "path" }))
+            }),
+          )
         },
         async todo(sessionID: string, options?: { force?: boolean }) {
           const directory = sdk.directory

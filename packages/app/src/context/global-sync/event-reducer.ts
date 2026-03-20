@@ -54,6 +54,7 @@ function cleanupSessionCaches(store: Store<State>, setStore: SetStoreFunction<St
   const hasAny =
     store.message[sessionID] !== undefined ||
     store.session_diff[sessionID] !== undefined ||
+    store.workspace_diff[sessionID] !== undefined ||
     store.todo[sessionID] !== undefined ||
     store.permission[sessionID] !== undefined ||
     store.question[sessionID] !== undefined ||
@@ -71,6 +72,7 @@ function cleanupSessionCaches(store: Store<State>, setStore: SetStoreFunction<St
       }
       delete draft.message[sessionID]
       delete draft.session_diff[sessionID]
+      delete draft.workspace_diff[sessionID]
       delete draft.todo[sessionID]
       delete draft.permission[sessionID]
       delete draft.question[sessionID]

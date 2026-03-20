@@ -657,8 +657,13 @@ export default function Page() {
     if (!key) return []
     return sync.data.session_diff[key] ?? []
   })
+  const workspaceDiffs = createMemo(() => {
+    const key = reviewDiffKey()
+    if (!key) return []
+    return sync.data.workspace_diff[key] ?? []
+  })
   const reviewCount = createMemo(() => reviewDiffs().length)
-  const reviewBubbleCount = createMemo(() => reviewDiffs().length)
+  const reviewBubbleCount = createMemo(() => workspaceDiffs().length)
   const hasReview = createMemo(() => reviewCount() > 0)
 
   const renderedUserMessages = createMemo(
@@ -807,8 +812,8 @@ export default function Page() {
     const normalize = (p: string) => p.replaceAll("\\\\", "/").replace(/\/+$/, "")
 
     const out = new Map<string, "add" | "del" | "mix">()
-    for (const diff of reviewDiffs()) {
-      const file = normalize(diff.file)
+    for (const diff of workspaceDiffs()) {
+      const file = normalize(diff.path)
       const kind = diff.status === "added" ? "add" : diff.status === "deleted" ? "del" : "mix"
 
       out.set(file, kind)
@@ -823,7 +828,7 @@ export default function Page() {
     return out
   })
   const emptyDiffFiles: string[] = []
-  const diffFiles = createMemo(() => reviewDiffs().map((d) => d.file), emptyDiffFiles, { equals: same })
+  const diffFiles = createMemo(() => workspaceDiffs().map((d) => d.path), emptyDiffFiles, { equals: same })
   const diffsReady = createMemo(() => {
     const key = reviewDiffKey()
     if (!key) return true
@@ -1234,6 +1239,7 @@ export default function Page() {
     if (sync.status === "loading") return
 
     void sync.session.diff(id, { force: true })
+    void sync.session.workspaceDiff(id, { force: true })
   })
 
   createEffect(() => {
@@ -1248,6 +1254,7 @@ export default function Page() {
     if (sync.status === "loading") return
 
     void sync.session.diff(id, { force: true })
+    void sync.session.workspaceDiff(id, { force: true })
   })
 
   let treeDir: string | undefined

@@ -42,7 +42,7 @@ OpenCode is a desktop/TUI/Webapp multi-interface platform for interacting with A
 - **Workspace git status**: `GET /file/status` returns the whole workdir/project git status for the resolved directory.
 - **UI boundary**:
   - Web/TUI session review flows may consume `session.diff` when the UX is explicitly about session-owned changes.
-  - TUI sidebar `Changes` uses workspace-level git status (`file.status`) when the UX is explicitly about current workdir uncommitted files.
+  - TUI sidebar `Changes` and webapp changes sidebar use workspace-level git status (`file.status`) when the UX is explicitly about current workdir uncommitted files.
   - These two sources must not be silently conflated; session attribution and workdir cleanliness are separate contracts.
 
 ## Daemon Architecture (Multi-User Web Runtime)

@@ -201,9 +201,8 @@ export function Session() {
     on(
       [() => route.sessionID, () => session()?.parentID],
       ([sessionID, parentID]) => {
-        if (!parentID) return
         let stopped = false
-        const timerID = `child-session-sync:${sessionID}`
+        const timerID = `${parentID ? "child" : "root"}-session-sync:${sessionID}`
         const FAST_POLL_MS = 200
         const SLOW_POLL_MS = 1500
 
@@ -1977,7 +1976,13 @@ function Task(props: ToolProps<typeof TaskTool>) {
       const name = Locale.titlecase(step.tool)
       const input = step.input as Record<string, unknown> | undefined
       const detail =
-        input?.filePath ?? input?.file_path ?? input?.pattern ?? input?.query ?? input?.description ?? input?.url ?? input?.path
+        input?.filePath ??
+        input?.file_path ??
+        input?.pattern ??
+        input?.query ??
+        input?.description ??
+        input?.url ??
+        input?.path
       if (detail && typeof detail === "string") {
         const short = detail.length > 40 ? "..." + detail.slice(-37) : detail
         return `${name} · ${short}`
