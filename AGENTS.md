@@ -171,6 +171,27 @@
 
 ---
 
+## Subagent Skill Mapping（委派技能對照表）
+
+Orchestrator 在委派 subagent 時，**必須**根據下表指示 subagent 載入對應 skill：
+
+| Agent Type | Skill to Load | 說明 |
+|------------|---------------|------|
+| `coding`   | `code-thinker` | 靜默內部審查、Two-Phase Execution、Anti-hallucination guard |
+| `testing`  | `webapp-testing`（暫定） | Playwright 測試、瀏覽器自動化、UI 驗證。待泛用 testing skill 出現後替換 |
+| `review`   | `code-review` | SOLID 違規偵測、安全風險、可操作改進建議 |
+| `docs`     | `doc-coauthoring`, `miatdiagram` | 結構化文件共創 + IDEF0/Grafcet 圖表產出 |
+| `explore`  | —（無需額外 skill） | 方法論已內嵌於 explore prompt，無需外部 skill |
+
+### 使用規則
+
+1. Orchestrator 在 `task()` 的 delegation prompt 開頭必須加入：`FIRST: Load skill "<skill-name>" before starting work.`（多個 skill 時依序列出）
+2. 若 AGENTS.md 指定了 skill，Orchestrator **不得**省略此指示。
+3. `explore` agent 是唯一例外——其搜尋方法論已內建於 system prompt。
+4. 若未來新增 agent type，必須同步更新此對照表。
+
+---
+
 ## 技能管理與主動協助 (Skill Management & Proactive Assistance)
 
 Orchestrator 應具備高度的機動性，隨時分析使用者意圖並主動提供技能建議：

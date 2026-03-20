@@ -125,14 +125,9 @@ export function evaluateGates(input: {
     return { pass: false, reason: "blocked" }
   }
 
-  // Mission gate
+  // Mission gate — plan must exist and be execution-ready
   if (policy.requireApprovedMission) {
-    if (
-      !input.session.mission ||
-      input.session.mission.source !== "openspec_compiled_plan" ||
-      input.session.mission.contract !== "implementation_spec" ||
-      !input.session.mission.executionReady
-    ) {
+    if (!input.session.mission || !input.session.mission.executionReady) {
       return { pass: false, reason: "mission_not_approved" }
     }
   }

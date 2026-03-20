@@ -130,7 +130,7 @@ export namespace Agent {
       },
       coding: {
         name: "coding",
-        description: "Implements changes and proposes concrete code edits.",
+        description: "Worker agent that reads files, writes code, runs lint/typecheck, and verifies changes compile. Use for ALL implementation tasks — editing code, creating files, refactoring.",
         permission: sub,
         options: {},
         prompt: coding,
@@ -139,7 +139,7 @@ export namespace Agent {
       },
       review: {
         name: "review",
-        description: "Reviews changes for correctness, edge cases, and risks.",
+        description: "Worker agent that reads code and reports bugs, regressions, security issues, and edge cases. Use for code review before merging or shipping.",
         permission: sub,
         options: {},
         prompt: review,
@@ -148,7 +148,7 @@ export namespace Agent {
       },
       testing: {
         name: "testing",
-        description: "Defines test and verification strategy.",
+        description: "Worker agent that runs tests, analyzes failures, and writes new tests when needed. Use for all verification and test execution tasks.",
         permission: sub,
         options: {},
         prompt: testing,
@@ -157,7 +157,7 @@ export namespace Agent {
       },
       docs: {
         name: "docs",
-        description: "Identifies documentation updates and release notes.",
+        description: "Worker agent that reads source code and updates documentation files. Use for docs sync, event logs, architecture docs, and changelog updates.",
         permission: sub,
         options: {},
         prompt: docs,

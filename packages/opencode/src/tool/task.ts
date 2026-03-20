@@ -88,13 +88,13 @@ function createSubsessionTitle(params: z.infer<typeof parameters>, agentName: st
 function toolWhitelistForSubagent(agentName: string): string[] | undefined {
   const name = agentName.toLowerCase()
   if (name === "explore") {
-    return ["read", "glob", "grep", "list", "bash", "webfetch", "websearch", "codesearch", "question"]
+    return ["read", "glob", "grep", "list", "bash", "webfetch", "websearch", "codesearch", "question", "skill"]
   }
   if (name === "review" || name === "testing" || name === "docs") {
-    return ["read", "glob", "grep", "list", "bash", "webfetch", "websearch", "codesearch", "question"]
+    return ["read", "glob", "grep", "list", "bash", "webfetch", "websearch", "codesearch", "question", "skill"]
   }
   if (name === "coding") {
-    return ["read", "glob", "grep", "list", "bash", "edit", "write", "apply_patch", "question"]
+    return ["read", "glob", "grep", "list", "bash", "edit", "write", "apply_patch", "question", "skill"]
   }
   return undefined
 }

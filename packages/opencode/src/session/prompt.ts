@@ -66,29 +66,9 @@ import {
   clearPendingContinuation,
   enqueueAutonomousContinue,
   getPendingContinuation,
-  isPlanTrusting,
-  isPlanTrustingTight,
-  checkHardBlockers,
   shouldInterruptAutonomousRun,
 } from "./workflow-runner"
 import { consumeMissionArtifacts, deriveDelegatedExecutionRole } from "./mission-consumption"
-import {
-  annotateSmartRunnerApprovalAdoption,
-  annotateSmartRunnerAskUserAdoption,
-  annotateSmartRunnerCompletionAdoption,
-  annotateSmartRunnerRiskPauseAdoption,
-  annotateSmartRunnerReplanAdoption,
-  annotateSmartRunnerTraceAssist,
-  annotateSmartRunnerTraceSuggestion,
-  applySmartRunnerBoundedAssist,
-  evaluateSmartRunnerAskUserAdoption,
-  evaluateSmartRunnerHostAdoptionPolicy,
-  evaluateSmartRunnerGovernorDryRun,
-  getSmartRunnerAskUserQuestionText,
-  getSmartRunnerConfig,
-  persistSmartRunnerGovernorTrace,
-  prefixSmartRunnerText,
-} from "./smart-runner-governor"
 
 globalThis.AI_SDK_LOG_WARNINGS = false
 
@@ -503,265 +483,9 @@ export namespace SessionPrompt {
     })
   }
 
-  export function buildSmartRunnerQuestion(input: { questionText?: string }): Question.Info | undefined {
-    const question = input.questionText?.trim()
-    if (!question) return undefined
-    return {
-      question,
-      header: "Decision needed",
-      options: [],
-      custom: true,
-    }
-  }
 
-  export function formatSmartRunnerQuestionAnswers(input: { question: Question.Info; answers: Question.Answer[] }) {
-    const answer = input.answers[0]?.length ? input.answers[0].join(", ") : "Unanswered"
-    return `User answered Smart Runner question \"${input.question.question}\" with: ${answer}. Continue with this answer in mind.`
-  }
 
-  export async function handleSmartRunnerAskUserAdoption(input: {
-    sessionID: string
-    question: Question.Info
-    trace: ReturnType<typeof annotateSmartRunnerAskUserAdoption>
-    lastUser: Pick<MessageV2.User, "agent" | "model" | "variant" | "format">
-    ask?: typeof Question.ask
-    persistTrace?: (input: {
-      sessionID: string
-      trace: ReturnType<typeof annotateSmartRunnerAskUserAdoption>
-    }) => Promise<void>
-    updateMessage?: typeof Session.updateMessage
-    updatePart?: typeof Session.updatePart
-    setWorkflowState?: typeof Session.setWorkflowState
-  }) {
-    const ask = input.ask ?? Question.ask
-    const persistTrace = input.persistTrace ?? persistSmartRunnerGovernorTrace
-    const updateMessage = input.updateMessage ?? Session.updateMessage
-    const updatePart = input.updatePart ?? Session.updatePart
-    const setWorkflowState = input.setWorkflowState ?? Session.setWorkflowState
-
-    await persistTrace({
-      sessionID: input.sessionID,
-      trace: input.trace,
-    })
-    try {
-      const answers = await ask({
-        sessionID: input.sessionID,
-        questions: [input.question],
-      })
-      const session = await Session.get(input.sessionID).catch(() => undefined)
-      const executionModel = session?.execution
-        ? {
-            providerId: session.execution.providerId,
-            modelID: session.execution.modelID,
-            accountId: session.execution.accountId,
-          }
-        : input.lastUser.model
-      const userMsg: MessageV2.User = {
-        id: Identifier.ascending("message"),
-        sessionID: input.sessionID,
-        role: "user",
-        time: { created: Date.now() },
-        agent: input.lastUser.agent,
-        model: executionModel,
-        variant: input.lastUser.variant,
-        format: input.lastUser.format,
-      }
-      await updateMessage(userMsg)
-      await updatePart({
-        id: Identifier.ascending("part"),
-        messageID: userMsg.id,
-        sessionID: input.sessionID,
-        type: "text",
-        text: formatSmartRunnerQuestionAnswers({ question: input.question, answers }),
-        synthetic: true,
-      } satisfies MessageV2.TextPart)
-      return { outcome: "answered" as const }
-    } catch (error) {
-      const rejectedTrace = annotateSmartRunnerAskUserAdoption({
-        trace: input.trace,
-        adopted: true,
-        reason: error instanceof Question.RejectedError ? "question_rejected" : "adopted",
-      })
-      await persistTrace({
-        sessionID: input.sessionID,
-        trace: rejectedTrace,
-      })
-      await setWorkflowState({
-        sessionID: input.sessionID,
-        state: "waiting_user",
-        stopReason: "product_decision_needed",
-        lastRunAt: Date.now(),
-      })
-      return { outcome: "rejected" as const }
-    }
-  }
-
-  export async function handleSmartRunnerApprovalRequest(input: {
-    sessionID: string
-    trace: ReturnType<typeof annotateSmartRunnerApprovalAdoption>
-    persistTrace?: (input: {
-      sessionID: string
-      trace: ReturnType<typeof annotateSmartRunnerApprovalAdoption>
-    }) => Promise<void>
-    setWorkflowState?: typeof Session.setWorkflowState
-  }) {
-    const persistTrace = input.persistTrace ?? persistSmartRunnerGovernorTrace
-    const setWorkflowState = input.setWorkflowState ?? Session.setWorkflowState
-    await persistTrace({ sessionID: input.sessionID, trace: input.trace })
-    await setWorkflowState({
-      sessionID: input.sessionID,
-      state: "waiting_user",
-      stopReason: "approval_needed",
-      lastRunAt: Date.now(),
-    })
-    return { outcome: "requested" as const }
-  }
-
-  export async function handleSmartRunnerRiskPause(input: {
-    sessionID: string
-    trace: ReturnType<typeof annotateSmartRunnerRiskPauseAdoption>
-    persistTrace?: (input: {
-      sessionID: string
-      trace: ReturnType<typeof annotateSmartRunnerRiskPauseAdoption>
-    }) => Promise<void>
-    setWorkflowState?: typeof Session.setWorkflowState
-  }) {
-    const persistTrace = input.persistTrace ?? persistSmartRunnerGovernorTrace
-    const setWorkflowState = input.setWorkflowState ?? Session.setWorkflowState
-    await persistTrace({ sessionID: input.sessionID, trace: input.trace })
-    await setWorkflowState({
-      sessionID: input.sessionID,
-      state: "waiting_user",
-      stopReason: "risk_review_needed",
-      lastRunAt: Date.now(),
-    })
-    return { outcome: "paused" as const }
-  }
-
-  export async function handleSmartRunnerReplanAdoption(input: {
-    sessionID: string
-    todos: Todo.Info[]
-    suggestion?: NonNullable<ReturnType<typeof annotateSmartRunnerTraceSuggestion>["suggestion"]>
-    roundCount: number
-    fallbackDecision: Extract<Awaited<ReturnType<typeof decideAutonomousContinuation>>, { continue: true }>
-    updateTodos?: typeof Todo.update
-    decideContinuation?: typeof decideAutonomousContinuation
-  }) {
-    const adoptedReplan = Todo.applyHostAdoptedReplan(input.todos, input.suggestion?.replanAdoption)
-    if (!adoptedReplan.adopted) {
-      return {
-        adopted: false as const,
-        reason: adoptedReplan.reason,
-        decision: input.fallbackDecision,
-      }
-    }
-
-    const updateTodos = input.updateTodos ?? Todo.update
-    const decideContinuation = input.decideContinuation ?? decideAutonomousContinuation
-    await updateTodos({ sessionID: input.sessionID, todos: adoptedReplan.todos })
-    const nextDecision = await decideContinuation({
-      sessionID: input.sessionID,
-      roundCount: input.roundCount,
-    })
-    return {
-      adopted: true as const,
-      reason: adoptedReplan.reason,
-      decision: nextDecision.continue ? nextDecision : input.fallbackDecision,
-      todos: adoptedReplan.todos,
-    }
-  }
-
-  export async function handleSmartRunnerCompletionAdoption(input: {
-    sessionID: string
-    todos: Todo.Info[]
-    suggestion?: NonNullable<ReturnType<typeof annotateSmartRunnerTraceSuggestion>["suggestion"]>
-    roundCount: number
-    updateTodos?: typeof Todo.update
-    decideContinuation?: typeof decideAutonomousContinuation
-    setWorkflowState?: typeof Session.setWorkflowState
-    persistTrace?: typeof persistSmartRunnerGovernorTrace
-    trace?: ReturnType<typeof annotateSmartRunnerTraceSuggestion>
-  }) {
-    const adoptedCompletion = Todo.applyHostAdoptedCompletion(input.todos, input.suggestion?.completionRequest)
-    const updateTodos = input.updateTodos ?? Todo.update
-    const decideContinuation = input.decideContinuation ?? decideAutonomousContinuation
-    const setWorkflowState = input.setWorkflowState ?? Session.setWorkflowState
-    const persistTrace = input.persistTrace ?? persistSmartRunnerGovernorTrace
-
-    let completionReason:
-      | "adopted"
-      | "missing_target"
-      | "unsupported_action"
-      | "policy_not_host_adoptable"
-      | "user_confirm_required"
-      | "host_review_missing"
-      | "target_not_active"
-      | "approval_gate"
-      | "waiting_gate"
-      | "not_terminal_after_completion" = adoptedCompletion.adopted ? "adopted" : adoptedCompletion.reason
-
-    let trace =
-      input.trace && input.suggestion?.kind === "complete"
-        ? annotateSmartRunnerCompletionAdoption({
-            trace: input.trace,
-            adopted: adoptedCompletion.adopted,
-            reason: completionReason,
-          })
-        : input.trace
-
-    if (!adoptedCompletion.adopted) {
-      if (trace) await persistTrace({ sessionID: input.sessionID, trace })
-      return { adopted: false as const, reason: completionReason, trace }
-    }
-
-    await updateTodos({ sessionID: input.sessionID, todos: adoptedCompletion.todos })
-    const nextDecision = await decideContinuation({
-      sessionID: input.sessionID,
-      roundCount: input.roundCount,
-    })
-    if (nextDecision.continue || nextDecision.reason !== "todo_complete") {
-      completionReason = "not_terminal_after_completion"
-      trace =
-        input.trace && input.suggestion?.kind === "complete"
-          ? annotateSmartRunnerCompletionAdoption({
-              trace: input.trace,
-              adopted: false,
-              reason: completionReason,
-            })
-          : trace
-      if (trace) await persistTrace({ sessionID: input.sessionID, trace })
-      return {
-        adopted: false as const,
-        reason: completionReason,
-        trace,
-        todos: adoptedCompletion.todos,
-      }
-    }
-
-    if (trace) {
-      trace = annotateSmartRunnerCompletionAdoption({
-        trace: trace,
-        adopted: true,
-        reason: "adopted",
-      })
-      await persistTrace({ sessionID: input.sessionID, trace })
-    }
-    await setWorkflowState({
-      sessionID: input.sessionID,
-      state: "completed",
-      stopReason: "todo_complete",
-      lastRunAt: Date.now(),
-    })
-    return {
-      adopted: true as const,
-      reason: "adopted" as const,
-      outcome: "completed" as const,
-      todos: adoptedCompletion.todos,
-      trace,
-    }
-  }
-
-  export async function handleSmartRunnerContinuationSideEffects(input: {
+  export async function handleContinuationSideEffects(input: {
     sessionID: string
     user: MessageV2.User
     decision: Extract<Awaited<ReturnType<typeof decideAutonomousContinuation>>, { continue: true }>
@@ -841,264 +565,7 @@ export namespace SessionPrompt {
     }
   }
 
-  export async function handleSmartRunnerAdoptedStopNarration(input: {
-    sessionID: string
-    user: MessageV2.User
-    text?: string
-    kind?: "pause" | "complete"
-    emitNarration?: typeof emitAutonomousNarration
-  }) {
-    const narrationText = input.text?.trim()
-    if (!narrationText) return { emitted: false as const }
-    const emitNarration = input.emitNarration ?? emitAutonomousNarration
-    await emitNarration({
-      sessionID: input.sessionID,
-      parentID: input.user.id,
-      agent: input.user.agent,
-      variant: input.user.variant,
-      model: input.user.model,
-      text: prefixSmartRunnerText(narrationText),
-      kind: input.kind ?? "pause",
-    })
-    return { emitted: true as const }
-  }
 
-  export async function handleSmartRunnerStopDecision(input: {
-    sessionID: string
-    activeModel: Provider.Model
-    autonomousRounds: number
-    lastUser: MessageV2.User
-    messages: MessageV2.WithParts[]
-    todos: Todo.Info[]
-    decision: Extract<Awaited<ReturnType<typeof decideAutonomousContinuation>>, { continue: true }>
-    mission?: Session.Info["mission"]
-    getConfig?: typeof getSmartRunnerConfig
-    evaluateGovernor?: typeof evaluateSmartRunnerGovernorDryRun
-    listQuestions?: typeof Question.list
-    askUser?: typeof handleSmartRunnerAskUserAdoption
-    requestApproval?: typeof handleSmartRunnerApprovalRequest
-    pauseForRisk?: typeof handleSmartRunnerRiskPause
-    completePath?: typeof handleSmartRunnerCompletionAdoption
-    replan?: typeof handleSmartRunnerReplanAdoption
-    persistTrace?: typeof persistSmartRunnerGovernorTrace
-    applyAssist?: typeof applySmartRunnerBoundedAssist
-  }) {
-    // Plan-trusting short-circuit: when a fully approved mission exists,
-    // skip the entire LLM governor pipeline and continue execution directly.
-    // Only real blockers (kill-switch, auth errors, test failures, approval gates)
-    // should stop a plan-trusting session — those are caught by the deterministic
-    // layer in planAutonomousNextAction() before we reach this function.
-    const missionForTrust = input.mission ?? (await Session.get(input.sessionID).catch(() => undefined))?.mission
-    if (isPlanTrusting(missionForTrust)) {
-      return {
-        kind: "continue" as const,
-        continueDecision: input.decision,
-        narrationOverride: undefined,
-        trace: undefined,
-        adoptedReplan: { adopted: false as const, reason: "plan_trusting" as const, decision: input.decision },
-      }
-    }
-
-    const getConfig = input.getConfig ?? getSmartRunnerConfig
-    const evaluateGovernor = input.evaluateGovernor ?? evaluateSmartRunnerGovernorDryRun
-    const listQuestions = input.listQuestions ?? Question.list
-    const askUser = input.askUser ?? handleSmartRunnerAskUserAdoption
-    const requestApproval = input.requestApproval ?? handleSmartRunnerApprovalRequest
-    const pauseForRisk = input.pauseForRisk ?? handleSmartRunnerRiskPause
-    const completePath = input.completePath ?? handleSmartRunnerCompletionAdoption
-    const replan = input.replan ?? handleSmartRunnerReplanAdoption
-    const persistTrace = input.persistTrace ?? persistSmartRunnerGovernorTrace
-    const applyAssist = input.applyAssist ?? applySmartRunnerBoundedAssist
-
-    const smartRunnerGovernor = await getConfig()
-    const trace = await evaluateGovernor({
-      sessionID: input.sessionID,
-      model: input.activeModel,
-      enabled: smartRunnerGovernor.enabled,
-      todos: input.todos,
-      roundCount: input.autonomousRounds,
-      deterministicDecision: input.decision,
-      messages: input.messages,
-    })
-    const suggestedTrace = annotateSmartRunnerTraceSuggestion({ trace })
-    let traceForAssist = suggestedTrace
-    const currentPendingQuestions = (await listQuestions()).filter((item) => item.sessionID === input.sessionID).length
-    const askUserAdoption = evaluateSmartRunnerAskUserAdoption({
-      suggestion: suggestedTrace.suggestion,
-      pendingQuestions: currentPendingQuestions,
-    })
-    const askUserQuestion = buildSmartRunnerQuestion({
-      questionText: getSmartRunnerAskUserQuestionText({ suggestion: suggestedTrace.suggestion }),
-    })
-
-    if (suggestedTrace.suggestion?.kind === "request_approval") {
-      const approvalReason = evaluateSmartRunnerHostAdoptionPolicy(suggestedTrace.suggestion.approvalRequest?.policy)
-      const approvalTrace = annotateSmartRunnerApprovalAdoption({
-        trace: suggestedTrace,
-        adopted: approvalReason === "adopted",
-        reason: approvalReason,
-      })
-      if (approvalReason === "adopted") {
-        const approvalResult = await requestApproval({
-          sessionID: input.sessionID,
-          trace: approvalTrace,
-        })
-        return {
-          kind: "request_approval" as const,
-          adopted: true,
-          outcome: approvalResult.outcome,
-          trace: approvalTrace,
-        }
-      }
-      traceForAssist = approvalTrace
-    }
-
-    if (suggestedTrace.suggestion?.kind === "pause_for_risk") {
-      const riskPauseReason = evaluateSmartRunnerHostAdoptionPolicy(suggestedTrace.suggestion.riskPauseRequest?.policy)
-      const riskPauseTrace = annotateSmartRunnerRiskPauseAdoption({
-        trace: suggestedTrace,
-        adopted: riskPauseReason === "adopted",
-        reason: riskPauseReason,
-      })
-      if (riskPauseReason === "adopted") {
-        const riskPauseResult = await pauseForRisk({
-          sessionID: input.sessionID,
-          trace: riskPauseTrace,
-        })
-        return {
-          kind: "pause_for_risk" as const,
-          adopted: true,
-          outcome: riskPauseResult.outcome,
-          trace: riskPauseTrace,
-        }
-      }
-      traceForAssist = riskPauseTrace
-    }
-
-    if (suggestedTrace.suggestion?.kind === "complete") {
-      const completionResult = await completePath({
-        sessionID: input.sessionID,
-        todos: input.todos,
-        suggestion: suggestedTrace.suggestion,
-        roundCount: input.autonomousRounds,
-        trace: suggestedTrace,
-      })
-      if (completionResult.adopted) {
-        return {
-          kind: "complete" as const,
-          adopted: true,
-          outcome: completionResult.outcome,
-          trace: completionResult.trace,
-        }
-      }
-      traceForAssist = completionResult.trace ?? traceForAssist
-    }
-
-    if (suggestedTrace.suggestion?.kind === "ask_user" && askUserAdoption.reason) {
-      traceForAssist = annotateSmartRunnerAskUserAdoption({
-        trace: suggestedTrace,
-        adopted: askUserAdoption.adopted,
-        reason: askUserAdoption.reason,
-      })
-      if (askUserAdoption.adopted && askUserQuestion) {
-        const adoptedResult = await askUser({
-          sessionID: input.sessionID,
-          question: askUserQuestion,
-          trace: traceForAssist,
-          lastUser: input.lastUser,
-        })
-        return {
-          kind: "ask_user" as const,
-          adopted: askUserAdoption.adopted,
-          outcome: adoptedResult.outcome,
-          trace: traceForAssist,
-        }
-      }
-    }
-
-    const adoptedReplan = await replan({
-      sessionID: input.sessionID,
-      todos: input.todos,
-      suggestion: suggestedTrace.suggestion,
-      roundCount: input.autonomousRounds,
-      fallbackDecision: input.decision,
-    })
-    const adoptedDecision = adoptedReplan.decision
-    const assist = applyAssist({
-      enabled: smartRunnerGovernor.assist,
-      decision: adoptedDecision,
-      trace: traceForAssist,
-    })
-    const tracedAssist = annotateSmartRunnerTraceAssist({
-      trace: annotateSmartRunnerReplanAdoption({
-        trace: traceForAssist,
-        adopted: adoptedReplan.adopted,
-        reason: adoptedReplan.reason,
-      }),
-      enabled: smartRunnerGovernor.assist,
-      assist,
-      originalText: adoptedDecision.text,
-    })
-    await persistTrace({
-      sessionID: input.sessionID,
-      trace: tracedAssist,
-    })
-    if (adoptedReplan.adopted) {
-      return {
-        kind: "replan_required" as const,
-        trace: tracedAssist,
-      }
-    }
-    return {
-      kind: "continue" as const,
-      continueDecision: assist.applied
-        ? {
-            ...assist.decision,
-            text: prefixSmartRunnerText(assist.decision.text),
-          }
-        : assist.decision,
-      narrationOverride:
-        assist.applied && assist.narration ? prefixSmartRunnerText(assist.narration) : assist.narration,
-      trace: tracedAssist,
-      adoptedReplan,
-    }
-  }
-
-  /**
-   * Stage 5 — Drain-on-stop: inject a synthetic user message inline
-   * so the while(true) loop can `continue` without leaving the loop.
-   * Mirrors enqueueAutonomousContinue message creation but skips queue/supervisor.
-   */
-  async function injectSyntheticContinueInline(
-    sessionID: string,
-    lastUser: MessageV2.User,
-    nextTodo: Todo.Info,
-  ) {
-    const now = Date.now()
-    const text = `Continue with next task: ${nextTodo.content}`
-    const messageID = Identifier.ascending("message")
-    const message = await Session.updateMessage({
-      id: messageID,
-      role: "user",
-      sessionID,
-      time: { created: now },
-      agent: lastUser.agent,
-      model: lastUser.model,
-      format: lastUser.format,
-      variant: lastUser.variant,
-    })
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: message.id,
-      sessionID,
-      type: "text",
-      text,
-      synthetic: true,
-      time: { start: now, end: now },
-      metadata: { drainContinuation: true },
-    })
-    log.info("drain:synthetic_continue", { sessionID, todo: nextTodo.content })
-  }
 
   async function runLoop(sessionID: string, options?: { replaceRuntime?: boolean }) {
     const runtime = start(sessionID, { replace: options?.replaceRuntime })
@@ -1284,8 +751,18 @@ export namespace SessionPrompt {
           messages: msgs,
           extra: { bypassAgentCheck: true },
           callID: part.callID,
-          onMetadata: (input) => {
-            // Metadata persistence can be handled here if needed in the future
+          onMetadata: async (val) => {
+            // Persist metadata (including child sessionId) so frontend can render SubagentActivityCard
+            if (part.state.status === "running") {
+              part = (await Session.updatePart({
+                ...part,
+                state: {
+                  ...part.state,
+                  title: val.title,
+                  metadata: val.metadata,
+                },
+              })) as MessageV2.ToolPart
+            }
           },
           onAsk: async (req) => {
             await PermissionNext.ask({
@@ -1608,129 +1085,37 @@ export namespace SessionPrompt {
           break
         }
 
-        // ── Stage 5: Drain-on-stop bypass ──────────────────────────
-        // For plan-trusting tight sessions: check hard blockers → find next todo → inline continue.
-        // Skips all 14 gates, Governor, enqueue, and supervisor. Stays in while(true).
-        if (isPlanTrustingTight(session)) {
-          const hardBlock = await checkHardBlockers(sessionID, abort)
-          if (!hardBlock) {
-            const todos = await Todo.get(sessionID)
-            const nextTodo = Todo.nextActionableTodo(todos)
-            if (nextTodo) {
-              await injectSyntheticContinueInline(sessionID, lastUser, nextTodo)
-              autonomousRounds++
-              log.info("drain:continue", { sessionID, round: autonomousRounds, todo: nextTodo.content })
-              continue // ← drain: back to while(true) top
-            }
-            // No actionable todo = work complete, fall through to normal stop flow
-            log.info("drain:no_todo", { sessionID, round: autonomousRounds })
-          } else {
-            log.info("drain:blocked", { sessionID, blocker: hardBlock })
-          }
-        }
-        // ── End Stage 5 drain bypass ───────────────────────────────
-
+        // ── Deterministic continuation decision ──────────────────────
+        // No LLM governor. Three conditions: autonomous enabled + plan exists + pending todo.
         const decision = await decideAutonomousContinuation({
           sessionID,
           roundCount: autonomousRounds,
         })
-        let continueDecision = decision.continue ? decision : undefined
-        let narrationOverride: string | undefined
         if (decision.continue) {
-          const todos = await Todo.get(sessionID)
-          const stopResult = await handleSmartRunnerStopDecision({
-            sessionID,
-            activeModel,
-            autonomousRounds,
-            lastUser,
-            messages: msgs,
-            todos,
-            decision,
-            mission: session.mission,
-          })
-          if (stopResult.kind === "ask_user") {
-            if (stopResult.outcome === "answered") continue
-            break
-          }
-          if (stopResult.kind === "request_approval") {
-            await handleSmartRunnerAdoptedStopNarration({
-              sessionID,
-              user: lastUser,
-              text: stopResult.trace?.decision?.nextAction.narration,
-            })
-            break
-          }
-          if (stopResult.kind === "pause_for_risk") {
-            await handleSmartRunnerAdoptedStopNarration({
-              sessionID,
-              user: lastUser,
-              text: stopResult.trace?.decision?.nextAction.narration,
-            })
-            break
-          }
-          if (stopResult.kind === "complete") {
-            await handleSmartRunnerAdoptedStopNarration({
-              sessionID,
-              user: lastUser,
-              text: stopResult.trace?.decision?.nextAction.narration,
-              kind: "complete",
-            })
-            break
-          }
-          if (stopResult.kind === "replan_required") {
-            await handleSmartRunnerAdoptedStopNarration({
-              sessionID,
-              user: lastUser,
-              text:
-                stopResult.trace?.decision?.nextAction.narration ?? "Planner re-entry required before continuation.",
-            })
-            await Session.setWorkflowState({
-              sessionID,
-              state: "waiting_user",
-              stopReason: "replan_required",
-              lastRunAt: Date.now(),
-            })
-            break
-          }
-          continueDecision = stopResult.continueDecision
-          narrationOverride = stopResult.narrationOverride
-        }
-        const narration = continueDecision
-          ? describeAutonomousNextAction({
-              type: "continue",
-              reason: continueDecision.reason,
-              text: continueDecision.text,
-              todo: continueDecision.todo,
-            })
-          : describeAutonomousNextAction({
-              type: "stop",
-              reason: decision.reason as Exclude<typeof decision.reason, "todo_pending" | "todo_in_progress">,
-            })
-        if (continueDecision) {
-          const continuationResult = await handleSmartRunnerContinuationSideEffects({
+          const continuationResult = await handleContinuationSideEffects({
             sessionID,
             user: lastUser,
-            decision: continueDecision,
-            narrationOverride,
+            decision,
             autonomousRounds,
           })
           autonomousRounds = continuationResult.nextRoundCount
           if (continuationResult.halted) break
           continue
         }
-        if (
-          [
-            "approval_needed",
-            "product_decision_needed",
-            "wait_subagent",
-            "mission_not_approved",
-            "mission_not_consumable",
-            "spec_dirty",
-            "replan_required",
-            "max_continuous_rounds",
-            "todo_complete",
-          ].includes(decision.reason)
-        ) {
+        // Stopped — emit narration and set workflow state
+        const narration = describeAutonomousNextAction({
+          type: "stop",
+          reason: decision.reason as Exclude<typeof decision.reason, "todo_pending" | "todo_in_progress">,
+        })
+        const NARRATED_STOP_REASONS = [
+          "approval_needed",
+          "product_decision_needed",
+          "wait_subagent",
+          "mission_not_approved",
+          "max_continuous_rounds",
+          "todo_complete",
+        ] as const
+        if ((NARRATED_STOP_REASONS as readonly string[]).includes(decision.reason)) {
           await emitAutonomousNarration({
             sessionID,
             parentID: lastUser.id,
@@ -1741,67 +1126,26 @@ export namespace SessionPrompt {
             kind: narration.kind,
           })
         }
-        if (decision.reason === "todo_complete") {
+        const completedReasons = ["todo_complete"] as const
+        const waitingReasons = [
+          "max_continuous_rounds",
+          "approval_needed",
+          "product_decision_needed",
+          "wait_subagent",
+          "mission_not_approved",
+        ] as const
+        if ((completedReasons as readonly string[]).includes(decision.reason)) {
           await Session.setWorkflowState({
             sessionID,
             state: "completed",
-            stopReason: "todo_complete",
+            stopReason: decision.reason,
             lastRunAt: Date.now(),
           })
-        } else if (decision.reason === "max_continuous_rounds") {
+        } else if ((waitingReasons as readonly string[]).includes(decision.reason)) {
           await Session.setWorkflowState({
             sessionID,
             state: "waiting_user",
-            stopReason: "max_continuous_rounds",
-            lastRunAt: Date.now(),
-          })
-        } else if (decision.reason === "approval_needed") {
-          await Session.setWorkflowState({
-            sessionID,
-            state: "waiting_user",
-            stopReason: "approval_needed",
-            lastRunAt: Date.now(),
-          })
-        } else if (decision.reason === "product_decision_needed") {
-          await Session.setWorkflowState({
-            sessionID,
-            state: "waiting_user",
-            stopReason: "product_decision_needed",
-            lastRunAt: Date.now(),
-          })
-        } else if (decision.reason === "wait_subagent") {
-          await Session.setWorkflowState({
-            sessionID,
-            state: "waiting_user",
-            stopReason: "wait_subagent",
-            lastRunAt: Date.now(),
-          })
-        } else if (decision.reason === "mission_not_approved") {
-          await Session.setWorkflowState({
-            sessionID,
-            state: "waiting_user",
-            stopReason: "mission_not_approved",
-            lastRunAt: Date.now(),
-          })
-        } else if (decision.reason === "mission_not_consumable") {
-          await Session.setWorkflowState({
-            sessionID,
-            state: "waiting_user",
-            stopReason: "mission_not_consumable",
-            lastRunAt: Date.now(),
-          })
-        } else if (decision.reason === "spec_dirty") {
-          await Session.setWorkflowState({
-            sessionID,
-            state: "waiting_user",
-            stopReason: "spec_dirty",
-            lastRunAt: Date.now(),
-          })
-        } else if (decision.reason === "replan_required") {
-          await Session.setWorkflowState({
-            sessionID,
-            state: "waiting_user",
-            stopReason: "replan_required",
+            stopReason: decision.reason,
             lastRunAt: Date.now(),
           })
         }
