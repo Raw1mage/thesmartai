@@ -67,6 +67,8 @@ import {
   enqueueAutonomousContinue,
   getPendingContinuation,
   isPlanTrusting,
+  isPlanTrustingTight,
+  checkHardBlockers,
   shouldInterruptAutonomousRun,
 } from "./workflow-runner"
 import { consumeMissionArtifacts, deriveDelegatedExecutionRole } from "./mission-consumption"
@@ -1062,6 +1064,42 @@ export namespace SessionPrompt {
     }
   }
 
+  /**
+   * Stage 5 — Drain-on-stop: inject a synthetic user message inline
+   * so the while(true) loop can `continue` without leaving the loop.
+   * Mirrors enqueueAutonomousContinue message creation but skips queue/supervisor.
+   */
+  async function injectSyntheticContinueInline(
+    sessionID: string,
+    lastUser: MessageV2.User,
+    nextTodo: Todo.Info,
+  ) {
+    const now = Date.now()
+    const text = `Continue with next task: ${nextTodo.content}`
+    const messageID = Identifier.ascending("message")
+    const message = await Session.updateMessage({
+      id: messageID,
+      role: "user",
+      sessionID,
+      time: { created: now },
+      agent: lastUser.agent,
+      model: lastUser.model,
+      format: lastUser.format,
+      variant: lastUser.variant,
+    })
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: message.id,
+      sessionID,
+      type: "text",
+      text,
+      synthetic: true,
+      time: { start: now, end: now },
+      metadata: { drainContinuation: true },
+    })
+    log.info("drain:synthetic_continue", { sessionID, todo: nextTodo.content })
+  }
+
   async function runLoop(sessionID: string, options?: { replaceRuntime?: boolean }) {
     const runtime = start(sessionID, { replace: options?.replaceRuntime })
     if (!runtime) {
@@ -1569,6 +1607,28 @@ export namespace SessionPrompt {
           await Session.updateMessage(processor.message)
           break
         }
+
+        // ── Stage 5: Drain-on-stop bypass ──────────────────────────
+        // For plan-trusting tight sessions: check hard blockers → find next todo → inline continue.
+        // Skips all 14 gates, Governor, enqueue, and supervisor. Stays in while(true).
+        if (isPlanTrustingTight(session)) {
+          const hardBlock = await checkHardBlockers(sessionID, abort)
+          if (!hardBlock) {
+            const todos = await Todo.get(sessionID)
+            const nextTodo = Todo.nextActionableTodo(todos)
+            if (nextTodo) {
+              await injectSyntheticContinueInline(sessionID, lastUser, nextTodo)
+              autonomousRounds++
+              log.info("drain:continue", { sessionID, round: autonomousRounds, todo: nextTodo.content })
+              continue // ← drain: back to while(true) top
+            }
+            // No actionable todo = work complete, fall through to normal stop flow
+            log.info("drain:no_todo", { sessionID, round: autonomousRounds })
+          } else {
+            log.info("drain:blocked", { sessionID, blocker: hardBlock })
+          }
+        }
+        // ── End Stage 5 drain bypass ───────────────────────────────
 
         const decision = await decideAutonomousContinuation({
           sessionID,

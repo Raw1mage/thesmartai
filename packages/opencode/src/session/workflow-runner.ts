@@ -26,6 +26,7 @@ import {
 } from "./trigger"
 import { RunQueue, type QueueEntry } from "./queue"
 import { type Lane, LANES_BY_PRIORITY, LANE_CONFIGS } from "./lane-policy"
+import { KillSwitchService } from "@/server/killswitch/service"
 
 export const AUTONOMOUS_CONTINUE_TEXT =
   "Continue with the next planned step. Only stop and ask the user if you hit a real blocker or need a product decision."
@@ -49,6 +50,41 @@ export function isPlanTrusting(mission: Session.Info["mission"]): boolean {
     mission.contract === "implementation_spec" &&
     mission.executionReady === true
   )
+}
+
+/**
+ * Stage 5 — Tight loop drain mode.
+ * Lowered threshold: autonomous + executionReady + hasPendingTodos.
+ * Does NOT require openspec_compiled_plan or implementation_spec contract.
+ */
+export function isPlanTrustingTight(session: Pick<Session.Info, "workflow" | "mission">): boolean {
+  return (
+    !!session.workflow?.autonomous.enabled &&
+    !!session.mission?.executionReady &&
+    true // hasPendingTodos checked separately via getNextActionableTodo
+  )
+}
+
+export type HardBlocker = "abort_signal" | "kill_switch_active" | "user_message_pending"
+
+/**
+ * Stage 5 — Hard blocker check for drain-on-stop.
+ * Only factual checks, no decisions. Returns the blocker reason or null.
+ *
+ * User message preemption is handled by the while(true) loop itself:
+ * new user message → loop re-reads messages → lastUser.id > lastAssistant.id → natural flow.
+ */
+export async function checkHardBlockers(
+  sessionID: string,
+  abort: AbortSignal,
+): Promise<HardBlocker | null> {
+  if (abort.aborted) return "abort_signal"
+
+  // Kill-switch: check if globally active
+  const ksState = await KillSwitchService.getState().catch(() => undefined)
+  if (ksState?.active) return "kill_switch_active"
+
+  return null
 }
 
 function buildMissionMetadata(session: Pick<Session.Info, "mission">) {
