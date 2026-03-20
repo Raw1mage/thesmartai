@@ -378,6 +378,84 @@ The system SHALL NOT contain any channel module code, channel API routes, or cha
 - **WHEN** the codebase is searched for "ChannelStore", "channelId", or channel imports
 - **THEN** no production code references are found
 
+---
+
+## Slice 5: Tight Loop Continuation（Stage 5, 實驗）
+
+### Requirement: Plan-trusting tight loop bypass
+
+When a session has autonomous mode enabled, an approved mission, and pending todos, the system SHALL continue execution inline within the same loop iteration after model end_turn, without exiting to the supervisor/queue path.
+
+#### Scenario: inline continuation after end_turn
+
+- **GIVEN** a session with `autonomous === true`, `mission.executionReady === true`, and at least one pending todo
+- **WHEN** the model produces an `end_turn` (result === "stop")
+- **THEN** the system injects a synthetic continue message and resumes the while loop (`continue`) within the same `runLoop()` invocation, without calling `enqueueAutonomousContinue()` or waiting for the supervisor
+
+#### Scenario: hard blocker stops tight loop
+
+- **GIVEN** a session in tight loop mode
+- **WHEN** a hard blocker is detected (kill-switch active, auth error, abort signal, or all todos complete)
+- **THEN** the system breaks out of the loop normally, identical to current behavior
+
+#### Scenario: non-plan-trusting session uses original path
+
+- **GIVEN** a session that does NOT meet plan-trusting tight conditions (e.g., no mission, autonomous off)
+- **WHEN** the model produces an `end_turn`
+- **THEN** the system follows the existing 14-gate + Governor + enqueue path, behavior unchanged
+
+### Requirement: Lowered plan-trusting threshold
+
+The plan-trusting tight condition SHALL NOT require `openspec_compiled_plan` or `implementation_spec` contract type. Only `autonomous + executionReady + hasPendingTodos` is required.
+
+#### Scenario: simple approved mission qualifies
+
+- **GIVEN** a session with `autonomous === true`, `mission.executionReady === true`, one pending todo, but `mission.source !== "openspec_compiled_plan"`
+- **WHEN** `isPlanTrustingTight()` is evaluated
+- **THEN** it returns `true`
+
+### Requirement: Autonomous execution prompt
+
+When a session enters tight loop mode, the system prompt SHALL include an instruction that discourages the model from producing unnecessary end_turn responses.
+
+#### Scenario: prompt injected in tight loop session
+
+- **GIVEN** a session meeting plan-trusting tight conditions
+- **WHEN** the system prompt is assembled
+- **THEN** it includes the autonomous execution mode instruction
+
+#### Scenario: prompt NOT injected in normal session
+
+- **GIVEN** a session NOT meeting plan-trusting tight conditions
+- **WHEN** the system prompt is assembled
+- **THEN** the autonomous execution mode instruction is absent
+
+### Requirement: User intervention preempts tight loop
+
+The system SHALL prioritize real user messages over synthetic continuation. When a user sends a message during tight loop execution, the loop must yield to the user after the current round completes.
+
+#### Scenario: user message during tight loop
+
+- **GIVEN** a session in tight loop mode, model is currently executing
+- **WHEN** the user sends a new message before the current round completes
+- **THEN** after the current round's end_turn, the system processes the user's message instead of injecting a synthetic continue
+
+#### Scenario: user modifies todos during tight loop
+
+- **GIVEN** a session in tight loop mode with 3 pending todos
+- **WHEN** the user edits the plan and marks 2 todos as "skip" and the remaining one as "done"
+- **THEN** on the next tight loop iteration, `hasPendingTodos` returns false and the loop exits normally
+
+### Acceptance Checks (Stage 5 — Experiment)
+
+- Tight loop session completes a 5-task plan without user intervention
+- Round-to-round latency < 2s (vs ~10s baseline)
+- Hard blockers (kill-switch, abort) correctly interrupt tight loop
+- Non-plan-trusting sessions behave identically to current behavior
+- No regression in existing workflow-runner tests
+
+---
+
 ### Acceptance Checks (Stage 4)
 
 - All `bun test` tests pass

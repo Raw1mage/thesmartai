@@ -472,6 +472,230 @@ LanePolicy
 
 ---
 
+## Stage 5 Design: Tight Loop Continuation（實驗）
+
+### 問題的真正根因（2026-03-20 架構反思）
+
+Phase 0 至 Stage 4 建設了完整的控制面（kill-switch、lane queue、daemon lifecycle、workspace isolation），但核心痛點從未被解決：**agent 在有完整 plan 的情況下依然以回合制模式運行。**
+
+根因分析：
+
+```
+LLM API 是 request-response → 每個 end_turn 就是一個回合結束
+                                        │
+                    opencode 在此處插入了極度昂貴的銜接路徑
+                                        │
+                    ┌───────────────────▼───────────────────┐
+                    │  decideAutonomousContinuation()       │ 14 道確定性閘門
+                    │  handleSmartRunnerStopDecision()      │ LLM 二次評估（又一次 API call）
+                    │  enqueueAutonomousContinue()          │ 寫入 queue
+                    │  supervisor 5s 掃描                    │ 延遲
+                    │  新 runLoop() 完整重啟                  │ 重新序列化 messages
+                    └───────────────────────────────────────┘
+```
+
+對比 OpenClaw (Claude Code)：
+
+```
+end_turn
+  → 有 pending work?
+  → 是 → synthetic continue → 同一個 while loop 裡 continue
+  → 否 → 真的停
+```
+
+差距不在架構，在 **end_turn 和「繼續」之間的成本**。
+
+### Plan-trusting Mode 為什麼不夠（Phase 5A 回顧）
+
+Phase 5A 實作了 `isPlanTrusting()` 來跳過 Governor，但：
+
+1. **門檻過高**：需要 `openspec_compiled_plan + implementation_spec + executionReady` 三條件同時滿足。實際使用中大部分 session 達不到。
+2. **仍走 enqueue 路徑**：即使跳過 Governor，`end_turn` 後仍走 `enqueueAutonomousContinue()` → supervisor 5s 掃描 → 新 `runLoop()`。回合間延遲仍然存在。
+3. **模型行為層未處理**：system prompt 沒有明確抑制模型的「匯報後停下」傾向（RLHF 副產品）。
+
+### 設計目標
+
+從「決策模型」轉為「排水模型」：end_turn 不是需要決策的事件，而是一個 turn 的正常完成。有 todo 就自動排水到下一輪，沒有 todo 就自然停。
+
+### 設計方案（OpenClaw Drain 模型）
+
+#### 核心原則
+
+對照 OpenClaw 的 `finalizeWithFollowup()` 設計：
+
+```
+OpenClaw:
+  每個 run 結束 → finalizeWithFollowup() → scheduleFollowupDrain()
+  queue 有東西 → drain → 下一輪
+  queue 空了 → 自然停
+  沒有任何「要不要繼續」的判斷
+
+opencode Stage 5:
+  end_turn → hasPendingTodos?
+  有 → 注入 synthetic continue → 回到 while loop 頂端
+  沒有 → 正常退出
+  不問「要不要繼續」，不走閘門，不走 Governor
+```
+
+差異：OpenClaw 用 async queue drain loop（因為它是多 session 併行的 gateway），opencode 用 while loop 內 inline continue（因為是單 session 執行）。效果相同：**end_turn 被當作正常完成，不是阻塞事件。**
+
+#### 5.1 — Drain-on-Stop（核心修改）
+
+```typescript
+// prompt.ts — result === "stop" 分支
+if (result === "stop") {
+  // plan-trusting drain 路徑：end_turn = 正常完成，有 todo 就排水
+  if (isPlanTrustingTight(session)) {
+    const hardBlock = await checkHardBlockers(sessionID, abort)
+    if (!hardBlock) {
+      const nextTodo = await getNextActionableTodo(sessionID)
+      if (nextTodo) {
+        await injectSyntheticContinueInline(sessionID, lastUser, nextTodo)
+        autonomousRounds++
+        continue  // ← drain：回到 while(true) 頂端
+      }
+    }
+    // hard blocker 或 no todo → 正常退出（等同 queue 排空）
+  }
+
+  // 非 plan-trusting → 走原有流程（保持向後相容）
+  const decision = await decideAutonomousContinuation(...)
+  ...
+}
+```
+
+與之前 tight-loop-bypass 設計的區別：**先檢查 hard blocker，再找 todo。** 因為 drain 模型的語意是「只要沒有阻塞就排」，而不是「找到 todo 再決定要不要排」。順序反映了意圖差異。
+
+#### 5.2 — Hard Blockers（排水閥門）
+
+排水閥門不是「閘門」——不做決策，只做事實檢查：
+
+| Blocker | 說明 | 對應 OpenClaw |
+|---------|------|--------------|
+| `abort_signal` | 使用者手動中斷 | signal handler |
+| `kill_switch_active` | kill-switch 啟動 | gateway drain |
+| `user_message_pending` | 使用者送入新訊息 | steer mode interrupt |
+| `todo_complete` | 所有 todo 完成（隱含於 getNextActionableTodo 返回 null） | queue 空了 |
+
+**不檢查的**（全部移除，不是「降級」）：
+- `max_continuous_rounds` — drain 模型無回合概念
+- Governor 所有決定 — drain 模型不做決策
+- `spec_dirty` / `replan_required` — 信任 plan，模型自己會發現不對
+- `mission_not_consumable` — mission 已 approve 就信任
+
+#### 5.3 — 降低 Plan-Trusting 門檻
+
+`isPlanTrustingTight()` 條件：
+
+```typescript
+function isPlanTrustingTight(session: Session.Info): boolean {
+  return (
+    session.workflow?.autonomous === true &&       // autonomous toggle 開啟
+    session.mission?.executionReady === true &&     // mission 已 approve
+    hasPendingTodos(session.id)                    // 有未完成的 todo
+  )
+  // 不要求 openspec_compiled_plan
+  // 不要求 implementation_spec
+  // 只要有 approved mission + pending todos 就信任
+}
+```
+
+#### 設計原則：該停的要停，該跑的不要問
+
+Tight loop 不是「無條件永遠 continue」。語意是：
+
+- **有明確 plan + todo → 持續做，不要每一步都問**
+- **todo 全部完成 → 停**
+- **遇到 hard blocker → 停**
+- **沒有 plan / 沒有 todo → 走原有回合制流程**
+
+也就是說，tight loop 只在使用者已經透過 mission approval 表達了「去做」的意願後才啟用。這不是自動化，而是**執行已批准的計畫**。
+
+#### 使用者介入性（Controllability）
+
+Tight loop 必須是**可控的持續性**，不是放出去就收不回來的火箭：
+
+1. **使用者插話優先** — 如果使用者在 tight loop 執行期間送入新 message，loop 必須在當前回合結束後優先處理使用者訊息，而不是繼續注入 synthetic continue。現有的 `shouldInterruptAutonomousRun()` 機制可以複用。
+2. **Kill-switch 即時生效** — hard blocker 檢查包含 kill-switch，所以全域或 workspace 級別的緊急停止隨時可用。
+3. **Abort signal** — 使用者可以隨時透過 UI 中斷（TUI Ctrl+C / Web cancel button），abort signal 在每個回合頂端被檢查。
+4. **Plan 修改 = 自然停止** — 如果使用者修改了 plan / todos（透過插話或直接編輯），下一個回合的 `hasPendingTodos` 檢查會反映最新狀態。
+
+類比：就像 Unix 的 background process — 它在背景持續跑，但你隨時可以 `fg` 拉回來、`Ctrl+C` 中斷、或 `kill` 停掉。持續性和可控性不矛盾。
+```
+
+#### 5.4 — Autonomous Execution Prompt（輔助，非核心）
+
+OpenClaw 的 system prompt **不告訴模型要繼續**。自治性來自基礎設施（queue drain），不是模型指令。
+
+但 opencode 的情境不同：OpenClaw 每次 drain 都是全新的 `runReplyAgent()` call，context 輕量。opencode 的 tight loop 是同一個 while loop 的 `continue`，context 累積。所以加一段 prompt 減少不必要的 end_turn 仍有價值——不是為了「讓模型繼續」（drain 會處理），而是為了**減少無效的 end_turn → drain → 重新 load context 的成本**。
+
+```
+You are in autonomous execution mode with an approved plan.
+- Do NOT stop to summarize progress or ask for confirmation.
+- Execute the next task by calling the appropriate tool immediately.
+- Only produce end_turn when ALL tasks are complete or you hit an unrecoverable error.
+- If you need to report progress, do it as a tool call (e.g. todo update), not as a text response.
+```
+
+注意：即使模型忽略這段 prompt 繼續 end_turn，drain 會在 <1s 內銜接，所以不是 blocker。
+
+#### 5.5 — Inline Synthetic Continue（drain 機制）
+
+對應 OpenClaw 的 `scheduleFollowupDrain()` + `runFollowupTurn()`。在 opencode 的 while loop 架構中，drain = 注入 synthetic user message 然後 `continue`：
+
+```typescript
+async function injectSyntheticContinueInline(
+  sessionID: string,
+  lastUser: MessageV2.User,
+  nextTodo: Todo.Item
+) {
+  await Session.updateMessage({
+    id: Identifier.ascending("message"),
+    role: "user",
+    sessionID,
+    parentID: lastUser.id,
+    content: `Continue with next task: ${nextTodo.text}`,
+    synthetic: true,
+    model: lastUser.model,
+    format: lastUser.format,
+  })
+}
+```
+
+OpenClaw 的 drain 有 ~1s debounce（用於 batch 多個 message）。opencode 的 drain 是即時的（inline `continue`），因為 single-session 不需要 batching。
+
+### 實驗驗證計畫
+
+在 `exp/tight-loop-continuation` branch 驗證：
+
+1. **基準測量**：用現有架構跑一個 5-task plan，記錄每個回合間的延遲
+2. **實驗組**：套用 drain-on-stop，跑同一個 plan，記錄延遲
+3. **觀察指標**：
+   - 回合間延遲（目標：<1s vs 現有 5-10s）
+   - 是否能跑完整個 plan 不中斷
+   - hard blocker 是否正確攔截（kill-switch / abort / user message）
+   - 模型 end_turn 頻率（prompt 有無影響）
+   - 使用者中途插話時是否正確中斷 drain
+
+### Critical Files（Stage 5）
+
+**Modify:**
+- `packages/opencode/src/session/prompt.ts` — tight loop bypass 插入點 (L1557)
+- `packages/opencode/src/session/workflow-runner.ts` — `isPlanTrustingTight()` + `checkHardBlockers()`
+- `packages/opencode/src/session/prompt/runner.txt` — autonomous execution prompt
+
+**No new files needed.** 純粹是砍邏輯、降門檻。
+
+### Design Decisions
+
+| ID | Decision | Options | Status |
+|----|----------|---------|--------|
+| DD-20 | Tight loop bypass 位置 | (a) prompt.ts result==="stop" 分支前 (b) decideAutonomousContinuation 內部短路 | **resolved: (a)** — 在閘門之前攔截，避免走任何 gate evaluation |
+| DD-21 | Synthetic continue 注入方式 | (a) 真的寫 user message 到 storage (b) 只在 memory 中注入不持久化 | pending — (a) 簡單但有 IO 成本，(b) 快但需改 message loading 邏輯 |
+| DD-22 | Plan-trusting 門檻 | (a) 現有三條件 (b) autonomous + executionReady + hasTodos (c) 只要 autonomous + hasTodos | pending — 實驗階段先用 (b) |
+
+---
+
 ## Risks
 
 - ~~若 kill-switch UI 使用 SSE 推送，需先解決 ghost responses 的 SSE 問題~~ — Phase 2 已交付，SSE 穩定
@@ -486,6 +710,9 @@ LanePolicy
 - **Stage 4 workspace resolution latency** — listBusySessionIDs now resolves workspace per session instead of simple string comparison. Mitigation: workspace registry is in-memory O(1) by directory
 - **Stage 4 lazy workspace at boot** — daemon boot may not have resolved all workspaces yet. Mitigation: register default lanes; register workspace-specific lanes on first session arrival
 - **Stage 4 channel data loss** — custom lane policies from channel store are lost. Mitigation: channel was barely used; defaults cover all cases
+- **Stage 5 tight loop token burn** — 不經 Governor 檢查意味著模型可能在錯誤路徑上持續消耗 token 而不被攔截。Mitigation: hard blocker 仍含 abort signal，使用者可手動 kill；todo 完成度是客觀指標
+- **Stage 5 message 堆積** — tight loop 每回合注入 synthetic message，長時間運行可能導致 context window 膨脹。Mitigation: 現有 compaction 機制仍然生效
+- **Stage 5 model 行為不可控** — 即使 system prompt 說「不要停」，模型仍可能 end_turn。Mitigation: tight loop 在 end_turn 後立即銜接，所以 end_turn 的成本從 ~10s 降到 <1s
 
 ---
 

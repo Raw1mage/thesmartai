@@ -318,6 +318,38 @@ Deliverables: All tests pass with workspace-based scoping; no channel test artif
 - 16e. **Schema Tests** — workspace schema validation tests for lanePolicy + killSwitchScope.
 - 16f. **Final Verification** — `bun test` all green, grep for channelId/ChannelStore returns zero hits.
 
+### Stage 5 — Tight Loop Continuation（實驗）
+
+**架構反思 (2026-03-20)**：Phase 0 至 Stage 4 建設了完整的控制面，但執行面的核心痛點未解：`end_turn` 後的回合銜接路徑過於昂貴（14 閘門 + LLM Governor + enqueue + 5s supervisor）。Stage 5 的目標是在 plan-trusting 條件下，將銜接路徑從 ~10s 壓縮到 <1s，方法是不離開 while loop。
+
+**Branch**: `exp/tight-loop-continuation` (opencode repo, based on cms)
+
+#### Phase 17 — Tight Loop Bypass（5.1）
+
+Deliverables: prompt.ts 快速路徑、降低 plan-trusting 門檻、hard-blocker-only 檢查。
+
+- 17a. **Fast Path Insertion** — 在 `prompt.ts` L1557 的 `result === "stop"` 分支最前面插入 plan-trusting tight 判斷。滿足條件時跳過所有閘門和 Governor，直接注入 synthetic continue 並 `continue` while loop。
+- 17b. **`isPlanTrustingTight()`** — 新 helper：`autonomous + executionReady + hasPendingTodos`。不要求 `openspec_compiled_plan` 或 `implementation_spec`。比 Phase 5A 的 `isPlanTrusting()` 門檻更低。
+- 17c. **`checkHardBlockers()`** — 只檢查 kill-switch / auth error / abort signal / todo_complete / 使用者新訊息。其他 gate 全部跳過。使用者介入（新 message 送入）視為 hard blocker，確保可控性。
+- 17d. **`injectSyntheticContinueInline()`** — 在 loop 內直接 `Session.updateMessage()` 寫入 synthetic user message。不走 `enqueueAutonomousContinue()` / supervisor / 新 `runLoop()`。
+
+#### Phase 18 — Autonomous Execution Prompt（5.2）
+
+Deliverables: runner.txt prompt 片段，conditional 注入。
+
+- 18a. **Prompt Fragment** — 在 runner.txt 加入 autonomous execution mode 指令，抑制模型 end_turn 傾向。核心訊息：不要停下匯報、不要問確認、用 tool call 報告進度。
+- 18b. **Conditional Injection** — prompt 只在 `isPlanTrustingTight()` 為 true 時注入。非 plan-trusting session 不受影響。
+
+#### Phase 19 — Baseline Benchmark & Validation（5.3）
+
+Deliverables: 基準/實驗對照數據、hard blocker 驗證。
+
+- 19a. **Benchmark Plan** — 設計 5-task 可衡量任務（例：建立 5 個檔案、每個檔案有明確驗證條件）。
+- 19b. **Baseline Run** — 現有架構跑 benchmark，記錄每回合間延遲（從 end_turn 到下一輪 API call 的時間差）。
+- 19c. **Experiment Run** — tight loop 架構跑同一 benchmark，記錄延遲。
+- 19d. **Hard Blocker Test** — 跑 benchmark 中途觸發 kill-switch / abort，確認正確中斷。
+- 19e. **Regression Test** — 非 plan-trusting session 跑現有 test suite，確認無回歸。
+
 ---
 
 ## Validation

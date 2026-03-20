@@ -107,6 +107,28 @@ Internet → [C Gateway :1080] → Unix Socket → [Per-User Daemon (uid=user)]
 - **Rationale**: Per-user daemon already runs as the correct UID; shell/PTY commands spawn directly without privilege escalation
 - **Preserved**: Utility functions `sanitizeUsername`, `resolveLinuxUserHome`, `resolveLinuxUserUID` in `src/system/linux-user-exec.ts`
 
+### Subagent IO Visibility
+
+子代理（subagent）透過 `task()` tool 委派工作時，主 session UI 即時顯示子代理活動。
+
+**資料流**:
+
+1. Task tool 建立子 session 後立即呼叫 `ctx.metadata({ sessionId })` → tool part 的 `state.metadata.sessionId` 在 running 狀態即可用
+2. Worker process 的子 session events 透過 `__OPENCODE_BRIDGE_EVENT__` stdout protocol → 主 process `publishBridgedEvent()` → Bus → SSE → frontend sync store
+3. `SubagentActivityCard` 組件（`packages/app/src/pages/session/components/message-tool-invocation.tsx`）讀取 `sync.data.message[childSessionId]` 顯示子代理的 tool calls 和文字輸出
+
+**組件結構**:
+
+- `tool === "task"` 的 ToolPart 渲染為 `SubagentActivityCard`（取代通用 MCP card）
+- Header: agent type + description + elapsed timer
+- Body（collapsible）: tool call 列表（status icon + tool name + subtitle）+ text output
+- 狀態: running（spinner, auto-open）/ completed（final output）/ error（error banner + partial activity）
+
+**Dispatch 規則**:
+
+- SYSTEM.md §2.3: 一次只派出一個 subagent（sequential execution）
+- Prompt-level soft enforcement（無 runtime 強制阻擋）
+
 ### Performance Hardening (Phase θ)
 
 - **SDK LRU Cache**: `sdkSet()` in `src/provider/provider.ts` — Map-based FIFO eviction (MAX_SIZE = 50)

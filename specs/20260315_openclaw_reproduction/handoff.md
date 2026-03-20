@@ -19,7 +19,7 @@
 - `tasks.md` — canonical task list with completion status
 - `specs/20260316_kill-switch/` — kill-switch implementation detail specs (control-protocol, rbac-hooks, snapshot-orchestration)
 
-## Current State (2026-03-17)
+## Current State (2026-03-20)
 
 - **Phase 0** (Consolidation & Benchmark): done
 - **Phase 1** (Kill-switch Backend): done — 10/10 tasks complete, 13 tests passing
@@ -34,6 +34,15 @@
 - **Stage 3 D.3** (Daemon Lifecycle): **done** — gateway lock, signal dispatch, drain state machine, command lanes (Main/Cron/Subagent/Nested), restart loop, generation numbers. 28 tests passing. Commit `2247dfd677`
 - **D.3.10** (Retry Policy): **done** — error classification (transient/permanent), exponential backoff, one-shot vs recurring policy. 20 tests passing.
 - **Stage 4** (Channel-to-Workspace Refactor): **done** — channel module deleted, lanePolicy+killSwitchScope on Workspace, lanes/killswitch/session all use workspaceId. 25 tests passing (lanes 14 + killswitch 11). Zero channelId/ChannelStore in production code.
+- **Stage 5** (Tight Loop Continuation): **實驗中** — branch `exp/tight-loop-continuation` (opencode repo, based on cms `5a179f5d2e`)
+
+### Stage 5 背景（2026-03-20 架構反思）
+
+Phase 0 至 Stage 4 建設了完整的**控制面**（kill-switch、trigger、lane queue、daemon、workspace），但核心痛點未解：agent 在有完整 plan 的情況下依然以回合制模式運行。
+
+根因不在控制面，而在**執行面**：`end_turn` 後走 14 道閘門 + LLM Governor + enqueue + 5s supervisor = 昂貴的回合間銜接。Plan-trusting mode (Phase 5A) 已嘗試跳過 Governor，但門檻過高且無法消除 enqueue → supervisor → 新 runLoop 的延遲。
+
+Stage 5 方案：在 plan-trusting 條件下，`end_turn` 後**直接在 while loop 內**注入 synthetic continue 並 `continue`，不離開迴圈。同時降低 plan-trusting 門檻（只要 autonomous + executionReady + hasTodos）、加入 autonomous execution prompt 抑制模型不必要的 end_turn。
 
 ## Stop Gates In Force
 
@@ -48,13 +57,17 @@
 
 ## Build Entry Recommendation
 
-- **All phases through Stage 3 complete** — Phases 0-6 + D.1-D.3 delivered
+- **All phases through Stage 4 complete** — Phases 0-6 + D.1-D.3 + Stage 4 delivered
 - **Cleanup done (2026-03-17)**: aws4fetch + ioredis removed, heartbeat integration test added
 - **openclaw merged to cms** (2026-03-17) — fast-forward at `b4c6013d8f`
 
-### Next
+### Next: Stage 5 — Tight Loop Continuation（實驗）
 
-All core phases (0-6), deferred slices (D.1-D.3), and Stage 4 refactor are complete. The spec-defined work is fully delivered.
+控制面已完備。核心痛點轉移到執行面：回合間銜接成本。
+
+**實驗 branch**: `exp/tight-loop-continuation` (opencode repo)
+**實作重點**: prompt.ts tight loop bypass → 砍掉 14 閘門 + Governor → inline synthetic continue → 不離開 while loop
+**驗證方式**: 5-task benchmark 對照（baseline vs tight loop）
 
 All spec slices delivered:
 - **Slice 2** (Trigger Model Extraction): delivered in Phase 5B — RunTrigger union (Continuation/Api/Cron), evaluateGates(), pluggable trigger types

@@ -70,4 +70,9 @@
 - ~~Stage 4 (B): E2E integration verification~~ — **cancelled** (channel concept removed)
 - ~~Stage 5 (C): webapp/operator surface~~ — **cancelled** (channel concept removed)
 - ~~Stage 6 (D): future channel extensions~~ — **cancelled** (channel concept removed)
-- Stage 4 (new): Channel-to-Workspace Refactor — pending (replaces B/C/D)
+- Stage 4 (new): Channel-to-Workspace Refactor — done
+- Stage 5 (new): Tight Loop Continuation — **實驗中** (exp/tight-loop-continuation branch in opencode-beta)
+
+## Requirement Revision History (cont.)
+
+- 2026-03-20: **架構反思** — 回顧所有 Phase 0 至 Stage 4 成果，確認核心痛點仍未解決：agent 在有完整 plan 的情況下依然以回合制模式運行。根因不在控制面（已完備），而在執行面：`end_turn` 後走 14 道閘門 + LLM Governor + enqueue + 5s supervisor = 昂貴的回合間銜接。Plan-trusting mode (Phase 5A) 已嘗試跳過 Governor，但門檻過高（三條件同時滿足）且無法消除 enqueue → supervisor → 新 runLoop 的延遲。新方向：Stage 5 Tight Loop Continuation — 在 plan-trusting 條件下，`end_turn` 後直接在 while loop 內注入 synthetic continue 並 `continue`，不離開迴圈。

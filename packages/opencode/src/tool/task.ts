@@ -96,6 +96,9 @@ function toolWhitelistForSubagent(agentName: string): string[] | undefined {
   if (name === "coding") {
     return ["read", "glob", "grep", "list", "bash", "edit", "write", "apply_patch", "question", "skill"]
   }
+  if (name === "planner") {
+    return ["read", "glob", "grep", "list", "bash", "edit", "write", "apply_patch", "question", "skill"]
+  }
   return undefined
 }
 
