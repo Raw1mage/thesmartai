@@ -21,4 +21,4 @@
 	url = https://github.com/openclaw/openclaw
 [submodule "templates/skills"]
 	path = templates/skills
-	url = git@github.com:Raw1mage/skills.git
+	url = /home/pkcs12/projects/skills

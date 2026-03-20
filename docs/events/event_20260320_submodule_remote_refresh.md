@@ -37,13 +37,16 @@ Status: Completed
 
 ### Execution
 - 成功更新：`refs/claude-code`, `refs/codex`, `refs/openclaw`, `refs/opencode-antigravity-auth`, `refs/vscode-antigravity-cockpit`
-- 未更新：`templates/skills`
-- 失敗原因：其 `origin` remote 指向 `http://gitlab.wuyang.co/miat/skills.git/`，遠端不存在；雖然 `github` remote 可用，但 `git submodule update --remote` 本次命中的是失效來源。
+- 初次未更新：`templates/skills`
+- 初次失敗原因：其 `origin` remote 指向 `http://gitlab.wuyang.co/miat/skills.git/`，遠端不存在；雖然 `github` remote 可用，但 `git submodule update --remote` 本次命中的是失效來源。
+- 後續處置：將 `templates/skills` 的主要來源改為本機 `/home/pkcs12/projects/skills`，並把最新 skill 變更正式集中到該 repo 的 `master` 後，再將 submodule 對齊到 `e15ae8b`。
 
 ### Root Cause
-- 問題不在主 repo，而在 `templates/skills` submodule 的 remote 配置存在失效來源，導致自動 remote refresh 無法完整成功。
+- 根因在於 `templates/skills` submodule 的既有 remote 配置存在失效來源，導致自動 remote refresh 無法完整成功。
+- 補救方式是把技能更新的單一主要來源收斂到 `/home/pkcs12/projects/skills`，再讓 `opencode` 的 `templates/skills` submodule 直接追蹤該來源。
 
 ### Validation
-- 主 repo 已產生 5 個 submodule pointer 更新。
-- `templates/skills` pointer 未變更。
-- Architecture Sync: Verified (No doc changes)；依據：本次僅更新 submodule pointers 與事件紀錄，不變更 repo 模組邊界。
+- 主 repo 已產生 5 個外部 submodule pointer 更新。
+- `.gitmodules` 已更新：`templates/skills` 改以 `/home/pkcs12/projects/skills` 為主要來源。
+- `templates/skills` 已對齊到 `/home/pkcs12/projects/skills` 的 `master`，目前指向 `e15ae8b`。
+- Architecture Sync: Verified (No doc changes)；依據：本次僅更新 submodule pointers、來源設定與事件紀錄，不變更 repo 模組邊界。
