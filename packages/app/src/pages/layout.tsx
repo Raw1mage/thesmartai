@@ -208,6 +208,9 @@ export default function Layout(props: ParentProps) {
       setState("openProject", undefined)
       return
     }
+    // Only default to currentProject when openProject hasn't been
+    // explicitly set (e.g. by clicking a different project tile).
+    if (state.openProject) return
     const project = currentProject()
     if (project?.worktree) setState("openProject", project.worktree)
   })
