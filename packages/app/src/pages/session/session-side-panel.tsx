@@ -409,7 +409,24 @@ export function SessionSidePanel(props: {
                             fallback={<div class="text-12-regular text-text-weak">No active tasks.</div>}
                           >
                             <For each={(monitorEntries() ?? []) as EnrichedMonitorEntry[]}>
-                              {(item) => (
+                              {(item) => {
+                                const [aborting, setAborting] = createSignal(false)
+                                const canAbort = () =>
+                                  !aborting() &&
+                                  (item.level === "sub-session" || item.level === "sub-agent") &&
+                                  item.status.type !== "idle"
+                                const handleAbort = async () => {
+                                  if (!canAbort()) return
+                                  setAborting(true)
+                                  try {
+                                    await sdk.client.session.abort({ sessionID: item.sessionID })
+                                  } catch {
+                                    // ignore
+                                  } finally {
+                                    setAborting(false)
+                                  }
+                                }
+                                return (
                                 <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-1">
                                   <div class="flex items-start gap-2 min-w-0">
                                     <span class="text-11-medium text-text-weak shrink-0">
@@ -423,6 +440,15 @@ export function SessionSidePanel(props: {
                                         </Show>
                                       </div>
                                     </div>
+                                    <Show when={canAbort()}>
+                                      <button
+                                        class="shrink-0 text-11-medium text-text-weak hover:text-warning cursor-pointer bg-transparent border-none p-0 leading-none"
+                                        title="Stop this subagent"
+                                        onClick={handleAbort}
+                                      >
+                                        {aborting() ? "…" : "✕"}
+                                      </button>
+                                    </Show>
                                   </div>
                                   <Show
                                     when={
@@ -438,6 +464,15 @@ export function SessionSidePanel(props: {
                                   </Show>
                                   <div class="text-11-regular text-text-weak break-words">
                                     {MONITOR_STATUS_LABELS[item.status.type] ?? item.status.type}
+                                    {item.updated
+                                      ? (() => {
+                                          const elapsed = Math.floor((Date.now() - item.updated) / 1000)
+                                          if (elapsed < 60) return ` · ${elapsed}s`
+                                          const mins = Math.floor(elapsed / 60)
+                                          if (mins < 60) return ` · ${mins}m`
+                                          return ` · ${Math.floor(mins / 60)}h${mins % 60}m`
+                                        })()
+                                      : ""}
                                     {item.model ? ` · ${item.model.providerId}/${item.model.modelID}` : ""}
                                     {` · ${item.requests} reqs · ${item.totalTokens.toLocaleString()} tok`}
                                   </div>
@@ -478,7 +513,7 @@ export function SessionSidePanel(props: {
                                     </div>
                                   </Show>
                                 </div>
-                              )}
+                                )}}
                             </For>
                           </Show>
                         </div>

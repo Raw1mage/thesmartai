@@ -47,6 +47,16 @@ and cascading 504 errors on the web server.
    - `getReadyWorker()` waits for busy worker to free up if at cap
    - Last-resort fallback: spawn over cap if no worker frees within timeout
 
+3. **UI: Subagent kill button on monitor cards** (`session-side-panel.tsx`)
+   - Sub-session / sub-agent cards now show a ✕ button (top-right)
+   - Calls existing `session.abort()` API — no new backend endpoint needed
+   - Only visible when status is not idle
+   - Shows "…" during abort request
+
+4. **UI: Elapsed time on monitor cards** (`session-side-panel.tsx`)
+   - Status line now shows how long the subagent has been running (e.g. `Working · 3m · openai/gpt-5.4 · 12 reqs`)
+   - Helps users identify stale/stuck subagents
+
 ## Out of Scope
 
 - Project context isolation (workers inherit web server CWD)
@@ -55,12 +65,13 @@ and cascading 504 errors on the web server.
 
 ## Validation
 
-- Syntax check: `bun build --no-bundle` passes
-- Type check: tsc OOM'd due to system memory pressure (unrelated to this change)
+- Backend: `bun build --no-bundle` passes
+- Frontend: `vite build` succeeds (12.88s)
 - Code review: all `busy = false` paths have `scheduleIdleReap()`, `assignWorker` has `cancelIdleReap()`
+- Kill button: guarded by `canAbort()` — only for sub-session/sub-agent with non-idle status
 
 ## Architecture Sync
 
 Architecture Sync: Verified (No doc changes) — this fix adds internal GC to the existing
-worker pool in task.ts. No module boundary, data flow, or state machine changes. The worker
-pool architecture is already documented as part of the task/subagent system.
+worker pool in task.ts and a kill affordance to existing monitor cards. No module boundary,
+data flow, or state machine changes.
