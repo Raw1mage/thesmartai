@@ -1,0 +1,66 @@
+# Event: Worker Pool GC (Garbage Collection)
+
+**Date**: 2026-03-20
+**Type**: Bug Fix
+**Scope**: `packages/opencode/src/tool/task.ts`
+
+## Requirement
+
+Per-user daemon running multiple sessions across different projects caused worker process leak.
+Workers were allocated but never freed, leading to CPU exhaustion (4 workers * 35% CPU = 140% total)
+and cascading 504 errors on the web server.
+
+## Root Cause Analysis
+
+### Bug 1: No idle worker reaping
+- `spawnWorker()` creates processes, `ensureStandbyWorker()` eagerly spawns standby after each task
+- After task completion, `worker.busy = false` but process stays alive forever
+- Pool only grows, never shrinks
+
+### Bug 2: No pool size cap
+- No upper bound on concurrent workers
+- Each task completion triggers `ensureStandbyWorker()` which spawns a new one
+- Cross-project sessions compound the problem
+
+### Bug 3: Idle workers CPU spin (~920GB read/4h)
+- All 4 idle workers in R (running) state, consuming 35% CPU each
+- Full opencode runtime (`bootstrap()`) keeps internal event loops active
+- Workers burning ~230GB/hour of read IO while doing nothing useful
+
+### Evidence
+- `strace -c`: 99.99% time in `read` syscalls on idle workers
+- `/proc/*/io`: ~920-990 GB rchar per worker over 4 hours
+- `/proc/*/status`: 3 of 4 workers in R state (wchan=0), 1 in S state
+- `/session/top` API: only 1 session visible, 4 workers running
+- All 4 workers had identical env (no session-specific context)
+
+## Fix (IN)
+
+1. **Idle worker reaper**: `WORKER_IDLE_TIMEOUT_MS = 60_000`
+   - Worker becomes idle → `scheduleIdleReap()` starts 60s timer
+   - Timer fires → `killIdleWorker()` kills process and removes from pool
+   - Timer cancelled if worker gets new task assignment (`cancelIdleReap()`)
+   - Timer unref'd to not block process exit
+
+2. **Worker pool cap**: `WORKER_POOL_MAX = 3`
+   - `ensureStandbyWorker()` skips spawn if at capacity
+   - `getReadyWorker()` waits for busy worker to free up if at cap
+   - Last-resort fallback: spawn over cap if no worker frees within timeout
+
+## Out of Scope
+
+- Project context isolation (workers inherit web server CWD)
+- Root cause of idle worker CPU spin in Bun runtime
+- Worker session affinity / cross-project worker routing
+
+## Validation
+
+- Syntax check: `bun build --no-bundle` passes
+- Type check: tsc OOM'd due to system memory pressure (unrelated to this change)
+- Code review: all `busy = false` paths have `scheduleIdleReap()`, `assignWorker` has `cancelIdleReap()`
+
+## Architecture Sync
+
+Architecture Sync: Verified (No doc changes) — this fix adds internal GC to the existing
+worker pool in task.ts. No module boundary, data flow, or state machine changes. The worker
+pool architecture is already documented as part of the task/subagent system.

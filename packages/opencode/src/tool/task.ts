@@ -102,6 +102,8 @@ function toolWhitelistForSubagent(agentName: string): string[] | undefined {
 const BRIDGE_PREFIX = "__OPENCODE_BRIDGE_EVENT__ "
 const WORKER_PREFIX = "__OPENCODE_WORKER__ "
 const WORKER_READY_TIMEOUT_MS = 15_000
+const WORKER_IDLE_TIMEOUT_MS = 60_000 // Kill idle workers after 60s
+const WORKER_POOL_MAX = 3 // Hard cap on concurrent worker processes
 const beacon = ActivityBeacon.scope("tool.task")
 const WORKER_ASSIGN_LOCK = "tool.task.worker.assign"
 
@@ -204,6 +206,7 @@ type TaskWorker = {
   lastWorkerMessage?: string
   lastStderr?: string
   current?: WorkerRequest
+  idleTimer?: ReturnType<typeof setTimeout>
 }
 
 type WorkerRunResult = {
@@ -240,9 +243,39 @@ function buildWorkerCmd() {
 
 function removeWorker(id: string) {
   const index = workers.findIndex((w) => w.id === id)
-  if (index >= 0) workers.splice(index, 1)
+  if (index >= 0) {
+    const w = workers[index]
+    if (w.idleTimer) clearTimeout(w.idleTimer)
+    workers.splice(index, 1)
+  }
   beacon.setGauge("worker.total", workers.length)
   void Bus.publish(TaskWorkerEvent.Removed, { workerID: id })
+}
+
+function killIdleWorker(worker: TaskWorker) {
+  if (worker.busy || worker.current) return // became busy in the meantime
+  beacon.hit("worker.idle_reap")
+  Log.create({ service: "task.worker" }).info("Reaping idle worker", { workerID: worker.id })
+  ProcessSupervisor.kill(worker.id)
+  removeWorker(worker.id)
+  try {
+    worker.proc.kill()
+  } catch {
+    // already dead
+  }
+}
+
+function scheduleIdleReap(worker: TaskWorker) {
+  if (worker.idleTimer) clearTimeout(worker.idleTimer)
+  worker.idleTimer = setTimeout(() => killIdleWorker(worker), WORKER_IDLE_TIMEOUT_MS)
+  if (typeof worker.idleTimer.unref === "function") worker.idleTimer.unref()
+}
+
+function cancelIdleReap(worker: TaskWorker) {
+  if (worker.idleTimer) {
+    clearTimeout(worker.idleTimer)
+    worker.idleTimer = undefined
+  }
 }
 
 function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
@@ -360,6 +393,7 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
           worker.lastHeartbeatAt = Date.now()
           worker.lastPhase = "ready"
           worker.lastWorkerMessage = "ready"
+          if (!worker.busy) scheduleIdleReap(worker)
           continue
         }
 
@@ -378,6 +412,7 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
           const req = worker.current
           worker.current = undefined
           worker.busy = false
+          scheduleIdleReap(worker)
           if (!req) continue
           if (msg.ok) {
             req.resolve({
@@ -412,6 +447,7 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
           const req = worker.current
           worker.current = undefined
           worker.busy = false
+          scheduleIdleReap(worker)
           if (!req) continue
           void Bus.publish(TaskWorkerEvent.Failed, {
             workerID: worker.id,
@@ -430,6 +466,7 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
             const req = worker.current
             worker.current = undefined
             worker.busy = false
+            scheduleIdleReap(worker)
             void Bus.publish(TaskWorkerEvent.Failed, {
               workerID: worker.id,
               sessionID: req.sessionID,
@@ -500,6 +537,28 @@ async function getReadyWorker(config: Awaited<ReturnType<typeof Config.get>>) {
     log.warn("existing worker not ready within timeout", { workerID: existing.id, timeoutMs: WORKER_READY_TIMEOUT_MS })
   }
 
+  // Pool cap: if at max capacity, wait for any busy worker to finish rather than spawning
+  if (workers.length >= WORKER_POOL_MAX) {
+    beacon.hit("worker.pool_cap_wait")
+    log.info("Worker pool at capacity, waiting for a worker to become free", { current: workers.length, max: WORKER_POOL_MAX })
+    const busyWorkers = workers.filter((w) => w.busy && w.current)
+    if (busyWorkers.length > 0) {
+      // Wait for the first busy worker to finish its current request
+      await Promise.race(busyWorkers.map((w) =>
+        new Promise<void>((resolve) => {
+          const check = setInterval(() => {
+            if (!w.busy && w.ready) { clearInterval(check); resolve() }
+          }, 500)
+          setTimeout(() => { clearInterval(check); resolve() }, WORKER_READY_TIMEOUT_MS)
+        })
+      ))
+      const freed = workers.find((w) => !w.busy && w.ready)
+      if (freed) return freed
+    }
+    // If still no worker available, allow one over cap as last resort
+    log.warn("No worker freed within timeout, spawning over cap", { current: workers.length, max: WORKER_POOL_MAX })
+  }
+
   const worker = spawnWorker(config)
   await Promise.race([worker.readyPromise, Bun.sleep(WORKER_READY_TIMEOUT_MS)])
   if (!worker.ready) throw new Error("subagent worker failed to become ready")
@@ -510,6 +569,12 @@ async function ensureStandbyWorker(config: Awaited<ReturnType<typeof Config.get>
   beacon.hit("worker.ensure_standby")
   const log = Log.create({ service: "task.worker" })
   if (workers.some((w) => !w.busy && w.ready)) return
+  // Respect pool cap: do not spawn standby if already at max
+  if (workers.length >= WORKER_POOL_MAX) {
+    beacon.hit("worker.standby_skipped_pool_cap")
+    log.debug("Skipping standby spawn: pool at capacity", { current: workers.length, max: WORKER_POOL_MAX })
+    return
+  }
   if (standbySpawn) return standbySpawn
   standbySpawn = (async () => {
     try {
@@ -532,6 +597,7 @@ async function assignWorker(input: { config: Awaited<ReturnType<typeof Config.ge
   if (input.abort.aborted) throw new Error("task canceled before worker assignment")
   const worker = await getReadyWorker(input.config)
   if (input.abort.aborted) throw new Error("task canceled before worker dispatch")
+  cancelIdleReap(worker)
   worker.busy = true
   return worker
 }
