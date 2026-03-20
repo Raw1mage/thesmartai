@@ -12,6 +12,17 @@ const MAX_MESSAGES = 80
 
 const activeStatuses = new Set(["busy", "working", "retry", "compacting", "pending"])
 
+function sanitizeMonitorError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error)
+  // SDK throws raw HTML string on non-JSON error responses (e.g. 504 gateway pages).
+  // Detect and replace with a short message to avoid flooding the UI.
+  if (raw.length > 300 || /^\s*<!DOCTYPE/i.test(raw) || /^\s*<html/i.test(raw)) {
+    const status = raw.match(/\b(5\d{2}|4\d{2})\b/)?.[1]
+    return status ? `Server error (${status})` : "Server error"
+  }
+  return raw
+}
+
 export function useStatusMonitor(input: {
   enabled: () => boolean
   sessionID: () => string | undefined
@@ -98,7 +109,7 @@ export function useStatusMonitor(input: {
           items: monitor.items,
           loading: false,
           initialized: true,
-          error: error instanceof Error ? error.message : String(error),
+          error: sanitizeMonitorError(error),
         })
       } finally {
         inFlight = false
