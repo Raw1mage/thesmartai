@@ -705,15 +705,18 @@ test("session.llm.stream gates enablement snapshot after first round unless rout
 
   const firstRequest = waitRequest(
     "/chat/completions",
-    createEventResponse([
-      {
-        id: "chatcmpl-1",
-        object: "chat.completion.chunk",
-        created: Math.floor(Date.now() / 1000),
-        model: model.id,
-        choices: [{ index: 0, delta: { content: "Hello" }, finish_reason: "stop" }],
-      },
-    ]),
+    createEventResponse(
+      [
+        {
+          id: "chatcmpl-1",
+          object: "chat.completion.chunk",
+          created: Math.floor(Date.now() / 1000),
+          model: model.id,
+          choices: [{ index: 0, delta: { content: "Hello" }, finish_reason: "stop" }],
+        },
+      ],
+      true,
+    ),
   )
 
   await using tmp = await tmpdir({
@@ -783,15 +786,18 @@ test("session.llm.stream gates enablement snapshot after first round unless rout
 
       const secondRequest = waitRequest(
         "/chat/completions",
-        createEventResponse([
-          {
-            id: "chatcmpl-2",
-            object: "chat.completion.chunk",
-            created: Math.floor(Date.now() / 1000),
-            model: model.id,
-            choices: [{ index: 0, delta: { content: "World" }, finish_reason: "stop" }],
-          },
-        ]),
+        createEventResponse(
+          [
+            {
+              id: "chatcmpl-2",
+              object: "chat.completion.chunk",
+              created: Math.floor(Date.now() / 1000),
+              model: model.id,
+              choices: [{ index: 0, delta: { content: "World" }, finish_reason: "stop" }],
+            },
+          ],
+          true,
+        ),
       )
 
       const secondUser = {
