@@ -15,6 +15,33 @@ import { DEBUG_LOG_PATH } from "../../util/debug"
 const file = DEBUG_LOG_PATH
 const root = path.dirname(file)
 
+// --- Log rotation ---
+const ROTATE_MAX_BYTES = 1_000_000 // 1 MB
+const ROTATE_KEEP = 5
+
+function rotateIfNeeded() {
+  let size = 0
+  try {
+    size = fs.statSync(file).size
+  } catch {
+    return
+  }
+  if (size < ROTATE_MAX_BYTES) return
+  // Shift history: .5 → delete, .4 → .5, ... .1 → .2, current → .1
+  for (let i = ROTATE_KEEP; i >= 1; i--) {
+    const src = i === 1 ? file : `${file}.${i - 1}`
+    const dst = `${file}.${i}`
+    try {
+      if (i === ROTATE_KEEP) fs.unlinkSync(dst)
+      fs.renameSync(src, dst)
+    } catch {}
+  }
+  // Truncate current (renameSync already moved it)
+  try {
+    fs.writeFileSync(file, "")
+  } catch {}
+}
+
 // --- Formatting ---
 
 const SENSITIVE_KEYS = new Set([
@@ -92,169 +119,12 @@ function flow(data?: Record<string, unknown>) {
 
 let initialized = false
 let seq = 0
-let last = 0
-let normalizing = false
-let queued = false
-
-const originalAppend = fs.appendFileSync
-const originalWrite = fs.writeFileSync
-const originalStream = fs.createWriteStream
-let sniffing = false
-
-function appendRaw(text: string) {
-  originalAppend(file, text)
-}
-
-function normalizeLine(line: string): string {
-  if (line.trim().length === 0) return line
-  if (line.startsWith("[opencode]")) return line
-  if (!line.startsWith("{")) return line
-  let data: Record<string, unknown> | undefined
-  try {
-    data = JSON.parse(line)
-  } catch {
-    return line
-  }
-  if (!data) return line
-  const time = typeof data.time === "string" ? data.time : getTimestamp()
-  const scope = typeof data.scope === "string" ? data.scope : "unknown"
-  const message = typeof data.message === "string" ? data.message : "log"
-  const payload = safe({
-    seq: data.seq,
-    trace: typeof data.trace === "string" ? data.trace : undefined,
-    span: typeof data.span === "string" ? data.span : undefined,
-    flow: typeof data.flow === "object" && data.flow ? data.flow : undefined,
-    data: typeof data.data === "object" && data.data ? data.data : {},
-  })
-  return `[opencode] [${time}] [${scope}] ${message} ${payload}`
-}
-
-function normalizeFile() {
-  if (normalizing) return
-  normalizing = true
-  let text = ""
-  try {
-    text = fs.readFileSync(file, "utf-8")
-  } catch {
-    normalizing = false
-    return
-  }
-  const next = text
-    .split("\n")
-    .map((line) => normalizeLine(line))
-    .join("\n")
-  if (next === text) {
-    normalizing = false
-    return
-  }
-  try {
-    fs.writeFileSync(file, next)
-  } catch {}
-  normalizing = false
-}
-
-function normalizeMaybe() {
-  const now = Date.now()
-  if (now - last < 500) return
-  last = now
-  normalizeFile()
-}
-
-function schedule(fn: () => void, ms: number) {
-  const timer = setTimeout(fn, ms)
-  if (typeof timer.unref === "function") timer.unref()
-}
-
-function normalizeSoon() {
-  if (queued) return
-  queued = true
-  schedule(() => {
-    normalizeFile()
-    queued = false
-  }, 0)
-  schedule(() => normalizeFile(), 50)
-  schedule(() => normalizeFile(), 200)
-}
-
-function sniffAppend(target: unknown, data: unknown) {
-  if (sniffing) return
-  if (target !== file) return
-  const text =
-    typeof data === "string"
-      ? data
-      : Buffer.isBuffer(data)
-        ? data.toString("utf-8")
-        : typeof data === "object" && data instanceof Uint8Array
-          ? Buffer.from(data).toString("utf-8")
-          : ""
-  if (!text) return
-  if (text.startsWith("[opencode]")) return
-  sniffing = true
-  const payload = safe({
-    note: "non-opencode append detected",
-    sample: text.slice(0, 500),
-    stack: new Error("debug.sniff").stack,
-  })
-  appendRaw(`[opencode] [${getTimestamp()}] [debug.sniff] ${payload}\n`)
-  sniffing = false
-}
-
-function sniffWrite(target: unknown, data: unknown) {
-  if (sniffing) return
-  if (target !== file) return
-  const text =
-    typeof data === "string"
-      ? data
-      : Buffer.isBuffer(data)
-        ? data.toString("utf-8")
-        : typeof data === "object" && data instanceof Uint8Array
-          ? Buffer.from(data).toString("utf-8")
-          : ""
-  if (!text) return
-  if (text.startsWith("[opencode]")) return
-  sniffing = true
-  const payload = safe({
-    note: "non-opencode write detected",
-    sample: text.slice(0, 500),
-    stack: new Error("debug.sniff").stack,
-  })
-  appendRaw(`[opencode] [${getTimestamp()}] [debug.sniff] ${payload}\n`)
-  sniffing = false
-}
 
 function ensure() {
   if (initialized) return
   initialized = true
-  // Monkey-patch fs to detect non-opencode writes to debug.log
-  fs.appendFileSync = ((target, data, options) => {
-    sniffAppend(target, data)
-    return originalAppend(target as string, data as string, options as never)
-  }) as typeof fs.appendFileSync
-  fs.writeFileSync = ((target, data, options) => {
-    sniffWrite(target, data)
-    return originalWrite(target as string, data as string, options as never)
-  }) as typeof fs.writeFileSync
-  fs.createWriteStream = ((target, options) => {
-    const stream = originalStream(target as string, options as never)
-    if (target === file) {
-      const write = stream.write.bind(stream)
-      stream.write = ((chunk, encoding, cb) => {
-        sniffAppend(file, chunk)
-        return write(chunk as never, encoding as never, cb as never)
-      }) as typeof stream.write
-    }
-    return stream
-  }) as typeof fs.createWriteStream
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(file, "")
-  normalizeSoon()
-  // Watch for external writes
-  try {
-    const watcher = fs.watch(file, { persistent: false }, () => normalizeMaybe())
-    if (typeof watcher.unref === "function") watcher.unref()
-  } catch {}
-  // Final normalize on exit
-  process.on("exit", () => normalizeFile())
 }
 
 // --- File enable gate ---
@@ -291,8 +161,7 @@ function handleEvent(event: { type: string; properties?: unknown }) {
   }
 
   fs.appendFileSync(file, line)
-  normalizeMaybe()
-  normalizeSoon()
+  rotateIfNeeded()
 }
 
 // --- Registration ---

@@ -28,7 +28,7 @@
   - validation plan
 - 若上述骨架尚未成立，**不得**宣稱可安全 autonomous 持續執行；必須先補 plan，再進入 execution。
 - 在 planning / clarification 階段，凡屬於**有明確選項的選擇題**（例如 milestone、scope、approval posture、validation target、delegation strategy），**預設必須使用 MCP `question`** 呈現，而不是用自由文字把選項混在 prose 內；只有在使用者需要先用長篇背景補充脈絡時，才先 freeform 再用 `question` 收斂決策。
-- 若任務變更模組邊界、資料流、狀態機、debug checkpoints 或沉澱了重要 root cause，Main Agent **必須**委派 documentation agent（搭配 `doc-coauthoring`）同步框架文件。
+- 若任務變更模組邊界、資料流、狀態機、debug checkpoints 或沉澱了重要 root cause，Main Agent **必須**自行載入 `doc-coauthoring` + `miatdiagram` skills 並直接更新框架文件。文件工作不委派 subagent。
 - 其他技能（如 `code-thinker`, `webapp-testing`, `doc-coauthoring`）屬於按需加值裝備；`agent-workflow` 是所有非瑣碎開發任務的唯一預設底盤。
 
 ### 核心文件責任分工（Hard-coded）
@@ -164,7 +164,7 @@
    - 未完成 Architecture 同步檢查與紀錄，不得宣告完成。
 
 6. **Documentation Agent 同步門檻**
-   - 凡任務影響模組邊界、資料流、狀態機、觀測點或關鍵 root cause 沉澱，必須同步委派 documentation agent 更新長期文件。
+   - 凡任務影響模組邊界、資料流、狀態機、觀測點或關鍵 root cause 沉澱，Orchestrator 必須自行載入 `doc-coauthoring` skill 直接更新長期文件。
 
 7. **文件優先於重建心智模型**
    - 複雜 debug / 開發任務應優先讀取相關框架文件，而不是每次從原始碼重新建模整個系統。
