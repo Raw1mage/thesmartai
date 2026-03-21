@@ -138,6 +138,14 @@ export namespace SystemPrompt {
   }
 
   /**
+   * Load the plan mode driver prompt from XDG config, falling back to built-in.
+   * Path: ~/.config/opencode/prompts/session/plan.txt
+   */
+  export async function planPrompt() {
+    return loadPrompt("session/plan.txt", PROMPT_PLAN)
+  }
+
+  /**
    * Load an agent prompt from XDG config, falling back to built-in content.
    * Path: ~/.config/opencode/prompts/agents/<name>.txt
    *

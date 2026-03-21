@@ -3,9 +3,14 @@
 
 Plan mode is ACTIVE. This driver tells you how to use the plan runtime.
 
-## Skill Loading
+## Skill Loading (Mandatory — do this FIRST)
 
-FIRST: Load skill `planner` before starting plan work. It contains the full methodology — artifact definitions, workflow phases, validation checklist, traceability chain, and references to companion skills (e.g. `miatdiagram`). Follow its instructions.
+Before any plan work, load these two skills in order:
+
+1. `planner` — full methodology: artifact definitions, workflow phases, validation checklist, traceability chain.
+2. `miatdiagram` — IDEF0 functional decomposition + GRAFCET state machine modeling. Required for producing `idef0.json`, `grafcet.json`, and deeper decompositions.
+
+Both skills MUST be loaded. Do not skip `miatdiagram` — IDEF0/GRAFCET artifacts are mandatory parts of the plan spec, not optional extras.
 
 ## Mode Contract
 

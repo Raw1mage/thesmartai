@@ -115,7 +115,7 @@ export namespace Command {
         description: "enter planner-first discussion mode",
         source: "command",
         template:
-          "The user explicitly requested plan mode via /plan. If you are not already in plan mode, call plan_enter() immediately. If you are already in plan mode, continue planner-first discussion, spec refinement, and artifact maintenance without delegating to a planner-like subagent. Keep `/plan` aligned with the canonical plan-mode path.",
+          "The user requested plan mode. Follow SYSTEM.md §2.5: load planner + miatdiagram skills, then call plan_enter() to set up the spec directory.",
         hints: [],
       },
     }
