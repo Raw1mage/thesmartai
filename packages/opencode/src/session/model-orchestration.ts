@@ -43,7 +43,7 @@ export function shouldAutoSwitchMainModel(input: {
   session: Pick<Session.Info, "workflow">
   lastUserParts: MessageV2.Part[]
 }) {
-  if (!input.session.workflow?.autonomous.enabled) return false
+  // autonomous is always-on
   return input.lastUserParts.some((part) => part.type === "text" && part.synthetic)
 }
 

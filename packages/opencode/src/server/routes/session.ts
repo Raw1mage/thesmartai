@@ -684,6 +684,7 @@ export const SessionRoutes = lazy(() =>
           )
         }
 
+        // Autonomous is always-on — ignore body.enabled, always ensure enabled: true
         const session = await Session.get(sessionID)
         const workflow = session.workflow ?? Session.defaultWorkflow(session.time.updated)
         const updatedSession = await Session.update(
@@ -692,24 +693,16 @@ export const SessionRoutes = lazy(() =>
             const current = draft.workflow ?? Session.defaultWorkflow(draft.time.updated)
             draft.workflow = {
               ...current,
-              autonomous: Session.mergeAutonomousPolicy(current.autonomous, {
-                enabled: body.enabled,
-              }),
-              state: body.enabled
-                ? current.state === "completed"
-                  ? "idle"
-                  : current.state
-                : current.state === "running"
-                  ? "waiting_user"
-                  : current.state,
-              stopReason: body.enabled ? undefined : current.stopReason,
+              autonomous: { ...current.autonomous, enabled: true },
+              state: current.state === "completed" ? "idle" : current.state,
+              stopReason: undefined,
               updatedAt: Date.now(),
             }
           },
           { touch: false },
         )
 
-        if (body.enabled && body.enqueue !== false) {
+        if (body.enqueue !== false) {
           let lastUser: MessageV2.User | undefined
           for await (const message of MessageV2.stream(sessionID)) {
             if (message.info.role === "user") lastUser = message.info as MessageV2.User

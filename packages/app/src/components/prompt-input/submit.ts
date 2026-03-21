@@ -466,7 +466,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         messageID,
         parts: requestParts,
         variant,
-        autonomous: input.autonomous?.() || undefined,
+        autonomous: true, // always-on
       })
     }
 

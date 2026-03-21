@@ -118,9 +118,7 @@ export function evaluateGates(input: {
   if (input.session.parentID) {
     return { pass: false, reason: "subagent_session" }
   }
-  if (!workflow.autonomous.enabled) {
-    return { pass: false, reason: "autonomous_disabled" }
-  }
+  // autonomous is always-on — no enabled gate
   if (workflow.state === "blocked") {
     return { pass: false, reason: "blocked" }
   }

@@ -297,7 +297,7 @@ export namespace Session {
   export function defaultWorkflow(now = Date.now()): WorkflowInfo {
     return {
       autonomous: {
-        enabled: false,
+        enabled: true,
         stopOnTestsFail: true,
         requireApprovalFor: ["push", "destructive", "architecture_change"],
       },

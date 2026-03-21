@@ -66,7 +66,7 @@ mock.module("../../session", () => ({
     share: mock(async () => undefined),
     defaultWorkflow: () => ({
       state: "idle",
-      autonomous: { enabled: false },
+      autonomous: { enabled: true },
       updatedAt: Date.now(),
       lastRunAt: Date.now(),
     }),

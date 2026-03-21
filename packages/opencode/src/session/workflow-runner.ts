@@ -59,7 +59,7 @@ export function isPlanTrusting(mission: Session.Info["mission"]): boolean {
  */
 export function isPlanTrustingTight(session: Pick<Session.Info, "workflow" | "mission">): boolean {
   return (
-    !!session.workflow?.autonomous.enabled &&
+    // autonomous is always-on
     !!session.mission?.executionReady &&
     true // hasPendingTodos checked separately via getNextActionableTodo
   )
@@ -462,7 +462,7 @@ export function inspectPendingContinuationResumability(input: {
   if (input.status.type === "retry") blockedReasons.push("status_retry")
 
   const workflow = input.session.workflow
-  if (!workflow?.autonomous.enabled) blockedReasons.push("autonomous_disabled")
+  // autonomous is always-on — no enabled check
 
   const health = input.health ?? summarizeAutonomousWorkflowHealth({ workflow })
   if (health.state === "blocked") blockedReasons.push("workflow_blocked")
@@ -869,7 +869,7 @@ export function shouldInterruptAutonomousRun(input: {
 }) {
   if (input.status.type !== "busy") return false
   if (input.session.parentID) return false
-  if (!input.session.workflow?.autonomous.enabled) return false
+  // autonomous is always-on
   return input.lastUserSynthetic || input.hasPendingContinuation
 }
 

@@ -350,30 +350,23 @@ export namespace SessionPrompt {
     const session = await Session.get(input.sessionID)
     await SessionRevert.cleanup(session)
 
-    if (input.autonomous !== undefined) {
-      await Session.update(
-        input.sessionID,
-        (draft) => {
-          const current = draft.workflow ?? Session.defaultWorkflow(draft.time.updated)
+    // Ensure workflow exists with autonomous always-on; reset completed sessions to idle
+    await Session.update(
+      input.sessionID,
+      (draft) => {
+        const current = draft.workflow ?? Session.defaultWorkflow(draft.time.updated)
+        if (!draft.workflow || current.state === "completed") {
           draft.workflow = {
             ...current,
-            autonomous: Session.mergeAutonomousPolicy(current.autonomous, {
-              enabled: input.autonomous!,
-            }),
-            state: input.autonomous
-              ? current.state === "completed"
-                ? "idle"
-                : current.state
-              : current.state === "running"
-                ? "waiting_user"
-                : current.state,
-            stopReason: input.autonomous ? undefined : current.stopReason,
+            autonomous: { ...current.autonomous, enabled: true },
+            state: current.state === "completed" ? "idle" : current.state,
+            stopReason: undefined,
             updatedAt: Date.now(),
           }
-        },
-        { touch: false },
-      )
-    }
+        }
+      },
+      { touch: false },
+    )
 
     const message = await createUserMessage(input)
     await Session.touch(input.sessionID)

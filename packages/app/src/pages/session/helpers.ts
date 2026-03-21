@@ -374,10 +374,8 @@ export const getSessionWorkflowChips = (session?: WorkflowLikeSession): SessionW
   if (!workflow) return []
 
   const chips: SessionWorkflowChip[] = []
-  if (workflow.autonomous?.enabled) {
-    chips.push({ label: "Auto", tone: "info" })
-    chips.push({ label: "Model auto", tone: "info" })
-  }
+  // Autonomous is always-on
+  chips.push({ label: "Auto", tone: "info" })
 
   const state = prettyWorkflowState(workflow.state)
   if (state) {

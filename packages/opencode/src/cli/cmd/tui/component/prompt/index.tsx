@@ -842,7 +842,7 @@ export function Prompt(props: PromptProps) {
     // Capture mode before it gets reset
     const currentMode = store.mode
     const variant = local.model.variant.current(props.sessionID)
-    const autonomous = autonomousEnabled() || undefined
+    const autonomous = true // always-on
 
     if (store.mode === "shell") {
       sdk.client.session.shell({
@@ -1143,30 +1143,8 @@ export function Prompt(props: PromptProps) {
     return quota ? `${base}  ${quota}` : base
   })
 
-  const serverAutonomous = createMemo(() => {
-    const s = sync.session.get(props.sessionID ?? "") as
-      | { workflow?: { autonomous?: { enabled?: boolean } } }
-      | undefined
-    return !!s?.workflow?.autonomous?.enabled
-  })
-
-  const [localAutonomousOverride, setLocalAutonomousOverride] = createSignal<boolean | undefined>(undefined)
-
-  const autonomousEnabled = createMemo(() => {
-    const local = localAutonomousOverride()
-    return local !== undefined ? local : serverAutonomous()
-  })
-
-  const toggleAutonomous = () => {
-    const next = !autonomousEnabled()
-    setLocalAutonomousOverride(next)
-    toast.show({
-      message: next
-        ? "Autonomous mode — agent will continue working after each reply"
-        : "Manual mode — agent waits for your input",
-      variant: next ? "success" : "info",
-    })
-  }
+  // Autonomous is always-on
+  const autonomousEnabled = () => true
 
   return (
     <>
@@ -1414,7 +1392,7 @@ export function Prompt(props: PromptProps) {
               </Show>
               <Show when={store.mode === "normal"}>
                 <box flexDirection="row" gap={1}>
-                  <box onMouseUp={toggleAutonomous} flexShrink={0}>
+                  <box flexShrink={0}>
                     <text fg={autonomousEnabled() ? theme.success : keybind.leader ? theme.textMuted : theme.text}>
                       <Show when={autonomousEnabled()} fallback={footerProviderLabel()}>
                         <span style={{ bold: true }}>{footerProviderLabel()}</span>

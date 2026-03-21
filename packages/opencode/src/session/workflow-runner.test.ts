@@ -90,9 +90,8 @@ describe("Session workflow runner", () => {
       ),
       todo: { id: "a", content: "next", status: "pending", priority: "high" },
     })
-    expect(decision.text).toContain("You are the runner contract for autonomous build-mode continuation.")
-    expect(decision.text).toContain("Prefer delegation-first execution")
-    expect(decision.text).toContain("Progress narration is visibility only")
+    expect(decision.text).toContain("You are now in autonomous build-mode.")
+    expect(decision.text).toContain("delegate ALL implementation via Task tool")
   })
 
   it("uses planner contract to continue in-progress work before starting new todos", () => {
@@ -135,7 +134,7 @@ describe("Session workflow runner", () => {
     })
     expect(result.type).toBe("continue")
     if (result.type !== "continue") throw new Error("expected continue action")
-    expect(result.text).toContain("You are the runner contract for autonomous build-mode continuation.")
+    expect(result.text).toContain("You are now in autonomous build-mode.")
   })
 
   it("stops autonomous enqueue when subagent task work is still active", () => {
@@ -476,20 +475,7 @@ describe("Session workflow runner", () => {
     ).toEqual({ type: "stop", reason: "product_decision_needed" })
   })
 
-  it("stops when autonomous mode is disabled", () => {
-    const decision = evaluateAutonomousContinuation({
-      session: {
-        parentID: undefined,
-        workflow: Session.defaultWorkflow(1),
-        mission: approvedMission(),
-        time: { created: 1, updated: 1 },
-      },
-      todos: [{ id: "a", content: "next", status: "pending", priority: "high" }],
-      roundCount: 0,
-    })
-
-    expect(decision).toEqual({ continue: false, reason: "autonomous_disabled" })
-  })
+  // autonomous_disabled test removed — autonomous is always-on
 
   it("stops when autonomous runner has no approved mission contract", () => {
     const decision = evaluateAutonomousContinuation({
@@ -1974,18 +1960,7 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
       expect(result).toEqual({ pass: false, reason: "subagent_session" })
     })
 
-    it("blocks when autonomous is disabled", () => {
-      const trigger = buildApiTrigger({ source: "test", text: "go" })
-      const session = baseSession()
-      session.workflow.autonomous.enabled = false
-      const result = evaluateTriggerGates({
-        trigger,
-        session,
-        todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
-        roundCount: 0,
-      })
-      expect(result).toEqual({ pass: false, reason: "autonomous_disabled" })
-    })
+    // autonomous_disabled gate test removed — autonomous is always-on
 
     it("blocks when workflow is blocked", () => {
       const trigger = buildApiTrigger({ source: "test", text: "go" })
@@ -2101,13 +2076,7 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
       ).toBe("subagent_session")
     })
 
-    it("autonomous_disabled: stops when autonomous not enabled", () => {
-      const session = baseSession()
-      session.workflow.autonomous.enabled = false
-      expect(
-        planAutonomousNextAction({ session, todos: [{ id: "a", content: "x", status: "pending", priority: "high" }], roundCount: 0 }).reason,
-      ).toBe("autonomous_disabled")
-    })
+    // autonomous_disabled test removed — autonomous is always-on
 
     it("mission_not_approved: stops when no approved mission", () => {
       const session = baseSession()

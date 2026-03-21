@@ -216,25 +216,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return paths
   })
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const serverAutonomous = createMemo(
-    () =>
-      !!(
-        info() as
-          | {
-              workflow?: {
-                autonomous?: {
-                  enabled?: boolean
-                }
-              }
-            }
-          | undefined
-      )?.workflow?.autonomous?.enabled,
-  )
-  const [localAutonomousOverride, setLocalAutonomousOverride] = createSignal<boolean | undefined>(undefined)
-  const autonomousEnabled = createMemo(() => {
-    const local = localAutonomousOverride()
-    return local !== undefined ? local : serverAutonomous()
-  })
+  // Autonomous is always-on
+  const autonomousEnabled = () => true
   const status = createMemo(
     () =>
       sync.data.session_status[params.id ?? ""] ?? {
@@ -380,15 +363,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     )
   })
 
-  const toggleAutonomous = () => {
-    const next = !autonomousEnabled()
-    setLocalAutonomousOverride(next)
-    showToast({
-      title: next ? "Autonomous mode" : "Manual mode",
-      description: next ? "Agent will continue working after each reply" : "Agent waits for your input",
-      variant: next ? "success" : "default",
-    })
-  }
+  // Autonomous toggle removed — always-on
   const providerLabel = createMemo(() => {
     const model = currentModel()
     if (!model) return "--"
@@ -1374,20 +1349,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
-                <Tooltip placement="top" gutter={8} value={autonomousEnabled() ? "關閉自動代理" : "開啟自動代理"}>
+                <Tooltip placement="top" gutter={8} value="自動代理（常駐開啟）">
                   <Button
                     type="button"
                     variant="ghost"
                     class="h-6 px-2 min-w-0"
                     style={{
-                      color: autonomousEnabled() ? "var(--icon-success-base)" : undefined,
-                      "font-weight": autonomousEnabled() ? "600" : undefined,
-                      "background-color": autonomousEnabled() ? "var(--surface-success-base)" : undefined,
+                      color: "var(--icon-success-base)",
+                      "font-weight": "600",
+                      "background-color": "var(--surface-success-base)",
                     }}
                     disabled={!params.id}
-                    onClick={toggleAutonomous}
-                    aria-pressed={autonomousEnabled()}
-                    aria-label={autonomousEnabled() ? "關閉自動代理" : "開啟自動代理"}
+                    aria-label="自動代理（常駐開啟）"
                   >
                     <span class="text-12-regular px-1">{providerLabel()}</span>
                   </Button>
