@@ -23,7 +23,6 @@ import { useSync } from "@/context/sync"
 import type { Message, Todo, UserMessage } from "@opencode-ai/sdk/v2/client"
 import { getSessionStatusSummary } from "./helpers"
 import {
-  buildRunnerDisplayCard,
   buildMonitorEntries,
   monitorDisplayCard,
   type EnrichedMonitorEntry,
@@ -128,18 +127,7 @@ export function SessionSidePanel(props: {
       autonomousHealth: autonomousHealth.data,
     }),
   )
-  const runnerCard = createMemo(() =>
-    buildRunnerDisplayCard({
-      currentStep: statusSummary().currentStep,
-      methodChips: statusSummary().methodChips,
-      processLines: statusSummary().processLines,
-      status: activeSessionID() ? sync.data.session_status[activeSessionID()!] : undefined,
-      autonomousHealth: autonomousHealth.data,
-      monitorEntries: monitorEntries() as EnrichedMonitorEntry[],
-      messages: props.vm.messages(),
-      partsByMessage: sync.data.part,
-    }),
-  )
+  // Runner card removed — no independent autonomous runner process
   const [queueControlLoading, setQueueControlLoading] = createSignal<"resume_once" | "drop_pending" | null>(null)
   const [queueControlError, setQueueControlError] = createSignal<string | undefined>()
 
@@ -345,64 +333,32 @@ export function SessionSidePanel(props: {
                         fallback={<div class="text-12-regular text-text-danger">{monitor.error}</div>}
                       >
                         <div class="flex flex-col gap-3">
-                          <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-2">
-                            <div class="flex items-start gap-2 min-w-0">
-                              <span class="text-11-medium text-text-weak shrink-0">[{runnerCard().badge}]</span>
-                              <div class="min-w-0 flex-1">
-                                <div class="text-12-medium text-text-strong break-words">{runnerCard().title}</div>
+                          <Show when={autonomousHealth.data?.queue.hasPendingContinuation}>
+                            <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-2">
+                              <div class="text-11-medium uppercase tracking-wide text-text-weak">Queue control</div>
+                              <div class="flex flex-wrap gap-2">
+                                <Button
+                                  size="small"
+                                  variant="secondary"
+                                  disabled={queueControlLoading() !== null}
+                                  onClick={() => void runQueueControl("resume_once")}
+                                >
+                                  {queueControlLoading() === "resume_once" ? "Resuming…" : "Resume once"}
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="ghost"
+                                  disabled={queueControlLoading() !== null}
+                                  onClick={() => void runQueueControl("drop_pending")}
+                                >
+                                  {queueControlLoading() === "drop_pending" ? "Dropping…" : "Drop pending"}
+                                </Button>
                               </div>
+                              <Show when={queueControlError()}>
+                                {(message) => <div class="text-11-regular text-warning">{message()}</div>}
+                              </Show>
                             </div>
-                            <Show when={(runnerCard().chips ?? []).length > 0}>
-                              <div class="flex flex-wrap gap-1">
-                                <For each={runnerCard().chips ?? []}>
-                                  {(chip) => (
-                                    <span
-                                      class="inline-flex h-5 px-1.5 items-center rounded-full border text-[11px] font-medium"
-                                      classList={{
-                                        "bg-info/12 text-info border-info/20": chip.tone === "info",
-                                        "bg-success/12 text-success border-success/20": chip.tone === "success",
-                                        "bg-warning/12 text-warning border-warning/20": chip.tone === "warning",
-                                        "bg-surface-base text-text-muted border-border-weak-base":
-                                          chip.tone === "neutral",
-                                      }}
-                                    >
-                                      {chip.label}
-                                    </span>
-                                  )}
-                                </For>
-                              </div>
-                            </Show>
-                            <For each={runnerCard().lines ?? []}>
-                              {(line) => <div class="text-12-regular text-text-weak break-words">{line}</div>}
-                            </For>
-
-                            <Show when={autonomousHealth.data?.queue.hasPendingContinuation}>
-                              <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-2">
-                                <div class="text-11-medium uppercase tracking-wide text-text-weak">Queue control</div>
-                                <div class="flex flex-wrap gap-2">
-                                  <Button
-                                    size="small"
-                                    variant="secondary"
-                                    disabled={queueControlLoading() !== null}
-                                    onClick={() => void runQueueControl("resume_once")}
-                                  >
-                                    {queueControlLoading() === "resume_once" ? "Resuming…" : "Resume once"}
-                                  </Button>
-                                  <Button
-                                    size="small"
-                                    variant="ghost"
-                                    disabled={queueControlLoading() !== null}
-                                    onClick={() => void runQueueControl("drop_pending")}
-                                  >
-                                    {queueControlLoading() === "drop_pending" ? "Dropping…" : "Drop pending"}
-                                  </Button>
-                                </div>
-                                <Show when={queueControlError()}>
-                                  {(message) => <div class="text-11-regular text-warning">{message()}</div>}
-                                </Show>
-                              </div>
-                            </Show>
-                          </div>
+                          </Show>
 
                           <Show
                             when={(monitorEntries() ?? []).length > 0}
