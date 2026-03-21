@@ -8,6 +8,7 @@ import { useSDK } from "./sdk"
 import { sendSessionReloadDebugBeacon } from "@/utils/debug-beacon"
 import type { Message, Part } from "@opencode-ai/sdk/v2/client"
 import type { State } from "./global-sync/types"
+import { buildMonitorEntries, buildSessionTelemetryFromProjector } from "@/pages/session/monitor-helper"
 
 function sortParts(parts: Part[]) {
   return parts.filter((part) => !!part?.id).sort((a, b) => cmp(a.id, b.id))
@@ -118,6 +119,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       session: [],
       sessionTotal: 0,
       session_status: {},
+      session_telemetry: {},
       session_diff: {},
       workspace_diff: {},
       todo: {},
@@ -201,13 +203,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     }) => {
       const key = keyFor(input.directory, input.sessionID)
       if (meta.loading[key]) return
-
-      if (false /* disabled */)
-        console.debug("[session-reload-debug] loadMessages:start", {
-          directory: input.directory,
-          sessionID: input.sessionID,
-          limit: input.limit,
-        })
       sendSessionReloadDebugBeacon({
         sdk,
         event: "loadMessages:start",
@@ -220,13 +215,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       setMeta("loading", key, true)
       await fetchMessages(input)
         .then((next) => {
-          if (false /* disabled */)
-            console.debug("[session-reload-debug] loadMessages:success", {
-              directory: input.directory,
-              sessionID: input.sessionID,
-              messageCount: next.session.length,
-              complete: next.complete,
-            })
           sendSessionReloadDebugBeacon({
             sdk,
             event: "loadMessages:success",
@@ -247,12 +235,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           })
         })
         .catch((error) => {
-          if (false /* disabled */)
-            console.debug("[session-reload-debug] loadMessages:error", {
-              directory: input.directory,
-              sessionID: input.sessionID,
-              error: error instanceof Error ? error.message : String(error),
-            })
           sendSessionReloadDebugBeacon({
             sdk,
             event: "loadMessages:error",
@@ -265,11 +247,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           throw error
         })
         .finally(() => {
-          if (false /* disabled */)
-            console.debug("[session-reload-debug] loadMessages:done", {
-              directory: input.directory,
-              sessionID: input.sessionID,
-            })
           sendSessionReloadDebugBeacon({
             sdk,
             event: "loadMessages:done",
@@ -345,18 +322,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             const match = Binary.search(store.session, sessionID, (s) => s.id)
             return match.found
           })()
-
           const hasMessages = store.message[sessionID] !== undefined
           const hydrated = meta.limit[key] !== undefined
-          if (false /* disabled */)
-            console.debug("[session-reload-debug] session.sync:start", {
-              directory,
-              sessionID,
-              force,
-              hasSession,
-              hasMessages,
-              hydrated,
-            })
           sendSessionReloadDebugBeacon({
             sdk,
             event: "session.sync:start",
@@ -370,7 +337,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             },
           })
           if (!force && hasSession && hasMessages && hydrated) return
-
           const count = store.message[sessionID]?.length ?? 0
           const limit = hydrated ? (meta.limit[key] ?? messagePageSize) : limitFor(count)
 
@@ -379,13 +345,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               ? Promise.resolve()
               : retry(() => client.session.get({ directory, sessionID })).then((session) => {
                   const data = session.data
-                  if (false /* disabled */)
-                    console.debug("[session-reload-debug] session.sync:get", {
-                      directory,
-                      sessionID,
-                      found: !!data,
-                      resolvedDirectory: data?.directory,
-                    })
                   sendSessionReloadDebugBeacon({
                     sdk,
                     event: "session.sync:get",
@@ -424,11 +383,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           return runInflight(inflight, key, () =>
             Promise.all([sessionReq, messagesReq])
               .then(() => {
-                if (false /* disabled */)
-                  console.debug("[session-reload-debug] session.sync:done", {
-                    directory,
-                    sessionID,
-                  })
                 sendSessionReloadDebugBeacon({
                   sdk,
                   event: "session.sync:done",
@@ -439,12 +393,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                 })
               })
               .catch((error) => {
-                if (false /* disabled */)
-                  console.debug("[session-reload-debug] session.sync:error", {
-                    directory,
-                    sessionID,
-                    error: error instanceof Error ? error.message : String(error),
-                  })
                 sendSessionReloadDebugBeacon({
                   sdk,
                   event: "session.sync:error",
@@ -464,7 +412,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const [store, setStore] = globalSync.child(directory)
           const cacheKey = diffCacheKey(sessionID, options?.messageID)
           if (!options?.force && store.session_diff[cacheKey] !== undefined) return
-
           const key = keyFor(directory, cacheKey)
           return runInflight(inflightDiff, key, () => {
             if (options?.messageID) {
@@ -472,7 +419,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                 setStore("session_diff", cacheKey, reconcile(response.data ?? [], { key: "file" }))
               })
             }
-
             return retry(() => client.session.diff({ sessionID })).then((response) => {
               setStore("session_diff", cacheKey, reconcile(response.data ?? [], { key: "file" }))
             })
@@ -483,7 +429,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const client = sdk.client
           const [store, setStore] = globalSync.child(directory)
           if (!options?.force && store.workspace_diff[sessionID] !== undefined) return
-
           const session = getSession(sessionID)
           const targetDirectory = session?.directory ?? directory
           const key = keyFor(directory, `workspace:${sessionID}`)
@@ -498,12 +443,48 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const client = sdk.client
           const [store, setStore] = globalSync.child(directory)
           if (!options?.force && store.todo[sessionID] !== undefined) return
-
           const key = keyFor(directory, sessionID)
           return runInflight(inflightTodo, key, () =>
             retry(() => client.session.todo({ sessionID })).then((todo) => {
               setStore("todo", sessionID, reconcile(todo.data ?? [], { key: "id" }))
             }),
+          )
+        },
+        async telemetry(
+          sessionID: string,
+          options?: {
+            force?: boolean
+            monitor?: Parameters<typeof buildSessionTelemetryFromProjector>[0]["monitorEntries"]
+            loading?: boolean
+            error?: string
+          },
+        ) {
+          const directory = sdk.directory
+          const [store, setStore] = globalSync.child(directory)
+          if (store.session_telemetry[sessionID] !== undefined) return
+          const session = getSession(sessionID)
+          const status = store.session_status[sessionID]
+          const monitorEntries =
+            options?.monitor ??
+            (await retry(() =>
+              sdk.client.session.top({
+                sessionID,
+                includeDescendants: true,
+                maxMessages: 80,
+              }),
+            ).then((result) => result.data ?? []))
+          setStore(
+            "session_telemetry",
+            sessionID,
+            reconcile(
+              buildSessionTelemetryFromProjector({
+                session,
+                status,
+                monitorEntries,
+                loading: options?.loading,
+                error: options?.error,
+              }),
+            ),
           )
         },
         history: {
@@ -526,7 +507,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             const key = keyFor(directory, sessionID)
             if (meta.loading[key]) return
             if (meta.complete[key]) return
-
             const currentLimit = meta.limit[key] ?? messagePageSize
             await loadMessages({
               directory,

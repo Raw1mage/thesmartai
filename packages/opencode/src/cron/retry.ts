@@ -19,11 +19,11 @@ export namespace RetryPolicy {
   // --- Backoff schedule ---
 
   const DEFAULT_BACKOFF_MS = [
-    30_000,       // 1st error  →  30s
-    60_000,       // 2nd error  →  1m
-    5 * 60_000,   // 3rd error  →  5m
-    15 * 60_000,  // 4th error  →  15m
-    60 * 60_000,  // 5th+ error →  60m
+    30_000, // 1st error  →  30s
+    60_000, // 2nd error  →  1m
+    5 * 60_000, // 3rd error  →  5m
+    15 * 60_000, // 4th error  →  15m
+    60 * 60_000, // 5th+ error →  60m
   ]
 
   const DEFAULT_MAX_ATTEMPTS = 3
@@ -41,8 +41,12 @@ export namespace RetryPolicy {
   ]
 
   const PERMANENT_REASONS = new Set([
-    "auth", "auth_permanent", "format", "billing",
-    "model_not_found", "session_expired",
+    "auth",
+    "auth_permanent",
+    "format",
+    "billing",
+    "model_not_found",
+    "session_expired",
   ])
 
   /**
@@ -62,10 +66,7 @@ export namespace RetryPolicy {
   /**
    * Compute backoff delay in ms for the given number of consecutive errors.
    */
-  export function backoffMs(
-    consecutiveErrors: number,
-    schedule?: number[],
-  ): number {
+  export function backoffMs(consecutiveErrors: number, schedule?: number[]): number {
     const backoff = schedule ?? DEFAULT_BACKOFF_MS
     const index = Math.min(consecutiveErrors - 1, backoff.length - 1)
     return backoff[Math.max(0, index)]
@@ -110,6 +111,9 @@ export namespace RetryPolicy {
         return { action: "disable", reason: "one-shot completed", consecutiveErrors: 0 }
       }
       const nextRunAtMs = Schedule.computeNextRunAtMs(job.schedule, now)
+      if (nextRunAtMs === undefined) {
+        return { action: "disable", reason: "no future run time", consecutiveErrors: 0 }
+      }
       return { action: "continue", nextRunAtMs, consecutiveErrors: 0 }
     }
 
@@ -152,6 +156,9 @@ export namespace RetryPolicy {
 
     // Recurring: overlay backoff on natural schedule
     const naturalNext = Schedule.computeNextRunAtMs(job.schedule, now)
+    if (naturalNext === undefined) {
+      return { action: "disable", reason: "no future run time", consecutiveErrors: newErrors }
+    }
     const delay = backoffMs(newErrors, config?.backoffScheduleMs)
     const backoffNext = now + delay
     const nextRunAtMs = Math.max(naturalNext, backoffNext)

@@ -68,7 +68,7 @@ export namespace CronDeliveryRouter {
 
     if (delivery.announceSessionID) {
       // Post to specific session via bus event
-      Bus.publish("cron.delivery.announce", {
+      await Bus.publish(Bus.CronDeliveryAnnounce, {
         sessionID: delivery.announceSessionID,
         text: summary,
         jobId: input.jobId,
@@ -132,11 +132,7 @@ export namespace CronDeliveryRouter {
     return { status: "delivered" }
   }
 
-  function formatAnnounceSummary(input: {
-    jobName: string
-    runId: string
-    outcome: CronRunOutcome
-  }): string {
+  function formatAnnounceSummary(input: { jobName: string; runId: string; outcome: CronRunOutcome }): string {
     const { jobName, runId, outcome } = input
     const statusEmoji = outcome.status === "ok" ? "OK" : outcome.status === "error" ? "ERROR" : "SKIPPED"
     const duration = outcome.durationMs ? ` (${Math.round(outcome.durationMs / 1000)}s)` : ""

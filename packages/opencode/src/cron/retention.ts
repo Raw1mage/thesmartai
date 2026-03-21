@@ -34,7 +34,9 @@ export namespace CronRetention {
       id: "cron:retention-reaper",
       interval: intervalMs,
       scope: "global",
-      run: () => reap({ retentionMs }),
+      run: async () => {
+        await reap({ retentionMs })
+      },
     })
     log.info("registered", { retentionMs, intervalMs })
   }
@@ -49,8 +51,12 @@ export namespace CronRetention {
 
     try {
       // Get all sessions and filter for cron-managed ones
-      const sessions = await Session.list()
-      const cronSessions = sessions.filter((s) => CronSession.isCronSession(s.title))
+      const cronSessions = [] as Session.Info[]
+      for await (const session of Session.list()) {
+        if (CronSession.isCronSession(session.title)) {
+          cronSessions.push(session)
+        }
+      }
 
       result.checked = cronSessions.length
 

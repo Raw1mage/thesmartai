@@ -13,6 +13,8 @@ import type {
 import type { LlmErrorEntry, LlmHistoryEntry, State, VcsCache } from "./types"
 import { LLM_HISTORY_CAP } from "./types"
 import { trimSessions } from "./session-trim"
+import { buildSessionTelemetryFromProjector } from "@/pages/session/monitor-helper"
+import type { SessionMonitorInfo } from "@opencode-ai/sdk/v2/client"
 
 function pushLlmHistory(draft: State, entry: LlmHistoryEntry) {
   if (!draft.llm_history) draft.llm_history = []
@@ -58,7 +60,8 @@ function cleanupSessionCaches(store: Store<State>, setStore: SetStoreFunction<St
     store.todo[sessionID] !== undefined ||
     store.permission[sessionID] !== undefined ||
     store.question[sessionID] !== undefined ||
-    store.session_status[sessionID] !== undefined
+    store.session_status[sessionID] !== undefined ||
+    store.session_telemetry[sessionID] !== undefined
   if (!hasAny) return
   setStore(
     produce((draft) => {
@@ -72,11 +75,12 @@ function cleanupSessionCaches(store: Store<State>, setStore: SetStoreFunction<St
       }
       delete draft.message[sessionID]
       delete draft.session_diff[sessionID]
-      delete draft.workspace_diff[sessionID]
+      if (draft.workspace_diff) delete draft.workspace_diff[sessionID]
       delete draft.todo[sessionID]
       delete draft.permission[sessionID]
       delete draft.question[sessionID]
       delete draft.session_status[sessionID]
+      delete draft.session_telemetry[sessionID]
     }),
   )
 }
@@ -169,9 +173,6 @@ export function applyDirectoryEvent(input: {
       break
     }
     case "session.diff": {
-      // Ignore backend session.diff bus events.
-      // They reflect historical session summary snapshots, while web now fetches
-      // authoritative session-owned dirty diffs on demand through the session.diff API.
       break
     }
     case "todo.updated": {
@@ -182,6 +183,31 @@ export function applyDirectoryEvent(input: {
     case "session.status": {
       const props = event.properties as { sessionID: string; status: SessionStatus }
       input.setStore("session_status", props.sessionID, reconcile(props.status))
+      break
+    }
+    case "session.telemetry.updated": {
+      const props = event.properties as { sessionID: string; telemetry: Record<string, unknown> }
+      const session = input.store.session.find((item) => item.id === props.sessionID)
+      const status = input.store.session_status[props.sessionID]
+      const monitorEntries: SessionMonitorInfo[] = [
+        {
+          id: `telemetry:${props.sessionID}`,
+          level: "session",
+          sessionID: props.sessionID,
+          title: session?.title ?? props.sessionID,
+          status: status ?? ({ type: "idle" } as SessionStatus),
+          requests: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          totalTokens: 0,
+          updated: Date.now(),
+          telemetry: props.telemetry as any,
+        },
+      ]
+      input.setStore(
+        "session_telemetry",
+        props.sessionID,
+        reconcile(buildSessionTelemetryFromProjector({ session, status, monitorEntries })),
+      )
       break
     }
     case "message.updated": {
@@ -246,9 +272,6 @@ export function applyDirectoryEvent(input: {
         }
         break
       }
-
-      // De-duplicate optimistic vs server-confirmed image/file parts.
-      // Some providers may emit fresh part IDs for already-optimistic attachments.
       if (part.type === "file") {
         const isInlineImage = part.url.startsWith("data:image/")
         const semanticIndex = parts.findIndex(
@@ -265,7 +288,6 @@ export function applyDirectoryEvent(input: {
           break
         }
       }
-
       input.setStore(
         "part",
         part.messageID,
@@ -414,7 +436,6 @@ export function applyDirectoryEvent(input: {
       input.setStore(
         produce((draft) => {
           if (!draft.llm_errors) draft.llm_errors = []
-          // Replace existing entry for same provider+account+model vector
           const idx = draft.llm_errors.findIndex(
             (e) => e.providerId === props.providerId && e.accountId === props.accountId && e.modelId === props.modelId,
           )
@@ -423,11 +444,9 @@ export function applyDirectoryEvent(input: {
           } else {
             draft.llm_errors.push(entry)
           }
-          // Cap at 30 entries
           if (draft.llm_errors.length > 30) {
             draft.llm_errors = draft.llm_errors.slice(-30)
           }
-          // Push to history ring buffer
           pushLlmHistory(draft, {
             providerId: props.providerId,
             accountId: props.accountId,

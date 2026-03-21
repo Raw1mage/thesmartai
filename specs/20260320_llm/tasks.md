@@ -48,8 +48,33 @@
 - [x] 7.2 Compare outputs against the proposal's effective requirement description
 - [x] 7.3 Produce a validation checklist covering requirement satisfaction, gaps, deferred items, and evidence
 
+## 8. Build Slice B — Telemetry Backbone
+
+- [x] 8.1 Implement A111 prompt block telemetry event emission in `session/llm.ts`
+- [x] 8.2 Implement A112 round usage telemetry event emission in `session/processor.ts`
+- [x] 8.3 Extract reusable compaction budget inspection helper in `session/compaction.ts`
+- [x] 8.4 Refresh builder-facing `grafcet.json`, `c4.json`, and `sequence.json`
+- [x] 8.5 Run targeted validation and classify repo-preexisting failures vs slice-specific failures
+
+## 9. Build Slice B — Benchmark / Baseline Evidence
+
+- [x] 9.1 Define A113 benchmark session patterns and baseline capture procedure
+- [x] 9.2 Capture first real baseline dataset from telemetry events
+- [ ] 9.3 Compare after-change results once next optimization slice lands
+
+## 10. Build Slice B — Validation Gates
+
+- [x] 10.1 Define A114 validation gate checklist for telemetry slice
+- [x] 10.2 Mark Gate 4 complete after first real baseline dataset is captured
+- [ ] 10.3 Mark Gate 5 complete after first after-change comparison is captured
+
 <!--
 Unchecked checklist items are the planner handoff seed for runtime todo materialization.
 Checked items may remain for human readability, but they are not used as new todo seeds.
 Runtime todo is the visible execution ledger and must not be replaced by a private parallel checklist.
 -->
+
+## Validation
+
+- Architecture Sync: Verified (No doc changes)
+  - Basis: tasks checklist already matches implemented telemetry persistence、baseline capture、enablement snapshot gating state; no checklist item changes required.

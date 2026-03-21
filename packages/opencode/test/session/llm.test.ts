@@ -692,3 +692,134 @@ describe.skip("session.llm.stream", () => {
     })
   })
 })
+
+test("session.llm.stream gates enablement snapshot after first round unless routing intent matches", async () => {
+  const server = state.server
+  if (!server) {
+    throw new Error("Server not initialized")
+  }
+
+  const providerId = "openai-gated"
+  const source = await loadFixture("openai", "gpt-5.2")
+  const model = source.model
+
+  const firstRequest = waitRequest(
+    "/chat/completions",
+    createEventResponse([
+      {
+        id: "chatcmpl-1",
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: model.id,
+        choices: [{ index: 0, delta: { content: "Hello" }, finish_reason: "stop" }],
+      },
+    ]),
+  )
+
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          disabled_providers: [],
+          enabled_providers: [providerId],
+          provider: {
+            [providerId]: {
+              options: {
+                apiKey: "test-key",
+                baseURL: `${server.url.origin}/v1`,
+              },
+              models: {
+                [model.id]: model,
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const resolved = await Provider.getModel(providerId, model.id)
+      const session = await Session.create({})
+      const sessionID = session.id
+      const agent = {
+        name: "test",
+        mode: "primary",
+        options: {},
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        temperature: 0.4,
+      } satisfies Agent.Info
+
+      const user = {
+        id: "user-enablement-1",
+        sessionID,
+        role: "user",
+        time: { created: Date.now() },
+        agent: agent.name,
+        model: { providerId, modelID: resolved.id },
+      } satisfies MessageV2.User
+
+      const firstStream = await LLM.stream({
+        user,
+        sessionID,
+        model: resolved,
+        agent,
+        system: ["You are a helpful assistant."],
+        abort: new AbortController().signal,
+        messages: [{ role: "user", content: "hello" }],
+        tools: {},
+      })
+
+      for await (const _ of firstStream.fullStream) {
+      }
+
+      const firstCapture = await firstRequest
+      const firstSystemText = JSON.stringify(firstCapture.body)
+      expect(firstSystemText.includes("[ENABLEMENT SNAPSHOT]")).toBe(true)
+
+      const secondRequest = waitRequest(
+        "/chat/completions",
+        createEventResponse([
+          {
+            id: "chatcmpl-2",
+            object: "chat.completion.chunk",
+            created: Math.floor(Date.now() / 1000),
+            model: model.id,
+            choices: [{ index: 0, delta: { content: "World" }, finish_reason: "stop" }],
+          },
+        ]),
+      )
+
+      const secondUser = {
+        ...user,
+        id: "user-enablement-2",
+      } satisfies MessageV2.User
+
+      const secondStream = await LLM.stream({
+        user: secondUser,
+        sessionID,
+        model: resolved,
+        agent,
+        system: ["You are a helpful assistant."],
+        abort: new AbortController().signal,
+        messages: [
+          { role: "user", content: "hello" },
+          { role: "assistant", content: "hi" },
+          { role: "user", content: "thanks" },
+        ],
+        tools: {},
+      })
+
+      for await (const _ of secondStream.fullStream) {
+      }
+
+      const secondCapture = await secondRequest
+      const secondSystemText = JSON.stringify(secondCapture.body)
+      expect(secondSystemText.includes("[ENABLEMENT SNAPSHOT]")).toBe(false)
+    },
+  })
+})

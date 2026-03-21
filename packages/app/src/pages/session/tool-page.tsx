@@ -11,12 +11,7 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import type { Todo, UserMessage } from "@opencode-ai/sdk/v2/client"
 import { getSessionStatusSummary } from "./helpers"
-import {
-  buildMonitorEntries,
-  buildProcessCards,
-  type EnrichedMonitorEntry,
-  type ProcessCard,
-} from "./monitor-helper"
+import { buildMonitorEntries, buildProcessCards, type EnrichedMonitorEntry } from "./monitor-helper"
 import { SessionStatusSections } from "./session-status-sections"
 import { StatusTodoList } from "./status-todo-list"
 import { useStatusMonitor } from "./use-status-monitor"
@@ -24,6 +19,9 @@ import { useStatusTodoSync } from "./use-status-todo-sync"
 import { useAutonomousHealthSync } from "./use-autonomous-health-sync"
 import { useSessionResumeSync } from "./use-session-resume-sync"
 import { decode64 } from "@/utils/base64"
+import { SessionTelemetryCards } from "./session-telemetry-cards"
+import { useGlobalSync } from "@/context/global-sync"
+import { resolveTelemetryAccountLabel, useSessionTelemetryHydration } from "./session-telemetry-ui"
 
 export default function SessionToolPageRoute() {
   const language = useLanguage()
@@ -32,6 +30,7 @@ export default function SessionToolPageRoute() {
   const params = useParams<{ dir?: string; id?: string; tool?: string }>()
   const [searchParams, setSearchParams] = useSearchParams<{ file?: string }>()
   const sync = useSync()
+  const globalSync = useGlobalSync()
   const sdk = useSDK()
   const file = useFile()
   let fileTreeScrollEl: HTMLDivElement | undefined
@@ -57,20 +56,9 @@ export default function SessionToolPageRoute() {
   })
 
   useSessionResumeSync({ enabled: () => true, sessionID: () => params.id, sync })
+  useStatusTodoSync({ enabled: () => tool() === "status", sessionID: () => params.id, sdk, sync })
 
-  useStatusTodoSync({
-    enabled: () => tool() === "status",
-    sessionID: () => params.id,
-    sdk,
-    sync,
-  })
-
-  const monitor = useStatusMonitor({
-    enabled: () => tool() === "status",
-    sessionID: () => params.id,
-    sdk,
-    sync,
-  })
+  const monitor = useStatusMonitor({ enabled: () => tool() === "status", sessionID: () => params.id, sdk, sync })
   const autonomousHealth = useAutonomousHealthSync({
     enabled: () => tool() === "status",
     sessionID: () => params.id,
@@ -97,8 +85,46 @@ export default function SessionToolPageRoute() {
       autonomousHealth: autonomousHealth.data,
     }),
   )
-  // Runner card removed
+  const telemetry = createMemo(() => (params.id ? sync.data.session_telemetry[params.id] : undefined))
+  const telemetryDeps = createMemo(() => {
+    const sessionID = params.id
+    if (!sessionID) return ""
+    const status = sync.data.session_status[sessionID]
+    const messageSignature = messages()
+      .map((message) => `${message.id}:${sync.data.part[message.id]?.length ?? 0}`)
+      .join("|")
+    const monitorSignature =
+      tool() === "status"
+        ? monitorEntries()
+            .map(
+              (entry) =>
+                `${entry.sessionID}:${entry.status.type}:${entry.requests}:${entry.totalTokens}:${entry.updated}`,
+            )
+            .join("|")
+        : ""
+    return [
+      tool(),
+      info()?.time.updated ?? 0,
+      status?.type ?? "",
+      messageSignature,
+      sync.data.llm_errors.length,
+      sync.data.llm_history.length,
+      monitorSignature,
+      tool() === "status" && monitor.loading && !monitor.initialized ? "loading" : "idle",
+      tool() === "status" ? (monitor.error ?? "") : "",
+    ].join("::")
+  })
+  useSessionTelemetryHydration({
+    sessionID: () => params.id,
+    sync,
+    deps: telemetryDeps,
+    monitorEntries: () => (tool() === "status" ? (monitorEntries() as EnrichedMonitorEntry[]) : undefined),
+    loading: () => tool() === "status" && monitor.loading && !monitor.initialized,
+    error: () => (tool() === "status" ? monitor.error : undefined),
+  })
 
+  const resolveAccountLabel = (accountId?: string, providerId?: string) =>
+    resolveTelemetryAccountLabel(globalSync, accountId, providerId)
   const selectedFile = createMemo(() => {
     if (tool() !== "files") return undefined
     const value = searchParams.file
@@ -122,7 +148,6 @@ export default function SessionToolPageRoute() {
     if (!path) return
     void file.load(path)
   })
-
   createEffect(() => {
     if (tool() !== "files") return
     if (selectedFile()) return
@@ -138,15 +163,12 @@ export default function SessionToolPageRoute() {
     setSearchParams({ file: path })
   }
 
-  const closeFileViewer = () => {
-    navigate(`${backPath()}/tool/files`)
-  }
+  const closeFileViewer = () => navigate(`${backPath()}/tool/files`)
   const fileListDirectory = createMemo(() => info()?.directory ?? sdk.directory ?? sync.data.path.directory)
 
   return (
     <div class="size-full flex flex-col bg-background-base">
       <SessionHeader />
-
       <div class="flex-1 min-h-0 overflow-auto bg-background-base">
         <Show when={tool() === "files"}>
           <Show
@@ -172,7 +194,6 @@ export default function SessionToolPageRoute() {
                     {language.t("common.close")}
                   </Button>
                 </div>
-
                 <Show
                   when={!selectedFileState()?.loading}
                   fallback={<div class="text-12-regular text-text-weak">Loading file…</div>}
@@ -199,7 +220,6 @@ export default function SessionToolPageRoute() {
             )}
           </Show>
         </Show>
-
         <Show when={tool() === "status"}>
           <SessionStatusSections
             todoContent={
@@ -228,12 +248,10 @@ export default function SessionToolPageRoute() {
                     fallback={<div class="text-12-regular text-text-danger">{monitor.error}</div>}
                   >
                     <div class="flex flex-col gap-3">
+                      <SessionTelemetryCards telemetry={telemetry()} accountLabel={resolveAccountLabel} />
                       {(() => {
                         const processCards = () =>
-                          buildProcessCards(
-                            (monitorEntries() ?? []) as EnrichedMonitorEntry[],
-                            params.id,
-                          )
+                          buildProcessCards((monitorEntries() ?? []) as EnrichedMonitorEntry[], params.id)
                         return (
                           <Show
                             when={processCards().length > 0}
@@ -241,26 +259,32 @@ export default function SessionToolPageRoute() {
                           >
                             <For each={processCards()}>
                               {(card) => {
-                                const borderColor = () => {
-                                  if (card.status === "active") return "var(--color-success)"
-                                  if (card.status === "error") return "var(--color-warning)"
-                                  if (card.status === "waiting") return "var(--color-info)"
-                                  return "var(--border-weak-base)"
-                                }
-                                const statusLabel = () => {
-                                  if (card.status === "active") return "Running"
-                                  if (card.status === "error") return "Error"
-                                  if (card.status === "waiting") return "Waiting"
-                                  if (card.status === "pending") return "Pending"
-                                  return ""
-                                }
-                                const elapsed = () => {
-                                  if (card.elapsed == null) return ""
-                                  if (card.elapsed < 60) return `${card.elapsed}s`
-                                  const mins = Math.floor(card.elapsed / 60)
-                                  if (mins < 60) return `${mins}m`
-                                  return `${Math.floor(mins / 60)}h${mins % 60}m`
-                                }
+                                const borderColor = () =>
+                                  card.status === "active"
+                                    ? "var(--color-success)"
+                                    : card.status === "error"
+                                      ? "var(--color-warning)"
+                                      : card.status === "waiting"
+                                        ? "var(--color-info)"
+                                        : "var(--border-weak-base)"
+                                const statusLabel = () =>
+                                  card.status === "active"
+                                    ? "Running"
+                                    : card.status === "error"
+                                      ? "Error"
+                                      : card.status === "waiting"
+                                        ? "Waiting"
+                                        : card.status === "pending"
+                                          ? "Pending"
+                                          : ""
+                                const elapsed = () =>
+                                  card.elapsed == null
+                                    ? ""
+                                    : card.elapsed < 60
+                                      ? `${card.elapsed}s`
+                                      : Math.floor(card.elapsed / 60) < 60
+                                        ? `${Math.floor(card.elapsed / 60)}m`
+                                        : `${Math.floor(Math.floor(card.elapsed / 60) / 60)}h${Math.floor(card.elapsed / 60) % 60}m`
                                 return (
                                   <div
                                     class="rounded-md border bg-background-base px-3 py-2 flex flex-col gap-1"
@@ -299,9 +323,14 @@ export default function SessionToolPageRoute() {
             }
           />
         </Show>
-
         <Show when={tool() === "context"}>
-          <SessionContextTab messages={messages} visibleUserMessages={visibleUserMessages} view={view} info={info} />
+          <SessionContextTab
+            messages={messages}
+            visibleUserMessages={visibleUserMessages}
+            view={view}
+            info={info}
+            telemetry={telemetry}
+          />
         </Show>
       </div>
     </div>

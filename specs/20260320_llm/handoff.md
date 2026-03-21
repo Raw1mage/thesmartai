@@ -67,3 +67,16 @@
 - [x] Validation plan mapped to diagram nodes
 - [x] Traceability matrix covers top-level and decomposed nodes
 - [x] Build entry order documented
+
+## Current Build Status
+
+- Slice B telemetry backbone is implemented in beta repo and has passed focused validation for touched files.
+- A113 benchmark procedure is now specified in `telemetry-benchmark.md`, and the first real short-session baseline dataset has been captured via persisted runtime telemetry.
+- A114 validation gates are now specified in `telemetry-validation-gates.md`; Gate 4 is complete, while Gate 5 remains pending until first after-change benchmark evidence exists.
+- Remaining builder path after current slice: `A113` Compare Benchmark Sessions → `A114` Check Validation Gates → `A12` Govern Prompt Context → `A13` Surface Context State.
+- Cross-boundary subagent delegation remains an independent RCA/design track documented in `/home/pkcs12/projects/opencode-beta/docs/events/event_20260320_subagent_cross_boundary_rca.md` and is not a blocker for continuing telemetry work inside beta repo.
+
+## Validation
+
+- Architecture Sync: Verified (No doc changes)
+  - Basis: handoff contract changed only in workstream status wording; long-term architecture boundaries remain unchanged.

@@ -1023,7 +1023,7 @@ export const SessionRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        const busyIDs = KillSwitchService.listBusySessionIDs()
+        const busyIDs = await KillSwitchService.listBusySessionIDs()
         for (const id of busyIDs) {
           SessionPrompt.cancel(id)
         }

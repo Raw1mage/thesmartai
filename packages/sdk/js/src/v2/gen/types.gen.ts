@@ -771,6 +771,29 @@ export type EventRotationExecuted = {
   }
 }
 
+export type EventLlmPromptTelemetry = {
+  type: "llm.prompt.telemetry"
+  properties: {
+    sessionID: string
+    promptId: string
+    providerId: string
+    modelId: string
+    accountId?: string
+    finalSystemTokens: number
+    finalSystemChars: number
+    finalSystemMessages: number
+    messageCount: number
+    blocks: Array<{
+      key: string
+      chars: number
+      tokens: number
+      injected: boolean
+      policy: string
+    }>
+    timestamp: number
+  }
+}
+
 export type QuestionOption = {
   /**
    * Display text (1-5 words, concise)
@@ -877,6 +900,50 @@ export type EventTodoUpdated = {
   properties: {
     sessionID: string
     todos: Array<Todo>
+  }
+}
+
+export type EventSessionRoundTelemetry = {
+  type: "session.round.telemetry"
+  properties: {
+    sessionID: string
+    providerId: string
+    modelId: string
+    accountId?: string
+    finishReason: string
+    inputTokens: number
+    outputTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    totalTokens: number
+    cost: number
+    contextLimit: number
+    inputLimit?: number
+    reservedTokens: number
+    usableTokens: number
+    observedTokens: number
+    needsCompaction: boolean
+    compactionResult?: string
+    compactionDraftTokens?: number
+    compactionCount?: number
+    timestamp: number
+  }
+}
+
+export type EventSessionCompactionTelemetry = {
+  type: "session.compaction.telemetry"
+  properties: {
+    sessionID: string
+    roundIndex?: number
+    requestId?: string
+    providerId: string
+    modelId: string
+    accountId?: string
+    compactionAttemptId: string
+    compactionCount?: number
+    compactionResult: string
+    compactionDraftTokens?: number
+    timestamp: number
   }
 }
 
@@ -1481,10 +1548,12 @@ export type Event =
   | EventRatelimitAuthFailed
   | EventLlmError
   | EventRotationExecuted
+  | EventLlmPromptTelemetry
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
   | EventTodoUpdated
+  | EventSessionRoundTelemetry
   | EventSessionCompacted
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
@@ -2808,6 +2877,29 @@ export type SessionMonitorInfo = {
   totalTokens: number
   activeTool?: string
   activeToolStatus?: string
+  telemetry?: {
+    roundIndex?: number
+    requestId?: string
+    compactionResult?: string
+    compactionDraftTokens?: number
+    compactionCount?: number
+    source?: "projector"
+    promptSummary?: {
+      [key: string]: unknown
+    }
+    roundSummary?: {
+      [key: string]: unknown
+    }
+    compactionSummary?: {
+      [key: string]: unknown
+    }
+    sessionSummary?: {
+      [key: string]: unknown
+    }
+    freshness?: {
+      [key: string]: unknown
+    }
+  }
   updated: number
 }
 

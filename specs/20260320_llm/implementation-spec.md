@@ -10,7 +10,7 @@
 
 - 盤點現有 session context payload 組裝與 normalization 流程。
 - 盤點 compaction auto trigger / process / prune / tests / config。
-- 維護 `specs/20260320_llm/*` 與 `docs/events/event_20260320_llm_context_control_spec.md`。
+- 維護 `/home/pkcs12/projects/opencode-beta/specs/20260320_llm/*` 與 `/home/pkcs12/projects/opencode-beta/docs/events/event_20260320_llm_context_control_spec.md`。
 - 產出 prioritized optimization recommendations。
 
 ### OUT
@@ -33,15 +33,15 @@
 
 ## Critical Files
 
-- `/home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/session/processor.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/session/llm.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/session/compaction.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/session/message-v2.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/provider/transform.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/config/config.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/test/session/compaction.test.ts`
-- `/home/pkcs12/projects/opencode/docs/events/event_20260320_llm_context_control_spec.md`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/session/prompt.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/session/processor.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/session/llm.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/session/compaction.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/session/message-v2.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/provider/transform.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/config/config.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/test/session/compaction.test.ts`
+- `/home/pkcs12/projects/opencode-beta/docs/events/event_20260320_llm_context_control_spec.md`
 
 ## Structured Execution Phases
 
@@ -67,9 +67,9 @@
 
 **Target areas**
 
-- `/home/pkcs12/projects/opencode/packages/opencode/src/session/llm.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts`
-- `/home/pkcs12/projects/opencode/specs/20260320_llm/design.md`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/session/llm.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/session/prompt.ts`
+- `/home/pkcs12/projects/opencode-beta/specs/20260320_llm/design.md`
 
 ### Slice B — Low-risk Context Optimization Candidates
 
@@ -228,10 +228,16 @@
 
 ### Validation gates for Slice B implementation
 
-- Gate 1: telemetry 能輸出 block-level prompt 組成，且不影響正常請求。
-- Gate 2: 至少一個低風險候選能量測到 token 下降。
-- Gate 3: safety / identity / workflow 必要 prompt blocks 仍完整存在。
-- Gate 4: 不引入新 fallback、不改壞 compaction 正確性。
+- 設計期 gate 仍要求：
+  - telemetry 能輸出 block-level prompt 組成，且不影響正常請求
+  - safety / identity / workflow 必要 prompt blocks 仍完整存在
+  - 不引入新 fallback、不改壞 compaction 正確性
+- 實際執行狀態以 `telemetry-validation-gates.md` 為準：
+  - Gate 1：event emission exists — pass
+  - Gate 2：focused validation passes — pass
+  - Gate 3：benchmark procedure exists — pass
+  - Gate 4：first baseline dataset captured — pass
+  - Gate 5：after-change comparison ready — pending（尚缺第一筆 after-change benchmark evidence）
 
 ## Validation
 

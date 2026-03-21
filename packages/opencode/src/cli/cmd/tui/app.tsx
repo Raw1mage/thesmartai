@@ -651,7 +651,7 @@ function App() {
     {
       title: "Switch workspace",
       value: "workspace.switch",
-      keybind: "workspace_switch" as const,
+      keybind: undefined,
       category: "System",
       slash: { name: "workspace" },
       onSelect: () => {

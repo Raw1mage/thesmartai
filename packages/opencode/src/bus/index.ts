@@ -10,6 +10,7 @@ export type { BusContext } from "./bus-context"
 
 export namespace Bus {
   type Subscription = (event: any) => void
+  type SubscriptionRegistry = Map<string, Subscription[]>
 
   export const InstanceDisposed = BusEvent.define(
     "server.instance.disposed",
@@ -50,18 +51,29 @@ export namespace Bus {
     }),
   )
 
+  export const CronDeliveryAnnounce = BusEvent.define(
+    "cron.delivery.announce",
+    z.object({
+      sessionID: z.string(),
+      text: z.string(),
+      jobId: z.string(),
+      runId: z.string(),
+    }),
+  )
+
   // Module-level (global) subscriber registry — survives across instances.
   // Used by cross-cutting subscribers: debug-writer, tui-toaster, etc.
   const globalSubscriptions = new Map<string, Subscription[]>()
 
   // Lazy Instance.state() to break circular dependency:
   // index.ts → debug-writer → bus/index → Instance → bus/index (TDZ)
-  let _state: ReturnType<typeof Instance.state> | undefined
-  function state() {
+  type BusState = { subscriptions: SubscriptionRegistry }
+  let _state: ((() => BusState) & { reset: () => void }) | undefined
+  function state(): BusState {
     if (!_state) {
       _state = Instance.state(
         () => {
-          const subscriptions = new Map<any, Subscription[]>()
+          const subscriptions: SubscriptionRegistry = new Map()
           return { subscriptions }
         },
         async (_entry) => {
@@ -118,7 +130,11 @@ export namespace Bus {
 
   export function subscribe<Definition extends BusEvent.Definition>(
     def: Definition,
-    callback: (event: { type: Definition["type"]; properties: z.infer<Definition["properties"]>; context: BusContext }) => void,
+    callback: (event: {
+      type: Definition["type"]
+      properties: z.infer<Definition["properties"]>
+      context: BusContext
+    }) => void,
   ) {
     return raw(def.type, callback)
   }
@@ -163,11 +179,7 @@ export namespace Bus {
    * Global subscribers persist across instance lifecycles.
    * The callback is only invoked when getLogLevel() >= minLevel.
    */
-  export function subscribeGlobal(
-    type: string | "*",
-    minLevel: LogLevel,
-    callback: Subscription,
-  ) {
+  export function subscribeGlobal(type: string | "*", minLevel: LogLevel, callback: Subscription) {
     const gated: Subscription = (event) => {
       if (getLogLevel() < minLevel) return
       return callback(event)
@@ -186,7 +198,7 @@ export namespace Bus {
   }
 
   function raw(type: string, callback: (event: any) => void) {
-    const subscriptions = state().subscriptions
+    const subscriptions: SubscriptionRegistry = state().subscriptions
     let match = subscriptions.get(type) ?? []
     match.push(callback)
     subscriptions.set(type, match)

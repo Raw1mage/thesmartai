@@ -96,6 +96,7 @@ const baseState = (input: Partial<State> = {}) =>
     session: [],
     sessionTotal: 0,
     session_status: {},
+    session_telemetry: {},
     session_diff: {},
     todo: {},
     permission: {},
@@ -526,6 +527,68 @@ describe("applyDirectoryEvent", () => {
 
     expect(pushes).toEqual(["/tmp"])
     expect(lspLoads).toBe(1)
+  })
+
+  test("applies projector-owned telemetry updates into canonical store", () => {
+    const [store, setStore] = createStore(
+      baseState({
+        session: [rootSession({ id: "ses_1" })],
+        session_status: { ses_1: { type: "busy" } as any },
+      }),
+    )
+
+    applyDirectoryEvent({
+      event: {
+        type: "session.telemetry.updated",
+        properties: {
+          sessionID: "ses_1",
+          telemetry: {
+            source: "projector",
+            promptSummary: {
+              sessionID: "ses_1",
+              promptId: "prompt_1",
+              blocks: [{ key: "agent_prompt", chars: 10, tokens: 5, injected: true, policy: "always_on" }],
+              timestamp: 10,
+            },
+            roundSummary: {
+              sessionID: "ses_1",
+              roundIndex: 2,
+              requestId: "u1",
+              providerId: "openai",
+              modelId: "gpt-5",
+              accountId: "acct-1",
+              inputTokens: 12,
+              outputTokens: 34,
+              cacheReadTokens: 1,
+              cacheWriteTokens: 2,
+              totalTokens: 49,
+            },
+            compactionSummary: {
+              sessionID: "ses_1",
+              compactionResult: "completed",
+              compactionDraftTokens: 20,
+              compactionCount: 1,
+            },
+            sessionSummary: {
+              sessionID: "ses_1",
+              cumulativeTokens: 120,
+              totalRequests: 2,
+              latestUpdatedAt: 11,
+            },
+          },
+        },
+      },
+      store,
+      setStore,
+      push() {},
+      directory: "/tmp",
+      loadLsp() {},
+    })
+
+    expect(store.session_telemetry.ses_1?.phase).toBe("ready")
+    expect(store.session_telemetry.ses_1?.round.roundIndex).toBe(2)
+    expect(store.session_telemetry.ses_1?.sessionSummary.cumulativeTokens).toBe(120)
+    expect(store.session_telemetry.ses_1?.prompt.blocks).toHaveLength(1)
   })
 
   test("updates workspace aggregate from live workspace events", () => {

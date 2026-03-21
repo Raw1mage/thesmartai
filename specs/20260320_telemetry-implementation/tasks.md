@@ -1,41 +1,60 @@
 # Tasks
 
-## 1. Requirements & Context Alignment
+## 1. Baseline freeze
 
-- [ ] 1.1 Confirm plan references A111/A112 intent from `specs/20260320_llm/implementation-spec.md` and `handoff.md`.
-- [ ] 1.2 Map each telemetry data field to the listed landing zones (`llm.ts`, `processor.ts`, `compaction.ts`, `prompt.ts`, `telemetry.ts`) and clarify the downstream projection role of `session/monitor.ts` as a UI consumer while keeping `account/monitor.ts` focused on aggregate/quota responsibilities.
-- [ ] 1.3 Verify dedicated telemetry module decision (`session/telemetry.ts`) is documented with validation/failure expectations.
+- [x] 1.1 Confirm the real current telemetry path from runtime event emission through server snapshot/hydration to UI consumption.
+- [x] 1.2 Record current-state facts separately from previous planning assumptions.
+- [x] 1.3 Mark each existing path as inventory-only, recovery-only, or wrong steady-state authority.
+- [x] 1.4 List every helper, monitor heuristic, hydration path, and fallback that must be demoted, replaced, or removed.
 
-## 2. Execution-ready Planning
+## 2. Event contract
 
-- [ ] 2.1 Author implementation-spec phases that break A111/A112 instrumentation and telemetry validation into discrete slices.
-- [ ] 2.2 Populate IDEF0/GRAFCET with nodes/steps reflecting telemetry preparation, baseline capture, instrumentation sequencing, and validation/traceability outputs.
-- [ ] 2.3 Clarify stop gates ensuring telemetry failures cannot mutate runtime behavior and that schema misuse fails fast.
+- [x] 2.1 Define authoritative runtime telemetry event shapes for prompt, round, compaction, and future telemetry facts.
+- [x] 2.2 Define event identity, ordering, replay, and idempotency semantics.
+- [x] 2.3 Define which projector-owned updates are delivered downstream to the app.
+- [x] 2.4 Reject any event contract that requires UI-side or page-hook-side telemetry synthesis.
+- [x] 2.5 Write a minimum event matrix that lists event classes, producer boundaries, required identity fields, and replay assumptions.
+- [x] 2.6 Map each event class back to the original product purpose: A111 prompt evidence or A112 round/session/compaction evidence.
 
-## 3. Validation Alignment
+## 3. Projector
 
-- [ ] 3.1 Document baseline vs. after capture expectations, including representative session scenarios and benchmarks for A111/A112 reporting.
-- [ ] 3.2 Specify telemetry verification commands or log checks (e.g., inspect baseline telemetry output) for future builders.
-- [ ] 3.3 Record acceptance criteria traced to proposal/spec/design (A111/A112 coverage, no behavior changes, validation gates).
+- [x] 3.1 Define the server-side telemetry projector as the sole authoritative read-model owner.
+- [x] 3.2 Define projector aggregate shape, lifecycle, and session scoping.
+- [x] 3.3 Route monitor and `session.top` to projector-owned state without allowing them to regain authority.
+- [x] 3.4 Add a hard stop gate if any downstream surface still needs to recreate telemetry truth outside the projector.
+- [x] 3.5 Write a minimum projector aggregate matrix covering prompt telemetry, round telemetry, compaction telemetry, session summary, freshness metadata, and degraded/catch-up metadata.
+- [x] 3.6 Explicitly mark which fields belong to projector authority and which belong only to downstream adapters.
 
-## 4. Handoff & Runtime Todo Seed
+## 4. Reducer cutover
 
-- [ ] 4.1 Ensure `handoff.md` lists required reads, execution contract, stop gates, and execution-ready status checkboxes tied to telemetry.
-- [ ] 4.2 Provide runtime todo seed encouraging builders to materialize A111 first, then A112, specifying telemetry validation expectations.
-- [ ] 4.3 Confirm diagrams, tasks, and specs share consistent naming/traceability for future automation (A111 vs. A112 vs. validation).
+- [x] 4.1 Define `global-sync` reducer actions and canonical `session_telemetry` shape.
+- [x] 4.2 Define the UI surfaces that must read reducer-owned telemetry as pure consumers.
+- [x] 4.3 Remove, replace, or degrade old page-hook, hydration, and monitor-helper writers.
+- [x] 4.4 Define the exact cutover point after which legacy writers are forbidden from steady-state telemetry writes.
+- [x] 4.5 Write an explicit forbidden-writer list covering every legacy page-level, helper-level, snapshot-level, and fallback-level telemetry writer after cutover.
+- [x] 4.6 Define degraded-only behavior so fallback paths cannot silently become steady-state writers.
+- [x] 4.7 Attach the forbidden-writer list to the implementation slice and verify it is enforced before declaring cutover complete.
 
-## 5. Sidebar / Context Consumption Planning
+## 5. Snapshot demotion
 
-- [ ] 5.1 Document the sidebar/context card taxonomy: reuse the runner/health overview, define prompt telemetry card(s) for A111, round/session telemetry card(s) for A112, and note any account/quota reuse card. State whether each card lives in the status sidebar, the context tab, or a hybrid surface, and why that placement matches the metric semantics.
-- [ ] 5.2 Define the UI consumption contract so cards read the telemetry slices exposed by `session/monitor.ts` (e.g., `sync.data.session_status[sessionID].telemetry` or a dedicated `sync.data.session_telemetry[sessionID]`) without writing or inferring their own data.
-- [ ] 5.3 Tie this card planning back into diagrams/tasks/handoff so builders understand the phased order (data layer first, UI consumer next) and how to validate the sidebar/context renderings once backend telemetry is live. Prioritize P2a runner/prompt, P2b round/session, and P2c account/quota sequencing in the todo flow.
+- [x] 5.1 Keep `session.top` only for bootstrap, reconnect, catch-up, buffer miss, and degraded recovery.
+- [x] 5.2 Remove repeated page-level snapshot refresh as a steady-state dependency.
+- [x] 5.3 Add a hard failure condition if any fallback silently re-promotes snapshot/hydration authority.
 
-## 6. Phased Planning Assurance
+## 6. Cleanup
 
-- [ ] 6.1 Confirm the plan explicitly reinforces the P0→P1→P2 ordering so data-layer readiness gates precedent to instrumentation readiness, which in turn gates sidebar/context rendering.
-- [ ] 6.2 Trace each deliverable (document, verification, card) back to its phase to avoid premature execution (e.g., no sidebar cards before P2).
-- [ ] 6.3 Validate that stop gates and dependencies list the risks for each phase and note any cross-phase handoff expectations (e.g., P1 waits on P0 baseline data, P2 waits on P1 projection stability).
+- [x] 6.1 Remove conflicting legacy helpers, heuristics, and fallback glue after authority cutover.
+- [x] 6.2 Remove duplicate telemetry writers and any path that can recreate them.
+- [x] 6.3 Sync `specs/architecture.md`, `handoff.md`, and the event log to the final authority model.
+- [x] 6.4 Stop if cleanup reveals architecture drift toward current-code shortcuts.
 
-<!--
-Unchecked checklist items seed the runtime todo for implementation agents.
- -->
+## 7. Validation
+
+- [x] 7.1 Prove steady-state propagation follows runtime event → projector → reducer → UI consumer.
+- [x] 7.2 Prove `session.top` is used only as bootstrap/catch-up/degraded transport.
+- [x] 7.3 Prove hydration-first, monitor-first, and page-hook-first steady-state have been removed or demoted.
+- [x] 7.4 Prove no duplicate authority, fallback promotion, partial migration hazard, or architecture drift remains.
+- [x] 7.5 Prove A111 can answer prompt composition evidence questions using the final telemetry pipeline.
+- [x] 7.6 Prove A112 can answer round/session/compaction evidence questions using the final telemetry pipeline.
+- [x] 7.7 Record a validation matrix that ties each proof to a concrete command, fixture, or runtime evidence source.
+- [x] 7.8 Record a final evidence table that combines architecture proof, product proof, and migration proof in one closeout artifact.

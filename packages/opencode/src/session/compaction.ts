@@ -30,12 +30,9 @@ export namespace SessionCompaction {
 
   const COMPACTION_BUFFER = 20_000
 
-  export async function isOverflow(input: { tokens: MessageV2.Assistant["tokens"]; model: Provider.Model }) {
+  export async function inspectBudget(input: { tokens: MessageV2.Assistant["tokens"]; model: Provider.Model }) {
     const config = await Config.get()
-    if (config.compaction?.auto === false) return false
     const context = input.model.limit.context
-    if (context === 0) return false
-
     const count =
       input.tokens.total ||
       input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
@@ -51,6 +48,7 @@ export namespace SessionCompaction {
           SessionPrompt.OUTPUT_TOKEN_MAX,
         ),
       )
+
     const usable = input.model.limit.input
       ? input.model.limit.input - reserved
       : context -
@@ -60,7 +58,20 @@ export namespace SessionCompaction {
           input.model.limit.output || 32_000,
           SessionPrompt.OUTPUT_TOKEN_MAX,
         )
-    return count >= usable
+
+    return {
+      auto: config.compaction?.auto !== false,
+      context,
+      inputLimit: input.model.limit.input,
+      reserved,
+      usable,
+      count,
+      overflow: config.compaction?.auto !== false && context !== 0 && count >= usable,
+    }
+  }
+
+  export async function isOverflow(input: { tokens: MessageV2.Assistant["tokens"]; model: Provider.Model }) {
+    return (await inspectBudget(input)).overflow
   }
 
   export const PRUNE_MINIMUM = 20_000
@@ -133,8 +144,7 @@ export namespace SessionCompaction {
     // processor pins that account onto the session — silently overwriting
     // the user's chosen account.
     const session = await Session.get(input.sessionID)
-    const accountId =
-      agentModel?.accountId ?? userMessage.model.accountId ?? session?.execution?.accountId
+    const accountId = agentModel?.accountId ?? userMessage.model.accountId ?? session?.execution?.accountId
     const msg = (await Session.updateMessage({
       id: Identifier.ascending("message"),
       role: "assistant",

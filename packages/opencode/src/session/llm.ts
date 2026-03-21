@@ -25,6 +25,7 @@ import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
 import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
+import { Token } from "@/util/token"
 
 import z from "zod"
 import { findFallback, type ModelVector, type FallbackStrategy, isVectorRateLimited } from "@/account/rotation3d"
@@ -69,6 +70,31 @@ export const RotationExecutedEvent = BusEvent.define(
     toModelId: z.string(),
     toAccountId: z.string(),
     reason: z.string(),
+    timestamp: z.number(),
+  }),
+)
+
+export const PromptTelemetryEvent = BusEvent.define(
+  "llm.prompt.telemetry",
+  z.object({
+    sessionID: z.string(),
+    promptId: z.string(),
+    providerId: z.string(),
+    modelId: z.string(),
+    accountId: z.string().optional(),
+    finalSystemTokens: z.number(),
+    finalSystemChars: z.number(),
+    finalSystemMessages: z.number(),
+    messageCount: z.number(),
+    blocks: z.array(
+      z.object({
+        key: z.string(),
+        chars: z.number(),
+        tokens: z.number(),
+        injected: z.boolean(),
+        policy: z.string(),
+      }),
+    ),
     timestamp: z.number(),
   }),
 )
@@ -124,6 +150,20 @@ export namespace LLM {
       .toLowerCase()
   }
 
+  function getMatchedIntents(messages: ModelMessage[]): string[] {
+    const data = ENABLEMENT as any
+    const text = extractLatestUserText(messages)
+    return ((data?.routing?.intent_to_capability ?? []) as any[])
+      .filter((route) => (route?.keywords ?? []).some((kw: string) => text.includes(String(kw).toLowerCase())))
+      .slice(0, 4)
+      .map((route) => route.intent)
+  }
+
+  function shouldInjectEnablementSnapshot(messages: ModelMessage[]) {
+    if (messages.length <= 1) return true
+    return getMatchedIntents(messages).length > 0
+  }
+
   function buildEnablementSnapshot(messages: ModelMessage[]): string {
     const data = ENABLEMENT as any
     const coreTools = (data?.tools?.core ?? []).map((x: any) => x.name).slice(0, 12)
@@ -131,11 +171,7 @@ export namespace LLM {
     const mcpServers = (data?.mcp_servers?.runtime_observed ?? []).map(
       (x: any) => `${x.name}:${x.enabled ? "on" : "off"}`,
     )
-    const text = extractLatestUserText(messages)
-    const matchedIntents = ((data?.routing?.intent_to_capability ?? []) as any[])
-      .filter((route) => (route?.keywords ?? []).some((kw: string) => text.includes(String(kw).toLowerCase())))
-      .slice(0, 4)
-      .map((route) => route.intent)
+    const matchedIntents = getMatchedIntents(messages)
 
     return [
       "[ENABLEMENT SNAPSHOT]",
@@ -243,38 +279,61 @@ export namespace LLM {
     // Legacy alias for gradual migration - these will be removed once all usages migrate to capabilities
     const usesInstructions = capabilities.useInstructionsOption
 
+    const subagentSession = await isSubagentSession(input.sessionID)
+    const injectEnablementSnapshot = shouldInjectEnablementSnapshot(input.messages)
     const system = []
-    const systemParts = [
-      // 1. BIOS Driver Layer (Base identity and technical instructions)
-      // For providers using instructions option, skip SystemPrompt.provider() since it's sent via options.instructions
-      ...(usesInstructions ? [] : await SystemPrompt.provider(input.model)),
-
-      // 2. User Agent Custom Prompt
-      ...(input.agent.prompt ? [input.agent.prompt] : []),
-
-      // 3. Dynamic Session/Task Prompts
-      ...input.system,
-
-      // 3.5 Enablement capability snapshot (central capability registry)
-      buildEnablementSnapshot(input.messages),
-
-      // 4. Custom prompt from last user message
-      ...(input.user.system ? [input.user.system] : []),
-
-      // 5. CORE SYSTEM PROMPT (Red Light Rules)
-      // Forced at the very bottom to leverage Recency Bias.
-      // This is the single source of truth for the cms branch personality.
-      `\n\n--- CRITICAL OPERATIONAL BOUNDARY ---\n\n`,
-      ...(await SystemPrompt.system(await isSubagentSession(input.sessionID))),
-
-      // 6. Role Identity Reinforcement
-      // Tells the model exactly who it is in this specific request.
-      `\n\n[IDENTITY REINFORCEMENT]\n` +
-        `Current Role: ${(await isSubagentSession(input.sessionID)) ? "Subagent" : "Main Agent"}\n` +
-        `Session Context: ${(await isSubagentSession(input.sessionID)) ? "Sub-task" : "Main-task Orchestration"}`,
+    const systemPartEntries = [
+      {
+        key: "provider_prompt",
+        policy: usesInstructions ? "conditional" : "always_on",
+        text: usesInstructions ? "" : (await SystemPrompt.provider(input.model)).join("\n"),
+      },
+      {
+        key: "agent_prompt",
+        policy: "conditional",
+        text: input.agent.prompt ?? "",
+      },
+      {
+        key: "dynamic_system",
+        policy: "dynamic",
+        text: input.system.join("\n"),
+      },
+      {
+        key: "enablement_snapshot",
+        policy: injectEnablementSnapshot ? "conditional_active" : "conditional_skipped",
+        text: injectEnablementSnapshot ? buildEnablementSnapshot(input.messages) : "",
+      },
+      {
+        key: "user_system",
+        policy: "conditional",
+        text: input.user.system ?? "",
+      },
+      {
+        key: "critical_boundary_separator",
+        policy: "always_on",
+        text: `\n\n--- CRITICAL OPERATIONAL BOUNDARY ---\n\n`,
+      },
+      {
+        key: "core_system_prompt",
+        policy: "always_on",
+        text: (await SystemPrompt.system(subagentSession)).join("\n"),
+      },
+      {
+        key: "identity_reinforcement",
+        policy: "always_on",
+        text:
+          `\n\n[IDENTITY REINFORCEMENT]\n` +
+          `Current Role: ${subagentSession ? "Subagent" : "Main Agent"}\n` +
+          `Session Context: ${subagentSession ? "Sub-task" : "Main-task Orchestration"}`,
+      },
     ]
 
-    system.push(systemParts.filter((x) => x).join("\n"))
+    system.push(
+      systemPartEntries
+        .map((entry) => entry.text)
+        .filter((x) => x)
+        .join("\n"),
+    )
 
     // 7. Model-specific prompt optimization (inline, no hook indirection)
     // Gemini models respond better when AGENTS.md instructions are
@@ -404,6 +463,42 @@ export namespace LLM {
     // Anthropic API returns 400 error: "system: text content blocks must be non-empty"
     // @event_20260209_empty_system_blocks
     const filteredSystem = system.filter((x) => x && x.trim() !== "")
+    const promptTelemetryBlocks = systemPartEntries.map((entry) => ({
+      key: entry.key,
+      chars: entry.text.length,
+      tokens: Token.estimate(entry.text),
+      injected: entry.text.trim().length > 0,
+      policy: entry.policy,
+    }))
+    const finalSystemChars = filteredSystem.reduce((sum, item) => sum + item.length, 0)
+    const finalSystemTokens = filteredSystem.reduce((sum, item) => sum + Token.estimate(item), 0)
+    const promptId = `prompt_${Bun.hash(
+      JSON.stringify({
+        sessionID: input.sessionID,
+        providerId: input.model.providerId,
+        modelId: input.model.id,
+        accountId: currentAccountId,
+        messageCount: input.messages.length,
+        blocks: promptTelemetryBlocks,
+        finalSystemChars,
+        finalSystemTokens,
+      }),
+    ).toString(36)}`
+
+    Bus.publish(PromptTelemetryEvent, {
+      sessionID: input.sessionID,
+      promptId,
+      providerId: input.model.providerId,
+      modelId: input.model.id,
+      accountId: currentAccountId,
+      finalSystemTokens,
+      finalSystemChars,
+      finalSystemMessages: filteredSystem.length,
+      messageCount: input.messages.length,
+      blocks: promptTelemetryBlocks,
+      timestamp: Date.now(),
+    }).catch(() => {})
+
     const systemMessages =
       capabilities.systemMessageRole === "user"
         ? ([

@@ -203,6 +203,7 @@ export function createChildStoreManager(input: {
             session: [],
             sessionTotal: 0,
             session_status: {},
+            session_telemetry: {},
             session_diff: {},
             workspace_diff: {},
             todo: {},

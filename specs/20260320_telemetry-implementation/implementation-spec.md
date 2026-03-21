@@ -2,97 +2,152 @@
 
 ## Goal
 
-- 將 Builder sidebar / context tab telemetry卡片的 P2 需求具體化，提供清晰的欄位、狀態、互動與數據契約，讓後續實作可以直接依此繪製畫面與綁定 `session/monitor.ts` 的 projection。
+Rewrite telemetry as a bus-messaging-first contract so the next builder can move from the current snapshot/hydration baseline to a projector-owned, reducer-owned architecture without reinterpreting authority.
 
 ## Scope
 
 ### IN
 
-- 定義 Runner / Health overview、Prompt Telemetry (A111)、Round / Session Telemetry (A112)、Account / Quota reuse卡片的欄位、狀態、互動、放置位置與整體順序。
-- 指定共用狀態模型與資料來源限制，明確說明這些卡片是 read-only consumer，只從 `session/monitor.ts` 對應的 sync slice 讀取狀態片段。
-- 確認 P2a / P2b / P2c 的優先順序及相依性，並且備註需要在未違背 read-only 規則下選定同步鍵（key name TBD）。
+- Rewrite the telemetry spec package into a builder checklist.
+- Define current state, target state, and migration path separately.
+- Define the target authority chain: runtime events → server projector → app reducer → UI consumer.
+- Update `specs/architecture.md` and event documentation to match the rewrite contract.
 
 ### OUT
 
-- 不包括任何 runtime code，純粹為設計文件。
-- 不指定實作任務細節（留給 implementation agent 實作）。
+- Product code changes.
+- Quota/account/billing telemetry redesign.
+- UI redesign.
+- Preserving legacy telemetry glue that conflicts with target ownership.
 
 ## Assumptions
 
-- `session/monitor.ts` 已提供 telemetry 投影（例如 runner 線程狀態、prompt block metadata、round/session summary、quota 消耗）並對外 expose sync slice 供 UI read-only 訂閱。
-- 所有 spec 內提到的欄位都有信賴來源（request log、telemetry aggregator），但 exact sync key 名稱尚未敲定，需要在實作階段與 backend 協調且不得新增 write path。
-- P2 卡片會與 status sidebar + context tab 共存，builder 會以相同 state model 控制多個 subtree 的顯示。
+- Runtime telemetry events already exist for at least part of the needed fact surface.
+- Runtime telemetry persistence already exists for supported event types.
+- `session.top` and monitor telemetry exist today as snapshot-bearing baseline paths.
+- App already has `global-sync` state with `session_telemetry`, but current steady-state hydration ownership is wrong.
+- Builder is authorized to remove, replace, or demote conflicting legacy telemetry glue.
+- The rewrite must preserve telemetry's original product purpose: A111 prompt composition evidence and A112 round/session/compaction evidence.
 
-## Shared State Model
+## Stop Gates
 
-- 所有 P2 卡片遵循統一 state 四態：
-  1. `empty`：尚無 telemetry 值時的 placeholder。
-  2. `loading`：資料尚在從 `session/monitor.ts` 投影同步中。
-  3. `error`：最終讀取失敗或 projection 異常。
-  4. `disabled`：在該 session/runner 模式下此卡片不可用（例如 quota 功能未開）。
-- 每個卡片都應該依狀態呈現對應的 headline、icon、提示文字，且 UI 層只負責呈現，不試圖 mutation 後端資料。
+- **Duplicate authority**: stop if any steady-state path other than projector → reducer can write canonical telemetry truth.
+- **Fallback promotion**: stop if `session.top`, monitor hydration, or local fallback remains or becomes a steady-state primary path.
+- **Partial migration hazards**: stop if projector/reducer are introduced while old hydration/page-hook writers can still mutate canonical telemetry.
+- **Architecture drift**: stop if implementation optimizes around current shortcuts instead of bus-first ownership.
+- Stop if the real code baseline materially differs from the documented current-state inventory.
+- Stop for approval if telemetry work expands into broader non-telemetry app architecture rewrite.
+- Stop for approval if non-telemetry monitor/status semantics must change to complete this migration.
 
-## Data Contract Notes
+## Critical Files
 
-- 四張卡片都只讀取 `session/monitor.ts` 的 projection/sync slice；UI 不得直接訂閱 lower-level runtime event 或 inject 新的寫入通道。
-- 具體的 sync key 命名（例如 `runnerTelemetry`, `promptBlocks`, `roundTelemetry`, `quotaSignals`）尚待 engine/monitor owner 與 builder 協調，在正式實作前必須確認，但這不影響 read-only consumer 的角色。
-- 卡片更新頻率應與 telemetry refresh rate 一致，不可在 UI 端自行 trigger schedule（避免造成 state mismatch）。
+- `specs/architecture.md`
+- `specs/20260320_telemetry-implementation/proposal.md`
+- `specs/20260320_telemetry-implementation/spec.md`
+- `specs/20260320_telemetry-implementation/design.md`
+- `specs/20260320_telemetry-implementation/implementation-spec.md`
+- `specs/20260320_telemetry-implementation/tasks.md`
+- `specs/20260320_telemetry-implementation/handoff.md`
+- `docs/events/event_20260321_telemetry_builder_first_contract.md`
+- `packages/opencode/src/session/llm.ts`
+- `packages/opencode/src/session/processor.ts`
+- `packages/opencode/src/bus/subscribers/telemetry-runtime.ts`
+- `packages/opencode/src/session/monitor.ts`
+- `packages/opencode/src/server/routes/session.ts`
+- `packages/app/src/context/global-sync/event-reducer.ts`
+- `packages/app/src/context/global-sync/types.ts`
+- `packages/app/src/context/sync.tsx`
+- `packages/app/src/pages/session/use-status-monitor.ts`
+- `packages/app/src/pages/session/monitor-helper.ts`
 
-## P2 Telemetry Cards
+## Structured Execution Phases
 
-### 顆粒化順序與定位
+### Phase 1 — Baseline freeze
 
-- **P2a Runner/Prompt → P2b Round/Session → P2c Account/Quota**。依照 priority 先展示 runner 相關概覽，再提供 round/session 使用量，最後補 quota/帳號視角。Sidebar 主要區塊呈現 P2a + P2b，context tab 與 compact callout 承接 P2c。每張卡片都按這個實作序列交付。
+- Record the actual current telemetry path from runtime emission to UI consumption.
+- Mark which current paths are inventory only, which are recovery only, and which incorrectly act as steady-state authority.
+- Freeze these facts before defining the rewrite so builder does not code against stale assumptions.
 
-### 1. Runner / Health overview reuse
+### Phase 2 — Event contract
 
-- **欄位**：current runner status（running/idle/pending）、health summary（last heartbeat、failure rate）、telemetry callouts（last prompt injection outcome、round durations、last error stack）。
-- **狀態**：empty/loading/error/disabled。
-- **互動**：
-  - expand diagnostics（展開 runner 詳細 telemetry log）。
-  - drill-down（導向 context tab 或 telemetry detail pane）。
-  - copy runner/session IDs（提供複製按鈕）。
-  - severity filter（若 severity tag 存在，可切換展示 warning/error/ok）。
-- **放置位置**：status sidebar primary zone，必要時可在 sidebar 上方帶 condensed context preview，提供快速的 telemetry highlight。
-  - 可與 P2a prompt telemetry combine preview，避免 duplicated layout。
-- **Data source**：`session/monitor.ts` 的 runner telemetry slice（read-only），需明確 flag 這張卡片不觸發任何 state mutations。
+- Define authoritative runtime telemetry event shapes for prompt, round, compaction, and future session telemetry facts.
+- Define identity, ordering, replay, and idempotency semantics.
+- Decide what projector-owned updates the app consumes.
+- Reject any contract that requires UI or page hooks to synthesize missing authority.
+- Freeze a minimum event matrix before moving forward:
+  - event classes
+  - producer boundaries
+  - required identity fields
+  - ordering / replay assumptions
+  - projector-consumed payload subset
+  - reducer-consumed downstream update subset
 
-### 2. Prompt Telemetry card (A111)
+### Phase 3 — Projector
 
-- **欄位**：block ID/name、source file、block kind、injection policy、injected/skipped + skip reason、estimated tokens、correlation IDs、builder tag。
-- **狀態**：empty/loading/error/disabled，同步 runner card 状態。
-- **互動**：
-  - expand token breakdown（reveals prompt layers & estimated cost）。
-  - copy block/trace IDs。
-  - sort by token count or outcome（injected/skipped）。
-  - filter injected vs skipped。
-  - drill into context tab full log（context tab 顯示詳細 prompt log）。
-- **放置位置**：status sidebar primary 區域，緊鄰 runner overview；也可在 hybrid context detail pane 展示詳細 token 分解資料。
-- **補充**：builder 應確認 `injected/skipped` 與 `skip reason` 由 monitor 端附帶，UI 只負責呈現及過濾。
+- Define the server telemetry projector as the sole authoritative read-model owner.
+- Define projector aggregate shape and session-scoped lifecycle.
+- Route monitor and `session.top` to projector-owned state only.
+- Delete or demote monitor-derived authority heuristics.
+- Freeze a minimum projector aggregate matrix before reducer work:
+  - prompt telemetry summary
+  - round telemetry summary
+  - compaction telemetry summary
+  - session cumulative summary
+  - freshness metadata
+  - degraded/catch-up metadata
 
-### 3. Round / Session Telemetry card (A112)
+### Phase 4 — Reducer cutover
 
-- **欄位**：sessionId、roundIndex、requestId、provider/account/model、prompt/input/response token estimates、compaction flags & results、compaction draft tokens、sessionDurationMs、cumulative tokens。
-- **狀態**：empty/loading/error/disabled。
-- **互動**：
-  - sort/filter（例如依 round index、token 總量、compaction trigger）。
-  - expand compaction history（顯示過去 round 的 compaction decisions）。
-  - drill-down to request details（導向 request detail tab）。
-  - copy session/round/request IDs。
-- **放置位置**：status sidebar summary block，context tab history/detail 也應同步顯示以便 review。
+- Define `global-sync` reducer actions and canonical `session_telemetry` shape.
+- Cut all steady-state telemetry writes over to reducer-owned updates.
+- Remove, replace, or degrade old page-level hydration writers.
+- Name the exact cutover condition after which legacy writers are forbidden.
+- Define an explicit forbidden-writer list after cutover, including at minimum:
+  - page-level hydration effects
+  - monitor helper authority synthesis
+  - snapshot refresh writers
+  - local fallback promotion paths
+- Cutover is not complete until the forbidden-writer list is attached to the implementation slice and validated as enforced.
 
-### 4. Account / Quota reuse card
+### Phase 5 — Snapshot demotion
 
-- **欄位**：quota consumption（current & rolling window）、remaining tokens、aggregate health（跨 providers）、alert thresholds tied to A112 demand spikes。
-- **狀態**：empty/loading/error/disabled。
-- **互動**：
-  - drill into account details（context tab 顯示各 account quota timeline）。
-  - filter by quota type（daily/monthly/feature-tier）。
-  - copy account ID。
-- **放置位置**：context tab primary card，sidebar 內則以 compact callout 呈現（only when quota pressure is high, e.g., remaining tokens < threshold from A112 demand spikes）。
+- Keep `session.top` only for bootstrap, reconnect, catch-up, buffer miss, and degraded recovery.
+- Remove repeated page-level snapshot refresh as a steady-state dependency.
+- Ensure degraded mode cannot silently re-promote snapshot or monitor authority.
 
-### 通用條件
+### Phase 6 — Cleanup
 
-- 所有卡片都受到同一個 read-only telemetry sync slice 控制，避免 builder 副作用。
-- UI Implementation note：exact sync key names（例如 `telemetry.runnerState`, `telemetry.promptBlocks`, `telemetry.roundSummary`, `telemetry.quotaOverview`）仍需與 runtime owner 共同確定，該決議於 implementation 階段補足，不得在 spec 裡強制定死。
-- 確保 P2 cards 的 refresh 只由 `session/monitor.ts` 的 subscription 驅動，UI 不能自行 poll 或寫入。
+- Remove conflicting legacy glue after authority cutover.
+- Remove any fallback path that can recreate duplicate authority.
+- Align architecture doc, handoff doc, and event log to the final ownership model.
+
+### Phase 7 — Validation
+
+- Prove runtime event → projector → reducer → UI consumer steady-state flow.
+- Prove `session.top` is secondary bootstrap/catch-up/degraded transport only.
+- Prove hydration-first / monitor-first / page-hook-first steady-state has been removed or demoted.
+- Prove no duplicate authority, fallback promotion, partial migration hazard, or architecture drift remains.
+
+## Validation
+
+- Package docs use identical current-state / target-state / migration-path separation.
+- Target architecture is consistently described as runtime events → server projector → app reducer → UI consumer.
+- `tasks.md` uses the required ordered checklist: baseline freeze → event contract → projector → reducer cutover → snapshot demotion → cleanup → validation.
+- `session.top` is described only as bootstrap/catch-up/degraded transport.
+- Builder-facing instructions are concrete enough to begin implementation without redefining ownership.
+- Stop gates explicitly block duplicate authority, fallback promotion, partial migration hazards, and architecture drift.
+- Event-contract validation: builder can point to a concrete minimum event matrix before projector work starts.
+- Projector validation: builder can point to a concrete minimum aggregate matrix before reducer work starts.
+- Cutover validation: builder can point to an explicit forbidden-writer list after reducer cutover.
+- Product validation: the plan explicitly preserves A111 prompt evidence and A112 round/session/compaction evidence goals.
+- Completion validation: builder can show a single evidence table mapping architecture proof, product proof, and migration proof to concrete commands, fixtures, or runtime traces.
+
+## Handoff
+
+- Next builder reads this file first, then companion artifacts.
+- Next builder treats current code as migration baseline only.
+- Next builder prioritizes rewrite-to-target over preserve-current-shape.
+- Next builder must stop instead of landing a partial cutover.
+- Next builder must not begin projector implementation until the event matrix is explicit.
+- Next builder must not begin reducer cutover until the projector aggregate matrix is explicit.
+- Next builder must not declare completion until forbidden legacy writers are removed, replaced, or degraded-only by explicit cutover rule.

@@ -10,12 +10,17 @@ import { useLanguage } from "@/context/language"
 import { getSessionContextMetrics } from "./session-context-metrics"
 import { estimateSessionContextBreakdown, type SessionContextBreakdownKey } from "./session-context-breakdown"
 import { createSessionContextFormatter } from "./session-context-format"
+import type { SessionTelemetry } from "@/context/global-sync/types"
+import { AccountQuotaReuseCard } from "@/pages/session/session-telemetry-cards"
+import { useGlobalSync } from "@/context/global-sync"
+import { resolveTelemetryAccountLabel } from "@/pages/session/session-telemetry-ui"
 
 interface SessionContextTabProps {
   messages: () => Message[]
   visibleUserMessages: () => UserMessage[]
   view: () => ReturnType<ReturnType<typeof useLayout>["view"]>
   info: () => ReturnType<ReturnType<typeof useSync>["session"]["get"]>
+  telemetry?: () => SessionTelemetry | undefined
 }
 
 const BREAKDOWN_COLOR: Record<SessionContextBreakdownKey, string> = {
@@ -38,6 +43,7 @@ function Stat(props: { label: string; value: JSX.Element }) {
 export function SessionContextTab(props: SessionContextTabProps) {
   const params = useParams()
   const sync = useSync()
+  const globalSync = useGlobalSync()
   const language = useLanguage()
 
   const usd = createMemo(
@@ -133,6 +139,27 @@ export function SessionContextTab(props: SessionContextTabProps) {
     { label: "context.stats.sessionCreated", value: () => formatter().time(props.info()?.time.created) },
     { label: "context.stats.lastActivity", value: () => formatter().time(ctx()?.message.time.created) },
   ] satisfies { label: string; value: () => JSX.Element }[]
+
+  const telemetry = createMemo(() => props.telemetry?.())
+  const resolveAccountLabel = (accountId?: string, providerId?: string) =>
+    resolveTelemetryAccountLabel(globalSync, accountId, providerId)
+  const formatTelemetryNumber = (value?: number) =>
+    typeof value === "number" && Number.isFinite(value) ? value.toLocaleString(language.intl()) : "—"
+  const formatTelemetryDuration = (value?: number) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return "—"
+    if (value < 1000) return `${Math.round(value)} ms`
+    if (value < 60_000) return `${(value / 1000).toFixed(1)} s`
+    return `${(value / 60_000).toFixed(1)} min`
+  }
+  const roundIdentityLabel = createMemo(() => {
+    const data = telemetry()
+    if (!data) return "No provider metadata yet"
+    const account = resolveAccountLabel(data.round.accountId, data.round.providerId)
+    return (
+      [data.round.providerId, account, data.round.modelId].filter((value): value is string => !!value).join(" / ") ||
+      "No provider metadata yet"
+    )
+  })
 
   let scroll: HTMLDivElement | undefined
   let frame: number | undefined
@@ -234,6 +261,101 @@ export function SessionContextTab(props: SessionContextTabProps) {
               <div class="text-12-regular text-text-weak">{language.t("context.systemPrompt.title")}</div>
               <div class="border border-border-base rounded-md bg-surface-base px-3 py-2">
                 <Markdown text={prompt()} class="text-12-regular" />
+              </div>
+            </div>
+          )}
+        </Show>
+
+        <Show when={telemetry()}>
+          {(data) => (
+            <div class="flex flex-col gap-3">
+              <div class="text-12-regular text-text-weak">Telemetry</div>
+              <AccountQuotaReuseCard telemetry={data()} accountLabel={resolveAccountLabel} />
+              <div class="grid grid-cols-1 @[32rem]:grid-cols-2 gap-4">
+                <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-3 flex flex-col gap-2">
+                  <div class="text-12-medium text-text-strong">Prompt telemetry</div>
+                  <div class="text-12-regular text-text-weak">
+                    {data().summary.injectedCount} injected
+                    {data().summary.skippedCount > 0 ? ` · ${data().summary.skippedCount} skipped` : ""}
+                    {data().summary.estimatedPromptTokens > 0
+                      ? ` · ~${formatTelemetryNumber(data().summary.estimatedPromptTokens)} tok`
+                      : ""}
+                  </div>
+                  <Show
+                    when={data().prompt.blocks.length > 0}
+                    fallback={<div class="text-12-regular text-text-weak">No prompt telemetry yet.</div>}
+                  >
+                    <div class="flex flex-col gap-2">
+                      <For each={data().prompt.blocks.slice(0, 6)}>
+                        {(block) => (
+                          <div class="rounded-md border border-border-weak-base bg-surface-panel px-2.5 py-2 flex flex-col gap-1">
+                            <div class="text-11-medium text-text-strong break-words">{block.name}</div>
+                            <div class="text-11-regular text-text-weak break-words">
+                              {[block.sourceFile, block.kind, block.injectionPolicy]
+                                .filter((value): value is string => !!value)
+                                .join(" · ")}
+                              {block.estimatedTokens ? ` · ~${formatTelemetryNumber(block.estimatedTokens)} tok` : ""}
+                            </div>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
+
+                <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-3 flex flex-col gap-2">
+                  <div class="text-12-medium text-text-strong">Round / session telemetry</div>
+                  <div class="text-12-regular text-text-weaker break-words">
+                    Current round fields are partially derived from session/message snapshots until authoritative A112
+                    telemetry is exposed by the backend.
+                  </div>
+                  <div class="text-12-regular text-text-weak break-words">
+                    Session {data().round.sessionId || "—"}
+                    {data().round.roundIndex ? ` · Round ${data().round.roundIndex}` : ""}
+                    {data().round.requestId ? ` · Req ${data().round.requestId}` : ""}
+                  </div>
+                  <div class="text-12-regular text-text-weak break-words">{roundIdentityLabel()}</div>
+                  <div class="text-12-regular text-text-weak break-words">
+                    Prompt {formatTelemetryNumber(data().round.promptTokens)} · Input{" "}
+                    {formatTelemetryNumber(data().round.inputTokens)} · Response{" "}
+                    {formatTelemetryNumber(data().round.responseTokens)}
+                  </div>
+                  <div class="text-12-regular text-text-weak break-words">
+                    Cumulative {formatTelemetryNumber(data().sessionSummary.cumulativeTokens)} tok · Requests{" "}
+                    {formatTelemetryNumber(data().sessionSummary.totalRequests)} · Duration{" "}
+                    {formatTelemetryDuration(data().sessionSummary.durationMs)}
+                  </div>
+                </div>
+
+                <Show when={data().quota.phase === "ready"}>
+                  <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-3 flex flex-col gap-2">
+                    <div class="text-12-medium text-text-strong">Account / quota</div>
+                    <div class="text-12-regular text-text-weaker break-words">
+                      Reused from existing issue/quota signals; remaining-token quota fields are not yet available on
+                      this surface.
+                    </div>
+                    <div class="text-12-regular text-text-weak break-words">
+                      Pressure {data().quota.pressure}
+                      {data().quota.providerId ? ` · ${data().quota.providerId}` : ""}
+                      {data().quota.accountId ? ` / ${data().quota.accountId}` : ""}
+                      {data().quota.modelId ? ` / ${data().quota.modelId}` : ""}
+                    </div>
+                    <Show
+                      when={data().quota.activeIssues.length > 0}
+                      fallback={<div class="text-12-regular text-text-weak">No active quota issues.</div>}
+                    >
+                      <div class="flex flex-col gap-2">
+                        <For each={data().quota.activeIssues.slice(0, 4)}>
+                          {(issue) => (
+                            <div class="text-12-regular text-warning break-words">
+                              {issue.type}: {issue.message}
+                            </div>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+                  </div>
+                </Show>
               </div>
             </div>
           )}

@@ -35,8 +35,10 @@ import { KillSwitchCommand } from "./cli/cmd/killswitch"
 import { debugCheckpoint } from "./util/debug"
 import { ProcessSupervisor } from "./process/supervisor"
 import { registerDebugWriter } from "./bus/subscribers/debug-writer"
+import { registerTelemetryRuntimePersistence } from "./bus/subscribers/telemetry-runtime"
 
 registerDebugWriter()
+registerTelemetryRuntimePersistence()
 debugCheckpoint("app", "start", { args: process.argv.slice(2) })
 
 process.on("unhandledRejection", (e) => {

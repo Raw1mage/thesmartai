@@ -78,7 +78,7 @@
 ### Current Findings
 
 - Prompt payload token overhead 主要集中在 `llm.ts` 的 systemParts assembly。
-- Enablement snapshot 每次請求固定注入，屬高頻 prompt 負擔來源。
+- Enablement snapshot 曾是每次請求固定注入的高頻 prompt 負擔來源；目前 `LLM.stream()` 已改為首輪或命中 routing intent 時才注入。
 - `isSubagentSession()` 在 `llm.ts` 內同一路徑被重複 async 解析。
 - Message history 在 `MessageV2.toModelMessages()`、`LLM.normalizeMessages()`、`ProviderTransform.message()` 間存在多層轉換/清洗。
 - `compaction.test.ts` 已明示 `limit.input` headroom bug regression case。
@@ -86,13 +86,16 @@
 - 真正三階 builder-first MIAT 主幹已改成 `A1 -> A11 -> A111`，其中主幹鎖定在 validation telemetry backbone。
 - diagram hierarchy 與 implementation slices 的 traceability 已在 `handoff.md` 固化，builder 可直接依 node-to-slice 對照執行。
 - 經 review 後，MIAT 圖式已修正為較合規的動詞片語命名，並修正了 A0 IDEF0 中的 arrow type 問題。
+- beta repo `telemetry` branch 已開始實作 Slice B：新增 prompt block telemetry、round usage telemetry 與 reusable compaction budget inspection。
+- subagent 嘗試接手 build slice，但受限於 beta repo 工具權限無法執行，因此由 main agent 持續完成本輪 slice。
+- beta repo planner artifacts經 review 後發現仍有部分 absolute path 殘留指向 `/home/pkcs12/projects/opencode`；已修正為 `/home/pkcs12/projects/opencode-beta`，避免 handoff/build 對錯 repo 執行。
 
 ## Optimization Roadmap
 
 ### Low-risk quick wins
 
 - **快取 `isSubagentSession()` 結果**：`llm.ts` 同一路徑重複查 session 3 次，屬純 overhead，可先合併成單次解析再重用。
-- **Enablement snapshot 改為條件式注入**：目前每輪固定注入；可改成僅在工具/技能路由相關任務、或首輪/plan-like turn 才注入，預期直接減少每輪 system prompt tokens。
+- **Enablement snapshot 改為條件式注入**：此 quick win 已落地；目前僅在工具/技能路由相關任務、或首輪/plan-like turn 才注入，後續可直接用同一 benchmark 驗證 token 降幅。
 - **加入 prompt payload telemetry**：在 `LLM.stream()` 前記錄 system prompt 字元/估算 token 分佈，先讓後續優化有 evidence baseline。
 - **縮短 compaction default prompt 模板**：保留 Goal / Instructions / Discoveries / Relevant files 結構，但減少冗詞，降低 compaction request 成本。
 
@@ -149,7 +152,7 @@
 
 ### Validation-oriented sequencing
 
-1. 先做 telemetry + `isSubagentSession` 去重 + enablement snapshot gating。
+1. telemetry 與 enablement snapshot gating 已落地，下一步可補 `isSubagentSession` 去重或其他 prompt-reduction slice 的 after-comparison。
 2. 再修 `isOverflow()` headroom，直接以 `compaction.test.ts` 擴充回歸驗證。
 3. 最後再評估 message pipeline 去重與 compaction contract 重設。
 
@@ -157,6 +160,10 @@
 
 - 先把 spec 工件補成 execution-ready，再輸出 optimization roadmap。
 - 本輪 architecture 文件若無新增長期框架知識，暫不改寫 `specs/architecture.md`，只在 validation 註記核對結果。
+- Slice B 採最小實作策略：先發出 Bus telemetry events，不直接綁定 sidebar UI，避免過早耦合展示層。
+- typecheck 驗證採「區分既有噪音 vs 本次 slice」原則；本次改動檔未出現在 typecheck 錯誤清單中。
+- A113 先落地 benchmark/baseline procedure 文件，再等待實際 telemetry event 資料集，避免憑空捏造 benchmark 結果。
+- A114 先落地 validation gate checklist，再以真實 baseline dataset 推進 Gate 4/5，避免把「procedure 存在」誤當成「benchmark 已完成」。
 
 ## Validation
 
@@ -170,11 +177,74 @@
   - Evidence: `A1 -> A11 -> A111` via `20260320_llm_a1_idef0.json` and `20260320_llm_a11_idef0.json`
 - Architecture Sync: Verified (No doc changes)
   - Basis: 本輪沉澱的是特定 workstream 的 session context-control/compaction 分析，尚未改變 repo 長期模組邊界或資料流；長期知識先保留在本 event 與 plan package。
+- Slice B telemetry implementation: yes
+  - Changed files:
+    - `packages/opencode/src/session/llm.ts`
+    - `packages/opencode/src/session/processor.ts`
+    - `packages/opencode/src/session/compaction.ts`
+    - `specs/20260320_llm/grafcet.json`
+    - `specs/20260320_llm/c4.json`
+    - `specs/20260320_llm/sequence.json`
+  - Validation commands:
+    - `bun run typecheck` (repo-wide)
+    - `bun run typecheck 2>&1 | rg 'src/session/(llm|processor|compaction)\\.ts|PromptTelemetryEvent|SessionRoundTelemetryEvent|inspectBudget'`
+  - Validation result:
+    - repo-wide typecheck failed due to pre-existing errors outside this slice (examples: `src/bus/index.ts`, `src/cron/*`, `src/server/routes/session.ts`, `src/tool/plan.ts`)
+    - filtered output produced no errors for touched telemetry files (`session/llm.ts`, `session/processor.ts`, `session/compaction.ts`)
+- Planner artifact path consistency in beta repo: yes
+  - Fix applied: `implementation-spec.md` and `design.md` critical file/supporting doc paths now point to `/home/pkcs12/projects/opencode-beta`
+- A113 benchmark procedure: yes
+  - Added file: `specs/20260320_llm/telemetry-benchmark.md`
+  - Update: telemetry persistence subscriber 與 baseline record builder 已落地
+  - New files:
+    - `packages/opencode/src/bus/subscribers/telemetry-runtime.ts`
+    - `packages/opencode/src/system/telemetry-benchmark-service.ts`
+  - Validation evidence: `packages/opencode/src/system/runtime-event-service.test.ts` 已驗證 telemetry bus events → runtime event persistence → short baseline record capture
+  - Status: session pattern 與 baseline/after procedure 已定義，且第一筆 short-session baseline dataset 已完成擷取
+- A114 validation gates: yes
+  - Added file: `specs/20260320_llm/telemetry-validation-gates.md`
+  - Status: Gate 1~4 pass；Gate 5 pending until first after-change benchmark evidence exists
+
+### A113/A114 Comparison-Ready Follow-up
+
+- Telemetry benchmark comparison support has been hardened to make baseline/after evidence capture execution-ready before the first real comparison dataset lands.
+- Added/expanded capabilities:
+  - baseline vs `after_change` record distinction for the same benchmark scenario
+  - scenario/label keyed baseline + after-change capture/read helpers
+  - structured comparison helpers for:
+    - `finalSystemTokens`
+    - `maxBlockTokens`
+    - `observedTokens`
+    - `usableTokens`
+    - `observedToUsableRatio`
+    - `needsCompaction`
+  - legacy `after` phase compatibility on read / stored comparison paths
+- Focused validation coverage added for:
+  - same-scenario baseline/after comparison
+  - helper guard enforcement (phase / benchmark / scenario)
+  - build-vs-capture persistence split
+  - scenario+label stored comparison flow across different sessions
+  - string overload + legacy-key retrieval compatibility
+- Current status:
+  - Gate 5 remains **comparison-ready**
+  - first real **comparison-captured** benchmark evidence is still pending the next optimization slice
+
+### A113.2 Baseline Capture Follow-up
+
+- Root cause of the prior A113.2 gap: telemetry 僅停留在 Bus emission，沒有持久化成可供 benchmark 整理的 runtime dataset。
+- Fix applied:
+  - `telemetry-runtime.ts` 將 `llm.prompt.telemetry` / `session.round.telemetry` 轉存到 `RuntimeEventService`
+  - `TelemetryBenchmarkService` 由 persisted telemetry events 生成 baseline record
+- First validated baseline record:
+  - benchmark: `short`
+  - evidence fields verified:
+    - `promptTelemetrySummary.finalSystemTokens = 120`
+    - `promptTelemetrySummary.maxBlockKey = core_system_prompt`
+    - `roundTelemetrySummary.totalTokens = 420`
+    - `compactionStatus.needsCompaction = false`
 
 ## Remaining
 
-- 依使用者決策決定是否進入第一個 implementation slice
-- 若進入實作，先把對應 slice 補進 `tasks.md` 再動 code
-- 需把 doc governance 抽離與 prompt-block throttling 進一步整理成 implementation slices
-- 需選定 Slice A / Slice B 的先做順序與 entry criteria
-- 需完成 diagram hierarchy 與 implementation slices 的 traceability matrix
+- 再進入下一個低風險優化切片，產出 first after-comparison evidence
+- 若要接 UI，下一步應將 telemetry event 投影到 context inspector sidebar data contract
+- docs/event sync for telemetry comparison hardening: done in this event log

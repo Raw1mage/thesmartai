@@ -399,7 +399,7 @@ let supervisorTimer: ReturnType<typeof setInterval> | undefined
 
 type ResumeCandidate = {
   pending: PendingContinuationInfo
-  session: Pick<Session.Info, "workflow">
+  session: Pick<Session.Info, "workflow" | "directory">
   status: SessionStatus.Info
   inFlight: boolean
   health?: AutonomousWorkflowHealth
@@ -762,7 +762,10 @@ export function planAutonomousNextAction(input: {
 
   if (!gateResult.pass) {
     // Gate evaluator never produces "todo_pending" or "todo_in_progress" as stop reasons
-    return { type: "stop", reason: gateResult.reason as Exclude<ContinuationDecisionReason, "todo_pending" | "todo_in_progress"> }
+    return {
+      type: "stop",
+      reason: gateResult.reason as Exclude<ContinuationDecisionReason, "todo_pending" | "todo_in_progress">,
+    }
   }
 
   // Gates passed — check if we have a real todo to continue with
@@ -970,14 +973,16 @@ export async function listPendingContinuations() {
   // Read from RunQueue (lane-aware) with legacy fallback
   const queueEntries = await RunQueue.listAll()
   if (queueEntries.length > 0) {
-    return queueEntries.map((entry): PendingContinuationInfo => ({
-      sessionID: entry.sessionID,
-      messageID: entry.messageID,
-      createdAt: entry.createdAt,
-      roundCount: entry.roundCount,
-      reason: entry.reason,
-      text: entry.text,
-    }))
+    return queueEntries.map(
+      (entry): PendingContinuationInfo => ({
+        sessionID: entry.sessionID,
+        messageID: entry.messageID,
+        createdAt: entry.createdAt,
+        roundCount: entry.roundCount,
+        reason: entry.reason,
+        text: entry.text,
+      }),
+    )
   }
   // Legacy fallback: read from old storage keys
   const result: PendingContinuationInfo[] = []
@@ -1112,7 +1117,9 @@ export async function mutatePendingContinuationQueue(input: {
   }
 }
 
-export async function enqueuePendingContinuation(input: PendingContinuationInfo & { triggerType?: string; priority?: "critical" | "normal" | "background" }) {
+export async function enqueuePendingContinuation(
+  input: PendingContinuationInfo & { triggerType?: string; priority?: "critical" | "normal" | "background" },
+) {
   const validated = PendingContinuationInfo.parse(input)
   // Write to RunQueue (lane-aware) + legacy key (backward compat handled inside RunQueue)
   await RunQueue.enqueue({
@@ -1216,11 +1223,7 @@ async function resolveWorkspaceIdForSession(session: Pick<Session.Info, "directo
  * Execute a resume through the workspace's command lane for concurrency control.
  * Falls back to direct execution if lane routing fails.
  */
-async function executeResumeInLane(
-  sessionID: string,
-  workspaceId: string | undefined,
-  item: ResumeCandidate,
-) {
+async function executeResumeInLane(sessionID: string, workspaceId: string | undefined, item: ResumeCandidate) {
   const doResume = async () => {
     try {
       const { SessionPrompt } = await import("./prompt")

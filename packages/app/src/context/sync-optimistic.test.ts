@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { Message, Part } from "@opencode-ai/sdk/v2/client"
 import { applyOptimisticAdd, applyOptimisticRemove } from "./sync"
+import { buildSessionTelemetryFromProjector } from "@/pages/session/monitor-helper"
 
 const userMessage = (id: string, sessionID: string): Message => ({
   id,
@@ -52,5 +53,37 @@ describe("sync optimistic reducers", () => {
     expect(draft.message[sessionID]?.map((x) => x.id)).toEqual(["msg_2"])
     expect(draft.part.msg_1).toBeUndefined()
     expect(draft.part.msg_2).toHaveLength(1)
+  })
+
+  test("projector telemetry builder stays empty without projector payload", () => {
+    const telemetry = buildSessionTelemetryFromProjector({
+      session: {
+        id: "ses_1",
+        slug: "ses-1",
+        projectID: "proj_1",
+        directory: "/tmp",
+        title: "Telemetry",
+        version: "1",
+        time: { created: 1, updated: 2 },
+      } as any,
+      status: { type: "busy" } as any,
+      monitorEntries: [
+        {
+          id: "session:ses_1",
+          level: "session",
+          sessionID: "ses_1",
+          title: "Telemetry",
+          status: { type: "busy" },
+          requests: 3,
+          tokens: { input: 1, output: 2, reasoning: 0, cache: { read: 0, write: 0 } },
+          totalTokens: 3,
+          updated: 2,
+        } as any,
+      ],
+    })
+
+    expect(telemetry.phase).toBe("empty")
+    expect(telemetry.prompt.blocks).toEqual([])
+    expect(telemetry.sessionSummary.totalRequests).toBe(0)
   })
 })

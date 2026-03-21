@@ -34,7 +34,7 @@
   1. `SessionPrompt.runLoop()` 讀取 `MessageV2.filterCompacted()` 後的 session 歷史。
   2. 注入 `getPreloadedContext()`、`SystemPrompt.environment()`、主代理時的 instruction prompts、structured output prompt。
   3. `MessageV2.toModelMessages()` 把 persisted message/parts 轉成 AI SDK messages；compaction user part 會映射成 `"What did we do so far?"`。
-  4. `LLM.stream()` 再加入 provider prompt、agent prompt、dynamic session prompts、enablement snapshot、user custom system prompt、SYSTEM boundary prompt、identity reinforcement。
+  4. `LLM.stream()` 再加入 provider prompt、agent prompt、dynamic session prompts、條件式 enablement snapshot（首輪或命中 routing intent）、user custom system prompt、SYSTEM boundary prompt、identity reinforcement。
   5. `ProviderTransform.message()` 依 provider 做空訊息清理、toolCallId normalization、reasoning field 搬運、cache marker 注入、providerOptions key remap。
 
 - **Overflow / compaction path**
@@ -69,16 +69,21 @@
 
 ## Critical Files
 
-- `/home/pkcs12/projects/opencode/packages/opencode/src/session/prompt.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/session/processor.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/session/llm.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/session/compaction.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/session/message-v2.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/provider/transform.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/src/config/config.ts`
-- `/home/pkcs12/projects/opencode/packages/opencode/test/session/compaction.test.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/session/prompt.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/session/processor.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/session/llm.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/session/compaction.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/session/message-v2.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/provider/transform.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/src/config/config.ts`
+- `/home/pkcs12/projects/opencode-beta/packages/opencode/test/session/compaction.test.ts`
 
 ## Supporting Docs (Optional)
 
-- `/home/pkcs12/projects/opencode/specs/architecture.md`
-- `/home/pkcs12/projects/opencode/docs/events/event_20260320_llm_context_control_spec.md`
+- `/home/pkcs12/projects/opencode-beta/specs/architecture.md`
+- `/home/pkcs12/projects/opencode-beta/docs/events/event_20260320_llm_context_control_spec.md`
+
+## Validation
+
+- Architecture Sync: Verified (No doc changes)
+  - Basis: design sync reflects current prompt injection behavior only; no architecture-level boundary change was introduced in this follow-up.

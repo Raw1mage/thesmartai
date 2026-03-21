@@ -69,6 +69,9 @@ export type State = {
   session_status: {
     [sessionID: string]: SessionStatus
   }
+  session_telemetry: {
+    [sessionID: string]: SessionTelemetry
+  }
   session_diff: {
     [sessionID: string]: FileDiff[]
   }
@@ -107,6 +110,92 @@ export type State = {
   }
   part: {
     [messageID: string]: Part[]
+  }
+}
+
+export type SessionTelemetryPromptBlock = {
+  id: string
+  name: string
+  sourceFile?: string
+  kind?: string
+  injectionPolicy?: string
+  outcome: "injected" | "skipped"
+  skipReason?: string
+  estimatedTokens?: number
+  correlationIDs: string[]
+  builderTag?: string
+}
+
+export type SessionTelemetryRoundSummary = {
+  sessionId: string
+  roundIndex?: number
+  requestId?: string
+  providerId?: string
+  accountId?: string
+  modelId?: string
+  promptTokens?: number
+  inputTokens?: number
+  responseTokens?: number
+  reasoningTokens?: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  totalTokens?: number
+  compacting: boolean
+  compactionResult?: string
+  compactionDraftTokens?: number
+}
+
+export type SessionTelemetrySessionSummary = {
+  sessionId: string
+  durationMs?: number
+  cumulativeTokens: number
+  totalRequests: number
+  providerId?: string
+  accountId?: string
+  modelId?: string
+  compacting: boolean
+  compactionCount: number
+  latestUpdatedAt?: number
+}
+
+export type SessionTelemetry = {
+  phase: "loading" | "ready" | "empty" | "error" | "disabled"
+  promptPhase: "loading" | "ready" | "empty" | "error" | "disabled"
+  roundPhase: "loading" | "ready" | "empty" | "error" | "disabled"
+  error?: string
+  summary: {
+    statusLabel: string
+    activeTasks: number
+    requests: number
+    totalTokens: number
+    promptBlockCount: number
+    injectedCount: number
+    skippedCount: number
+    estimatedPromptTokens: number
+    lastPromptOutcome?: "injected" | "skipped"
+  }
+  prompt: {
+    blocks: SessionTelemetryPromptBlock[]
+    lastUpdated?: number
+  }
+  round: SessionTelemetryRoundSummary
+  sessionSummary: SessionTelemetrySessionSummary
+  quota: {
+    phase: "loading" | "ready" | "empty" | "error" | "disabled"
+    providerId?: string
+    accountId?: string
+    modelId?: string
+    pressure: "low" | "medium" | "high" | "critical"
+    activeIssues: Array<{
+      type: string
+      message: string
+      timestamp: number
+    }>
+    recentEvents: Array<{
+      state: string
+      message?: string
+      timestamp: number
+    }>
   }
 }
 

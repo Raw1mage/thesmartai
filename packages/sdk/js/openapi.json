@@ -26078,6 +26078,92 @@
           "properties"
         ]
       },
+      "Event.llm.prompt.telemetry": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "llm.prompt.telemetry"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "providerId": {
+                "type": "string"
+              },
+              "modelId": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "finalSystemTokens": {
+                "type": "number"
+              },
+              "finalSystemChars": {
+                "type": "number"
+              },
+              "finalSystemMessages": {
+                "type": "number"
+              },
+              "messageCount": {
+                "type": "number"
+              },
+              "blocks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "chars": {
+                      "type": "number"
+                    },
+                    "tokens": {
+                      "type": "number"
+                    },
+                    "injected": {
+                      "type": "boolean"
+                    },
+                    "policy": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "chars",
+                    "tokens",
+                    "injected",
+                    "policy"
+                  ]
+                }
+              },
+              "timestamp": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "sessionID",
+              "providerId",
+              "modelId",
+              "finalSystemTokens",
+              "finalSystemChars",
+              "finalSystemMessages",
+              "messageCount",
+              "blocks",
+              "timestamp"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
       "QuestionOption": {
         "type": "object",
         "properties": {
@@ -26354,6 +26440,96 @@
             "required": [
               "sessionID",
               "todos"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.session.round.telemetry": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.round.telemetry"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "providerId": {
+                "type": "string"
+              },
+              "modelId": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "finishReason": {
+                "type": "string"
+              },
+              "inputTokens": {
+                "type": "number"
+              },
+              "outputTokens": {
+                "type": "number"
+              },
+              "cacheReadTokens": {
+                "type": "number"
+              },
+              "cacheWriteTokens": {
+                "type": "number"
+              },
+              "totalTokens": {
+                "type": "number"
+              },
+              "cost": {
+                "type": "number"
+              },
+              "contextLimit": {
+                "type": "number"
+              },
+              "inputLimit": {
+                "type": "number"
+              },
+              "reservedTokens": {
+                "type": "number"
+              },
+              "usableTokens": {
+                "type": "number"
+              },
+              "observedTokens": {
+                "type": "number"
+              },
+              "needsCompaction": {
+                "type": "boolean"
+              },
+              "timestamp": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "sessionID",
+              "providerId",
+              "modelId",
+              "finishReason",
+              "inputTokens",
+              "outputTokens",
+              "cacheReadTokens",
+              "cacheWriteTokens",
+              "totalTokens",
+              "cost",
+              "contextLimit",
+              "reservedTokens",
+              "usableTokens",
+              "observedTokens",
+              "needsCompaction",
+              "timestamp"
             ]
           }
         },
@@ -28934,6 +29110,9 @@
             "$ref": "#/components/schemas/Event.rotation.executed"
           },
           {
+            "$ref": "#/components/schemas/Event.llm.prompt.telemetry"
+          },
+          {
             "$ref": "#/components/schemas/Event.question.asked"
           },
           {
@@ -28944,6 +29123,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.todo.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.round.telemetry"
           },
           {
             "$ref": "#/components/schemas/Event.session.compacted"

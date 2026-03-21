@@ -2,6 +2,7 @@ import z from "zod"
 import { Bus } from "@/bus"
 import { Instance } from "@/project/instance"
 import { ProcessSupervisor } from "@/process/supervisor"
+import { TelemetryProjector } from "@/system/runtime-event-service"
 import { Session } from "./index"
 import { MessageV2 } from "./message-v2"
 import { SessionStatus } from "./status"
@@ -52,6 +53,21 @@ export namespace SessionMonitor {
       totalTokens: z.number(),
       activeTool: z.string().optional(),
       activeToolStatus: z.string().optional(),
+      telemetry: z
+        .object({
+          roundIndex: z.number().optional(),
+          requestId: z.string().optional(),
+          compactionResult: z.string().optional(),
+          compactionDraftTokens: z.number().optional(),
+          compactionCount: z.number().optional(),
+          source: z.literal("projector").optional(),
+          promptSummary: z.record(z.string(), z.any()).optional(),
+          roundSummary: z.record(z.string(), z.any()).optional(),
+          compactionSummary: z.record(z.string(), z.any()).optional(),
+          sessionSummary: z.record(z.string(), z.any()).optional(),
+          freshness: z.record(z.string(), z.any()).optional(),
+        })
+        .optional(),
       updated: z.number(),
     })
     .meta({ ref: "SessionMonitorInfo" })
@@ -216,6 +232,24 @@ export namespace SessionMonitor {
     return undefined
   }
 
+  function buildTelemetry(projector: TelemetryProjector.Aggregate | undefined) {
+    if (!projector) return undefined
+    return {
+      roundIndex: projector.roundSummary?.roundIndex,
+      requestId: projector.roundSummary?.requestId,
+      compactionResult: projector.compactionSummary?.compactionResult ?? projector.roundSummary?.compactionResult,
+      compactionDraftTokens:
+        projector.compactionSummary?.compactionDraftTokens ?? projector.roundSummary?.compactionDraftTokens,
+      compactionCount: projector.compactionSummary?.compactionCount ?? projector.roundSummary?.compactionCount,
+      source: projector.source,
+      promptSummary: projector.promptSummary ?? undefined,
+      roundSummary: projector.roundSummary ?? undefined,
+      compactionSummary: projector.compactionSummary ?? undefined,
+      sessionSummary: projector.sessionSummary,
+      freshness: projector.freshness,
+    }
+  }
+
   async function ensureBootstrapped() {
     const st = state()
     if (st.bootstrapped) return
@@ -276,6 +310,11 @@ export namespace SessionMonitor {
       title: undefined as string | undefined,
     }
     const latest = { value: undefined as MessageV2.Info | undefined }
+    const latestAssistant = { value: undefined as MessageV2.Assistant | undefined }
+    const latestCompactionAssistant = { value: undefined as MessageV2.Assistant | undefined }
+    let compactionCount = 0
+    const projectorTelemetry = await TelemetryProjector.project(session.id).catch(() => undefined)
+    const telemetry = () => buildTelemetry(projectorTelemetry)
 
     const agents = new Map<
       string,
@@ -294,9 +333,18 @@ export namespace SessionMonitor {
     let scanned = 0
     for await (const message of MessageV2.stream(session.id)) {
       scanned += 1
-      if (scanned > maxMessages) break
-
       if (!latest.value) latest.value = message.info
+
+      if (message.info.role === "assistant" && !latestAssistant.value) {
+        latestAssistant.value = message.info
+      }
+
+      if (message.info.role === "assistant" && message.info.summary) {
+        compactionCount += 1
+        if (!latestCompactionAssistant.value) latestCompactionAssistant.value = message.info
+      }
+
+      if (scanned > maxMessages) continue
 
       if (message.info.role === "assistant") {
         const info = message.info
@@ -395,6 +443,7 @@ export namespace SessionMonitor {
           totalTokens: 0,
           activeTool: part.tool,
           activeToolStatus: part.state.status,
+          telemetry: telemetry(),
           updated:
             part.state.status === "running"
               ? part.state.time.start
@@ -404,6 +453,7 @@ export namespace SessionMonitor {
     }
 
     const result: Info[] = []
+    const snapshotTelemetry = telemetry()
     const status = session.time.compacting
       ? ({ type: "compacting" } as Status)
       : statusFrom(SessionStatus.get(session.id), session.id, latest.value)
@@ -424,6 +474,7 @@ export namespace SessionMonitor {
         totalTokens: sums.total,
         activeTool: tool.name,
         activeToolStatus: tool.status,
+        telemetry: snapshotTelemetry,
         updated: session.time.updated,
       })
     }
@@ -446,6 +497,7 @@ export namespace SessionMonitor {
         totalTokens: info.total,
         activeTool: info.tool?.name,
         activeToolStatus: info.tool?.status,
+        telemetry: snapshotTelemetry,
         updated: info.updated || session.time.updated,
       })
     }

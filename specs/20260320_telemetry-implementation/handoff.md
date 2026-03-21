@@ -2,53 +2,124 @@
 
 ## Execution Contract
 
-- Build/implementation agent must read `implementation-spec.md` first.
-- Build/implementation agent must read `tasks.md` before coding.
-- Runtime todo must be materialized from `tasks.md` before execution continues.
-- Build/implementation agent must not resume from discussion memory alone when this plan package is available (A111 and A112 requirements are codified here).
-- User-visible progress and decision prompts must reuse the same planner-derived todo naming and highlight the builder-first path (A111 → A112 → validation).
+- Read `implementation-spec.md` first.
+- Read the rest of the telemetry package before coding.
+- Treat current code as migration baseline only, not target truth.
+- Build to the bus-first target even when current shortcuts suggest an easier patch.
+- Do not ship a partial cutover that leaves duplicate telemetry authority alive.
 
-## Required Reads
+## Current State
 
-- `proposal.md` (with A111/A112 intent, validation expectations, and fail-fast constraint)
-- `spec.md`
-- `design.md`
-- `implementation-spec.md`
-- `tasks.md`
+- Runtime telemetry events exist.
+- Supported telemetry events are persisted by the runtime subscriber.
+- `SessionMonitor` and `session.top` currently expose telemetry-bearing snapshots.
+- App currently refreshes and hydrates `session_telemetry` through monitor/snapshot-led paths.
+- Hydration-first / monitor-first / page-hook-first steady-state still exists today and is wrong by target architecture.
+
+## Target State
+
+- runtime emits telemetry events
+- server-side projector owns authoritative telemetry read model
+- app global-sync reducer owns canonical telemetry slice
+- UI is pure consumer
+- `session.top` is bootstrap / catch-up / degraded only
+
+## Migration Path
+
+1. baseline freeze
+2. event contract
+3. projector
+4. reducer cutover
+5. snapshot demotion
+6. cleanup
+7. validation
+
+## Non-Negotiable Demotions
+
+The following steady-state patterns must be removed or demoted:
+
+- hydration-first telemetry authority
+- monitor-first telemetry authority
+- page-hook-first telemetry authority
+- repeated snapshot refresh as primary telemetry channel
+- local fallback that can overwrite canonical telemetry truth
 
 ## Stop Gates In Force
 
-- Preserve approval, decision, and blocker gates from `implementation-spec.md`.
-- Return to plan mode before coding if telemetry attributes, failure handling, or validation expectations need expansion.
-- Do not create a brand-new sibling plan unless the user explicitly requests it, or explicitly approves an assistant proposal to branch.
-- Pay special attention to telemetry ownership boundaries (`session/telemetry.ts` as the primary sink, `session/monitor.ts` as a downstream projection/consumer of that sink, and `account/monitor.ts` as the aggregate/quota monitor) before proceeding to implementation.
+- Stop on duplicate authority.
+- Stop on fallback promotion.
+- Stop on partial migration hazards.
+- Stop on architecture drift toward current shortcuts.
+- Stop for approval if telemetry work expands beyond telemetry ownership boundaries.
 
-## Execution-Ready Checklist
+## Build Entry Recommendation
 
-- [ ] Implementation spec is complete (A111/A112 instrumentation defined).
-- [ ] Companion artifacts are aligned (proposal/spec/design/tasks/diagrams share terminology and stop gates).
-- [ ] Validation plan is explicit (baseline vs. after telemetry captures documented).
-- [ ] Runtime todo seed is present in `tasks.md` (A111 first, A112 second, validation third).
-- [ ] Sidebar/context card taxonomy is documented (runner/health reuse, prompt telemetry cards, round/session summaries, account/quota reuse) with placement rationale for status sidebar, context tab, or hybrid surfaces.
-- [ ] UI consumption contract is defined so cards read `session/monitor.ts` projections (e.g., `sync.data.session_status[sessionID].telemetry`) and never become a secondary source of truth.
-- [ ] Sidebar validation checklist ensures cards only appear once telemetry instrumentation is in place and remain data consumers (data layer before UI layer).
+- Start by freezing the baseline and writing down every wrong current authority path.
+- Do event contract before projector work.
+- Do projector before reducer cutover.
+- Do reducer cutover before snapshot demotion.
+- Do cleanup before final validation proof.
+- Do not start projector implementation until the minimum event matrix is written and accepted.
+- Do not start reducer cutover until the minimum projector aggregate matrix is written and accepted.
+- Do not declare cutover complete until the forbidden-writer list is enforced.
 
-## Sidebar / Context Consumption Blueprint
+## Materialized Minimum Projector Aggregate Matrix
 
-- Detail the card taxonomy that ties telemetry slices to UX surfaces: reuse the runner/health overview card, add prompt telemetry cards for A111 blocks, introduce round/session telemetry cards for A112 summaries, and consider the existing account/quota card when low quota is part of the story.
-- For each card, state whether it lives in the status sidebar, context tab, or a hybrid view, and explain why that placement suits the metric semantics (e.g., quick runner prompts near the status sidebar, deep-dives inside the context tab).
-- Describe the UI consumption contract: telemetry flows from `session/telemetry.ts` → `session/monitor.ts` → sync data slices → `SessionStatusSections`/`SessionSidePanel`. The sidebar must treat these slices as read-only, even when cards read telemetry-rich data such as block token breakdowns or compaction results.
-- Reinforce the phased order in which implementation should proceed: backend telemetry (A111 prompt blocks, A112 rounds) must land first, then sidebar/context consumption can render the new cards, with validation dedicated to confirming cards surface telemetry data without mutating runtime state.
+This artifact is now explicit for the first implementation slice. It is grounded in the current runtime/app baseline and is the minimum builder contract before reducer work starts.
 
-## Telemetry Phase Assurance
+| Aggregate           | Authoritative source                                                                                                | Minimum fields under projector ownership                                                                                                                                                                     | Downstream adapter-only fields / notes               | Baseline surprise affecting build order                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `promptSummary`     | `llm.prompt.telemetry` runtime events                                                                               | `sessionID`, prompt-scoped identity, provider/model/account identity, normalized block summaries, injected/skipped outcomes, per-block chars/tokens, prompt aggregate totals, event timestamp/order metadata | UI labels, presentation grouping, display formatting | Current event lacks an explicit prompt-composition identity; projector work must not assume dedupe/replay is solved until that identity lands |
+| `roundSummary`      | `session.round.telemetry` runtime events                                                                            | `sessionID`, `roundIndex`, `requestId`, provider/model/account identity, finish reason, usage totals, budget/context fields, timestamp/order metadata                                                        | UI wording, cosmetic rollups                         | Current persisted round event is usable baseline, but explicit latency/duration is still absent                                               |
+| `compactionSummary` | dedicated `session.compaction.telemetry` event or projector-owned derivation from authoritative runtime events only | `sessionID`, causal `roundIndex` and/or `requestId`, compaction attempt/count identity, result classification, draft token/size summary, timestamp/order metadata                                            | UI badges/status copy                                | No dedicated compaction event exists yet; current monitor/message heuristics are not valid projector authority                                |
+| `sessionSummary`    | projector-owned derivation from authoritative upstream events                                                       | `sessionID`, cumulative token/cost/request totals, latest round marker, latest compaction marker, session-wide evidence summary                                                                              | UI grouping/cards, local sorting                     | Current app computes this in `monitor-helper.ts`; that synthesis must move behind projector ownership before cutover                          |
+| `freshness`         | projector lifecycle / delivery state                                                                                | projector version or sequence, last-updated timestamp, last-applied event marker, bootstrap-needed marker, catch-up-needed marker, degraded-state marker                                                     | relative time strings, loading skeletons             | No projector lifecycle state exists yet, so bootstrap/catch-up semantics must be designed with projector introduction                         |
 
-- P0: Validate telemetry contracts and capture baseline expectations before emitting instrumentation. All telemetry ownership decisions must be locked before proceeding.
-- P1: Implement instrumentation readiness for prompt blocks (A111) and round/session usage (A112), project data through `session/monitor.ts`, and verify telemetry rarely fails fast without affecting runtime control.
-- P2: Unlock sidebar/context rendering only once P1 projection is stable, letting UI cards consume telemetry as read-only data, with verification guarding against premature renders.
+### Aggregate authority rule
 
-## Completion / Retrospective Contract
+- Everything in the third column is projector authority and may be mirrored downstream but never invented downstream.
+- Monitor rows, `session.top`, reducer actions, and UI selectors are adapters/consumers only.
+- If reducer or UI code still has to synthesize any missing field above, projector work is incomplete and reducer cutover must stop.
 
-- Review implementation against the proposal's effective requirement description.
-- Generate a validation checklist derived from `tasks.md`, runtime todo outcomes, implementation results, and executed validations.
-- Report requirement coverage, partial fulfillment, deferred items, and remaining gaps as concise review output.
-- Do not expose raw internal chain-of-thought; expose only auditable conclusions and evidence.
+## Materialized Forbidden-Writer List For Reducer Cutover
+
+### Cutover point
+
+Legacy writers become forbidden the moment a session has projector-owned telemetry delivery wired into the canonical app reducer path for steady-state updates. After that point, only projector → reducer may write canonical `session_telemetry` truth for that session.
+
+### Forbidden steady-state writers after cutover
+
+| Forbidden writer path                          | Real current entrypoint                                                                                                                              | Why it is forbidden after cutover                                                          | Allowed degraded-only role                                                                              |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Page-level forced telemetry hydration          | `packages/app/src/pages/session/session-telemetry-ui.ts` via `useSessionTelemetryHydration()` calling `sync.session.telemetry(..., { force: true })` | Re-promotes page-hook-first authority and bypasses projector ownership                     | May trigger bootstrap fetch only if it does not write canonical steady-state truth directly             |
+| App-local telemetry projection writer          | `packages/app/src/context/sync.tsx` `session.telemetry()` writing `session_telemetry[sessionID] = buildSessionTelemetryProjection(...)`              | Reconstructs canonical telemetry inside app state from local messages/monitor inputs       | Temporary bootstrap adapter only if rewritten to accept projector-owned payload without local synthesis |
+| Monitor-helper authority synthesis             | `packages/app/src/pages/session/monitor-helper.ts` `buildSessionTelemetryProjection()`, `readRoundSummary()`, `readSessionSummary()`                 | Synthesizes round/session truth from monitor entries, message history, and local fallbacks | Read-only adapter/selectors may remain only after synthesis logic is removed                            |
+| Monitor snapshot telemetry synthesis           | `packages/opencode/src/session/monitor.ts` `buildTelemetry()` and `telemetry:` attachment on monitor rows                                            | Invents telemetry fields from session/message state instead of projector-owned aggregate   | Monitor may expose projector-fed fields as a transport/view, not compute them                           |
+| Snapshot refresh as live telemetry writer      | `packages/app/src/pages/session/use-status-monitor.ts` polling `session.top` and feeding hydration                                                   | Keeps `session.top` in steady-state authority loop                                         | Bootstrap/catch-up/reconnect/degraded transport only                                                    |
+| `session.top` snapshot route as primary source | `packages/opencode/src/server/routes/session.ts` `GET /session/top` returning `SessionMonitor` telemetry-bearing rows                                | Encourages snapshot-first authority if consumed as canonical truth                         | Secondary transport backed by projector-owned state only                                                |
+| Local monitor fallback construction            | `packages/app/src/context/sync.tsx` fallback `buildMonitorEntries({ raw: [], ... })` when telemetry sync has no server payload                       | Lets empty/local monitor state recreate telemetry truth                                    | Bootstrap placeholder only; must not commit canonical telemetry aggregates                              |
+
+### Enforcement rule
+
+- Reducer cutover is incomplete if any path above can still mutate canonical `session_telemetry` during steady-state.
+- `session.top`/monitor/page hooks may remain only as bootstrap, reconnect, catch-up, buffer-miss, or degraded transports backed by projector-owned payloads.
+- Any fallback that writes synthesized telemetry into canonical reducer state after cutover is a stop-gate failure.
+
+## Builder Bias
+
+- Prefer rewrite-to-target over preserve-current-shape.
+- Do not preserve monitor/hydration/page-hook telemetry writers for convenience.
+- If a path cannot be proven secondary-only, treat it as conflicting authority.
+
+## Ready-to-Start Checklist
+
+- [ ] Current state is documented separately from target state
+- [ ] Migration order is explicit
+- [ ] Stop gates are explicit
+- [ ] `session.top` demotion is explicit
+- [ ] Reducer ownership is explicit
+- [ ] Projector authority is explicit
+- [ ] Minimum event matrix is explicit
+- [x] Minimum projector aggregate matrix is explicit
+- [x] Forbidden-writer list is explicit
+- [ ] Product-purpose traceability for A111/A112 is explicit

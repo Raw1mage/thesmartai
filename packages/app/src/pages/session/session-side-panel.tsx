@@ -22,12 +22,7 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import type { Message, Todo, UserMessage } from "@opencode-ai/sdk/v2/client"
 import { getSessionStatusSummary } from "./helpers"
-import {
-  buildMonitorEntries,
-  buildProcessCards,
-  type EnrichedMonitorEntry,
-  type ProcessCard,
-} from "./monitor-helper"
+import { buildMonitorEntries, buildProcessCards, type EnrichedMonitorEntry } from "./monitor-helper"
 import { SessionStatusSections } from "./session-status-sections"
 import { StatusTodoList } from "./status-todo-list"
 import { useStatusMonitor } from "./use-status-monitor"
@@ -35,7 +30,10 @@ import { useStatusTodoSync } from "./use-status-todo-sync"
 import { useAutonomousHealthSync } from "./use-autonomous-health-sync"
 import { createFileTabListSync, scrollTabIntoView } from "./file-tab-scroll"
 import { Button } from "@opencode-ai/ui/button"
+import { SessionTelemetryCards } from "./session-telemetry-cards"
 import "./file-pane-scroll.css"
+import { useGlobalSync } from "@/context/global-sync"
+import { resolveTelemetryAccountLabel, useSessionTelemetryHydration } from "./session-telemetry-ui"
 
 type SessionSidePanelViewModel = {
   messages: () => Message[]
@@ -78,6 +76,7 @@ export function SessionSidePanel(props: {
   kinds: Map<string, "add" | "del" | "mix">
 }) {
   const sync = useSync()
+  const globalSync = useGlobalSync()
   const sdk = useSDK()
   const sideMode = createMemo(() => props.layout.fileTree.mode())
   const activeSessionID = createMemo(() => props.vm.info()?.id)
@@ -87,19 +86,8 @@ export function SessionSidePanel(props: {
     return sync.data.todo[sessionID]
   })
 
-  useStatusTodoSync({
-    enabled: () => sideMode() === "status",
-    sessionID: activeSessionID,
-    sdk,
-    sync,
-  })
-
-  const monitor = useStatusMonitor({
-    enabled: () => sideMode() === "status",
-    sessionID: activeSessionID,
-    sdk,
-    sync,
-  })
+  useStatusTodoSync({ enabled: () => sideMode() === "status", sessionID: activeSessionID, sdk, sync })
+  const monitor = useStatusMonitor({ enabled: () => sideMode() === "status", sessionID: activeSessionID, sdk, sync })
   const autonomousHealth = useAutonomousHealthSync({
     enabled: () => sideMode() === "status",
     sessionID: activeSessionID,
@@ -126,9 +114,52 @@ export function SessionSidePanel(props: {
       autonomousHealth: autonomousHealth.data,
     }),
   )
-  // Runner card removed — no independent autonomous runner process
+  const telemetry = createMemo(() => {
+    const sessionID = activeSessionID()
+    if (!sessionID) return undefined
+    return sync.data.session_telemetry[sessionID]
+  })
+  const telemetryDeps = createMemo(() => {
+    const sessionID = activeSessionID()
+    if (!sessionID) return ""
+    const status = sync.data.session_status[sessionID]
+    const messageSignature = props.vm
+      .messages()
+      .map((message) => `${message.id}:${sync.data.part[message.id]?.length ?? 0}`)
+      .join("|")
+    const monitorSignature =
+      sideMode() === "status"
+        ? monitorEntries()
+            .map(
+              (entry) =>
+                `${entry.sessionID}:${entry.status.type}:${entry.requests}:${entry.totalTokens}:${entry.updated}`,
+            )
+            .join("|")
+        : ""
+    return [
+      sideMode(),
+      props.vm.info()?.time.updated ?? 0,
+      status?.type ?? "",
+      messageSignature,
+      sync.data.llm_errors.length,
+      sync.data.llm_history.length,
+      monitorSignature,
+      sideMode() === "status" && monitor.loading && !monitor.initialized ? "loading" : "idle",
+      sideMode() === "status" ? (monitor.error ?? "") : "",
+    ].join("::")
+  })
+  useSessionTelemetryHydration({
+    sessionID: activeSessionID,
+    sync,
+    deps: telemetryDeps,
+    monitorEntries: () => (sideMode() === "status" ? (monitorEntries() as EnrichedMonitorEntry[]) : undefined),
+    loading: () => sideMode() === "status" && monitor.loading && !monitor.initialized,
+    error: () => (sideMode() === "status" ? monitor.error : undefined),
+  })
   const [queueControlLoading, setQueueControlLoading] = createSignal<"resume_once" | "drop_pending" | null>(null)
   const [queueControlError, setQueueControlError] = createSignal<string | undefined>()
+  const resolveAccountLabel = (accountId?: string, providerId?: string) =>
+    resolveTelemetryAccountLabel(globalSync, accountId, providerId)
 
   const runQueueControl = async (action: "resume_once" | "drop_pending") => {
     const sessionID = activeSessionID()
@@ -141,9 +172,7 @@ export function SessionSidePanel(props: {
         headers: { "content-type": "application/json", "x-opencode-directory": sdk.directory },
         body: JSON.stringify({ action }),
       })
-      if (!response.ok) {
-        throw new Error(`Queue control failed (${response.status})`)
-      }
+      if (!response.ok) throw new Error(`Queue control failed (${response.status})`)
       await autonomousHealth.forceRefresh()
     } catch (error) {
       setQueueControlError(error instanceof Error ? error.message : String(error))
@@ -159,6 +188,7 @@ export function SessionSidePanel(props: {
   return (
     <>
       <Show when={props.fileOpen}>
+        {/* unchanged pane UI */}
         <aside
           id="session-file-pane"
           aria-label={props.language.t("session.tools.files")}
@@ -178,18 +208,13 @@ export function SessionSidePanel(props: {
                   <div
                     class="file-tab-strip-scroll min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
                     ref={(el: HTMLDivElement) => {
-                      const stop = createFileTabListSync({
-                        el,
-                        contextOpen: () => false,
-                      })
-
+                      const stop = createFileTabListSync({ el, contextOpen: () => false })
                       createEffect(() => {
                         const active = props.activeFileTab()
                         requestAnimationFrame(() => {
                           scrollTabIntoView({ el, activeTab: active })
                         })
                       })
-
                       onCleanup(stop)
                     }}
                   >
@@ -229,7 +254,6 @@ export function SessionSidePanel(props: {
                     </div>
                   </StickyAddButton>
                 </div>
-
                 <Tabs.Content value="empty" class="flex-1 min-h-0 overflow-auto contain-strict">
                   <Show when={props.activeTab() === "empty"}>
                     <div class="relative pt-2 flex-1 min-h-0 overflow-hidden">
@@ -242,7 +266,6 @@ export function SessionSidePanel(props: {
                     </div>
                   </Show>
                 </Tabs.Content>
-
                 <Show when={props.activeFileTab()} keyed>
                   {(tab) => (
                     <FileTabContent
@@ -278,7 +301,6 @@ export function SessionSidePanel(props: {
           </div>
         </aside>
       </Show>
-
       <Show when={props.toolOpen}>
         <aside
           id="session-tool-sidebar"
@@ -297,7 +319,6 @@ export function SessionSidePanel(props: {
                 />
               </div>
             </Show>
-
             <Show when={sideMode() === "status"}>
               <SessionStatusSections
                 todoContent={
@@ -358,13 +379,10 @@ export function SessionSidePanel(props: {
                               </Show>
                             </div>
                           </Show>
-
+                          <SessionTelemetryCards telemetry={telemetry()} accountLabel={resolveAccountLabel} />
                           {(() => {
                             const processCards = () =>
-                              buildProcessCards(
-                                (monitorEntries() ?? []) as EnrichedMonitorEntry[],
-                                activeSessionID(),
-                              )
+                              buildProcessCards((monitorEntries() ?? []) as EnrichedMonitorEntry[], activeSessionID())
                             return (
                               <Show
                                 when={processCards().length > 0}
@@ -379,32 +397,36 @@ export function SessionSidePanel(props: {
                                       try {
                                         await sdk.client.session.abort({ sessionID: card.sessionID })
                                       } catch {
-                                        // ignore
                                       } finally {
                                         setAborting(false)
                                       }
                                     }
-                                    const borderColor = () => {
-                                      if (card.status === "active") return "var(--color-success)"
-                                      if (card.status === "error") return "var(--color-warning)"
-                                      if (card.status === "waiting") return "var(--color-info)"
-                                      if (card.status === "pending") return "var(--border-weak-base)"
-                                      return "var(--border-weak-base)"
-                                    }
-                                    const statusLabel = () => {
-                                      if (card.status === "active") return "Running"
-                                      if (card.status === "error") return "Error"
-                                      if (card.status === "waiting") return "Waiting"
-                                      if (card.status === "pending") return "Pending"
-                                      return ""
-                                    }
-                                    const elapsed = () => {
-                                      if (card.elapsed == null) return ""
-                                      if (card.elapsed < 60) return `${card.elapsed}s`
-                                      const mins = Math.floor(card.elapsed / 60)
-                                      if (mins < 60) return `${mins}m`
-                                      return `${Math.floor(mins / 60)}h${mins % 60}m`
-                                    }
+                                    const borderColor = () =>
+                                      card.status === "active"
+                                        ? "var(--color-success)"
+                                        : card.status === "error"
+                                          ? "var(--color-warning)"
+                                          : card.status === "waiting"
+                                            ? "var(--color-info)"
+                                            : "var(--border-weak-base)"
+                                    const statusLabel = () =>
+                                      card.status === "active"
+                                        ? "Running"
+                                        : card.status === "error"
+                                          ? "Error"
+                                          : card.status === "waiting"
+                                            ? "Waiting"
+                                            : card.status === "pending"
+                                              ? "Pending"
+                                              : ""
+                                    const elapsed = () =>
+                                      card.elapsed == null
+                                        ? ""
+                                        : card.elapsed < 60
+                                          ? `${card.elapsed}s`
+                                          : Math.floor(card.elapsed / 60) < 60
+                                            ? `${Math.floor(card.elapsed / 60)}m`
+                                            : `${Math.floor(Math.floor(card.elapsed / 60) / 60)}h${Math.floor(card.elapsed / 60) % 60}m`
                                     return (
                                       <div
                                         class="rounded-md border bg-background-base px-3 py-2 flex flex-col gap-1"
@@ -456,11 +478,9 @@ export function SessionSidePanel(props: {
                 }
               />
             </Show>
-
             <Show when={sideMode() === "changes"}>
               <div class="relative flex-1 min-h-0 overflow-hidden">{props.changesPanel()}</div>
             </Show>
-
             <Show when={sideMode() === "context"}>
               <div class="relative flex-1 min-h-0 overflow-hidden">
                 <SessionContextTab
@@ -468,11 +488,11 @@ export function SessionSidePanel(props: {
                   visibleUserMessages={props.vm.visibleUserMessages}
                   view={props.vm.view}
                   info={props.vm.info}
+                  telemetry={telemetry}
                 />
               </div>
             </Show>
           </div>
-
           <ResizeHandle
             direction="horizontal"
             edge="start"

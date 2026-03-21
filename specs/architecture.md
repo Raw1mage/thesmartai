@@ -45,6 +45,55 @@ OpenCode is a desktop/TUI/Webapp multi-interface platform for interacting with A
   - TUI sidebar `Changes` and webapp changes sidebar use workspace-level git status (`file.status`) when the UX is explicitly about current workdir uncommitted files.
   - These two sources must not be silently conflated; session attribution and workdir cleanliness are separate contracts.
 
+## Session Monitor / Telemetry Architecture
+
+### Current State
+
+- Runtime emits telemetry-related events from session processing, and supported telemetry events are persisted by `packages/opencode/src/bus/subscribers/telemetry-runtime.ts` into `RuntimeEventService`.
+- `packages/opencode/src/session/monitor.ts` currently constructs telemetry-bearing monitor rows, and `GET /session/top` returns those rows as snapshots.
+- App currently refreshes `session.top` through `packages/app/src/pages/session/use-status-monitor.ts` and hydrates `session_telemetry` through `packages/app/src/context/sync.tsx` plus `packages/app/src/pages/session/monitor-helper.ts`.
+- This means current steady-state behavior is still influenced by hydration-first / monitor-first / page-hook-first paths.
+
+### Target State
+
+- Telemetry is bus-messaging-first / DDS-aligned.
+- Runtime emits telemetry events as source facts.
+- A server-side telemetry projector owns the authoritative telemetry read model.
+- App global-sync reducer owns the canonical telemetry slice.
+- UI surfaces are pure consumers of reducer-owned telemetry state.
+- `session.top` is bootstrap / catch-up / degraded snapshot transport only.
+
+### Builder Execution Path
+
+1. Freeze current-state baseline and label every wrong authority path.
+2. Define the runtime telemetry event contract before downstream design.
+3. Define projector aggregate ownership and projector read-model boundaries.
+4. Cut steady-state app ownership over to the reducer-owned `session_telemetry` slice.
+5. Demote `session.top` and all snapshot/hydration/page-hook paths to bootstrap/recovery-only behavior.
+6. Remove conflicting legacy glue and validate that no duplicate authority remains.
+
+### Ownership Rules
+
+- Runtime owns telemetry fact emission, not app hydration.
+- Server projector is the only telemetry read-model authority.
+- Monitor rows and snapshot routes are downstream projector consumers, not telemetry authorities.
+- App page hooks, hydration helpers, and local fallback must not hold steady-state telemetry authority.
+- UI components may render telemetry but must not synthesize or persist telemetry truth.
+
+### Minimum Authority Shapes
+
+- Runtime event contract must at minimum distinguish prompt telemetry, round telemetry, compaction telemetry, and session-summary-relevant facts.
+- Projector aggregate must at minimum distinguish prompt summary, round summary, compaction summary, session cumulative summary, freshness metadata, and degraded/catch-up metadata.
+- App reducer slice must remain session-scoped and canonical, with enough structure for UI consumption but without reintroducing helper-side truth synthesis.
+
+### Migration Warnings
+
+- Hydration-first steady-state is architecturally wrong and must be removed or demoted.
+- Monitor-first steady-state is architecturally wrong and must be removed or demoted.
+- Page-hook-first steady-state is architecturally wrong and must be removed or demoted.
+- Any implementation that leaves `session.top`, monitor hydration, or local fallback as a steady-state telemetry writer is architecture drift.
+- Partial migration that introduces projector/reducer while preserving legacy steady-state writers is invalid.
+
 ## Daemon Architecture (Multi-User Web Runtime)
 
 ### Overview

@@ -6,6 +6,7 @@ import { Agent } from "@/agent/agent"
 import { Snapshot } from "@/snapshot"
 import { SessionSummary } from "./summary"
 import { Bus } from "@/bus"
+import { BusEvent } from "@/bus/bus-event"
 import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
 import { Plugin } from "@/plugin"
@@ -24,6 +25,53 @@ import { materializeToolAttachments } from "./attachment-ownership"
 import { clearPendingContinuation } from "./workflow-runner"
 import { describeTaskNarration, emitSessionNarration } from "./narration"
 import { logSessionAccountAudit, resolveAccountAuditSource } from "./account-audit"
+import z from "zod"
+
+export const SessionRoundTelemetryEvent = BusEvent.define(
+  "session.round.telemetry",
+  z.object({
+    sessionID: z.string(),
+    roundIndex: z.number().optional(),
+    requestId: z.string().optional(),
+    providerId: z.string(),
+    modelId: z.string(),
+    accountId: z.string().optional(),
+    finishReason: z.string(),
+    inputTokens: z.number(),
+    outputTokens: z.number(),
+    cacheReadTokens: z.number(),
+    cacheWriteTokens: z.number(),
+    totalTokens: z.number(),
+    cost: z.number(),
+    contextLimit: z.number(),
+    inputLimit: z.number().optional(),
+    reservedTokens: z.number(),
+    usableTokens: z.number(),
+    observedTokens: z.number(),
+    needsCompaction: z.boolean(),
+    compactionResult: z.string().optional(),
+    compactionDraftTokens: z.number().optional(),
+    compactionCount: z.number().optional(),
+    timestamp: z.number(),
+  }),
+)
+
+export const SessionCompactionTelemetryEvent = BusEvent.define(
+  "session.compaction.telemetry",
+  z.object({
+    sessionID: z.string(),
+    roundIndex: z.number().optional(),
+    requestId: z.string().optional(),
+    providerId: z.string(),
+    modelId: z.string(),
+    accountId: z.string().optional(),
+    compactionAttemptId: z.string(),
+    compactionCount: z.number().optional(),
+    compactionResult: z.string(),
+    compactionDraftTokens: z.number().optional(),
+    timestamp: z.number(),
+  }),
+)
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -768,8 +816,94 @@ export namespace SessionProcessor {
                     input.model.id,
                     streamInput.accountId ?? input.accountId,
                   )
-                  if (await SessionCompaction.isOverflow({ tokens: usage.tokens, model: input.model })) {
-                    needsCompaction = true
+                  const sessionInfo = await Session.get(input.sessionID).catch(() => undefined)
+                  const budget = await SessionCompaction.inspectBudget({ tokens: usage.tokens, model: input.model })
+                  needsCompaction = budget.overflow
+                  Bus.publish(SessionRoundTelemetryEvent, {
+                    sessionID: input.sessionID,
+                    roundIndex: input.assistantMessage.summary
+                      ? undefined
+                      : (sessionInfo?.stats?.requestsTotal ?? undefined),
+                    requestId: input.assistantMessage.parentID,
+                    providerId: input.model.providerId,
+                    modelId: input.model.id,
+                    accountId: streamInput.accountId ?? input.accountId ?? input.assistantMessage.accountId,
+                    finishReason: value.finishReason,
+                    inputTokens: usage.tokens.input,
+                    outputTokens: usage.tokens.output,
+                    cacheReadTokens: usage.tokens.cache.read,
+                    cacheWriteTokens: usage.tokens.cache.write,
+                    totalTokens:
+                      usage.tokens.total ||
+                      usage.tokens.input + usage.tokens.output + usage.tokens.cache.read + usage.tokens.cache.write,
+                    cost: usage.cost,
+                    contextLimit: budget.context,
+                    inputLimit: budget.inputLimit,
+                    reservedTokens: budget.reserved,
+                    usableTokens: budget.usable,
+                    observedTokens: budget.count,
+                    needsCompaction,
+                    compactionResult: input.assistantMessage.summary
+                      ? input.assistantMessage.error
+                        ? "error"
+                        : value.finishReason
+                          ? "completed"
+                          : "draft"
+                      : needsCompaction
+                        ? "pending"
+                        : undefined,
+                    compactionDraftTokens: input.assistantMessage.summary
+                      ? usage.tokens.total ||
+                        usage.tokens.input +
+                          usage.tokens.output +
+                          usage.tokens.reasoning +
+                          usage.tokens.cache.read +
+                          usage.tokens.cache.write
+                      : undefined,
+                    compactionCount: input.assistantMessage.summary ? 1 : undefined,
+                    timestamp: Date.now(),
+                  }).catch(() => {})
+                  if (
+                    input.assistantMessage.summary ||
+                    needsCompaction ||
+                    usage.tokens.total !== undefined ||
+                    value.finishReason
+                  ) {
+                    const roundIndex = input.assistantMessage.summary
+                      ? undefined
+                      : (sessionInfo?.stats?.requestsTotal ?? undefined)
+                    const requestId = input.assistantMessage.parentID
+                    const compactionResult = input.assistantMessage.summary
+                      ? input.assistantMessage.error
+                        ? "error"
+                        : value.finishReason
+                          ? "completed"
+                          : "draft"
+                      : needsCompaction
+                        ? "pending"
+                        : "completed"
+                    const compactionDraftTokens = input.assistantMessage.summary
+                      ? usage.tokens.total ||
+                        usage.tokens.input +
+                          usage.tokens.output +
+                          usage.tokens.reasoning +
+                          usage.tokens.cache.read +
+                          usage.tokens.cache.write
+                      : undefined
+                    const compactionCount = input.assistantMessage.summary ? 1 : undefined
+                    Bus.publish(SessionCompactionTelemetryEvent, {
+                      sessionID: input.sessionID,
+                      roundIndex,
+                      requestId,
+                      providerId: input.model.providerId,
+                      modelId: input.model.id,
+                      accountId: streamInput.accountId ?? input.accountId ?? input.assistantMessage.accountId,
+                      compactionAttemptId: `${input.sessionID}:${requestId ?? "unknown"}:${compactionCount ?? 0}:${compactionResult}`,
+                      compactionCount,
+                      compactionResult,
+                      compactionDraftTokens,
+                      timestamp: Date.now(),
+                    }).catch(() => {})
                   }
                   break
 
@@ -985,13 +1119,17 @@ export namespace SessionProcessor {
                     fallbackAttempts,
                     triedCount: triedVectors.size,
                   })
-                  debugCheckpoint("syslog.rotation", "CIRCUIT BREAKER: no fallback, surfacing error (no retry fall-through)", {
-                    sessionID: input.sessionID,
-                    consecutiveNullFallbacks,
-                    fallbackAttempts,
-                    triedVectors: Array.from(triedVectors),
-                    note: "immediate break prevents infinite retry with rate-limited vector",
-                  })
+                  debugCheckpoint(
+                    "syslog.rotation",
+                    "CIRCUIT BREAKER: no fallback, surfacing error (no retry fall-through)",
+                    {
+                      sessionID: input.sessionID,
+                      consecutiveNullFallbacks,
+                      fallbackAttempts,
+                      triedVectors: Array.from(triedVectors),
+                      note: "immediate break prevents infinite retry with rate-limited vector",
+                    },
+                  )
                   input.assistantMessage.error = MessageV2.fromError(e, { providerId: input.model.providerId })
                   Bus.publish(Session.Event.Error, {
                     sessionID: input.assistantMessage.sessionID,

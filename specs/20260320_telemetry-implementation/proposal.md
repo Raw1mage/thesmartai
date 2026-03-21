@@ -1,68 +1,107 @@
-# Proposal: Telemetry planning for A111/A112 instrumentation
+# Proposal
 
 ## Why
 
-- Build an execution-ready plan that captures prompt-block (A111) and round/session usage (A112) telemetry without prematurely touching runtime code.
-- Ensure future builders know which files, data points, and validation gates need coverage before any telemetry code is merged.
+- 目前 telemetry 可觀測，但 steady-state authority 仍分散在 runtime event persistence、`session.top` snapshot、page-level refresh、app hydration、monitor-derived helper、與 local fallback。
+- 這種 hydration-first / monitor-first / page-hook-first steady-state 與 repo 的 bus-messaging / DDS / reducer-owned state pattern 衝突，會讓 builder 在實作時繼續補強錯誤 ownership。
+- 本規劃包的目的不是修補現況，而是把 telemetry 改寫成 bus-first rewrite contract，讓後續 builder 能直接按正確 authority 邊界重建。
 
-## Original Requirement Wording (Baseline)
+## Rewrite Contract
 
-- "Instrument prompt blocks around systemParts/system construction in `llm.ts` and track block source/name, injected/skipped status, estimated tokens, length, and correlation IDs."
-- "Instrument finish-step/round boundaries in `processor.ts` and compaction boundaries in `compaction.ts` with sessionId, roundIndex, requestId, model/provider/account, token breakdowns, compaction trigger/result, and cumulative session summary."
-- "Prefer a dedicated typed telemetry module (e.g. `session/telemetry.ts`) rather than polluting prompt assembly logic."
+- **Current state 只作 migration baseline，不作 target truth。**
+- **Target state 必須是 bus-first / DDS-aligned。**
+- **Migration path 必須先建立 authority，再做 cutover，再降級/移除舊路徑。**
+- **若現況 shortcut 與 target 衝突，builder 應重寫，不應優化或保留。**
+- **A111/A112 的產品 evidence 目的不得在架構重寫過程中遺失。**
 
-## Requirement Revision History
+## Original Product Purpose
 
-- 2026-03-21 Planning refresh: elevated validation/traceability expectations, clarified that telemetry failures must not mutate prompt/round behavior and that schema misuse should fail fast.
+- 這份 telemetry 計畫最早的目的，是為 context control / prompt budget / compaction decision 提供 evidence，而不是單純擴充 UI 或做架構潔癖式重寫。
+- A111 的原始產品目的：讓系統能回答 prompt composition 問題，例如哪些 blocks 被注入、被略過、各自成本多高、哪個 block 最該被裁切或保留。
+- A112 的原始產品目的：讓系統能回答 round/session/compaction 問題，例如哪一輪開始膨脹、request identity 為何、compaction 何時觸發、草稿大小與結果如何、整個 session 成本如何累積。
+- 本次 rewrite 不是放棄這些產品目的，而是把它們放回正確的 DDS/bus authority chain。
 
-## Effective Requirement Description
+## Current State
 
-1. Deliver a telemetry-focused proposal/spec/design/tasks package that clearly traces A111 prompt-block instrumentation and A112 round/session usage telemetry to the required files and data points.
-2. Define a validation strategy with baseline/after comparisons plus migration validation such that telemetry success does not alter the core prompt or round behaviors.
-3. Provide an execution-ready handoff (tasks + diagrams) so builders can implement the telemetry module with knowledge of stop gates, failure modes, and traceability to A111/A112.
+- Runtime 已發出 telemetry 相關事件，且部分事件透過 runtime subscriber 持久化。
+- `SessionMonitor` / `session.top` 目前會合成並輸出 telemetry snapshot。
+- App 目前透過 `use-status-monitor.ts` 反覆抓取 `session.top`，再經 `sync.tsx` / `monitor-helper.ts` 將 snapshot/hydration 投影進 `session_telemetry`。
+- UI 雖多半是 consumer，但 steady-state 更新仍受 monitor-first、hydration-first、page-hook-first 路徑影響。
+- 上述現況是 migration inventory，不是應被保留的 architecture target。
+
+## Target State
+
+Telemetry target state is defined as:
+
+1. runtime emits telemetry events
+2. server-side projector owns the authoritative telemetry read model
+3. app global-sync reducer owns the canonical telemetry slice
+4. UI is a pure consumer
+5. `session.top` is bootstrap / catch-up / degraded snapshot transport only
+
+### Explicit Demotions
+
+下列 steady-state 模式在架構上是錯的，必須移除或降級：
+
+- hydration-first steady-state
+- monitor-first telemetry authority
+- page-hook-first telemetry authority
+- snapshot refresh as primary telemetry channel
+- UI/local helper synthesis as long-term truth source
+
+## Migration Path
+
+1. **Baseline freeze**：凍結 current-state inventory，標出所有 authority 混線點。
+2. **Event contract**：先定義 runtime telemetry event contract，拒絕任何需要 UI 補 authority 的事件設計。
+3. **Projector**：建立 server projector 作為唯一 telemetry read-model authority，monitor / snapshot 只能讀 projector。
+4. **Reducer cutover**：把 app canonical telemetry slice 收斂到 `global-sync` reducer，切斷 page/hydration 寫入 authority。
+5. **Snapshot demotion**：把 `session.top` 降級成 bootstrap / catch-up / degraded only。
+6. **Cleanup + validation**：移除舊 glue，證明沒有 duplicate authority、fallback promotion、partial migration。
+
+## Event-Contract Expectations
+
+- Builder 在進入 projector/reducer 實作前，必須先把 event contract 定義清楚。
+- 最小 event-contract 規格必須至少回答：
+  - 哪些 telemetry facts 是 runtime source-of-truth
+  - 事件名稱與 producer boundary 是什麼
+  - 事件 payload 至少分成哪些類別（prompt / round / compaction / summary）
+  - session identity、request identity、round identity 如何關聯
+  - ordering / replay / idempotency 如何處理
+  - 哪些資料屬於 projector aggregate，哪些只能在 downstream adapter 才產生
+- 若 builder 無法先把 event-contract 寫清楚，則不得直接跳到 projector 或 reducer phase。
 
 ## Scope
 
 ### IN
 
-- Planning artifacts under `specs/20260320_telemetry-implementation/*`, including proposal, spec, design, tasks, handoff, implementation-spec, IDEF0, and GRAFCET.
-- Collating intents from `specs/20260320_llm` materials and the listed runtime landing zones to ensure instrumentation can be mapped to real files.
-- Capturing requirements for dedicated telemetry module instrumentation surface without changing runtime code.
-- Adding an information-architecture plan for telemetry-fed sidebar/context cards that consume `session/telemetry.ts` output (via `session/monitor.ts`) instead of becoming a secondary source of truth.
+- 重寫 telemetry planning package 成 builder-first rewrite contract。
+- 更新 `specs/architecture.md` 的 telemetry ownership 與 migration warning。
+- 補強 stop gates、cutover order、handoff language、event traceability。
 
 ### OUT
 
-- Any product code modifications or telemetry module implementations (those are for future execution slices).
-- Side quests beyond A111/A112 instrumentation planning (e.g., UI dashboards, summary compaction fixes).
+- 不實作 runtime/server/app 產品程式碼。
+- 不把 quota/account/billing telemetry 一起納入本次 cutover。
+- 不設計新的 telemetry UI。
+- 不為 current code shortcut 背書。
 
 ## Non-Goals
 
-- Writing or validating TypeScript telemetry code.
-- Expanding the plan beyond the two telemetry slices (A111 prompt block, A112 round/session usage).
+- 維持 `session.top` 為 steady-state telemetry 主通道。
+- 維持 monitor-derived telemetry authority。
+- 維持 page-level hydration/fallback 對 canonical telemetry slice 的寫入權。
+- 允許 partial migration 長期存在。
 
-## Constraints
+## Builder Rules
 
-- Telemetry must not change prompt or round behavior; instrumentation reads only and fails fast on schema misuse.
-- Validation must demonstrate baseline vs. after instrumentation capture without requiring silent fallbacks.
-- Documentation must stay concise, traceable, and aligned with existing planning conventions (trace to A111/A112).
+- 以 target architecture 為唯一優化目標。
+- 遇到與 target 衝突的現有 glue，優先重寫或刪除。
+- 若 builder 無法證明 authority 已單一化，視為未完成，不得收尾。
+- Builder 不得只證明資料「能顯示」；還必須證明 A111/A112 的 evidence path 可回答原始產品問題。
 
-## What Changes
+## Success Criteria
 
-- Fill each plan artifact with concrete telemetry content (proposal, spec, design, tasks, handoff, implementation-spec, IDEF0, GRAFCET).
-- Embed requirements, stop gates, and validation steps specific to A111/A112 instrumentation needs.
-
-## Capabilities
-
-### New Capabilities
-
-- Execution-ready telemetry planning: builders receive a complete view of data fields, files, and validation needed for A111/A112.
-
-### Modified Capabilities
-
-- Planning practice: existing spec/design structure now includes explicit traceability to telemetry requirements plus benchmark/validation gating.
-
-## Impact
-
-- Guides implementation of telemetry hooks in `packages/opencode/src/session/{llm.ts,processor.ts,compaction.ts,prompt.ts,telemetry.ts}` (future code) while clarifying that `session/telemetry.ts` is the authoritative instrumentation sink, `session/monitor.ts` is a downstream consumer/UI projection, and `account/monitor.ts` remains the existing aggregate/quota monitor that may be reused by A112 but not the round/session contract.
-- Sets plan-mode expectations for builders about baseline vs. after comparisons, diagram traceability, and validation checklists.
-- Ensures sidebar/context planning knows which telemetry slices power the existing runner/health cards and the new prompt/round summary cards so UI work remains a consumer layer in the same plan.
+- Builder 可以直接從文件理解：current state、target state、migration path、stop gates、與 build order。
+- Event contract 具備足夠精度，讓 builder 不需要自行猜測基本 ownership、identity、或 replay 規則。
+- Projector / reducer / snapshot 的權責切線明確，且不再容許雙重 authority。
+- 完成後的 telemetry 不只架構正確，也能實際支撐 prompt composition 與 round/session/compaction evidence。
