@@ -334,6 +334,11 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const handleInteraction = () => {
     if (!active()) return
+    const el = scroll
+    if (el && distanceFromBottom(el) < threshold()) {
+      debug("interaction-at-bottom-ignored")
+      return
+    }
     debug("interaction")
     stop()
   }
