@@ -11,19 +11,13 @@ import {
 import { useParams } from "@solidjs/router"
 import { useSync } from "@/context/sync"
 import { useLayout } from "@/context/layout"
-import { findLast } from "@opencode-ai/util/array"
-import { Markdown } from "@opencode-ai/ui/markdown"
 import type { Message, Part, UserMessage } from "@opencode-ai/sdk/v2/client"
 import { useLanguage } from "@/context/language"
 import { getSessionContextMetrics } from "./session-context-metrics"
 import { estimateSessionContextBreakdown, type SessionContextBreakdownKey } from "./session-context-breakdown"
 import { createSessionContextFormatter } from "./session-context-format"
 import type { SessionTelemetry } from "@/context/global-sync/types"
-import {
-  AccountQuotaReuseCard,
-  PromptTelemetryCard,
-  RoundSessionTelemetryCard,
-} from "@/pages/session/session-telemetry-cards"
+import { PromptTelemetryCard, RoundSessionTelemetryCard } from "@/pages/session/session-telemetry-cards"
 import { useGlobalSync } from "@/context/global-sync"
 import { resolveTelemetryAccountLabel } from "@/pages/session/session-telemetry-ui"
 
@@ -52,18 +46,36 @@ function Stat(props: { label: string; value: JSX.Element }) {
   )
 }
 
-type ContextCardKey = "summary" | "breakdown" | "prompt" | "promptTelemetry" | "roundTelemetry" | "quota"
+type ContextCardKey = "summary" | "breakdown" | "promptTelemetry" | "roundTelemetry"
 
-function ContextCard(props: { title: string; marker: string; children: JSX.Element }) {
+function shouldPackSummaryStat(label: string, value: string) {
+  const normalizedValue = value.trim()
+  return (
+    normalizedValue.length > 0 &&
+    !normalizedValue.includes("\n") &&
+    label.length <= 18 &&
+    normalizedValue.length <= 20 &&
+    label.length + normalizedValue.length <= 32
+  )
+}
+
+function ContextCard(props: {
+  title: string
+  marker: string
+  expanded: boolean
+  onToggle: () => void
+  children: JSX.Element
+}) {
   return (
     <section class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-2">
-      <div class="flex items-start gap-2 min-w-0">
+      <button type="button" class="flex items-start gap-2 min-w-0 text-left" onClick={props.onToggle}>
         <span class="text-11-medium text-text-weak shrink-0">{props.marker}</span>
         <div class="min-w-0 flex-1">
           <div class="text-12-medium text-text-strong break-words">{props.title}</div>
         </div>
-      </div>
-      {props.children}
+        <span class="text-12-medium text-text-base shrink-0">{props.expanded ? "▼" : "▶"}</span>
+      </button>
+      <Show when={props.expanded}>{props.children}</Show>
     </section>
   )
 }
@@ -102,15 +114,6 @@ export function SessionContextTab(props: SessionContextTabProps) {
     }
   })
 
-  const systemPrompt = createMemo(() => {
-    const msg = findLast(props.visibleUserMessages(), (m) => !!m.system)
-    const system = msg?.system
-    if (!system) return
-    const trimmed = system.trim()
-    if (!trimmed) return
-    return trimmed
-  })
-
   const providerLabel = createMemo(() => {
     const c = ctx()
     if (!c) return "—"
@@ -125,7 +128,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
 
   const breakdown = createMemo(
     on(
-      () => [ctx()?.message.id, ctx()?.input, props.messages().length, systemPrompt()],
+      () => [ctx()?.message.id, ctx()?.input, props.messages().length],
       () => {
         const c = ctx()
         if (!c?.input) return []
@@ -133,7 +136,6 @@ export function SessionContextTab(props: SessionContextTabProps) {
           messages: props.messages(),
           parts: sync.data.part as Record<string, Part[] | undefined>,
           input: c.input,
-          systemPrompt: systemPrompt(),
         })
       },
     ),
@@ -172,6 +174,17 @@ export function SessionContextTab(props: SessionContextTabProps) {
   const telemetry = createMemo(() => props.telemetry?.())
   const resolveAccountLabel = (accountId?: string, providerId?: string) =>
     resolveTelemetryAccountLabel(globalSync, accountId, providerId)
+  const summaryStats = createMemo(() =>
+    stats.map((stat) => {
+      const label = language.t(stat.label as Parameters<typeof language.t>[0])
+      const value = stat.value() as string
+      return {
+        label,
+        value,
+        compact: shouldPackSummaryStat(label, value),
+      }
+    }),
+  )
 
   let scroll: HTMLDivElement | undefined
   let frame: number | undefined
@@ -225,11 +238,18 @@ export function SessionContextTab(props: SessionContextTabProps) {
       {
         key: "summary",
         content: (
-          <ContextCard title="Summary" marker="[S]">
+          <ContextCard
+            title="Summary"
+            marker="[S]"
+            expanded={layout.contextSidebar.expanded("summary")()}
+            onToggle={() => layout.contextSidebar.toggleExpanded("summary")}
+          >
             <div class="grid grid-cols-1 @[32rem]:grid-cols-2 gap-x-4 gap-y-2">
-              <For each={stats}>
+              <For each={summaryStats()}>
                 {(stat) => (
-                  <Stat label={language.t(stat.label as Parameters<typeof language.t>[0])} value={stat.value()} />
+                  <div classList={{ "@[32rem]:col-span-2": !stat.compact }}>
+                    <Stat label={stat.label} value={stat.value} />
+                  </div>
                 )}
               </For>
             </div>
@@ -239,7 +259,12 @@ export function SessionContextTab(props: SessionContextTabProps) {
       {
         key: "breakdown",
         content: (
-          <ContextCard title="Breakdown" marker="[B]">
+          <ContextCard
+            title="Breakdown"
+            marker="[B]"
+            expanded={layout.contextSidebar.expanded("breakdown")()}
+            onToggle={() => layout.contextSidebar.toggleExpanded("breakdown")}
+          >
             <Show
               when={breakdown().length > 0}
               fallback={<div class="text-12-regular text-text-weak">No context breakdown yet.</div>}
@@ -274,37 +299,29 @@ export function SessionContextTab(props: SessionContextTabProps) {
           </ContextCard>
         ),
       },
-      {
-        key: "prompt",
-        content: (
-          <ContextCard title="Prompt" marker="[P]">
-            <Show
-              when={systemPrompt()}
-              fallback={<div class="text-12-regular text-text-weak">No system prompt for this session.</div>}
-            >
-              {(prompt) => (
-                <div class="rounded-md border border-border-weak-base bg-surface-panel px-2.5 py-2">
-                  <Markdown text={prompt()} class="text-12-regular" />
-                </div>
-              )}
-            </Show>
-          </ContextCard>
-        ),
-      },
     ]
 
     if (telemetry()) {
       result.push({
         key: "promptTelemetry",
-        content: <PromptTelemetryCard telemetry={telemetry()} />,
+        content: (
+          <PromptTelemetryCard
+            telemetry={telemetry()}
+            expanded={layout.contextSidebar.expanded("promptTelemetry")()}
+            onToggle={() => layout.contextSidebar.toggleExpanded("promptTelemetry")}
+          />
+        ),
       })
       result.push({
         key: "roundTelemetry",
-        content: <RoundSessionTelemetryCard telemetry={telemetry()} accountLabel={resolveAccountLabel} />,
-      })
-      result.push({
-        key: "quota",
-        content: <AccountQuotaReuseCard telemetry={telemetry()} accountLabel={resolveAccountLabel} />,
+        content: (
+          <RoundSessionTelemetryCard
+            telemetry={telemetry()}
+            accountLabel={resolveAccountLabel}
+            expanded={layout.contextSidebar.expanded("roundTelemetry")()}
+            onToggle={() => layout.contextSidebar.toggleExpanded("roundTelemetry")}
+          />
+        ),
       })
     }
 
