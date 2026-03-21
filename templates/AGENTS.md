@@ -170,11 +170,14 @@
    - 複雜 debug / 開發任務應優先讀取相關框架文件，而不是每次從原始碼重新建模整個系統。
    - 若框架文件不足，應在本次任務中補齊，而不是接受知識缺口常態化。
 
-8. **Spec-Driven Builder Contract（依 /specs/ plan 實作時的強制規則）**
-   當 coding agent 依據 `specs/<plan>/` 下的計畫文件實作時，必須遵守：
-   - **Tasks Checklist 即時同步**：每完成一個 task item，立即更新 `specs/<plan>/tasks.md` 的 checkbox（`[ ]` → `[x]`）。若 task 不適用或需拆分，標記 `[~] <reason>`。禁止所有工作完成後才一次性勾選。
+8. **Plan / Spec Lifecycle Contract（規劃、實作、升格的強制規則）**
+   - **Active plan/build workspace 一律在 `/plans/`**：planner 與 build mode 進行中的 dated plan roots 必須建立於 `/plans/<YYYYMMDD>_<slug>/`；AGENTS 不得再把 dated roots 的進行中計畫導向 `/specs/`。
+   - **`specs/architecture.md` 仍是架構單一真相來源**：長期架構、模組邊界、資料流、狀態機、runtime flows 仍以 `specs/architecture.md` 為準，不因 active plans 移到 `/plans/` 而改變。
+   - **Formalized specs 採 semantic per-feature roots**：只有已正式沉澱、需長期維護的功能規格才放入 `/specs/<feature>/`；`/specs/` 不承接進行中的 dated execution roots。
+   - **Tasks Checklist 即時同步**：當 coding agent 依據 `/plans/<YYYYMMDD>_<slug>/` 下的計畫文件實作時，每完成一個 task item，立即更新對應 `tasks.md` 的 checkbox（`[ ]` → `[x]`）。若 task 不適用或需拆分，標記 `[~] <reason>`。禁止所有工作完成後才一次性勾選。
    - **Session Event Log**：每個 session 結束前（或 commit 前），建立/更新 `docs/events/event_<YYYYMMDD>_<topic>.md`，至少包含 Scope（引用 tasks.md item 編號）、Key Decisions、Issues Found、Verification、Remaining。
-   - **Commit Gate**：commit 前必須確認 (1) tasks.md checkbox 已同步 (2) event log 已建立/更新 (3) 架構變更已同步 `specs/architecture.md`。禁止在 tasks.md 和 event log 未更新的情況下 commit code changes。
+   - **Commit Gate**：commit 前必須確認 (1) `/plans/.../tasks.md` checkbox 已同步 (2) event log 已建立/更新 (3) 架構變更已同步 `specs/architecture.md`。禁止在 tasks.md 和 event log 未更新的情況下 commit code changes。
+   - **Promotion is manual only**：`/plans/<YYYYMMDD>_<slug>/` → `/specs/<feature>/` 的升格只允許在 execution 完成、必要 commit 完成、必要 merge 完成之後，且僅能於使用者明確要求時手動執行；不得自動搬移、不得預設升格、不得使用模糊或 silent fallback wording 暗示稍後會自動落入 `/specs/`。
 
 9. **Web Runtime 單一啟動入口（Fail-Fast）**
 
@@ -183,13 +186,14 @@
 - 所有 server runtime 參數（含 `OPENCODE_FRONTEND_PATH`）必須集中定義於 `/etc/opencode/opencode.cfg`，作為單一事實來源。
 
 10. **禁止新增 fallback mechanism（使用者天條）**
-   - 實作、重構、除錯時，**不允許主動新增任何 fallback mechanism**，除非使用者明確批准。
-   - 尤其禁止以下行為：
-     - 在 account / provider / model / session identity 不一致時，以 silent fallback 掩蓋問題
-     - 用預設值、第一個可用項、插入順序第一筆、global active account、cross-provider rescue 等方式偷偷續跑
-     - 在沒有 request-level evidence 前，以 fallback 當作「先讓系統能跑」的修補
-   - 預設策略應為：**fail fast、顯式報錯、保留證據、要求決策**，而不是自動 fallback。
-   - 若現有程式已存在 fallback，新的任務預設應優先評估：
-     1. 是否能刪除
-     2. 是否能改成 explicit decision gate
-     3. 是否能縮到單一可觀測且經使用者批准的例外
+
+- 實作、重構、除錯時，**不允許主動新增任何 fallback mechanism**，除非使用者明確批准。
+- 尤其禁止以下行為：
+  - 在 account / provider / model / session identity 不一致時，以 silent fallback 掩蓋問題
+  - 用預設值、第一個可用項、插入順序第一筆、global active account、cross-provider rescue 等方式偷偷續跑
+  - 在沒有 request-level evidence 前，以 fallback 當作「先讓系統能跑」的修補
+- 預設策略應為：**fail fast、顯式報錯、保留證據、要求決策**，而不是自動 fallback。
+- 若現有程式已存在 fallback，新的任務預設應優先評估：
+  1.  是否能刪除
+  2.  是否能改成 explicit decision gate
+  3.  是否能縮到單一可觀測且經使用者批准的例外

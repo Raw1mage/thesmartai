@@ -66,12 +66,12 @@ Both skills MUST be loaded. IDEF0/GRAFCET artifacts are mandatory parts of the p
 
 **Runtime tools:**
 
-- `plan_enter()` — set up the spec directory (`/specs/YYYYMMDD_<slug>/`) with template files. Call this to initialize plan artifacts.
+- `plan_enter()` — set up the active plan directory under `/plans/` using a dated root such as `/plans/YYYYMMDD_<slug>/`, with template files. Call this to initialize plan artifacts.
 - `plan_exit()` — validate all artifacts, materialize `tasks.md` into runtime todos, switch to build mode.
 - `todowrite()` — in plan mode, acts as a working ledger (relaxed policy). This does NOT carry over into build mode.
 - `question()` — use structured multiple-choice for bounded decisions (scope, priority, approval posture). Freeform only for open-ended context.
 
-**Artifact directory:** `plan_enter` creates `/specs/YYYYMMDD_<slug>/` with template files. The primary artifact is `implementation-spec.md`; keep all companion artifacts aligned.
+**Artifact directory:** `plan_enter` creates the active plan package under `/plans/` using a dated root such as `/plans/YYYYMMDD_<slug>/`. The primary artifact is `implementation-spec.md`; keep all companion artifacts aligned.
 
 **Todo ↔ Tasks alignment:** When `tasks.md` exists, it is the canonical naming source. Use the same task names in runtime todos. Prefer delegation-aware slices (`rewrite`, `delegate`, `integrate`, `validate`, `sync docs`) over vague bullets.
 

@@ -1,0 +1,146 @@
+[
+  {
+    "diagram_title": "Create Active Plan Package Under Plans Root",
+    "scenario": "A new non-trivial workstream enters plan mode and the planner creates a dated package under the plans root.",
+    "moduleRef": "A2",
+    "participants": [
+      {
+        "id": "P1",
+        "name": "User Request",
+        "type": "actor",
+        "componentRef": "SYS1"
+      },
+      {
+        "id": "P2",
+        "name": "Plan Tool Lifecycle Controller",
+        "type": "component",
+        "componentRef": "C2"
+      },
+      {
+        "id": "P3",
+        "name": "Planner Layout Resolver",
+        "type": "component",
+        "componentRef": "C1"
+      },
+      {
+        "id": "P4",
+        "name": "Artifact Root Topology",
+        "type": "component",
+        "componentRef": "C5"
+      }
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "P1",
+        "to": "P2",
+        "label": "enter plan mode",
+        "type": "sync",
+        "order": 1
+      },
+      {
+        "id": "MSG2",
+        "from": "P2",
+        "to": "P3",
+        "label": "resolve dated plans root",
+        "type": "sync",
+        "order": 2
+      },
+      {
+        "id": "MSG3",
+        "from": "P3",
+        "to": "P2",
+        "label": "return canonical plans path",
+        "type": "return",
+        "order": 3
+      },
+      {
+        "id": "MSG4",
+        "from": "P2",
+        "to": "P4",
+        "label": "write plan artifacts under plans root",
+        "type": "sync",
+        "order": 4
+      }
+    ],
+    "fragments": []
+  },
+  {
+    "diagram_title": "Promote Completed Plan Into Formalized Spec Root",
+    "scenario": "After execution, commit, and merge are complete, the user explicitly asks to formalize a plan into a semantic specs root.",
+    "moduleRef": "A4",
+    "participants": [
+      {
+        "id": "P1",
+        "name": "User Approval",
+        "type": "actor",
+        "componentRef": "SYS1"
+      },
+      {
+        "id": "P2",
+        "name": "Plan Tool Lifecycle Controller",
+        "type": "component",
+        "componentRef": "C2"
+      },
+      {
+        "id": "P3",
+        "name": "Legacy Package Triage Rule",
+        "type": "component",
+        "componentRef": "C6"
+      },
+      {
+        "id": "P4",
+        "name": "Artifact Root Topology",
+        "type": "component",
+        "componentRef": "C5"
+      }
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "P1",
+        "to": "P2",
+        "label": "formalize completed plan",
+        "type": "sync",
+        "order": 1
+      },
+      {
+        "id": "MSG2",
+        "from": "P2",
+        "to": "P3",
+        "label": "confirm implementation evidence and destination policy",
+        "type": "sync",
+        "order": 2
+      },
+      {
+        "id": "MSG3",
+        "from": "P3",
+        "to": "P2",
+        "label": "return semantic specs destination",
+        "type": "return",
+        "order": 3
+      },
+      {
+        "id": "MSG4",
+        "from": "P2",
+        "to": "P4",
+        "label": "move artifacts into semantic specs root",
+        "type": "sync",
+        "order": 4
+      }
+    ],
+    "fragments": [
+      {
+        "id": "FRAG1",
+        "type": "opt",
+        "label": "only after explicit user request and completed merge state",
+        "messageRefs": [
+          "MSG1",
+          "MSG2",
+          "MSG3",
+          "MSG4"
+        ]
+      }
+    ]
+  }
+]

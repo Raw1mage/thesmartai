@@ -47,16 +47,16 @@ function approvedMission() {
     source: "openspec_compiled_plan" as const,
     contract: "implementation_spec" as const,
     approvedAt: 1,
-    planPath: "specs/20260315_test/implementation-spec.md",
+    planPath: "plans/20260315_test/implementation-spec.md",
     executionReady: true,
     artifactPaths: {
-      root: "specs/20260315_test",
-      implementationSpec: "specs/20260315_test/implementation-spec.md",
-      proposal: "specs/20260315_test/proposal.md",
-      spec: "specs/20260315_test/spec.md",
-      design: "specs/20260315_test/design.md",
-      tasks: "specs/20260315_test/tasks.md",
-      handoff: "specs/20260315_test/handoff.md",
+      root: "plans/20260315_test",
+      implementationSpec: "plans/20260315_test/implementation-spec.md",
+      proposal: "plans/20260315_test/proposal.md",
+      spec: "plans/20260315_test/spec.md",
+      design: "plans/20260315_test/design.md",
+      tasks: "plans/20260315_test/tasks.md",
+      handoff: "plans/20260315_test/handoff.md",
     },
   }
 }
@@ -1058,7 +1058,7 @@ describe("Session workflow runner", () => {
           title: "mission metadata test",
           directory: tmp.path,
         })
-        const planRoot = path.join(tmp.path, "specs", "20260315_test")
+        const planRoot = path.join(tmp.path, "plans", "20260315_test")
         await Bun.write(
           path.join(planRoot, "implementation-spec.md"),
           "# Implementation Spec\n\n## Goal\n- Ship mission metadata\n\n## Scope\n### IN\n- mission runtime\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- pause on artifact mismatch\n\n## Critical Files\n- packages/opencode/src/session/workflow-runner.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run workflow-runner tests\n\n## Handoff\n- Continue from approved mission\n",
@@ -1099,7 +1099,7 @@ describe("Session workflow runner", () => {
           source: "openspec_compiled_plan",
           contract: "implementation_spec",
           executionReady: true,
-          planPath: "specs/20260315_test/implementation-spec.md",
+          planPath: "plans/20260315_test/implementation-spec.md",
         })
       },
     })
@@ -1115,7 +1115,7 @@ describe("Session workflow runner", () => {
           title: "mission consumption metadata test",
           directory: tmp.path,
         })
-        const planRoot = path.join(tmp.path, "specs", "20260315_test")
+        const planRoot = path.join(tmp.path, "plans", "20260315_test")
         await Bun.write(
           path.join(planRoot, "implementation-spec.md"),
           "# Implementation Spec\n\n## Goal\n- Ship mission consumption\n\n## Scope\n### IN\n- runner mission\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- pause on artifact mismatch\n\n## Critical Files\n- packages/opencode/src/session/workflow-runner.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run workflow-runner tests\n\n## Handoff\n- Continue from approved mission\n",
@@ -1159,9 +1159,9 @@ describe("Session workflow runner", () => {
           source: "openspec_compiled_plan",
           contract: "implementation_spec",
           consumedArtifacts: {
-            implementationSpec: "specs/20260315_test/implementation-spec.md",
-            tasks: "specs/20260315_test/tasks.md",
-            handoff: "specs/20260315_test/handoff.md",
+            implementationSpec: "plans/20260315_test/implementation-spec.md",
+            tasks: "plans/20260315_test/tasks.md",
+            handoff: "plans/20260315_test/handoff.md",
           },
         })
         expect(part.metadata?.missionConsumption?.executionChecklist.length).toBeGreaterThan(0)
@@ -1179,7 +1179,7 @@ describe("Session workflow runner", () => {
           title: "delegation metadata test",
           directory: tmp.path,
         })
-        const planRoot = path.join(tmp.path, "specs", "20260315_test")
+        const planRoot = path.join(tmp.path, "plans", "20260315_test")
         await Bun.write(
           path.join(planRoot, "implementation-spec.md"),
           "# Implementation Spec\n\n## Goal\n- Ship delegation metadata\n\n## Scope\n### IN\n- workflow runner\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- pause on artifact mismatch\n\n## Critical Files\n- packages/opencode/src/session/workflow-runner.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run workflow-runner tests\n\n## Handoff\n- Continue from approved mission\n",
@@ -1920,9 +1920,7 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
 
     it("returns undefined for completed todo", () => {
       const todo = { id: "c", content: "done", status: "completed" as const, priority: "high" as const }
-      expect(
-        buildContinuationTrigger({ todo, textForPending: "go", textForInProgress: "continue" }),
-      ).toBeUndefined()
+      expect(buildContinuationTrigger({ todo, textForPending: "go", textForInProgress: "continue" })).toBeUndefined()
     })
   })
 
@@ -2082,7 +2080,11 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
       const session = baseSession()
       session.mission = undefined as any
       expect(
-        planAutonomousNextAction({ session, todos: [{ id: "a", content: "x", status: "pending", priority: "high" }], roundCount: 0 }).reason,
+        planAutonomousNextAction({
+          session,
+          todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+          roundCount: 0,
+        }).reason,
       ).toBe("mission_not_approved")
     })
 
@@ -2090,7 +2092,11 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
       const session = baseSession()
       session.workflow.state = "blocked"
       expect(
-        planAutonomousNextAction({ session, todos: [{ id: "a", content: "x", status: "pending", priority: "high" }], roundCount: 0 }).reason,
+        planAutonomousNextAction({
+          session,
+          todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
+          roundCount: 0,
+        }).reason,
       ).toBe("blocked")
     })
 
@@ -2130,7 +2136,15 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
       expect(
         planAutonomousNextAction({
           session: baseSession(),
-          todos: [{ id: "a", content: "wait", status: "pending", priority: "high", action: { kind: "wait", waitingOn: "subagent" } }],
+          todos: [
+            {
+              id: "a",
+              content: "wait",
+              status: "pending",
+              priority: "high",
+              action: { kind: "wait", waitingOn: "subagent" },
+            },
+          ],
           roundCount: 0,
         }).reason,
       ).toBe("wait_subagent")
@@ -2140,7 +2154,15 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
       expect(
         planAutonomousNextAction({
           session: baseSession(),
-          todos: [{ id: "a", content: "decide", status: "pending", priority: "high", action: { kind: "decision", waitingOn: "decision" } }],
+          todos: [
+            {
+              id: "a",
+              content: "decide",
+              status: "pending",
+              priority: "high",
+              action: { kind: "decision", waitingOn: "decision" },
+            },
+          ],
           roundCount: 0,
         }).reason,
       ).toBe("product_decision_needed")

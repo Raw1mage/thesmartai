@@ -152,11 +152,14 @@
    - 複雜 debug / 開發任務應優先讀取相關框架文件，而不是每次從原始碼重新建模整個系統。
    - 若框架文件不足，應在本次任務中補齊，而不是接受知識缺口常態化。
 
-7. **Spec-Driven Builder Contract（依 /specs/ plan 實作時的強制規則）**：
-   當 coding agent 依據 `specs/<plan>/` 下的計畫文件實作時，必須遵守：
-   - **Tasks Checklist 即時同步**：每完成一個 task item，立即更新 `specs/<plan>/tasks.md` 的 checkbox（`[ ]` → `[x]`）。若 task 不適用或需拆分，標記 `[~] <reason>`。禁止所有工作完成後才一次性勾選。
+7. **Plan / Spec Lifecycle Contract（規劃、實作、升格的強制規則）**：
+   - **Active plan/build workspace 一律在 `/plans/`**：planner 與 build mode 進行中的 dated plan roots 必須建立於 `/plans/<YYYYMMDD>_<slug>/`；AGENTS 不得再把 dated roots 的進行中計畫導向 `/specs/`。
+   - **`specs/architecture.md` 仍是架構單一真相來源**：長期架構、模組邊界、資料流、狀態機、runtime flows 仍以 `specs/architecture.md` 為準，不因 active plans 移到 `/plans/` 而改變。
+   - **Formalized specs 採 semantic per-feature roots**：只有已正式沉澱、需長期維護的功能規格才放入 `/specs/<feature>/`；`/specs/` 不承接進行中的 dated execution roots。
+   - **Tasks Checklist 即時同步**：當 coding agent 依據 `/plans/<YYYYMMDD>_<slug>/` 下的計畫文件實作時，每完成一個 task item，立即更新對應 `tasks.md` 的 checkbox（`[ ]` → `[x]`）。若 task 不適用或需拆分，標記 `[~] <reason>`。禁止所有工作完成後才一次性勾選。
    - **Session Event Log**：每個 session 結束前（或 commit 前），建立/更新 `docs/events/event_<YYYYMMDD>_<topic>.md`，至少包含 Scope（引用 tasks.md item 編號）、Key Decisions、Issues Found、Verification、Remaining。
-   - **Commit Gate**：commit 前必須確認 (1) tasks.md checkbox 已同步 (2) event log 已建立/更新 (3) 架構變更已同步 `specs/architecture.md`。禁止在 tasks.md 和 event log 未更新的情況下 commit code changes。
+   - **Commit Gate**：commit 前必須確認 (1) `/plans/.../tasks.md` checkbox 已同步 (2) event log 已建立/更新 (3) 架構變更已同步 `specs/architecture.md`。禁止在 tasks.md 和 event log 未更新的情況下 commit code changes。
+   - **Promotion is manual only**：`/plans/<YYYYMMDD>_<slug>/` → `/specs/<feature>/` 的升格只允許在 execution 完成、必要 commit 完成、必要 merge 完成之後，且僅能於使用者明確要求時手動執行；不得自動搬移、不得預設升格、不得使用模糊或 silent fallback wording 暗示稍後會自動落入 `/specs/`。
 
 ### Release 前檢查清單（Prompt / Agent / Skill）
 
@@ -175,13 +178,13 @@
 
 Orchestrator 在委派 subagent 時，**必須**根據下表指示 subagent 載入對應 skill：
 
-| Agent Type | Skill to Load | 說明 |
-|------------|---------------|------|
-| `coding`   | `code-thinker` | 靜默內部審查、Two-Phase Execution、Anti-hallucination guard |
-| `testing`  | `webapp-testing`（暫定） | Playwright 測試、瀏覽器自動化、UI 驗證。待泛用 testing skill 出現後替換 |
-| `review`   | `code-review` | SOLID 違規偵測、安全風險、可操作改進建議 |
-| Orchestrator 自身 | `doc-coauthoring`, `miatdiagram` | 文件由 Orchestrator 直接撰寫，不委派 subagent |
-| `explore`  | —（無需額外 skill） | 方法論已內嵌於 explore prompt，無需外部 skill |
+| Agent Type        | Skill to Load                    | 說明                                                                    |
+| ----------------- | -------------------------------- | ----------------------------------------------------------------------- |
+| `coding`          | `code-thinker`                   | 靜默內部審查、Two-Phase Execution、Anti-hallucination guard             |
+| `testing`         | `webapp-testing`（暫定）         | Playwright 測試、瀏覽器自動化、UI 驗證。待泛用 testing skill 出現後替換 |
+| `review`          | `code-review`                    | SOLID 違規偵測、安全風險、可操作改進建議                                |
+| Orchestrator 自身 | `doc-coauthoring`, `miatdiagram` | 文件由 Orchestrator 直接撰寫，不委派 subagent                           |
+| `explore`         | —（無需額外 skill）              | 方法論已內嵌於 explore prompt，無需外部 skill                           |
 
 ### 使用規則
 

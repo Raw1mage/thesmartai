@@ -1,0 +1,122 @@
+{
+  "diagram_title": "Plans vs Specs Lifecycle Refactor",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Separate Artifact Lifecycles",
+      "description": "Define distinct repository semantics for active plans, formalized specs, and global architecture knowledge.",
+      "decomposition": null
+    },
+    {
+      "id": "A2",
+      "title": "Refactor Planner Runtime Paths",
+      "description": "Move active planner path construction and plan-tool behavior from specs-root assumptions to plans-root behavior.",
+      "decomposition": null
+    },
+    {
+      "id": "A3",
+      "title": "Rewrite Prompt Contracts",
+      "description": "Update prompts, skills, templates, and AGENTS rules to align with the new lifecycle semantics.",
+      "decomposition": null
+    },
+    {
+      "id": "A4",
+      "title": "Triaged Legacy Packages",
+      "description": "Classify existing dated packages under specs by implementation status and route them to the correct destination.",
+      "decomposition": null
+    },
+    {
+      "id": "A5",
+      "title": "Validate Lifecycle Integrity",
+      "description": "Verify runtime, documentation, and migration rules remain consistent without silent fallback or auto-promotion.",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    {
+      "id": "AR1",
+      "source": "EXTERNAL",
+      "target": "A1:input",
+      "label": "User Repository Organization Requirement",
+      "type": "input"
+    },
+    {
+      "id": "AR2",
+      "source": "EXTERNAL",
+      "target": "A1:control",
+      "label": "Fail Fast And No Fallback Policy",
+      "type": "control"
+    },
+    {
+      "id": "AR3",
+      "source": "A1:output",
+      "target": "A2:input",
+      "label": "Lifecycle Semantics",
+      "type": "output"
+    },
+    {
+      "id": "AR4",
+      "source": "A1:output",
+      "target": "A3:input",
+      "label": "Artifact Root Contract",
+      "type": "output"
+    },
+    {
+      "id": "AR5",
+      "source": "A1:output",
+      "target": "A4:input",
+      "label": "Legacy Triage Rule",
+      "type": "output"
+    },
+    {
+      "id": "AR6",
+      "source": "EXTERNAL",
+      "target": "A2:mechanism",
+      "label": "Planner Runtime And Session Code",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR7",
+      "source": "EXTERNAL",
+      "target": "A3:mechanism",
+      "label": "Prompt Templates Skills And AGENTS Files",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR8",
+      "source": "EXTERNAL",
+      "target": "A4:mechanism",
+      "label": "Existing Dated Packages Under Specs",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR9",
+      "source": "A2:output",
+      "target": "A5:input",
+      "label": "Runtime Path Refactor",
+      "type": "output"
+    },
+    {
+      "id": "AR10",
+      "source": "A3:output",
+      "target": "A5:input",
+      "label": "Prompt Contract Rewrite",
+      "type": "output"
+    },
+    {
+      "id": "AR11",
+      "source": "A4:output",
+      "target": "A5:input",
+      "label": "Legacy Migration Strategy",
+      "type": "output"
+    },
+    {
+      "id": "AR12",
+      "source": "A5:output",
+      "target": "EXTERNAL",
+      "label": "Execution Ready Refactor Plan",
+      "type": "output"
+    }
+  ]
+}

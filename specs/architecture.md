@@ -10,6 +10,21 @@ OpenCode is a desktop/TUI/Webapp multi-interface platform for interacting with A
 - **Unified Backend**: All interfaces communicate with a shared Node/Bun backend via the `@opencode-ai/sdk` or direct function calls.
 - **Provider Abstraction**: Model interactions are abstracted through the `Provider` module, supporting multiple families (e.g., `google-api`, `anthropic`).
 
+## Planner / Spec Repository Lifecycle
+
+- **Active plan/build workspace**: dated plan packages now live under `/plans/` inside the repo worktree.
+- **Global architecture SSOT**: `specs/architecture.md` remains the long-lived architecture document and is not part of any dated plan package.
+- **Formalized specs**: post-implementation, post-commit, post-merge formalized feature specs belong under semantic per-feature roots in `/specs/`.
+- **Promotion rule**: `/plans/` artifacts do not automatically move into `/specs/`; promotion is manual and only happens after explicit user instruction.
+- **Legacy dated packages under `/specs/`**: these require explicit status-based triage; implemented packages belong in formalized spec roots, non-implemented packages belong in `/plans/`. Silent dual-root fallback is prohibited.
+
+## Planner Runtime Surfaces
+
+- `packages/opencode/src/session/planner-layout.ts` is the canonical planner-root constructor and now resolves active dated plan roots under `/plans/`.
+- `packages/opencode/src/tool/plan.ts` owns `plan_enter` / `plan_exit`, planner template loading, artifact validation, and mission artifact path storage for active `/plans/` packages.
+- Planner templates are loaded from `/etc/opencode/plans` or `templates/plans` for active plan packages.
+- Mission artifact roots for active build execution must resolve under `/plans/`; non-`/plans/` active mission roots are treated as contract violations and fail fast.
+
 ## Account Management (3-Tier Architecture)
 
 - **Tier 1 (Storage)**: `packages/opencode/src/account/index.ts`. A pure repository interacting with `accounts.json`. Enforces unique IDs strictly (throws on collision).

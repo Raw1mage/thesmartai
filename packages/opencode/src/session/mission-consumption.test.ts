@@ -11,16 +11,16 @@ function approvedMission() {
     source: "openspec_compiled_plan" as const,
     contract: "implementation_spec" as const,
     approvedAt: 1,
-    planPath: "specs/20260315_test/implementation-spec.md",
+    planPath: "plans/20260315_test/implementation-spec.md",
     executionReady: true,
     artifactPaths: {
-      root: "specs/20260315_test",
-      implementationSpec: "specs/20260315_test/implementation-spec.md",
-      proposal: "specs/20260315_test/proposal.md",
-      spec: "specs/20260315_test/spec.md",
-      design: "specs/20260315_test/design.md",
-      tasks: "specs/20260315_test/tasks.md",
-      handoff: "specs/20260315_test/handoff.md",
+      root: "plans/20260315_test",
+      implementationSpec: "plans/20260315_test/implementation-spec.md",
+      proposal: "plans/20260315_test/proposal.md",
+      spec: "plans/20260315_test/spec.md",
+      design: "plans/20260315_test/design.md",
+      tasks: "plans/20260315_test/tasks.md",
+      handoff: "plans/20260315_test/handoff.md",
     },
     artifactIntegrity: {
       implementationSpec: "sig_impl",
@@ -40,7 +40,7 @@ describe("mission consumption", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const planRoot = path.join(tmp.path, "specs", "20260315_test")
+        const planRoot = path.join(tmp.path, "plans", "20260315_test")
         await Bun.write(
           path.join(planRoot, "implementation-spec.md"),
           "# Implementation Spec\n\n## Goal\n- Ship mission consumption\n\n## Scope\n### IN\n- mission runtime\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- stop on mismatch\n\n## Critical Files\n- packages/opencode/src/session/mission-consumption.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run mission-consumption tests\n\n## Handoff\n- Continue from approved mission\n",
@@ -111,7 +111,7 @@ describe("mission consumption", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const planRoot = path.join(tmp.path, "specs", "20260315_test")
+        const planRoot = path.join(tmp.path, "plans", "20260315_test")
         await mkdir(planRoot, { recursive: true })
         const outsidePath = path.join(path.dirname(tmp.path), `outside-${Date.now().toString(36)}.md`)
         await Bun.write(outsidePath, "# outside\n")
@@ -135,7 +135,7 @@ describe("mission consumption", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const planRoot = path.join(tmp.path, "specs", "20260315_test")
+        const planRoot = path.join(tmp.path, "plans", "20260315_test")
         await Bun.write(
           path.join(planRoot, "implementation-spec.md"),
           "# Implementation Spec\n\n## Goal\n- Ship mission consumption\n\n## Scope\n### IN\n- mission runtime\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- artifacts exist\n\n## Stop Gates\n- stop on mismatch\n\n## Critical Files\n- packages/opencode/src/session/mission-consumption.ts\n\n## Structured Execution Phases\n- Read mission\n\n## Validation\n- Run regression suite\n\n## Handoff\n- Continue from approved mission\n",
@@ -216,7 +216,7 @@ describe("mission consumption", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const planRoot = path.join(tmp.path, "specs", "20260315_test")
+        const planRoot = path.join(tmp.path, "plans", "20260315_test")
         await Bun.write(
           path.join(planRoot, "implementation-spec.md"),
           "# Implementation Spec\n\n## Goal\n- Changed after approval\n\n## Scope\n### IN\n- runtime\n\n### OUT\n- rewrite\n\n## Assumptions\n- changed\n\n## Stop Gates\n- stop\n\n## Critical Files\n- file.ts\n\n## Structured Execution Phases\n- phase\n\n## Validation\n- validate\n\n## Handoff\n- handoff\n",
@@ -240,7 +240,7 @@ describe("mission consumption", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const planRoot = path.join(tmp.path, "specs", "20260315_test")
+        const planRoot = path.join(tmp.path, "plans", "20260315_test")
         const implText =
           "# Implementation Spec\n\n## Goal\n- Ship feature\n\n## Scope\n### IN\n- runtime\n\n### OUT\n- rewrite\n\n## Assumptions\n- exist\n\n## Stop Gates\n- stop\n\n## Critical Files\n- file.ts\n\n## Structured Execution Phases\n- phase\n\n## Validation\n- validate\n\n## Handoff\n- handoff\n"
         const originalTasksText = "# Tasks\n\n- [ ] First task\n- [ ] Second task\n"
@@ -274,7 +274,7 @@ describe("mission consumption", () => {
     await Instance.provide({
       directory: tmp.path,
       fn: async () => {
-        const planRoot = path.join(tmp.path, "specs", "20260315_test")
+        const planRoot = path.join(tmp.path, "plans", "20260315_test")
         const implText =
           "# Implementation Spec\n\n## Goal\n- Ship feature\n\n## Scope\n### IN\n- runtime\n\n### OUT\n- rewrite\n\n## Assumptions\n- exist\n\n## Stop Gates\n- stop\n\n## Critical Files\n- file.ts\n\n## Structured Execution Phases\n- phase\n\n## Validation\n- validate\n\n## Handoff\n- handoff\n"
         const tasksText = "# Tasks\n\n- [ ] First task\n"

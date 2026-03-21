@@ -220,8 +220,8 @@ const SEQUENCE_TEMPLATE = JSON.stringify(
 
 async function loadPlannerTemplate(relativePath: string, fallback: string) {
   const candidates = [
-    process.env.OPENCODE_PLANNER_TEMPLATE_DIR || "/etc/opencode/specs",
-    path.join(Instance.worktree, "templates", "specs"),
+    process.env.OPENCODE_PLANNER_TEMPLATE_DIR || "/etc/opencode/plans",
+    path.join(Instance.worktree, "templates", "plans"),
   ]
 
   for (const base of candidates) {
@@ -326,10 +326,17 @@ async function hasImplementationSpec(root: string) {
   return Bun.file(path.join(root, "implementation-spec.md")).exists()
 }
 
+function isPlansRoot(root: string) {
+  return path.basename(path.dirname(root)) === "plans"
+}
+
 async function resolvePlannerArtifacts(session: Session.Info) {
   const missionRoot = session.mission?.artifactPaths?.root
   if (missionRoot) {
     const absoluteMissionRoot = path.isAbsolute(missionRoot) ? missionRoot : path.join(Instance.worktree, missionRoot)
+    if (!isPlansRoot(absoluteMissionRoot)) {
+      throw new Error(`Planner artifacts must live under /plans. Found mission artifact root: ${missionRoot}`)
+    }
     if (await hasImplementationSpec(absoluteMissionRoot)) {
       return {
         root: absoluteMissionRoot,
@@ -564,7 +571,9 @@ function analyzeIdef0Artifact(jsonText: string) {
   if (obj.diagram_title === "System Context" && Array.isArray(obj.activities) && obj.activities.length === 1) {
     const act = (obj.activities as Array<Record<string, unknown>>)[0]
     if (act?.title === "Deliver Core Function") {
-      issues.push("idef0.json still contains template placeholder content — replace with actual functional decomposition")
+      issues.push(
+        "idef0.json still contains template placeholder content — replace with actual functional decomposition",
+      )
     }
   }
   return { issues }
@@ -648,7 +657,9 @@ function analyzeGrafcetArtifact(jsonText: string, idef0Text: string) {
       for (const step of steps) {
         const ref = step.ModuleRef as string
         if (ref && /^A\d+$/.test(ref) && !activityIds.has(ref)) {
-          issues.push(`grafcet.json step ${String(step.StepNumber)} references ModuleRef '${ref}' not found in idef0.json`)
+          issues.push(
+            `grafcet.json step ${String(step.StepNumber)} references ModuleRef '${ref}' not found in idef0.json`,
+          )
         }
       }
     } catch {
@@ -1154,11 +1165,11 @@ export const PlanExitTool = Tool.define("plan_exit", {
       sessionID: ctx.sessionID,
       type: "text",
       text:
-        `The plan at ${plan} has been approved. You are now in build mode, which is execution-first. ` +
+        `The plan set at ${path.relative(Instance.worktree, planRoot)} has been approved. You are now in build mode, which is execution-first. ` +
         `Todo authority is now strict (execution ledger mode): todos must align with planner-derived tasks. Structure changes require plan_materialization or replan_adoption mode. ` +
-        `Use the plan file as the implementation specification and execute it end-to-end. ` +
-        `Treat the plan as the source of truth for goal, scope, assumptions, stop gates, validation, critical files, execution phases, and handoff instructions. ` +
-        `Before coding, read the plan file carefully, convert its execution phases into structured todos/action metadata, and then continue implementing from that spec. Update the plan artifacts when user intent or scope changes.`,
+        `Use ${plan} as the implementation specification and execute it end-to-end from the active /plans root. ` +
+        `Treat the planner artifacts under ${path.relative(Instance.worktree, planRoot)} as the source of truth for goal, scope, assumptions, stop gates, validation, critical files, execution phases, and handoff instructions. ` +
+        `Before coding, read the implementation spec carefully, convert its execution phases into structured todos/action metadata, and then continue implementing from that plan set. Update the /plans artifacts when user intent or scope changes.`,
       synthetic: true,
       metadata: {
         handoff: {
@@ -1297,7 +1308,7 @@ export const PlanEnterTool = Tool.define("plan_enter", {
 
     return {
       title: "Switching to plan agent",
-      output: `User confirmed to switch to plan mode. A new message has been created to switch you to plan mode. The implementation spec will be at ${plan} and companion artifacts are available under ${path.relative(Instance.worktree, planRoot)}. Begin planner-first discussion and keep the artifacts aligned. Todo authority is now relaxed (working ledger mode).`,
+      output: `User confirmed to switch to plan mode. A new message has been created to switch you to plan mode. The implementation spec will be at ${plan} and companion artifacts are available under the active planner root ${path.relative(Instance.worktree, planRoot)}. Begin planner-first discussion and keep the /plans artifacts aligned. Todo authority is now relaxed (working ledger mode).`,
       metadata: {},
     }
   },

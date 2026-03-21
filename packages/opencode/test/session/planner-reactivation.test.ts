@@ -119,7 +119,7 @@ describe("planner reactivation", () => {
           await Question.reply({ requestID: pending[0].id, answers: [["Yes"]] })
           await execute
 
-          expect(planPath).toContain("/specs/")
+          expect(planPath).toContain("/plans/")
           expect(planPath).not.toContain("/specs/changes/")
           expect(planPath).toEndWith("/implementation-spec.md")
           const planText = await Bun.file(planPath).text()

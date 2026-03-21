@@ -1,0 +1,135 @@
+{
+  "diagram_title": "Plans vs Specs Lifecycle Refactor — C4 Component Diagram",
+  "diagram_level": "component",
+  "systems": [
+    {
+      "id": "SYS1",
+      "name": "OpenCode Repository Workflow",
+      "description": "Planner and build workflow inside the repo with explicit plan/spec lifecycle boundaries.",
+      "external": false
+    }
+  ],
+  "containers": [
+    {
+      "id": "CT1",
+      "name": "Planner Runtime",
+      "description": "Session and tooling code that creates, resolves, and validates planner artifact roots.",
+      "technology": "TypeScript / Bun",
+      "systemRef": "SYS1"
+    },
+    {
+      "id": "CT2",
+      "name": "Prompt And Policy Layer",
+      "description": "Prompt templates, skills, and AGENTS contracts that instruct agents where plans and specs live.",
+      "technology": "Markdown templates",
+      "systemRef": "SYS1"
+    },
+    {
+      "id": "CT3",
+      "name": "Repository Artifact Layout",
+      "description": "The plans root, specs root, and architecture SSOT that persist planning and formalized documentation.",
+      "technology": "Repository directories",
+      "systemRef": "SYS1"
+    }
+  ],
+  "components": [
+    {
+      "id": "C1",
+      "name": "Planner Layout Resolver",
+      "description": "Builds canonical planner roots and artifact paths for plan packages.",
+      "technology": "TypeScript module",
+      "containerRef": "CT1",
+      "moduleRef": "A2",
+      "filePath": "packages/opencode/src/session/planner-layout.ts"
+    },
+    {
+      "id": "C2",
+      "name": "Plan Tool Lifecycle Controller",
+      "description": "Handles plan_enter, plan_exit, template lookup, artifact validation, and mission metadata storage.",
+      "technology": "TypeScript module",
+      "containerRef": "CT1",
+      "moduleRef": "A2",
+      "filePath": "packages/opencode/src/tool/plan.ts"
+    },
+    {
+      "id": "C3",
+      "name": "Prompt Contract Templates",
+      "description": "Defines system-level and skill-level instructions for planner and builder behavior.",
+      "technology": "Markdown prompt files",
+      "containerRef": "CT2",
+      "moduleRef": "A3",
+      "filePath": "templates/prompts/SYSTEM.md"
+    },
+    {
+      "id": "C4",
+      "name": "Planner Skills And Rules",
+      "description": "Planner, agent-workflow, AGENTS, and documentation rules that encode repository artifact semantics.",
+      "technology": "Markdown skills and policy docs",
+      "containerRef": "CT2",
+      "moduleRef": "A3",
+      "filePath": "templates/skills/planner/SKILL.md"
+    },
+    {
+      "id": "C5",
+      "name": "Artifact Root Topology",
+      "description": "The repository-level division between plans, formalized specs, and global architecture knowledge.",
+      "technology": "Directory conventions",
+      "containerRef": "CT3",
+      "moduleRef": "A1",
+      "filePath": "specs/architecture.md"
+    },
+    {
+      "id": "C6",
+      "name": "Legacy Package Triage Rule",
+      "description": "Decision logic that classifies old dated packages by implementation evidence before migration.",
+      "technology": "Refactor policy",
+      "containerRef": "CT3",
+      "moduleRef": "A4",
+      "filePath": "docs/events/event_20260322_plans_specs_lifecycle.md"
+    }
+  ],
+  "relationships": [
+    {
+      "id": "REL1",
+      "source": "C1",
+      "target": "C2",
+      "description": "provides canonical planner artifact roots",
+      "technology": "function call"
+    },
+    {
+      "id": "REL2",
+      "source": "C2",
+      "target": "C5",
+      "description": "creates and resolves active plan packages",
+      "technology": "filesystem access"
+    },
+    {
+      "id": "REL3",
+      "source": "C3",
+      "target": "C2",
+      "description": "defines planner and build mode instructions",
+      "technology": "prompt contract"
+    },
+    {
+      "id": "REL4",
+      "source": "C4",
+      "target": "C3",
+      "description": "extends system prompts with lifecycle rules",
+      "technology": "documentation dependency"
+    },
+    {
+      "id": "REL5",
+      "source": "C6",
+      "target": "C5",
+      "description": "governs migration destination for legacy packages",
+      "technology": "policy rule"
+    },
+    {
+      "id": "REL6",
+      "source": "C2",
+      "target": "C6",
+      "description": "must preserve explicit triage and no-fallback behavior",
+      "technology": "execution contract"
+    }
+  ]
+}

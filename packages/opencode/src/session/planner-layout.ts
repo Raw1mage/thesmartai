@@ -38,7 +38,7 @@ export function plannerRootName(input: PlannerInput) {
 export function plannerRoot(input: PlannerInput) {
   const rootName = plannerRootName(input)
   return Instance.project.vcs
-    ? path.join(Instance.worktree, "specs", rootName)
+    ? path.join(Instance.worktree, "plans", rootName)
     : path.join(Global.Path.data, "plans", rootName)
 }
 
