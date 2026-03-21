@@ -22,7 +22,6 @@
     "models:update-snapshot:help": "bun run script/update-models-snapshot.ts --help",
     "install": "bun run script/install.ts",
     "prepare": "husky && if [ -f .husky/pre-push ]; then chmod +x .husky/pre-push; fi && if [ -d .husky/_ ]; then chmod +x .husky/_/* 2>/dev/null || true; fi",
-    "mcp:refacting-merger": "bun packages/mcp/refacting-merger/src/index.ts",
     "sync:back": "bash script/sync-config-back.sh"
   },
   "bin": {

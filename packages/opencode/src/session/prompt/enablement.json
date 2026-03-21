@@ -150,11 +150,6 @@
         "name": "system-manager",
         "enabled": true,
         "capability": "OpenCode runtime control, model/account switching, MCP toggling"
-      },
-      {
-        "name": "refacting-merger",
-        "enabled": false,
-        "capability": "Branch/refactor merge orchestration for this repository"
       }
     ],
     "discovery": "Source status from global opencode.json and system-manager_get_system_status before deciding toggles."
