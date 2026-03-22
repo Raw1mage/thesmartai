@@ -72,6 +72,16 @@ export type PromptRef = {
   submit(): void
 }
 
+/** Format milliseconds as mm:ss or hh:mm:ss clock display */
+function formatElapsedClock(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = totalSeconds % 60
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
+}
+
 const PLACEHOLDERS = ["Fix a TODO in the codebase", "What is the tech stack of this project?", "Fix broken tests"]
 export function Prompt(props: PromptProps) {
   let input: TextareaRenderable
@@ -143,6 +153,7 @@ export function Prompt(props: PromptProps) {
   const [lastQuotaRefreshAt, setLastQuotaRefreshAt] = createSignal(0)
   const [lastQuotaRefreshMarker, setLastQuotaRefreshMarker] = createSignal<string>("")
   const [footerTick, setFooterTick] = createSignal(0)
+  const [elapsedNow, setElapsedNow] = createSignal(Date.now())
   const timers = createTimerCoordinator("prompt")
   onCleanup(() => timers.dispose())
   const perfProbeMode = process.env.OPENCODE_TUI_PERF_PROBE === "1"
@@ -204,6 +215,16 @@ export function Prompt(props: PromptProps) {
   } else {
     timers.clear("footer-tick")
   }
+
+  // 1-second timer for elapsed clock (only when session is active)
+  createEffect(() => {
+    if (hasActivity()) {
+      setElapsedNow(Date.now())
+      timers.scheduleInterval("elapsed-clock", () => setElapsedNow(Date.now()), 1000)
+    } else {
+      timers.clear("elapsed-clock")
+    }
+  })
 
   createEffect(() => {
     const retry = retryStatus()
@@ -367,21 +388,20 @@ export function Prompt(props: PromptProps) {
     })
   })
   const footerElapsed = createMemo(() => {
-    footerTick()
+    const now = elapsedNow()
     const child = activeChild()
     if (child) {
       const childSession = sync.session.get(child.sessionID)
       const start = childSession?.time.created
-      const end = Date.now()
-      if (start && end > start) return Locale.duration(end - start)
+      if (start && now > start) return formatElapsedClock(now - start)
     }
     const msg = lastAssistantMessage()
     if (!msg) return undefined
     const start = msg.time?.created
     if (!start) return undefined
-    const end = msg.time?.completed ?? (status().type !== "idle" ? Date.now() : undefined)
+    const end = msg.time?.completed ?? (status().type !== "idle" ? now : undefined)
     if (!end || end <= start) return undefined
-    return Locale.duration(end - start)
+    return formatElapsedClock(end - start)
   })
 
   const [store, setStore] = createStore<{
