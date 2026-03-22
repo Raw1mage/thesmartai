@@ -6,5 +6,5 @@
 - [x] Preserve `planner-lifecycle` under `sources/planner-lifecycle/`
 - [x] Add canonical entry files with merged-source provenance
 - [x] Remove old top-level builder-related parallel roots from `/specs`
-- [x] Document the post-implementation beta enforcement gap in canonical builder framework docs
-- [x] Record the required follow-up enforcement shape for beta-enabled build execution
+- [x] Document the builder beta enforcement model in canonical builder framework docs
+- [x] Record the implemented enforcement shape for beta-enabled build execution

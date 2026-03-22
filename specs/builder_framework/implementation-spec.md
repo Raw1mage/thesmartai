@@ -21,19 +21,19 @@
 ## Required Synthesis
 
 - Preserve the distinction between:
-  - **builder beta capability** already proven by `sources/build_beta/`
-  - **builder beta enforcement** still required so implementation work defaults to beta worktree after `plan_exit`
-- Make explicit that `plan_enter` enforcement comes from a single tool boundary, while builder requires a runtime enforcement gate because execution spans mission handoff, continuations, and delegation.
-- Define the follow-up contract needed for beta-enabled builder execution:
+  - **builder beta capability** proven by `sources/build_beta/`
+  - **builder beta enforcement** now implemented so implementation work defaults to beta worktree after `plan_exit`
+- Make explicit that `plan_enter` enforcement comes from a single tool boundary, while builder enforcement comes from a runtime execution gate because execution spans mission handoff, continuations, and delegation.
+- Record the enforced beta-enabled builder execution contract:
   - beta execution gate
   - implementation-surface resolver
   - delegation-time workdir routing
   - main-repo fail-fast for beta-enabled coding
-  - end-to-end enforcement validation
+  - focused enforcement validation
 
 ## Validation
 
 - `specs/builder_framework/` exists with canonical entry files.
 - Merged source roots are preserved under `specs/builder_framework/sources/`.
 - The old top-level roots `specs/beta-tool/`, `specs/build_beta/`, and `specs/planner-lifecycle/` no longer exist as parallel authorities.
-- Canonical builder framework docs explicitly distinguish capability integration from execution-surface enforcement and describe the missing enforcement layer.
+- Canonical builder framework docs explicitly distinguish capability integration from execution-surface enforcement and describe the implemented runtime enforcement layer.

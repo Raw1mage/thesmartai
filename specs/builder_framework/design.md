@@ -13,27 +13,26 @@
 3. Keep the canonical files small and cross-cutting, with provenance explicit in-file.
 4. Treat builder-native beta support as insufficient unless the framework also defines an explicit execution-surface enforcement layer for beta-enabled build runs.
 
-## Builder Enforcement Gap
+## Builder Enforcement Model
 
 - Source artifacts under `sources/build_beta/` prove that builder already absorbed bootstrap, routine git, syncback, remediation, and finalize behavior.
-- Real operation still exposed a gap: that absorption did not automatically force implementation work onto the beta worktree after `plan_exit`.
-- The framework therefore distinguishes two layers:
+- Real operation exposed an enforcement gap, and the framework now treats that gap as resolved through an explicit runtime execution gate.
+- The framework distinguishes two layers:
   1. **Capability layer** — mission metadata, bootstrap helpers, routine git helpers, syncback/finalize/remediation helpers.
   2. **Enforcement layer** — runtime gate that resolves where implementation work is allowed to run.
-- `plan_enter` already has strong enforcement because it is a single tool boundary in `packages/opencode/src/tool/plan.ts`.
-- Builder needs a corresponding runtime boundary because build execution spans `plan_exit`, mission handoff, workflow continuations, and delegated coding/testing work.
-- Without that boundary, models can still treat beta workflow as optional guidance instead of a hard execution route.
+- `plan_enter` has strong enforcement because it is a single tool boundary in `packages/opencode/src/tool/plan.ts`.
+- Builder now has a corresponding runtime boundary because build execution spans `plan_exit`, mission handoff, workflow continuations, and delegated coding/testing work.
 
-## Required Enforcement Shape
+## Implemented Enforcement Shape
 
-- Add a beta execution gate before build continuations proceed when `mission.beta.enabled === true`.
-- Resolve one authoritative execution contract:
+- Beta-enabled build execution now gates coding implementation on a resolved beta execution contract.
+- The authoritative execution contract is:
   - implementation worktree = `mission.beta.betaPath`
   - implementation branch = `mission.beta.branchName`
   - docs/specs/events writeback = main repo/worktree
-- Apply this routing before delegation, not after model reasoning.
-- Fail fast if beta-enabled coding is about to execute from the main repo.
-- Validate the behavior end-to-end, not only through helper/unit coverage.
+- Routing is applied before coding/delegation rather than after model reasoning.
+- Beta-enabled coding on authoritative main repo/base branch is fail-fast illegal.
+- Focused runtime validation now covers this enforcement behavior in addition to existing helper/unit coverage.
 
 ## Structure
 

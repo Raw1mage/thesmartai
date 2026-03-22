@@ -149,54 +149,42 @@ The requirement was later clarified with hard constraints:
 
 - `bun test packages/opencode/src/session/beta-bootstrap.test.ts packages/opencode/src/session/workflow-runner.test.ts`
   - Final focused validation in beta worktree passed cleanly after remote automation + MCP migration/deprecation updates.
-  - Bun summary observed in beta worktree: `120 pass, 0 fail, 288 expect() calls, 120 tests across 2 files`.
-  - Coverage now includes remediation execute success, dirty/conflict fail-fast behavior, remote pull fail-fast on missing origin/upstream, successful remote pull+push under explicit approval, and workflow-runner gating around builder-owned beta operations.
+  - Bun summary observed in beta worktree: `124 pass, 0 fail, 297 expect() calls, 124 tests across 2 files`.
+  - Coverage now includes remediation execute success, dirty/conflict fail-fast behavior, remote pull fail-fast on missing origin/upstream, successful remote pull+push under explicit approval, and builder enforcement behavior that blocks beta-enabled implementation from staying on main repo/base branch.
 - Plan-vs-implementation review:
-  - The active plan goal is now effectively satisfied for builder-native bootstrap, routine git orchestration, syncback validation, drift remediation, and approval-gated finalize.
-  - Remaining open question is no longer missing implementation but lifecycle policy: beta/dev MCP still exists as compatibility scaffolding and would need a separate user-approved removal change to disappear entirely.
+  - The active plan goal is now effectively satisfied for builder-native bootstrap, routine git orchestration, syncback validation, drift remediation, approval-gated finalize, and execution-surface enforcement for beta-enabled build runs.
+  - Remaining open question is no longer missing builder enforcement but lifecycle policy: beta/dev MCP still exists as compatibility scaffolding and would need a separate user-approved removal change to disappear entirely.
   - No additional implementation gap was found against the active plan’s functional scope beyond that deliberate compatibility hold.
-- Architecture Sync: updated `specs/architecture.md` because builder-native beta bootstrap, validation syncback/runtime execution, finalize preflight/execute, drift-remediation preflight/execute, routine git defaults including remote pull/push policy, planner-root guard, and MCP migration-scaffolding end-state are now durable runtime/module-boundary behavior.
+- Architecture Sync: updated `specs/architecture.md` because builder-native beta bootstrap, validation syncback/runtime execution, finalize preflight/execute, drift-remediation preflight/execute, routine git defaults including remote pull/push policy, planner-root guard, execution-surface enforcement for beta-enabled build runs, and MCP migration-scaffolding end-state are now durable runtime/module-boundary behavior.
 
 ## Remaining
 
 - Beta/dev MCP still remains as compatibility scaffolding and has not yet been physically removed; removing it would be a separate follow-up change rather than a missing builder-native capability.
 - If broader regression confidence is needed, the next step is to expand validation beyond the focused beta/planner suite to cover any surrounding builder workflows that may consume the new mission/routine-git metadata.
 
-## Post-Implementation RCA: Missing Builder Enforcement
+## Enforcement Resolution
 
-### Symptom
+### Outcome
 
-- In real operation after `plan_exit`, AI still did not reliably treat beta worktree / beta branch as the default implementation surface.
-- The observed behavior was that AI could still describe beta workflow as if it were optional or not hardcoded, even though builder-native beta capabilities had already been implemented.
+- The previously observed builder enforcement gap has been closed in runtime behavior.
+- Beta-enabled build execution now treats authoritative main repo/base-branch implementation as illegal and requires a resolved beta execution surface before coding work continues.
 
-### Root Cause
+### Implemented Enforcement Shape
 
-- This change set internalized **beta workflow capability** into builder runtime (`mission.beta`, bootstrap, routine git, syncback, remediation, finalize), but it did **not** yet hardwire a single runtime gate that forces all beta-enabled build implementation work onto the beta worktree.
-- `plan_enter` has strong enforcement because it is a single tool entrypoint with immediate fail-fast control over planner root behavior.
-- Builder execution is different: it spans `plan_exit` -> mission metadata -> `workflow-runner` continuations -> delegated coding/testing work. Without a dedicated execution-surface resolver in that chain, beta workflow remains a capability the runtime can use, not an unavoidable routing decision.
-- Current implementation hardens bootstrap/validation/finalize/remediation/routine-git stages, but the general **implementation surface routing** for build-mode coding was not elevated to the same first-class hardcoded boundary.
-
-### Why `plan_enter` Has Stronger Force Than Builder Today
-
-- `plan_enter` is a single hard tool boundary in `packages/opencode/src/tool/plan.ts`.
-- Builder is currently a multi-stage orchestration surface spread across session mission state, runner continuations, and subagent delegation.
-- Because of that architecture, builder needs an explicit runtime enforcement layer; otherwise models can still reason from prompt/context instead of being routed by the system.
-
-### Required Fix Direction
-
-1. Add a **beta execution gate** before build continuations proceed when `mission.beta.enabled === true`.
-2. Resolve a single authoritative execution contract:
+1. Added a beta execution gate before beta-enabled build implementation proceeds.
+2. Bound a single authoritative execution contract:
    - implementation worktree = `mission.beta.betaPath`
    - implementation branch = `mission.beta.branchName`
    - docs/specs/events writeback = authoritative main repo/worktree
-3. Apply this routing before coding/testing delegation rather than relying on agent interpretation.
-4. Fail fast if beta-enabled implementation attempts to run from the main repo instead of the beta worktree.
-5. Add end-to-end behavior validation proving that after `plan_exit`, beta-enabled build execution actually uses beta worktree as the default implementation surface.
+3. Applied implementation routing before coding/delegation instead of leaving the decision to model interpretation.
+4. Added fail-fast behavior when beta-enabled coding would otherwise execute from the main repo/base branch.
+5. Added focused validation coverage proving that beta-enabled build execution no longer remains on main repo/base branch by default.
 
-### Status
+### Why This Matters
 
-- This RCA identifies a remaining **behavior-enforcement gap**, not a missing low-level beta capability.
-- A follow-up change is required if the product goal is that beta-enabled builder execution becomes an actual hard default rather than a metadata-aware capability.
+- `plan_enter` and builder now both have meaningful enforcement layers, but at different boundaries:
+  - `plan_enter` enforces planner-root integrity at a single tool boundary.
+  - Builder now enforces implementation-surface routing at runtime across mission handoff, continuations, and delegation.
 
 ## Promotion
 
