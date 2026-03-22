@@ -1058,6 +1058,7 @@ export const SessionRoutes = lazy(() =>
           initiatedAt: Date.now(),
           mode: "global",
           scope: "global",
+          ttl: KillSwitchService.DEFAULT_TTL_MS,
         })
         await KillSwitchService.writeAudit({
           requestID,

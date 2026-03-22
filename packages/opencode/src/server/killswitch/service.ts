@@ -12,6 +12,9 @@ const log = Log.create({ service: "killswitch" })
 
 export namespace KillSwitchService {
 
+  /** Default TTL for emergency stop: 5 minutes. */
+  export const DEFAULT_TTL_MS = 5 * 60 * 1000
+
   export const State = z.object({
     active: z.boolean(),
     state: z.enum(["soft_paused", "inactive"]),
@@ -140,7 +143,26 @@ export namespace KillSwitchService {
   export async function getState() {
     const state = await Storage.read<z.infer<typeof State>>(["killswitch", "state", "current"]).catch(() => undefined)
     if (!state) return undefined
-    return State.parse(state)
+    const parsed = State.parse(state)
+
+    // Auto-expire: if TTL is set and exceeded, clear the kill switch.
+    // If no TTL was written (legacy state), use DEFAULT_TTL_MS.
+    if (parsed.active) {
+      const ttl = parsed.ttl ?? DEFAULT_TTL_MS
+      const elapsed = Date.now() - parsed.initiatedAt
+      if (elapsed > ttl) {
+        log.info("Kill switch auto-expired", {
+          requestID: parsed.requestID,
+          initiatedAt: parsed.initiatedAt,
+          ttl,
+          elapsed,
+        })
+        await clearState()
+        return undefined
+      }
+    }
+
+    return parsed
   }
 
   export async function setState(state: z.infer<typeof State>) {
