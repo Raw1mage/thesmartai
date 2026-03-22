@@ -154,6 +154,24 @@ export const TaskWorkerEvent = {
   ),
 }
 
+/**
+ * Bridged from worker → parent when a child session hits a rate limit
+ * and needs the parent to decide the new model.
+ */
+export const TaskRateLimitEscalationEvent = BusEvent.define(
+  "task.rate_limit_escalation",
+  z.object({
+    sessionID: z.string(),
+    currentModel: z.object({
+      providerId: z.string(),
+      modelID: z.string(),
+      accountId: z.string().optional(),
+    }),
+    error: z.string(),
+    triedVectors: z.array(z.string()),
+  }),
+)
+
 const TaskActiveChildTodoSchema = z.object({
   id: z.string(),
   content: z.string(),
@@ -243,7 +261,93 @@ async function publishBridgedEvent(event: { type: string; properties: any }) {
     case Question.Event.Rejected.type:
       await Bus.publish(Question.Event.Rejected, event.properties)
       return
+    case TaskRateLimitEscalationEvent.type:
+      await handleRateLimitEscalation(event.properties)
+      return
   }
+}
+
+/**
+ * Handle a rate-limit escalation from a child session.
+ * Read the parent's current execution identity and push it to the worker.
+ */
+async function handleRateLimitEscalation(props: {
+  sessionID: string
+  currentModel: { providerId: string; modelID: string; accountId?: string }
+  error: string
+  triedVectors: string[]
+}) {
+  const log = Log.create({ service: "task.escalation" })
+  const childSessionID = props.sessionID
+
+  // Find the worker running this child session
+  const worker = workers.find((w) => w.current?.sessionID === childSessionID)
+  if (!worker) {
+    log.warn("Escalation received but no worker found for session", { childSessionID })
+    return
+  }
+
+  // Find the parent session ID from the worker's current request
+  const parentSessionID = worker.current?.parentSessionID
+  if (!parentSessionID) {
+    log.warn("Escalation received but worker has no parentSessionID", { childSessionID })
+    return
+  }
+
+  // Read parent session's execution identity to determine what model to use
+  const parentSession = await Session.get(parentSessionID).catch(() => undefined)
+  if (!parentSession?.execution) {
+    log.warn("Escalation: parent session has no execution identity", { parentSessionID, childSessionID })
+    return
+  }
+
+  const newModel = {
+    providerId: parentSession.execution.providerId,
+    modelID: parentSession.execution.modelID,
+    accountId: parentSession.execution.accountId,
+  }
+
+  debugCheckpoint("syslog.rotation", "parent handling child escalation — sending model_update", {
+    parentSessionID,
+    childSessionID,
+    parentModel: newModel,
+    childCurrentModel: props.currentModel,
+  })
+
+  // Send model_update command to worker via stdin
+  const stdin = worker.proc.stdin
+  if (typeof stdin === "number") {
+    log.error("Escalation: worker stdin not writable", { workerID: worker.id, childSessionID })
+    return
+  }
+  try {
+    stdin?.write(
+      JSON.stringify({
+        type: "model_update",
+        sessionID: childSessionID,
+        providerId: newModel.providerId,
+        modelID: newModel.modelID,
+        accountId: newModel.accountId,
+      }) + "\n",
+    )
+  } catch (err) {
+    log.error("Escalation: failed to write model_update to worker stdin", {
+      workerID: worker.id,
+      childSessionID,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  // Update child session's pinned execution identity
+  await Session.pinExecutionIdentity({
+    sessionID: childSessionID,
+    model: newModel,
+  }).catch((err) => {
+    log.warn("Escalation: failed to pin child execution identity", {
+      childSessionID,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
 }
 
 type WorkerRequest = {
@@ -827,6 +931,34 @@ async function dispatchToWorker(input: {
   }
 }
 
+/**
+ * Terminate ALL active workers. Used by abort-all / kill-switch emergency stop.
+ * Returns the number of workers that received a cancel signal.
+ */
+export function terminateAllActiveWorkers(): number {
+  let canceled = 0
+  for (const worker of workers) {
+    const current = worker.current
+    if (!current) continue
+    try {
+      const stdin = worker.proc.stdin
+      if (typeof stdin !== "number") {
+        stdin?.write(
+          JSON.stringify({
+            type: "cancel",
+            id: current.id,
+            sessionID: current.sessionID,
+          }) + "\n",
+        )
+        canceled++
+      }
+    } catch {
+      // ignore — worker may already be dead
+    }
+  }
+  return canceled
+}
+
 export async function terminateActiveChild(parentSessionID: string) {
   const activeChild = SessionActiveChild.get(parentSessionID)
   if (!activeChild) return false
@@ -862,6 +994,55 @@ export async function terminateActiveChild(parentSessionID: string) {
       sessionID: activeChild.sessionID,
     }) + "\n",
   )
+  return true
+}
+
+/**
+ * Send a model_update to the active child worker of a parent session.
+ * Used when the user manually changes the model in the main session.
+ */
+export async function sendModelUpdateToActiveChild(
+  parentSessionID: string,
+  model: { providerId: string; modelID: string; accountId?: string },
+) {
+  const activeChild = SessionActiveChild.get(parentSessionID)
+  if (!activeChild || activeChild.status !== "running") return false
+  if (!activeChild.workerID || activeChild.workerID === "handoff") return false
+
+  const worker = workers.find((w) => w.id === activeChild.workerID)
+  if (!worker?.current) return false
+  if (worker.current.sessionID !== activeChild.sessionID) return false
+
+  const stdin = worker.proc.stdin
+  if (typeof stdin === "number") return false
+
+  debugCheckpoint("syslog.rotation", "propagating manual model change to active child worker", {
+    parentSessionID,
+    childSessionID: activeChild.sessionID,
+    workerID: worker.id,
+    newModel: model,
+  })
+
+  try {
+    stdin?.write(
+      JSON.stringify({
+        type: "model_update",
+        sessionID: activeChild.sessionID,
+        providerId: model.providerId,
+        modelID: model.modelID,
+        accountId: model.accountId,
+      }) + "\n",
+    )
+  } catch {
+    return false
+  }
+
+  // Also pin the child session's execution identity
+  await Session.pinExecutionIdentity({
+    sessionID: activeChild.sessionID,
+    model,
+  }).catch(() => {})
+
   return true
 }
 

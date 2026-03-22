@@ -632,6 +632,16 @@ export const SessionRoutes = lazy(() =>
           { touch: false },
         )
 
+        // Propagate model change to active child worker (if any)
+        if (updates.execution) {
+          try {
+            const { sendModelUpdateToActiveChild } = await import("@/tool/task")
+            await sendModelUpdateToActiveChild(sessionID, updates.execution)
+          } catch {
+            // No active child or propagation failed — non-blocking
+          }
+        }
+
         return c.json(updatedSession)
       },
     )
@@ -991,6 +1001,9 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         // Cancel immediately — don't block on daemon call
         SessionPrompt.cancel(sessionID)
+        // Also terminate any active child worker for this session
+        const { terminateActiveChild } = await import("@/tool/task")
+        terminateActiveChild(sessionID).catch(() => {})
         const username = RequestUser.username()
         if (username && UserDaemonManager.routeSessionMutationEnabled()) {
           // Fire-and-forget: notify daemon but don't wait
@@ -1023,10 +1036,18 @@ export const SessionRoutes = lazy(() =>
         },
       }),
       async (c) => {
+        // 1. Terminate all active worker processes FIRST — they run in separate
+        //    processes and are invisible to SessionStatus.list().
+        const { terminateAllActiveWorkers } = await import("@/tool/task")
+        const workersCanceled = terminateAllActiveWorkers()
+
+        // 2. Cancel all sessions tracked in the main process.
         const busyIDs = await KillSwitchService.listBusySessionIDs()
         for (const id of busyIDs) {
           SessionPrompt.cancel(id)
         }
+
+        const totalAborted = busyIDs.length + workersCanceled
         const requestID = await KillSwitchService.idempotentRequestID("emergency_stop", "double-click stop", 5000)
         await KillSwitchService.setState({
           active: true,
@@ -1043,9 +1064,9 @@ export const SessionRoutes = lazy(() =>
           initiator: "emergency_stop",
           action: "emergency_abort_all",
           result: "ok",
-          meta: { aborted: busyIDs.length },
+          meta: { aborted: totalAborted, sessions: busyIDs.length, workers: workersCanceled },
         })
-        return c.json({ aborted: busyIDs.length, killSwitchActive: true })
+        return c.json({ aborted: totalAborted, killSwitchActive: true })
       },
     )
     .post(

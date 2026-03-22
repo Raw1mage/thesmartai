@@ -25,6 +25,7 @@ import { materializeToolAttachments } from "./attachment-ownership"
 import { clearPendingContinuation } from "./workflow-runner"
 import { describeTaskNarration, emitSessionNarration } from "./narration"
 import { logSessionAccountAudit, resolveAccountAuditSource } from "./account-audit"
+import * as ModelUpdateSignal from "./model-update-signal"
 import z from "zod"
 
 export const SessionRoundTelemetryEvent = BusEvent.define(
@@ -70,6 +71,23 @@ export const SessionCompactionTelemetryEvent = BusEvent.define(
     compactionResult: z.string(),
     compactionDraftTokens: z.number().optional(),
     timestamp: z.number(),
+  }),
+)
+
+// Mirror of TaskRateLimitEscalationEvent — defined here to avoid circular
+// dependency (processor → task). Must use the same event type string so the
+// worker-side bridge forwards it to the parent.
+const RateLimitEscalationEvent = BusEvent.define(
+  "task.rate_limit_escalation",
+  z.object({
+    sessionID: z.string(),
+    currentModel: z.object({
+      providerId: z.string(),
+      modelID: z.string(),
+      accountId: z.string().optional(),
+    }),
+    error: z.string(),
+    triedVectors: z.array(z.string()),
   }),
 )
 
@@ -210,6 +228,9 @@ export namespace SessionProcessor {
     // Session identity constraint for rotation — prevents subagent/session
     // from drifting to a different provider/account during rate-limit fallback.
     let sessionIdentity: { providerId: string; accountId?: string } | undefined
+    // Child sessions (subagents) must NOT self-rotate. They escalate to the
+    // parent process which decides the new model centrally.
+    let isChildSession = false
 
     const result = {
       get message() {
@@ -226,6 +247,7 @@ export namespace SessionProcessor {
         // Read session's pinned execution identity once to constrain rotation.
         if (!sessionIdentity) {
           const sessionInfo = await Session.get(input.sessionID).catch(() => undefined)
+          if (sessionInfo?.parentID) isChildSession = true
           if (sessionInfo?.execution?.accountId) {
             sessionIdentity = {
               providerId: sessionInfo.execution.providerId,
@@ -357,6 +379,72 @@ export namespace SessionProcessor {
                   modelID: streamInput.model.id,
                 }
                 if (isVectorRateLimited(vector)) {
+                  // Child sessions must not self-rotate — escalate to parent
+                  if (isChildSession) {
+                    debugCheckpoint("syslog.rotation", "child session pre-flight rate limit — escalating to parent", {
+                      sessionID: input.sessionID,
+                      providerId: streamInput.model.providerId,
+                      modelID: streamInput.model.id,
+                      accountId,
+                    })
+                    // Emit escalation event (bridged to parent via stdout)
+                    await Bus.publish(RateLimitEscalationEvent, {
+                      sessionID: input.sessionID,
+                      currentModel: {
+                        providerId: streamInput.model.providerId,
+                        modelID: streamInput.model.id,
+                        accountId,
+                      },
+                      error: `Pre-flight rate limited: ${streamInput.model.providerId}/${streamInput.model.id}`,
+                      triedVectors: Array.from(triedVectors),
+                    })
+                    // Wait for parent to push a new model
+                    try {
+                      const newModel = await ModelUpdateSignal.wait(input.sessionID)
+                      debugCheckpoint("syslog.rotation", "child session received model update from parent", {
+                        sessionID: input.sessionID,
+                        newModel,
+                      })
+                      // Apply the new model
+                      streamInput.model = {
+                        ...streamInput.model,
+                        providerId: newModel.providerId,
+                        id: newModel.modelID,
+                      }
+                      streamInput.accountId = newModel.accountId
+                      input.accountId = newModel.accountId
+                      input.assistantMessage.modelID = newModel.modelID
+                      input.assistantMessage.providerId = newModel.providerId
+                      input.assistantMessage.accountId = newModel.accountId
+                      await Session.pinExecutionIdentity({
+                        sessionID: input.sessionID,
+                        model: newModel,
+                      })
+                      sessionIdentity = {
+                        providerId: newModel.providerId,
+                        accountId: newModel.accountId,
+                      }
+                      // Continue the loop with the new model
+                      continue
+                    } catch (timeoutErr) {
+                      debugCheckpoint("syslog.rotation", "child session model update timeout — fail fast", {
+                        sessionID: input.sessionID,
+                        error: timeoutErr instanceof Error ? timeoutErr.message : String(timeoutErr),
+                      })
+                      const rateLimitError = new Error(
+                        `Rate limited: ${streamInput.model.providerId}/${streamInput.model.id}. Model update from parent timed out.`,
+                      )
+                      input.assistantMessage.error = MessageV2.fromError(rateLimitError, {
+                        providerId: streamInput.model.providerId,
+                      })
+                      Bus.publish(Session.Event.Error, {
+                        sessionID: input.assistantMessage.sessionID,
+                        error: input.assistantMessage.error,
+                      })
+                      SessionStatus.set(input.sessionID, { type: "idle" })
+                      break
+                    }
+                  }
                   const waitMs = getRateLimitTracker().getWaitTime(
                     accountId,
                     streamInput.model.providerId,
@@ -1022,7 +1110,76 @@ export namespace SessionProcessor {
                 accountId: streamInput.accountId ?? input.accountId ?? input.assistantMessage.accountId,
                 fallbackAttempts,
                 triedVectorCount: triedVectors.size,
+                isChildSession,
               })
+
+              // Child sessions (subagents) MUST NOT self-rotate.
+              // Escalate to parent process which decides the new model.
+              if (isChildSession) {
+                const currentAccountId = streamInput.accountId ?? input.accountId ?? input.assistantMessage.accountId
+                debugCheckpoint("syslog.rotation", "child session rate limit — escalating to parent", {
+                  sessionID: input.sessionID,
+                  providerId: streamInput.model.providerId,
+                  modelID: streamInput.model.id,
+                  accountId: currentAccountId,
+                  error: e.message,
+                })
+                // Emit escalation event (bridged to parent via stdout)
+                await Bus.publish(RateLimitEscalationEvent, {
+                  sessionID: input.sessionID,
+                  currentModel: {
+                    providerId: streamInput.model.providerId,
+                    modelID: streamInput.model.id,
+                    accountId: currentAccountId,
+                  },
+                  error: e.message,
+                  triedVectors: Array.from(triedVectors),
+                })
+                // Wait for parent to push a new model
+                try {
+                  const newModel = await ModelUpdateSignal.wait(input.sessionID)
+                  debugCheckpoint("syslog.rotation", "child session received model update from parent (runtime)", {
+                    sessionID: input.sessionID,
+                    newModel,
+                  })
+                  // Apply the new model and continue the retry loop
+                  streamInput.model = {
+                    ...streamInput.model,
+                    providerId: newModel.providerId,
+                    id: newModel.modelID,
+                  }
+                  streamInput.accountId = newModel.accountId
+                  input.accountId = newModel.accountId
+                  input.assistantMessage.modelID = newModel.modelID
+                  input.assistantMessage.providerId = newModel.providerId
+                  input.assistantMessage.accountId = newModel.accountId
+                  await Session.pinExecutionIdentity({
+                    sessionID: input.sessionID,
+                    model: newModel,
+                  })
+                  sessionIdentity = {
+                    providerId: newModel.providerId,
+                    accountId: newModel.accountId,
+                  }
+                  // Reset fallback attempts — we have a fresh model from parent
+                  fallbackAttempts = 0
+                  triedVectors.clear()
+                  continue
+                } catch (timeoutErr) {
+                  debugCheckpoint("syslog.rotation", "child session model update timeout — fail fast", {
+                    sessionID: input.sessionID,
+                    error: timeoutErr instanceof Error ? timeoutErr.message : String(timeoutErr),
+                  })
+                  input.assistantMessage.error = MessageV2.fromError(e, { providerId: input.model.providerId })
+                  Bus.publish(Session.Event.Error, {
+                    sessionID: input.assistantMessage.sessionID,
+                    error: input.assistantMessage.error,
+                  })
+                  SessionStatus.set(input.sessionID, { type: "idle" })
+                  break
+                }
+              }
+
               debugCheckpoint("rotation3d", "Temporary failure detected", {
                 error: e.message,
                 model: streamInput.model.id,

@@ -1,0 +1,68 @@
+/**
+ * ModelUpdateSignal — per-session Promise registry for cross-process model updates.
+ *
+ * Used by the worker process: when a child session hits a rate limit, the
+ * processor awaits `ModelUpdateSignal.wait(sessionID)` while the parent
+ * decides the new model and pushes it via stdin `model_update` command.
+ */
+
+export type ModelUpdatePayload = {
+  providerId: string
+  modelID: string
+  accountId?: string
+}
+
+const pending = new Map<
+  string,
+  {
+    resolve: (model: ModelUpdatePayload) => void
+    timer: ReturnType<typeof setTimeout>
+  }
+>()
+
+const MODEL_UPDATE_TIMEOUT_MS = 30_000
+
+/**
+ * Wait for the parent process to push a model update for this session.
+ * Rejects after 30 s timeout — the caller should fail fast.
+ */
+export function wait(sessionID: string): Promise<ModelUpdatePayload> {
+  // If there is already a pending wait for this session, reject the old one
+  // so we don't leak promises.
+  const existing = pending.get(sessionID)
+  if (existing) {
+    clearTimeout(existing.timer)
+    pending.delete(sessionID)
+  }
+
+  return new Promise<ModelUpdatePayload>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pending.delete(sessionID)
+      reject(new Error(`ModelUpdateSignal timeout (${MODEL_UPDATE_TIMEOUT_MS}ms) for session ${sessionID}`))
+    }, MODEL_UPDATE_TIMEOUT_MS)
+    // Don't hold the process alive just for this timer.
+    if (typeof timer.unref === "function") timer.unref()
+
+    pending.set(sessionID, { resolve, timer })
+  })
+}
+
+/**
+ * Resolve a pending model-update wait. Called from the worker stdin handler
+ * when it receives a `model_update` command from the parent.
+ */
+export function resolve(sessionID: string, model: ModelUpdatePayload): boolean {
+  const entry = pending.get(sessionID)
+  if (!entry) return false
+  clearTimeout(entry.timer)
+  pending.delete(sessionID)
+  entry.resolve(model)
+  return true
+}
+
+/**
+ * Check whether a session is currently waiting for a model update.
+ */
+export function isPending(sessionID: string): boolean {
+  return pending.has(sessionID)
+}

@@ -121,6 +121,7 @@ const BRIDGE_EVENT_TYPES = new Set([
   "question.asked",
   "question.replied",
   "question.rejected",
+  "task.rate_limit_escalation",
 ])
 
 function setupTaskEventBridge(sessionID: string) {
@@ -267,6 +268,22 @@ export const SessionWorkerCommand = cmd({
           }
           SessionPrompt.cancel(msg.sessionID)
           send({ type: "canceled", sessionID: msg.sessionID })
+          continue
+        }
+
+        if (
+          msg?.type === "model_update" &&
+          typeof msg.sessionID === "string" &&
+          typeof msg.providerId === "string" &&
+          typeof msg.modelID === "string"
+        ) {
+          const { resolve } = await import("../../session/model-update-signal")
+          const resolved = resolve(msg.sessionID, {
+            providerId: msg.providerId,
+            modelID: msg.modelID,
+            accountId: typeof msg.accountId === "string" ? msg.accountId : undefined,
+          })
+          send({ type: "model_updated", sessionID: msg.sessionID, resolved })
           continue
         }
 
