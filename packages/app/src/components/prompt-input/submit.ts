@@ -261,10 +261,11 @@ export function createPromptSubmit(input: PromptSubmitInput) {
 
     input.onSubmit?.()
 
+    const sessionExecution = params.id ? sync.session.get(params.id)?.execution : undefined
     const model = {
       modelID: currentModel.id,
       providerId: currentModel.provider.id,
-      accountId: local.model.selection?.(params.id)?.accountID,
+      accountId: sessionExecution?.accountId ?? local.model.selection?.(params.id)?.accountID,
     }
     const agent = currentAgent.name
     const variant = local.model.variant.current(params.id)
