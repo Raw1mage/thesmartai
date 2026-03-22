@@ -149,6 +149,75 @@ describe("tool.apply_patch freeform", () => {
     })
   })
 
+  test("reports phased metadata for observability", async () => {
+    await using fixture = await tmpdir({ git: true })
+    const metadataCalls: Array<Record<string, any>> = []
+    const { calls } = makeCtx()
+    const ctx: ToolCtx = {
+      ...baseCtx,
+      metadata: (input) => {
+        metadataCalls.push(input.metadata ?? {})
+      },
+      ask: async (input) => {
+        calls.push(input)
+      },
+    }
+
+    await Instance.provide({
+      directory: fixture.path,
+      fn: async () => {
+        const target = path.join(fixture.path, "phase.txt")
+        await fs.writeFile(target, "before\n", "utf-8")
+
+        const patchText = "*** Begin Patch\n*** Update File: phase.txt\n@@\n-before\n+after\n*** End Patch"
+
+        const result = await execute({ patchText }, ctx)
+
+        expect(result.metadata.phase).toBe("completed")
+        expect(metadataCalls.map((call) => call.phase)).toEqual([
+          "parsing",
+          "planning",
+          "planning",
+          "awaiting_approval",
+          "applying",
+          "diagnostics",
+          "diagnostics",
+        ])
+
+        expect(metadataCalls[2]).toMatchObject({
+          phase: "planning",
+          currentFile: "phase.txt",
+          completedCount: 0,
+          totalCount: 1,
+        })
+        expect(metadataCalls[3]).toMatchObject({
+          phase: "awaiting_approval",
+          completedCount: 1,
+          totalCount: 1,
+        })
+        expect(metadataCalls[4]).toMatchObject({
+          phase: "applying",
+          currentFile: "phase.txt",
+          completedCount: 0,
+          totalCount: 1,
+        })
+        expect(metadataCalls[6]).toMatchObject({
+          phase: "diagnostics",
+          currentFile: "phase.txt",
+          completedCount: 0,
+          totalCount: 1,
+        })
+        expect(result.metadata).toMatchObject({
+          phase: "completed",
+        })
+        expect(metadataCalls[3].files).toHaveLength(1)
+        expect(metadataCalls[4].files).toHaveLength(1)
+        expect(metadataCalls[5].files).toHaveLength(1)
+        expect(result.metadata.files).toHaveLength(1)
+      },
+    })
+  })
+
   test("applies multiple hunks to one file", async () => {
     await using fixture = await tmpdir()
     const { ctx } = makeCtx()
