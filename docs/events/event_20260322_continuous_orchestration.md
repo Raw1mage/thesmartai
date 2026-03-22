@@ -86,3 +86,33 @@
 - The active implementation surface is `/home/pkcs12/projects/.beta-worktrees/opencode/beta/continuous-orchestration` on branch `beta/continuous-orchestration`.
 - No runtime code has been changed yet in the beta worktree.
 - Next implementation entry point is Task Group 1 in `tasks.md`.
+
+## Follow-up Investigation (Specs Authority / Bug Intake)
+
+- Current authoritative plan/spec root for this topic is `specs/continuous-orchestration/`, not the older dated planning path.
+- `specs/continuous-orchestration/{proposal,spec,design,implementation-spec,tasks,handoff}.md` are aligned and already describe the intended dispatch-first + event-driven parent continuation contract.
+- `tasks.md` is fully checked, which means this spec package currently reads as "implemented / validated" rather than "open work remains". Any newly discovered bugs should be tracked as either:
+  1. focused follow-up fixes under the same semantic root, if they are regressions against this delivered contract; or
+  2. a new plan slice, if the bug requires scope beyond the documented contract.
+- Main known historical bug clues captured in this package/event chain:
+  - original blocking boundary was `task.ts` awaiting worker completion;
+  - completion events originally lacked enough parent identity evidence for safe continuation;
+  - first dispatch-first refactor exposed sequential-dispatch regression and cleanup leak;
+  - nested task delegation must fail fast rather than recurse silently.
+- Upstream/background context still relevant for bug triage lives in older autorunner / continuation specs, especially the `20260315_*` autorunner/easier-plan-mode work and `20260309_autonomous_session_workflow_design.md`, because continuous orchestration sits on top of those continuation and todo-authority contracts.
+
+## Follow-up Planning Revision (Operator Control Surface)
+
+- New regression scope was added after the initial dispatch-first plan: background child execution currently leaves the parent session in a conversationally idle-looking state, which hides the stop button and removes a session-global active-run indicator too early.
+- User requirements for the revised slice:
+  1. Keep the stop button visible while a background subagent is still active.
+  2. Add a bottom-pinned subagent status surface showing agent identity, task title, current progress/step, and child-session entry.
+  3. Keep that status surface mounted until parent continuation actually takes over, then clear it.
+  4. Preserve the policy that the Orchestrator may keep conversing / doing non-task tool calls while still forbidding a second subagent dispatch.
+- User decisions locked for planning:
+  - scope is **Web + TUI in the same implementation wave**;
+  - stop semantics are staged: **first stop interrupts foreground Orchestrator activity; second consecutive stop kills the active child**;
+  - TUI child-session entry must use **TUI-native session-tree jump behavior**, not URL rendering.
+  - preferred UI implementation is **reuse-first**: extend the old bottom "thinking" / elapsed status surface rather than invent a new unrelated bar.
+- Active planner root updated to `/plans/20260322_continuous-orchestration/` with fully rewritten proposal/spec/design/implementation-spec/tasks/handoff and non-placeholder diagram artifacts for this revised operator-control contract.
+- Architecture Sync: Updated — `specs/architecture.md` now needs to describe the session-global active-subagent control state and the Web/TUI pinned-status behavior as part of the continuous orchestration contract.

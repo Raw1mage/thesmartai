@@ -244,6 +244,24 @@ Internet → [C Gateway :1080] → Unix Socket → [Per-User Daemon (uid=user)]
 - Body（collapsible）: tool call 列表（status icon + tool name + subtitle）+ text output
 - 狀態: running（spinner, auto-open）/ completed（final output）/ error（error banner + partial activity）
 
+### Continuous Orchestration Control Surface
+
+- Dispatch-first continuous orchestration does **not** mean the session becomes globally idle once `task()` returns. If exactly one background subagent is still active, the parent session remains in an operator-controllable active-child state.
+- This active-child state is a session-global control-plane concept distinct from foreground parent streaming state.
+- **Single-child invariant** remains authoritative: one parent Orchestrator session may have at most one active background subagent at a time.
+- **Stop contract** is staged:
+  1. first stop interrupts foreground Orchestrator streaming;
+  2. second consecutive stop, if the same child remains active, escalates to child termination.
+- **Pinned status surface**: while the active-child state exists, Web and TUI should render a bottom-pinned subagent status surface showing child identity, task title, latest progress/step evidence, and a child-session entry affordance.
+- **Presentation strategy**: first implementation should prefer extending the existing thinking / elapsed bottom-status UI family, so active-child state appears as the same class of runtime activity indicator rather than a separate widget system.
+- **Child-session entry differs by surface**:
+  - Web may expose a route URL / clickable child-session link.
+  - TUI must use its own session-tree jump/navigation mechanism instead of URL rendering.
+- The pinned status surface must remain mounted until authoritative runtime evidence shows either:
+  - the parent continuation has taken over and active-child state is cleared; or
+  - the child failed / was terminated and active-child state is cleared.
+- The transcript-local `SubagentActivityCard` remains a detail surface, but it is no longer sufficient as the only operator-visible child-activity surface once continuous orchestration is active.
+
 **Dispatch 規則**:
 
 - SYSTEM.md §2.3: 一次只派出一個 subagent（sequential execution）
