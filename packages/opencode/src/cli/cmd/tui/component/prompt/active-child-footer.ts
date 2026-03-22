@@ -40,12 +40,9 @@ const toolStep = (part: Part) => {
   return compact(state.input?.description) ?? compact(state.title) ?? compact(state.input?.command)
 }
 
-const partStep = (part: Part) => {
-  if (part.type === "tool") return toolStep(part)
-  if (part.type === "reasoning") return compact(part.text)
-  if (part.type === "text") return compact(part.text)
-  return undefined
-}
+const textStep = (part: Part) => (part.type === "text" ? compact(part.text) : undefined)
+
+const reasoningStep = (part: Part) => (part.type === "reasoning" ? compact(part.text) : undefined)
 
 export function deriveActiveChildFooter(input: {
   activeChild: ActiveChildState
@@ -55,17 +52,27 @@ export function deriveActiveChildFooter(input: {
   const title = compact(input.activeChild.title, 56) ?? "Subagent"
   const label = agentLabel(input.activeChild.agent)
   const seeded = compact(input.activeChild.todo?.content)
-  if (seeded) return { agentLabel: label, title, step: seeded }
+
+  let latestText: string | undefined
+  let latestTool: string | undefined
+  let latestReasoning: string | undefined
 
   for (let i = input.messages.length - 1; i >= 0; i--) {
     const message = input.messages[i]
     if (message.role !== "assistant") continue
     const parts = input.partsByMessage[message.id] ?? []
     for (let j = parts.length - 1; j >= 0; j--) {
-      const step = partStep(parts[j])
-      if (step) return { agentLabel: label, title, step }
+      const part = parts[j]
+      latestText ??= textStep(part)
+      latestTool ??= toolStep(part)
+      latestReasoning ??= reasoningStep(part)
     }
   }
+
+  const liveStep = latestText ?? latestTool ?? latestReasoning
+  if (liveStep) return { agentLabel: label, title, step: liveStep }
+
+  if (seeded) return { agentLabel: label, title, step: seeded }
 
   return { agentLabel: label, title, step: FALLBACK_STEP[input.activeChild.status] }
 }

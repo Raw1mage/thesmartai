@@ -20,9 +20,9 @@
 
 ## Current State
 
-- The beta worktree exists and is the active implementation surface.
-- Planner artifacts are now build-ready and define concrete backend / prompt / validation slices.
-- No implementation code has been changed yet in this beta worktree.
+- Continuous-orchestration backend, Web, and TUI slices are implemented and merged into `cms`.
+- Planner artifacts and semantic spec now reflect the delivered operator-control contract.
+- Remaining follow-up work, if any, should be treated as new regression/follow-up slices rather than unfinished baseline implementation.
 
 ## Stop Gates In Force
 
@@ -33,7 +33,7 @@
 
 ## Build Entry Recommendation
 
-- Start with Task Group 1 to trace the current blocking lifecycle and event payload authority before editing runtime code.
+- Baseline implementation is complete. Any next build entry should start from newly discovered regressions or enhancement requests, not from the original dispatch-first baseline tasks.
 
 ## Execution-Ready Checklist
 

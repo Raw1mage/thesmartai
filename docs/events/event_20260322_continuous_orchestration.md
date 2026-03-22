@@ -166,4 +166,24 @@
   - right side keeps only the open-session icon and removes the text label.
 - Web UI validation for this refinement:
   - `bun x tsc -p /home/pkcs12/projects/opencode/packages/app/tsconfig.json --noEmit` passed after the compact-bar implementation and the `@agent` label normalization patch.
-- Architecture Sync: Verified (No doc changes). Existing `specs/architecture.md` already describes active-child state as a session-global, operator-visible control-plane concept and does not require a new boundary for this self-heal guard refinement or the compact Web presentation adjustment.
+- TUI refinement and validation:
+  - TUI footer now mirrors the compact one-line active-child presentation with short `@agent` labels, truncation, and session-tree jump retention.
+  - targeted TUI derivation / typecheck validation found no edited-file regressions; full `packages/opencode` validation remains noisy because of unrelated existing failures.
+- Test-fixture repair and validation:
+  - `packages/opencode/test/tool/task.test.ts` assistant fixtures were updated to current `MessageV2.Assistant` schema requirements (`parentID`, `mode`, `cost`, `tokens`).
+  - `bun test /home/pkcs12/projects/opencode/packages/opencode/test/tool/task.test.ts` passed after the fixture repair.
+- Merge closure:
+  - the completed branch work was committed on `beta/continuous-orchestration` and merged into `cms`.
+  - plan/tasks/spec semantics were then synchronized to reflect the delivered control-surface contract rather than an in-flight beta implementation.
+- Dynamic step follow-up:
+  - a later verification against live subsession output found that the status bar step could appear frozen because both Web and TUI prioritized seeded `activeChild.todo.content` over live child message parts.
+  - first fix landed by reversing derivation priority so live child progress beats seeded todo fallback.
+  - the step feed was then upgraded again so both Web and TUI now prefer: `text narration > running tool description/title/command > reasoning > seeded todo > fallback`.
+  - focused validation passed for both stages:
+    - `bun test "/home/pkcs12/projects/opencode/packages/app/src/pages/session/session-prompt-helpers.test.ts"`
+    - `bun test "/home/pkcs12/projects/opencode/packages/opencode/src/cli/cmd/tui/component/prompt/active-child-footer.test.ts"`
+  - final focused validation after narration-first upgrade:
+    - Web helper tests: 4 pass / 0 fail
+    - TUI footer tests: 4 pass / 0 fail
+  - outcome: main-session status now tracks richer child progress text and no longer freezes on dispatch-time todo wording.
+- Architecture Sync: Verified (No doc changes). Existing `specs/architecture.md` already describes active-child state as a session-global, operator-visible control-plane concept and does not require a new boundary for this self-heal guard refinement, dynamic-step priority fix, or the compact Web/TUI presentation adjustment.
