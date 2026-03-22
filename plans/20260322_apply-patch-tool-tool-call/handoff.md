@@ -2,8 +2,8 @@
 
 ## Execution Contract
 
-- This feature is implemented and merged.
-- Future changes should read the formalized spec package plus the event log before modifying `apply_patch` observability behavior.
+- This feature is now implemented in mainline code.
+- Future follow-up work should treat this package plus the event log as the implementation record.
 
 ## Required Reads
 
@@ -16,9 +16,9 @@
 
 ## Current State
 
-- `apply_patch` emits phased metadata during running state.
-- `ApplyPatch` renders a running-state block card before final completion.
-- Feature-local apply_patch tests are passing.
+- `apply_patch` now emits phased running metadata from backend execution checkpoints.
+- `ApplyPatch` now renders a running-state `BlockTool` before final completion.
+- Targeted apply_patch tests pass, including phased metadata observability coverage.
 
 ## Stop Gates In Force
 

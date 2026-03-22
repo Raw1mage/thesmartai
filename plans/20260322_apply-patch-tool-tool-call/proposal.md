@@ -11,8 +11,8 @@
 
 ## Requirement Revision History
 
-- 2026-03-22: reframed from explanation-only into an implementation plan and then a completed feature.
-- 2026-03-22: formalized from `/plans/20260322_apply-patch-tool-tool-call/` into `specs/apply-patch-observability/` after implementation and merge.
+- 2026-03-22: reframed from explanation-only into an implementation plan.
+- 2026-03-23: plan status corrected after code verification showed the feature was not yet implemented in mainline code.
 
 ## Effective Requirement Description
 
@@ -47,9 +47,9 @@
 
 ## What Changes
 
-- `apply_patch` now emits explicit phases and progress metadata while running.
-- TUI `ApplyPatch` now renders a running-state `BlockTool` before final file metadata exists.
-- Completed-state diff and diagnostics rendering remains intact.
+- `apply_patch` will emit explicit phases and progress metadata while running.
+- TUI `ApplyPatch` will render a running-state `BlockTool` before final file metadata exists.
+- Completed-state diff and diagnostics rendering must remain intact.
 
 ## Capabilities
 
@@ -61,8 +61,8 @@
 
 ### Modified Capabilities
 
-- The `ApplyPatch` card no longer depends on final `metadata.files` to become expandable.
-- `apply_patch` metadata now spans the full execution lifecycle instead of final completion only.
+- The `ApplyPatch` card will no longer depend on final `metadata.files` to become expandable.
+- `apply_patch` metadata will span the full execution lifecycle instead of final completion only.
 
 ## Impact
 

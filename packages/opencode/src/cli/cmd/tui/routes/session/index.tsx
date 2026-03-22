@@ -41,7 +41,7 @@ import { TodoWriteTool } from "@/tool/todo"
 import type { GrepTool } from "@/tool/grep"
 import type { ListTool } from "@/tool/ls"
 import type { EditTool } from "@/tool/edit"
-import type { ApplyPatchTool } from "@/tool/apply_patch"
+import type { ApplyPatchFileMetadata, ApplyPatchMetadata, ApplyPatchTool } from "@/tool/apply_patch"
 import type { WebFetchTool } from "@/tool/webfetch"
 import type { TaskTool } from "@/tool/task"
 import type { QuestionTool } from "@/tool/question"
@@ -2145,14 +2145,7 @@ function Edit(props: ToolProps<typeof EditTool>) {
 function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
   const ctx = use()
   const { theme, syntax } = useTheme()
-  const metadata = createMemo(
-    () =>
-      props.metadata as typeof props.metadata & {
-        currentFile?: string
-        completedCount?: number
-        totalCount?: number
-      },
-  )
+  const metadata = createMemo(() => props.metadata as Partial<ApplyPatchMetadata>)
 
   const files = createMemo(() => metadata().files ?? [])
   const phase = createMemo(() => metadata().phase)
@@ -2227,7 +2220,7 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
     )
   }
 
-  function title(file: { type: string; relativePath: string; filePath: string; deletions: number }) {
+  function title(file: Pick<ApplyPatchFileMetadata, "type" | "relativePath" | "filePath" | "deletions">) {
     if (file.type === "delete") return "# Deleted " + file.relativePath
     if (file.type === "add") return "# Created " + file.relativePath
     if (file.type === "move") return "# Moved " + normalizePath(file.filePath) + " → " + file.relativePath
@@ -2237,6 +2230,25 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
   function RunningCard() {
     const [expanded, setExpanded] = createSignal(false)
     const hasExpandableFiles = createMemo(() => files().length > 0)
+    const placeholderLine = createMemo(() => {
+      if (files().length > 0 || currentFile()) return undefined
+      switch (phase()) {
+        case "parsing":
+          return "Waiting for parsed file plan..."
+        case "planning":
+          return "Building file change plan..."
+        case "awaiting_approval":
+          return "Waiting for edit approval..."
+        case "applying":
+          return "Applying planned file updates..."
+        case "diagnostics":
+          return "Waiting for diagnostics results..."
+        case "failed":
+          return "No file metadata captured before failure."
+        default:
+          return "Waiting for apply_patch metadata..."
+      }
+    })
 
     return (
       <BlockTool
@@ -2251,6 +2263,9 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
           </Show>
           <Show when={currentFile()}>
             <text fg={theme.text}>{currentFile()}</text>
+          </Show>
+          <Show when={placeholderLine()}>
+            <text fg={isFailedPhase() ? theme.error : theme.textMuted}>{placeholderLine()}</text>
           </Show>
           <Show when={files().length > 0}>
             <text fg={theme.textMuted}>
@@ -2324,7 +2339,7 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
           }}
         </For>
       </Match>
-      <Match when={isRunning() || isFailedPhase()}>
+      <Match when={phase() !== undefined || isRunning() || isFailedPhase()}>
         <RunningCard />
       </Match>
       <Match when={true}>

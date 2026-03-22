@@ -9,11 +9,13 @@
 ## Goals / Non-Goals
 
 **Goals:**
+
 - Make `ApplyPatch` expandable during running state.
 - Surface real backend execution phases and progress evidence.
 - Preserve final diff/diagnostics rendering.
 
 **Non-Goals:**
+
 - Redesigning all tool cards.
 - Introducing speculative progress or fallbacks.
 

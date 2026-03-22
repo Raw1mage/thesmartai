@@ -14,6 +14,38 @@ import { Filesystem } from "../util/filesystem"
 import DESCRIPTION from "./apply_patch.txt"
 import { File } from "../file"
 
+export type ApplyPatchPhase =
+  | "parsing"
+  | "planning"
+  | "awaiting_approval"
+  | "applying"
+  | "diagnostics"
+  | "failed"
+  | "completed"
+
+export type ApplyPatchFileMetadata = {
+  filePath: string
+  relativePath: string
+  type: "add" | "update" | "delete" | "move"
+  diff: string
+  before: string
+  after: string
+  additions: number
+  deletions: number
+  movePath?: string
+}
+
+export type ApplyPatchMetadata = {
+  phase: ApplyPatchPhase
+  currentFile?: string
+  completedCount?: number
+  totalCount?: number
+  diff?: string
+  files?: ApplyPatchFileMetadata[]
+  diagnostics?: Awaited<ReturnType<typeof LSP.diagnostics>>
+  error?: string
+}
+
 const PatchParams = z.object({
   patchText: z.string().describe("The full patch text that describes all changes to be made"),
 })
@@ -22,7 +54,7 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
   description: DESCRIPTION,
   parameters: PatchParams,
   async execute(params, ctx) {
-    const reportMetadata = (input: { title?: string; metadata?: Record<string, unknown> }) => ctx.metadata(input)
+    const reportMetadata = (input: { title?: string; metadata?: ApplyPatchMetadata }) => ctx.metadata(input)
 
     try {
       if (!params.patchText) {

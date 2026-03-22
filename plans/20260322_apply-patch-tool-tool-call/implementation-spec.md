@@ -11,7 +11,7 @@
 - `packages/opencode/src/tool/apply_patch.ts` phased metadata contract and checkpoint emission.
 - `packages/opencode/src/cli/cmd/tui/routes/session/index.tsx` running-state `ApplyPatch` block rendering.
 - Preservation of completed diff and diagnostics rendering.
-- Validation evidence and formalized spec capture for this completed feature.
+- Validation evidence and event-log synchronization for this feature implementation.
 
 ### OUT
 
@@ -43,11 +43,11 @@
 
 ## Validation
 
-- `bun test "packages/opencode/test/tool/apply_patch.test.ts"` -> passed (`26 pass / 0 fail`).
-- Code-path validation confirmed running-state renderer coverage for `parsing`, `awaiting_approval`, `applying`, `diagnostics`, `failed`, and `completed`.
-- Root `bunx tsc --noEmit --pretty false` remains blocked by pre-existing unrelated `infra/*.ts` typing errors after dependency restoration.
+- Run `bun test "packages/opencode/test/tool/apply_patch.test.ts"` and extend/add coverage for phased metadata and running-state rendering as needed.
+- Verify code paths cover `parsing`, `planning`, `awaiting_approval`, `applying`, `diagnostics`, `failed`, and `completed` states.
+- Record whether root `bunx tsc --noEmit --pretty false` is still blocked by pre-existing unrelated `infra/*.ts` typing errors.
 
 ## Handoff
 
-- This feature is implemented and formalized.
-- Future changes should update this spec if the metadata shape, rendering contract, or validation posture changes.
+- Build agent must implement the phased metadata contract and running-state renderer behavior described above.
+- Build agent must update the event log and keep planner artifacts aligned with actual implementation status.

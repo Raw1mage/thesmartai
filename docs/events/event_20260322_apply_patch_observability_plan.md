@@ -16,7 +16,8 @@
 
 ### OUT
 
-- Implementing the runtime change in this planning session.
+- Generic redesign of all tool cards.
+- Performance-only optimization without observability changes.
 - Generic redesign of all tool cards.
 - Performance-only optimization without observability changes.
 
@@ -67,7 +68,24 @@
 - Diagram validation confirmed IDEF0/GRAFCET/C4/Sequence models now trace the apply_patch observability workflow rather than generic placeholders.
 - Architecture Sync: Verified (No doc changes). This feature changes tool metadata and renderer behavior inside existing session-runtime boundaries without introducing a new long-lived module boundary.
 
+## Execution Evidence
+
+- Implemented `ApplyPatchPhase`, `ApplyPatchFileMetadata`, and `ApplyPatchMetadata` in `packages/opencode/src/tool/apply_patch.ts`, then bound `ctx.metadata()` emissions to that typed contract.
+- Verified backend phased emissions still cover `parsing`, `planning`, `awaiting_approval`, `applying`, `diagnostics`, `failed`, and final `completed` metadata while preserving final `diff/files/diagnostics` payloads.
+- Rewrote `ApplyPatch` in `packages/opencode/src/cli/cmd/tui/routes/session/index.tsx` to render a running `BlockTool` whenever phased metadata exists, removing the old dependency on `metadata.files.length > 0` before the running card appears.
+- Preserved completed-state per-file diff rendering and diagnostics attachment behavior; only the running/failed gating logic changed.
+
+## Validation Evidence
+
+- `bun test "packages/opencode/test/tool/apply_patch.test.ts"` ✅ (`27 pass / 0 fail`), including the new phased metadata observability coverage.
+- `bunx tsc --noEmit --pretty false -p packages/opencode/tsconfig.json` ❌ blocked by pre-existing unrelated errors in `packages/opencode/src/bus/subscribers/task-worker-continuation.ts` and `packages/opencode/src/session/prompt.ts`; no reported failures came from the touched `apply_patch` files.
+- Manual live TUI verification is still recommended for the exact pre-completion expand/collapse UX, but the mainline code now contains the phased metadata path and running-state `BlockTool` renderer.
+
+## Divergence Resolution
+
+- This main-worktree implementation is now the real apply_patch observability fix.
+- The prior rollback note is superseded: the feature no longer exists only as a plan package; the authoritative runtime and TUI changes are now landed in the main worktree.
+
 ## Remaining
 
-- Formal promotion was rolled back because the implementation did not actually land in mainline code.
-- The feature package has been returned to `plans/20260322_apply-patch-tool-tool-call/` and remains an active plan until the real apply_patch implementation is completed.
+- None for this scoped implementation task.
