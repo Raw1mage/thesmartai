@@ -1,0 +1,74 @@
+[
+  {
+    "StepNumber": 0,
+    "ModuleRef": "A1",
+    "StepType": "initial",
+    "StepAction": "Await Plan Exit Approval",
+    "LinkInputType": [],
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [1],
+    "LinkOutputType": "track",
+    "Condition": ["approved_plan_ready"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 1,
+    "ModuleRef": "A2",
+    "StepType": "normal",
+    "StepAction": "Bootstrap Beta Loop",
+    "LinkInputType": [],
+    "LinkInputNumber": [0],
+    "LinkOutputNumber": [2,3],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["beta_context_resolved", "beta_question_or_blocker"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 2,
+    "ModuleRef": "A3",
+    "StepType": "normal",
+    "StepAction": "Run Validation Syncback",
+    "LinkInputType": [],
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [4,5],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["validation_requested", "build_completed_without_validation"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 3,
+    "ModuleRef": "A1",
+    "StepType": "normal",
+    "StepAction": "Pause For Clarification",
+    "LinkInputType": [],
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [0],
+    "LinkOutputType": "track",
+    "Condition": ["clarification_answered"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 4,
+    "ModuleRef": "A3",
+    "StepType": "normal",
+    "StepAction": "Continue Build Execution",
+    "LinkInputType": ["convergence_or"],
+    "LinkInputNumber": [2,5],
+    "LinkOutputNumber": [2],
+    "LinkOutputType": "track",
+    "Condition": ["more_execution_remaining"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 5,
+    "ModuleRef": "A3",
+    "StepType": "normal",
+    "StepAction": "Report Build Completion",
+    "LinkInputType": [],
+    "LinkInputNumber": [2],
+    "LinkOutputNumber": [0],
+    "LinkOutputType": "track",
+    "Condition": ["build_done_and_finalize_pending"],
+    "SubGrafcet": []
+  }
+]

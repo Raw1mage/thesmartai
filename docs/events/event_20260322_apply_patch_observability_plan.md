@@ -69,5 +69,5 @@
 
 ## Remaining
 
-- Formal promotion completed: the finished package is now recorded under `specs/apply-patch-observability/`.
-- The dated active plan root can be removed as part of post-merge cleanup because this feature is now formalized.
+- Formal promotion was rolled back because the implementation did not actually land in mainline code.
+- The feature package has been returned to `plans/20260322_apply-patch-tool-tool-call/` and remains an active plan until the real apply_patch implementation is completed.

@@ -1,0 +1,142 @@
+[
+  {
+    "diagram_title": "Plan Exit Beta Build Entry",
+    "scenario": "Operator approves build mode and planner bootstraps beta execution before build handoff",
+    "moduleRef": "A1",
+    "participants": [
+      {
+        "id": "P1",
+        "name": "Planner Operator",
+        "type": "actor",
+        "componentRef": "C1"
+      },
+      {
+        "id": "P2",
+        "name": "Plan Exit Gate",
+        "type": "component",
+        "componentRef": "C1"
+      },
+      {
+        "id": "P3",
+        "name": "Shared Beta Core",
+        "type": "component",
+        "componentRef": "C3"
+      },
+      {
+        "id": "P4",
+        "name": "Build Workflow Runner",
+        "type": "component",
+        "componentRef": "C2"
+      }
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "P1",
+        "to": "P2",
+        "label": "approve build entry",
+        "type": "sync",
+        "order": 1
+      },
+      {
+        "id": "MSG2",
+        "from": "P2",
+        "to": "P3",
+        "label": "bootstrapBetaLoop(plan metadata)",
+        "type": "sync",
+        "order": 2
+      },
+      {
+        "id": "MSG3",
+        "from": "P3",
+        "to": "P2",
+        "label": "betaContext or clarification/blocker",
+        "type": "return",
+        "order": 3
+      },
+      {
+        "id": "MSG4",
+        "from": "P2",
+        "to": "P4",
+        "label": "emit build handoff with beta metadata",
+        "type": "sync",
+        "order": 4
+      }
+    ],
+    "fragments": [
+      {
+        "id": "FRAG1",
+        "type": "alt",
+        "label": "beta bootstrap blocked or needs clarification",
+        "messageRefs": ["MSG2", "MSG3"]
+      }
+    ]
+  },
+  {
+    "diagram_title": "Build Validation Syncback Loop",
+    "scenario": "Build mode reaches validation and syncs the feature branch into the main worktree with runtime policy",
+    "moduleRef": "A3",
+    "participants": [
+      {
+        "id": "P1",
+        "name": "Build Workflow Runner",
+        "type": "component",
+        "componentRef": "C2"
+      },
+      {
+        "id": "P2",
+        "name": "Shared Beta Core",
+        "type": "component",
+        "componentRef": "C3"
+      },
+      {
+        "id": "P3",
+        "name": "Main Runtime Adapter",
+        "type": "system",
+        "componentRef": "SYS1"
+      }
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "P1",
+        "to": "P2",
+        "label": "syncback(validationMode)",
+        "type": "sync",
+        "order": 1
+      },
+      {
+        "id": "MSG2",
+        "from": "P2",
+        "to": "P3",
+        "label": "run runtime start/refresh if policy permits",
+        "type": "sync",
+        "order": 2
+      },
+      {
+        "id": "MSG3",
+        "from": "P3",
+        "to": "P2",
+        "label": "runtime result or manual validation state",
+        "type": "return",
+        "order": 3
+      },
+      {
+        "id": "MSG4",
+        "from": "P2",
+        "to": "P1",
+        "label": "validation evidence",
+        "type": "return",
+        "order": 4
+      }
+    ],
+    "fragments": [
+      {
+        "id": "FRAG1",
+        "type": "alt",
+        "label": "manual runtime policy pauses for operator validation",
+        "messageRefs": ["MSG2", "MSG3"]
+      }
+    ]
+  }
+]
