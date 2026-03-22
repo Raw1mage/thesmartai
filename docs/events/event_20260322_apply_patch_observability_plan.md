@@ -69,5 +69,5 @@
 
 ## Remaining
 
-- Implement the phased metadata contract and running-state `BlockTool` rendering.
-- Validate multi-file, approval, diagnostics, and failure behaviors in build mode.
+- Formal promotion completed: the finished package is now recorded under `specs/apply-patch-observability/`.
+- The dated active plan root can be removed as part of post-merge cleanup because this feature is now formalized.
