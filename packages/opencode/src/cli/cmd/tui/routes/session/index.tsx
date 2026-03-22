@@ -1613,7 +1613,13 @@ function InlineTool(props: {
         }
       }}
     >
-      <text paddingLeft={3} fg={fg()} overflow="hidden" wrapMode="none" attributes={denied() ? TextAttributes.STRIKETHROUGH : undefined}>
+      <text
+        paddingLeft={3}
+        fg={fg()}
+        overflow="hidden"
+        wrapMode="none"
+        attributes={denied() ? TextAttributes.STRIKETHROUGH : undefined}
+      >
         <Show
           fallback={
             <>
@@ -2139,8 +2145,46 @@ function Edit(props: ToolProps<typeof EditTool>) {
 function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
   const ctx = use()
   const { theme, syntax } = useTheme()
+  const metadata = createMemo(
+    () =>
+      props.metadata as typeof props.metadata & {
+        currentFile?: string
+        completedCount?: number
+        totalCount?: number
+      },
+  )
 
-  const files = createMemo(() => props.metadata.files ?? [])
+  const files = createMemo(() => metadata().files ?? [])
+  const phase = createMemo(() => metadata().phase)
+  const isRunning = createMemo(() => props.part.state.status === "running")
+  const isFailedPhase = createMemo(() => phase() === "failed")
+  const currentFile = createMemo(() => metadata().currentFile)
+  const completedCount = createMemo(() => metadata().completedCount)
+  const totalCount = createMemo(() => metadata().totalCount)
+  const statusLine = createMemo(() => {
+    const count =
+      typeof completedCount() === "number" && typeof totalCount() === "number"
+        ? ` (${completedCount()}/${totalCount()})`
+        : ""
+    switch (phase()) {
+      case "parsing":
+        return "Parsing patch"
+      case "planning":
+        return `Planning file changes${count}`
+      case "awaiting_approval":
+        return `Awaiting approval${count}`
+      case "applying":
+        return `Applying patch${count}`
+      case "diagnostics":
+        return `Collecting diagnostics${count}`
+      case "completed":
+        return `Completed${count}`
+      case "failed":
+        return "Failed"
+      default:
+        return undefined
+    }
+  })
 
   const view = createMemo(() => {
     const diffStyle = ctx.sync.data.config.tui?.diff_style
@@ -2190,9 +2234,63 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
     return "← Patched " + file.relativePath
   }
 
+  function RunningCard() {
+    const [expanded, setExpanded] = createSignal(false)
+    const hasExpandableFiles = createMemo(() => files().length > 0)
+
+    return (
+      <BlockTool
+        title={isFailedPhase() ? "# Apply Patch Failed" : "# Apply Patch"}
+        part={props.part}
+        spinner={isRunning() && !isFailedPhase()}
+        onClick={hasExpandableFiles() ? () => setExpanded((prev) => !prev) : undefined}
+      >
+        <box gap={1}>
+          <Show when={statusLine()}>
+            <text fg={isFailedPhase() ? theme.error : theme.textMuted}>{statusLine()}</text>
+          </Show>
+          <Show when={currentFile()}>
+            <text fg={theme.text}>{currentFile()}</text>
+          </Show>
+          <Show when={files().length > 0}>
+            <text fg={theme.textMuted}>
+              {files().length} file{files().length !== 1 ? "s" : ""}
+            </text>
+          </Show>
+          <Show when={expanded() && files().length > 0}>
+            <box gap={1}>
+              <For each={files()}>
+                {(file) => (
+                  <box gap={1}>
+                    <text fg={theme.text}>{title(file)}</text>
+                    <Show
+                      when={file.type !== "delete"}
+                      fallback={
+                        <text fg={theme.diffRemoved}>
+                          -{file.deletions} line{file.deletions !== 1 ? "s" : ""}
+                        </text>
+                      }
+                    >
+                      <Diff diff={file.diff} filePath={file.filePath} expanded={true} />
+                    </Show>
+                  </box>
+                )}
+              </For>
+            </box>
+          </Show>
+          <Show when={!expanded() && files().length > 0}>
+            <text paddingLeft={3} fg={theme.textMuted}>
+              ...
+            </text>
+          </Show>
+        </box>
+      </BlockTool>
+    )
+  }
+
   return (
     <Switch>
-      <Match when={files().length > 0}>
+      <Match when={phase() === "completed" && files().length > 0}>
         <For each={files()}>
           {(file) => {
             const [expanded, setExpanded] = createSignal(false)
@@ -2225,6 +2323,9 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
             )
           }}
         </For>
+      </Match>
+      <Match when={isRunning() || isFailedPhase()}>
+        <RunningCard />
       </Match>
       <Match when={true}>
         <InlineTool icon="%" pending="Preparing apply_patch..." complete={false} part={props.part}>
