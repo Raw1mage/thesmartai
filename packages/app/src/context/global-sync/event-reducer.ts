@@ -94,6 +94,7 @@ export function applyDirectoryEvent(input: {
   push: (directory: string) => void
   directory: string
   loadLsp: () => void
+  loadMcp: () => void
   vcsCache?: VcsCache
 }) {
   const event = input.event
@@ -414,6 +415,10 @@ export function applyDirectoryEvent(input: {
     }
     case "lsp.updated": {
       input.loadLsp()
+      break
+    }
+    case "mcp.tools.changed": {
+      input.loadMcp()
       break
     }
     case "killswitch.status.changed": {

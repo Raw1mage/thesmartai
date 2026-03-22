@@ -476,6 +476,13 @@ function createGlobalSync() {
             .lsp.status()
             .then((x) => setStore("lsp", x.data ?? []))
         },
+        loadMcp: () => {
+          sdkFor(directory)
+            .mcp.status()
+            .then((x) => {
+              if (x.data) setStore("mcp", reconcile(x.data))
+            })
+        },
       })
     } else {
       // Fallback broadcast: normalization mismatch between SSE directory
@@ -494,6 +501,13 @@ function createGlobalSync() {
             sdkFor(dir)
               .lsp.status()
               .then((x) => setStore("lsp", x.data ?? []))
+          },
+          loadMcp: () => {
+            sdkFor(dir)
+              .mcp.status()
+              .then((x) => {
+                if (x.data) setStore("mcp", reconcile(x.data))
+              })
           },
         })
       }
