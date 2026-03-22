@@ -114,6 +114,78 @@
 - Verified the original dated roots no longer exist under `/specs` for those seven mappings.
 - Architecture Sync: Verified (No doc changes) — `specs/architecture.md` already describes the `/plans` vs semantic `/specs` lifecycle and already contains the normalized architecture sections for beta-tool MCP, subagent visibility, and message-bus/kill-switch domains.
 
+## Third-pass Conservative Cleanup
+
+- User rejected further broad speculation and asked for duplicate removal / same-topic consolidation under canonical taxonomy.
+- A follow-up taxonomy audit identified clear duplicate clusters: autorunner, planner-lifecycle, and telemetry provenance.
+- User approved the conservative cleanup posture: create a canonical `specs/autorunner/`, fold planner dated roots into `specs/planner-lifecycle/`, delete only clearly superseded telemetry provenance packages, keep `plans/shared-context-structure/` unchanged, and leave controversial semantic roots untouched.
+- Executed canonicalization:
+  - `specs/20260313_autorunner-spec-execution-runner/` + `specs/20260315_autorunner/` -> `specs/autorunner/`
+  - `specs/20260315_openspec-like-planner/` + `specs/20260315_easier_plan_mode/` -> `specs/planner-lifecycle/`
+- Executed deletions (approved / clear supersession):
+  - `specs/telemetry/provenance/20260320_telemetry-implementation/`
+  - `specs/telemetry/provenance/20260321_telemetry-optimization/`
+- Preserved by explicit instruction:
+  - `plans/shared-context-structure/`
+  - `plans/20260316_kill-switch-plan/`
+  - `specs/account-management/`
+  - `specs/continuous-orchestration/`
+  - `specs/beta-tool/`
+  - `specs/codex-protocol/`
+
+## Third-pass Validation
+
+- Verified `specs/autorunner/` exists with canonical six-pack files plus preserved supporting slices for mission-consumption and delegated-execution baselines.
+- Verified `specs/planner-lifecycle/` retained canonical six-pack files and existing JSON modeling artifacts while absorbing dated planner material.
+- Verified deleted dated autorunner/planner roots no longer exist under `/specs`:
+  - `specs/20260313_autorunner-spec-execution-runner/`
+  - `specs/20260315_autorunner/`
+  - `specs/20260315_openspec-like-planner/`
+  - `specs/20260315_easier_plan_mode/`
+- Verified deleted superseded telemetry provenance packages no longer exist under `specs/telemetry/provenance/`.
+- Verified preserved untouched roots still exist under their expected paths.
+- Architecture Sync: Verified (No doc changes) — `specs/architecture.md` already documents the governing lifecycle rules (`/plans` for active dated roots, `/specs` for semantic roots) and no system/module boundary changed during this cleanup; this pass only normalized repository taxonomy.
+
+## Fourth-pass Canonical Framework Regrouping
+
+- User then requested a stronger semantic regrouping entirely within `/specs` taxonomy.
+- Explicit move decisions:
+  - `specs/account-management/` -> `plans/account-management/`
+  - `specs/codex-protocol/` -> `plans/codex-protocol/`
+- Explicit builder framework merge:
+  - `specs/beta-tool/`
+  - `specs/build_beta/`
+  - `specs/planner-lifecycle/`
+  - -> `specs/builder_framework/`
+- Explicit agent framework merge:
+  - `specs/autorunner/`
+  - `specs/continuous-orchestration/`
+  - `specs/subagents/`
+  - `specs/20260315_openclaw_reproduction/`
+  - -> `specs/agent_framework/`
+- Merge execution preserved source material conservatively under `sources/` subdirectories inside each new canonical root, while adding canonical six-pack summary files at the new root top level.
+
+## Fourth-pass Validation
+
+- Verified moved roots now exist under `/plans`:
+  - `plans/account-management/`
+  - `plans/codex-protocol/`
+- Verified those moved roots no longer exist as top-level `/specs` roots.
+- Verified `specs/builder_framework/` exists with canonical summary files and preserved source slices under:
+  - `specs/builder_framework/sources/beta-tool/`
+  - `specs/builder_framework/sources/build_beta/`
+  - `specs/builder_framework/sources/planner-lifecycle/`
+- Verified `specs/agent_framework/` exists with canonical summary files and preserved source slices under:
+  - `specs/agent_framework/sources/autorunner/`
+  - `specs/agent_framework/sources/continuous-orchestration/`
+  - `specs/agent_framework/sources/subagents/`
+  - `specs/agent_framework/sources/20260315_openclaw_reproduction/`
+- Verified merged source roots no longer exist as top-level `/specs/*` roots.
+- Architecture Sync: Verified (No doc changes) — `specs/architecture.md` documents lifecycle and system boundaries rather than transient taxonomy names, and this regrouping did not change module boundaries, data flow, or runtime contracts.
+
 ## Remaining
 
-- Remaining lower-confidence dated roots still need a later commit/event pass.
+- `plans/shared-context-structure/` still needs an explicit future decision: remain a plans-only exception, merge into an existing semantic root, or be retired.
+- New canonical roots may still warrant later content-level flattening if you want fewer preserved `sources/` subtrees:
+  - `specs/builder_framework/`
+  - `specs/agent_framework/`

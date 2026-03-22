@@ -41,3 +41,22 @@
 - [x] 7.1 Verify second-pass `/specs` and `/plans` tree shape
 - [x] 7.2 Update `docs/events/event_20260322_specs_reorganization.md` with second-pass moves and verification
 - [x] 7.3 Sync `specs/architecture.md` or record `Architecture Sync: Verified (No doc changes)`
+
+## 8. Conservative canonical cleanup
+
+- [x] 8.1 Audit duplicate/obsolete packages across `/specs` and `/plans` and propose canonical taxonomy
+- [x] 8.2 Get user approval for conservative destructive cleanup posture
+- [x] 8.3 Create `specs/autorunner/` as canonical semantic root and merge dated autorunner material into it
+- [x] 8.4 Fold planner dated roots into `specs/planner-lifecycle/`
+- [x] 8.5 Delete clearly superseded telemetry provenance packages
+- [x] 8.6 Update `docs/events/event_20260322_specs_reorganization.md` with third-pass cleanup and verification
+- [x] 8.7 Record architecture sync result for the cleanup pass
+
+## 9. Canonical framework regrouping
+
+- [x] 9.1 Move `specs/account-management/` into `/plans/account-management/`
+- [x] 9.2 Move `specs/codex-protocol/` into `/plans/codex-protocol/`
+- [x] 9.3 Merge `specs/beta-tool/` + `specs/build_beta/` + `specs/planner-lifecycle/` into `specs/builder_framework/`
+- [x] 9.4 Merge `specs/autorunner/` + `specs/continuous-orchestration/` + `specs/subagents/` + `specs/20260315_openclaw_reproduction/` into `specs/agent_framework/`
+- [x] 9.5 Update `docs/events/event_20260322_specs_reorganization.md` with fourth-pass regrouping and verification
+- [x] 9.6 Record architecture sync result for the regrouping pass

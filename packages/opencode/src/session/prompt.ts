@@ -855,8 +855,9 @@ export namespace SessionPrompt {
       if (
         lastFinished &&
         lastFinished.summary !== true &&
-        (await SessionCompaction.isOverflow({ tokens: lastFinished.tokens, model }))
+        (await SessionCompaction.isOverflow({ tokens: lastFinished.tokens, model, sessionID, currentRound: step }))
       ) {
+        SessionCompaction.recordCompaction(sessionID, step)
         await SessionCompaction.create({
           sessionID,
           agent: lastUser.agent,

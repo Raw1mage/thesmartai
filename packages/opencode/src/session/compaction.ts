@@ -29,6 +29,20 @@ export namespace SessionCompaction {
   }
 
   const COMPACTION_BUFFER = 20_000
+  const DEFAULT_HEADROOM = 8_000
+  const DEFAULT_COOLDOWN_ROUNDS = 8
+  const EMERGENCY_CEILING = 2_000
+
+  // Per-session cooldown tracking to prevent compaction oscillation
+  const cooldownState = new Map<string, { lastCompactionRound: number }>()
+
+  export function recordCompaction(sessionID: string, round: number) {
+    cooldownState.set(sessionID, { lastCompactionRound: round })
+  }
+
+  export function getCooldownState(sessionID: string) {
+    return cooldownState.get(sessionID)
+  }
 
   export async function inspectBudget(input: { tokens: MessageV2.Assistant["tokens"]; model: Provider.Model }) {
     const config = await Config.get()
@@ -37,15 +51,19 @@ export namespace SessionCompaction {
       input.tokens.total ||
       input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
 
+    const headroom = config.compaction?.headroom ?? DEFAULT_HEADROOM
     const reserved =
       config.compaction?.reserved ??
-      Math.min(
-        COMPACTION_BUFFER,
-        ProviderTransform.maxOutputTokens(
-          input.model.providerId,
-          {},
-          input.model.limit.output || 32_000,
-          SessionPrompt.OUTPUT_TOKEN_MAX,
+      Math.max(
+        headroom,
+        Math.min(
+          COMPACTION_BUFFER,
+          ProviderTransform.maxOutputTokens(
+            input.model.providerId,
+            {},
+            input.model.limit.output || 32_000,
+            SessionPrompt.OUTPUT_TOKEN_MAX,
+          ),
         ),
       )
 
@@ -59,6 +77,11 @@ export namespace SessionCompaction {
           SessionPrompt.OUTPUT_TOKEN_MAX,
         )
 
+    // Emergency ceiling: hard limit that ignores cooldown
+    const emergencyCeiling = input.model.limit.input
+      ? input.model.limit.input - EMERGENCY_CEILING
+      : context - EMERGENCY_CEILING
+
     return {
       auto: config.compaction?.auto !== false,
       context,
@@ -67,11 +90,47 @@ export namespace SessionCompaction {
       usable,
       count,
       overflow: config.compaction?.auto !== false && context !== 0 && count >= usable,
+      emergency: config.compaction?.auto !== false && context !== 0 && count >= emergencyCeiling,
+      cooldownRounds: config.compaction?.cooldownRounds ?? DEFAULT_COOLDOWN_ROUNDS,
     }
   }
 
-  export async function isOverflow(input: { tokens: MessageV2.Assistant["tokens"]; model: Provider.Model }) {
-    return (await inspectBudget(input)).overflow
+  export async function isOverflow(input: {
+    tokens: MessageV2.Assistant["tokens"]
+    model: Provider.Model
+    sessionID?: string
+    currentRound?: number
+  }) {
+    const budget = await inspectBudget(input)
+    if (!budget.overflow) return false
+
+    // Emergency: always compact regardless of cooldown
+    if (budget.emergency) {
+      log.info("emergency compaction triggered", {
+        sessionID: input.sessionID,
+        count: budget.count,
+        emergencyCeiling: budget.context - EMERGENCY_CEILING,
+      })
+      return true
+    }
+
+    // Cooldown check: skip compaction if too soon after last one
+    if (input.sessionID && input.currentRound !== undefined) {
+      const state = cooldownState.get(input.sessionID)
+      if (state) {
+        const roundsSince = input.currentRound - state.lastCompactionRound
+        if (roundsSince < budget.cooldownRounds) {
+          log.info("compaction skipped (cooldown)", {
+            sessionID: input.sessionID,
+            roundsSince,
+            cooldownRounds: budget.cooldownRounds,
+          })
+          return false
+        }
+      }
+    }
+
+    return true
   }
 
   export const PRUNE_MINIMUM = 20_000

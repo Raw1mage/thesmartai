@@ -1372,6 +1372,22 @@ export namespace Config {
             .min(0)
             .optional()
             .describe("Token buffer for compaction. Leaves enough window to avoid overflow during compaction."),
+          headroom: z
+            .number()
+            .int()
+            .min(2000)
+            .optional()
+            .describe(
+              "Minimum tokens to keep free before triggering compaction (default: 8000). Lower values delay compaction longer, preserving LLM cache but risking tighter context.",
+            ),
+          cooldownRounds: z
+            .number()
+            .int()
+            .min(0)
+            .optional()
+            .describe(
+              "Minimum user-visible rounds between compactions (default: 8). Prevents compaction oscillation that destroys LLM server-side cache.",
+            ),
         })
         .optional(),
       experimental: z

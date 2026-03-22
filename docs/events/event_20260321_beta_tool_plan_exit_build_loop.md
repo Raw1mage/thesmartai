@@ -162,6 +162,42 @@ The requirement was later clarified with hard constraints:
 - Beta/dev MCP still remains as compatibility scaffolding and has not yet been physically removed; removing it would be a separate follow-up change rather than a missing builder-native capability.
 - If broader regression confidence is needed, the next step is to expand validation beyond the focused beta/planner suite to cover any surrounding builder workflows that may consume the new mission/routine-git metadata.
 
+## Post-Implementation RCA: Missing Builder Enforcement
+
+### Symptom
+
+- In real operation after `plan_exit`, AI still did not reliably treat beta worktree / beta branch as the default implementation surface.
+- The observed behavior was that AI could still describe beta workflow as if it were optional or not hardcoded, even though builder-native beta capabilities had already been implemented.
+
+### Root Cause
+
+- This change set internalized **beta workflow capability** into builder runtime (`mission.beta`, bootstrap, routine git, syncback, remediation, finalize), but it did **not** yet hardwire a single runtime gate that forces all beta-enabled build implementation work onto the beta worktree.
+- `plan_enter` has strong enforcement because it is a single tool entrypoint with immediate fail-fast control over planner root behavior.
+- Builder execution is different: it spans `plan_exit` -> mission metadata -> `workflow-runner` continuations -> delegated coding/testing work. Without a dedicated execution-surface resolver in that chain, beta workflow remains a capability the runtime can use, not an unavoidable routing decision.
+- Current implementation hardens bootstrap/validation/finalize/remediation/routine-git stages, but the general **implementation surface routing** for build-mode coding was not elevated to the same first-class hardcoded boundary.
+
+### Why `plan_enter` Has Stronger Force Than Builder Today
+
+- `plan_enter` is a single hard tool boundary in `packages/opencode/src/tool/plan.ts`.
+- Builder is currently a multi-stage orchestration surface spread across session mission state, runner continuations, and subagent delegation.
+- Because of that architecture, builder needs an explicit runtime enforcement layer; otherwise models can still reason from prompt/context instead of being routed by the system.
+
+### Required Fix Direction
+
+1. Add a **beta execution gate** before build continuations proceed when `mission.beta.enabled === true`.
+2. Resolve a single authoritative execution contract:
+   - implementation worktree = `mission.beta.betaPath`
+   - implementation branch = `mission.beta.branchName`
+   - docs/specs/events writeback = authoritative main repo/worktree
+3. Apply this routing before coding/testing delegation rather than relying on agent interpretation.
+4. Fail fast if beta-enabled implementation attempts to run from the main repo instead of the beta worktree.
+5. Add end-to-end behavior validation proving that after `plan_exit`, beta-enabled build execution actually uses beta worktree as the default implementation surface.
+
+### Status
+
+- This RCA identifies a remaining **behavior-enforcement gap**, not a missing low-level beta capability.
+- A follow-up change is required if the product goal is that beta-enabled builder execution becomes an actual hard default rather than a metadata-aware capability.
+
 ## Promotion
 
 - This active dated plan package has been manually closed and promoted from `/plans/20260321_beta-tool/` into the formalized spec root `/specs/build_beta/` per user request.
