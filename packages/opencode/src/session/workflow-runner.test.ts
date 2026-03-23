@@ -90,8 +90,44 @@ describe("Session workflow runner", () => {
       ),
       todo: { id: "a", content: "next", status: "pending", priority: "high" },
     })
-    expect(decision.text).toContain("You are now in autonomous build-mode.")
-    expect(decision.text).toContain("delegate ALL implementation via Task tool")
+    expect(decision.text).toContain("You are now in autonomous build-mode with an approved planner handoff.")
+    expect(decision.text).toContain("Execution Ledger:")
+  })
+
+  it("injects beta-workflow loading contract for beta-enabled missions", () => {
+    const decision = evaluateAutonomousContinuation({
+      session: {
+        parentID: undefined,
+        mission: {
+          ...approvedMission(),
+          beta: {
+            branchName: "feature/test-beta",
+            baseBranch: "cms",
+            repoPath: "/repo",
+            mainWorktreePath: "/repo",
+            betaPath: "/repo-beta",
+            runtimePolicy: "manual",
+          },
+        } as any,
+        workflow: {
+          ...Session.defaultWorkflow(1),
+          autonomous: {
+            ...Session.defaultWorkflow(1).autonomous,
+            enabled: true,
+            maxContinuousRounds: 3,
+          },
+          state: "waiting_user",
+        },
+        time: { created: 1, updated: 1 },
+      },
+      todos: [{ id: "a", content: "next", status: "pending", priority: "high" }],
+      roundCount: 0,
+    })
+
+    expect(decision).toMatchObject({ continue: true, reason: "todo_pending" })
+    if (!decision.continue) throw new Error("expected continue decision")
+    expect(decision.text).toContain('FIRST: Load skill "beta-workflow"')
+    expect(decision.text).toContain("do not implement on the authoritative main repo/worktree or base branch")
   })
 
   it("uses planner contract to continue in-progress work before starting new todos", () => {
@@ -134,7 +170,7 @@ describe("Session workflow runner", () => {
     })
     expect(result.type).toBe("continue")
     if (result.type !== "continue") throw new Error("expected continue action")
-    expect(result.text).toContain("You are now in autonomous build-mode.")
+    expect(result.text).toContain("You are now in autonomous build-mode with an approved planner handoff.")
   })
 
   it("stops autonomous enqueue when subagent task work is still active", () => {
@@ -683,7 +719,7 @@ describe("Session workflow runner", () => {
         status: { type: "idle" },
         inFlight: false,
       }),
-    ).toBe(false)
+    ).toBe(true)
   })
 
   it("allows same-owner lease recovery but blocks foreign active lease", () => {
@@ -1581,12 +1617,17 @@ describe("Session workflow runner", () => {
         expect(blockedInspection).toMatchObject({
           hasPendingContinuation: true,
           status: "idle",
-          resumable: false,
-          blockedReasons: ["waiting_user_non_resumable:wait_subagent"],
+          resumable: true,
+          blockedReasons: [],
           pending: {
             sessionID: blocked.id,
             messageID: "msg_blocked",
             roundCount: 2,
+            reason: "todo_pending",
+          },
+          health: {
+            state: "waiting_user",
+            stopReason: "wait_subagent",
           },
         })
 
@@ -1675,17 +1716,13 @@ describe("Session workflow runner", () => {
           action: "resume_once",
         })
 
-        expect(result).toMatchObject({
-          action: "resume_once",
-          applied: false,
-          reason: "not_resumable",
-          blockedReasons: ["waiting_user_non_resumable:wait_subagent"],
-          inspection: {
-            hasPendingContinuation: true,
-            resumable: false,
-            blockedReasons: ["waiting_user_non_resumable:wait_subagent"],
-          },
-        })
+        expect(result.action).toBe("resume_once")
+        expect(result.applied).toBe(true)
+        expect(result.reason).toBe("resumed")
+        expect(result.blockedReasons).toBeUndefined()
+        expect(result.inspection.hasPendingContinuation).toBe(true)
+        expect(result.inspection.resumable).toBe(false)
+        expect(result.inspection.blockedReasons).toContain("in_flight")
       },
     })
   })

@@ -18,6 +18,12 @@ Sequencing:
 - Complete the current in-progress todo before starting new work.
 - Start the next dependency-ready todo only when no active in-progress todo exists.
 
+Beta-enabled build runs:
+- When mission metadata indicates beta workflow, FIRST load skill `beta-workflow` before acting.
+- Use the beta worktree/branch as the only implementation surface.
+- Never use the authoritative main repo/worktree or base branch as the implementation surface.
+- Keep `/plans`, `/specs`, and `docs/events` in the authoritative main repo/worktree.
+
 Do not:
 - invent new scope
 - silently bypass stop gates

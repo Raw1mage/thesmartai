@@ -39,6 +39,18 @@ function applyRunnerContract(text: string) {
   return `${RUNNER_CONTRACT.trim()}\n\n${text}`
 }
 
+function applyBetaWorkflowContract(input: { text: string; session: Pick<Session.Info, "mission"> }) {
+  const mission = input.session.mission as (Session.Info["mission"] & { beta?: unknown }) | undefined
+  if (!mission?.beta) return applyRunnerContract(input.text)
+  return applyRunnerContract(
+    [
+      'FIRST: Load skill "beta-workflow" before continuing beta-enabled build execution.',
+      "Use only the builder-approved beta worktree/branch as the implementation surface; do not implement on the authoritative main repo/worktree or base branch.",
+      input.text,
+    ].join("\n\n"),
+  )
+}
+
 /**
  * Plan-trusting mode: when a session has a fully approved mission
  * (openspec_compiled_plan + implementation_spec + executionReady),
@@ -61,8 +73,7 @@ export function isPlanTrusting(mission: Session.Info["mission"]): boolean {
 export function isPlanTrustingTight(session: Pick<Session.Info, "workflow" | "mission">): boolean {
   return (
     // autonomous is always-on
-    !!session.mission?.executionReady &&
-    true // hasPendingTodos checked separately via getNextActionableTodo
+    !!session.mission?.executionReady && true // hasPendingTodos checked separately via getNextActionableTodo
   )
 }
 
@@ -75,10 +86,7 @@ export type HardBlocker = "abort_signal" | "kill_switch_active" | "user_message_
  * User message preemption is handled by the while(true) loop itself:
  * new user message → loop re-reads messages → lastUser.id > lastAssistant.id → natural flow.
  */
-export async function checkHardBlockers(
-  sessionID: string,
-  abort: AbortSignal,
-): Promise<HardBlocker | null> {
+export async function checkHardBlockers(sessionID: string, abort: AbortSignal): Promise<HardBlocker | null> {
   if (abort.aborted) return "abort_signal"
 
   // Kill-switch: check if globally active
@@ -735,8 +743,8 @@ export function planAutonomousNextAction(input: {
   const current = Todo.nextActionableTodo(input.todos)
   const trigger = buildContinuationTrigger({
     todo: current,
-    textForPending: applyRunnerContract(AUTONOMOUS_CONTINUE_TEXT),
-    textForInProgress: applyRunnerContract(AUTONOMOUS_PROGRESS_TEXT),
+    textForPending: applyBetaWorkflowContract({ text: AUTONOMOUS_CONTINUE_TEXT, session: input.session }),
+    textForInProgress: applyBetaWorkflowContract({ text: AUTONOMOUS_PROGRESS_TEXT, session: input.session }),
   })
 
   // If no actionable todo, we still need to run gates first (they may stop earlier)
@@ -917,7 +925,10 @@ export async function decideAutonomousContinuation(input: { sessionID: string; r
   // we just need to keep the loop alive so the LLM processes it.
   if (!decision.continue) {
     const pendingEntry = await RunQueue.peek(input.sessionID)
-    if (pendingEntry && (pendingEntry.triggerType === "task_completion" || pendingEntry.triggerType === "task_failure")) {
+    if (
+      pendingEntry &&
+      (pendingEntry.triggerType === "task_completion" || pendingEntry.triggerType === "task_failure")
+    ) {
       // Consume the queue entry so the supervisor doesn't double-resume
       await RunQueue.remove(input.sessionID)
       return {
@@ -1351,14 +1362,15 @@ export async function enqueueAutonomousContinue(input: {
   }
 }) {
   const now = Date.now()
+  const session = await Session.get(input.sessionID)
   const text =
     input.text ??
     (input.delegation && input.delegation.role !== "generic"
-      ? applyRunnerContract(
-          `Continue with the next planned ${input.delegation.role} step: ${input.delegation.todoContent}`,
-        )
-      : applyRunnerContract(AUTONOMOUS_CONTINUE_TEXT))
-  const session = await Session.get(input.sessionID)
+      ? applyBetaWorkflowContract({
+          text: `Continue with the next planned ${input.delegation.role} step: ${input.delegation.todoContent}`,
+          session,
+        })
+      : applyBetaWorkflowContract({ text: AUTONOMOUS_CONTINUE_TEXT, session }))
   const missionConsumption = session.mission ? await consumeMissionArtifacts(session.mission) : undefined
   if (session.mission && missionConsumption && !missionConsumption.ok) {
     throw new Error(`mission_not_consumable:${missionConsumption.issues.join("; ")}`)

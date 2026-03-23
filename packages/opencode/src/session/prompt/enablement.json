@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "last_updated": "2026-03-21",
+  "last_updated": "2026-03-23",
   "purpose": "Single source of truth for tool/skill/MCP capability discovery and routing.",
   "usage_contract": {
     "prompt_injection": "Inject a concise snapshot from this registry into SYSTEM prompt context.",
@@ -90,6 +90,7 @@
   "skills": {
     "bundled_templates": [
       "agent-workflow",
+      "beta-workflow",
       "bun-package-dev",
       "agent-creator",
       "bun-file-io",

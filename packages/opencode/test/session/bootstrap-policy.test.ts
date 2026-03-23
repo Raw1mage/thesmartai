@@ -46,4 +46,20 @@ describe("autorunner bootstrap policy", () => {
     expect(templateSkill).toContain("Delegation candidates")
     expect(templateSkill).toContain("narration 是 side-channel visibility")
   })
+
+  test("beta-workflow skill is registered and mirrored in template/runtime locations", async () => {
+    const templateSkill = await read("templates/skills/beta-workflow/SKILL.md")
+    const runtimeSkill = await Bun.file(
+      path.join(process.env.HOME ?? "/home/pkcs12", ".local/share/opencode/skills/beta-workflow/SKILL.md"),
+    ).text()
+    const runtimeEnablement = await read("packages/opencode/src/session/prompt/enablement.json")
+    const templateEnablement = await read("templates/prompts/enablement.json")
+
+    expect(templateSkill).toContain("name: beta-workflow")
+    expect(templateSkill).toContain("mission.beta")
+    expect(templateSkill).toContain("Do not implement from the authoritative main repo/worktree")
+    expect(runtimeSkill).toBe(templateSkill)
+    expect(runtimeEnablement).toContain('"beta-workflow"')
+    expect(templateEnablement).toContain('"beta-workflow"')
+  })
 })
