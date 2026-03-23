@@ -183,9 +183,43 @@
 - Verified merged source roots no longer exist as top-level `/specs/*` roots.
 - Architecture Sync: Verified (No doc changes) — `specs/architecture.md` documents lifecycle and system boundaries rather than transient taxonomy names, and this regrouping did not change module boundaries, data flow, or runtime contracts.
 
+## Final-pass Cleanup
+
+- User first asked to consolidate apply-patch duplicates into a semantic `/specs` root, but direct validation found conflicting evidence in `docs/events/event_20260322_apply_patch_observability_plan.md`: the earlier formal promotion had been rolled back and the package explicitly returned to `/plans/20260322_apply-patch-tool-tool-call/` until real mainline implementation lands.
+- User then approved the corrected posture: keep apply-patch under `/plans`, consolidate duplicate plan roots only, and do not create `specs/apply-patch-observability/`.
+- Duplicate apply-patch roots were consolidated into:
+  - `plans/20260322_apply-patch-tool-tool-call/`
+- Removed duplicate root:
+  - `plans/20260322_plan-tool-i20260322-apply-patch-tool-tool-call/`
+- A proposed `prompt_interface` merge was re-audited before execution. Validation showed:
+  - `specs/20260317_dialog-optimization/` is actually a TUI message pagination / progressive loading spec, not prompt-interface taxonomy.
+  - `specs/system-prompt/` is primarily a source-derived architecture/reference inventory.
+  - `specs/kill-switch/` remains a strong independent semantic spec.
+  - `specs/telemetry/context-sidebar-optimization/` is the nearest prompt/sidebar UI slice, but it remains subordinate to telemetry boundaries rather than justifying a new root by itself.
+- Result: no `specs/prompt_interface/` root was created.
+- Final approved audited-root reorganization executed:
+  - `specs/20260317_scheduler-persistence-daemon/` -> `plans/20260317_scheduler-persistence-daemon/`
+  - `specs/20260318_webapp-provider-gemini-cli-api-key-account-name-account-name-ge/` -> absorbed into `plans/account-management/sources/20260318_webapp-provider-gemini-cli-api-key-account-name-account-name-ge/`
+  - `specs/20260319_tui-thin-client-attach/` -> absorbed into `specs/agent_framework/sources/20260319_tui-thin-client-attach/`
+
+## Final-pass Validation
+
+- Verified only one apply-patch plan root remains under `/plans`:
+  - `plans/20260322_apply-patch-tool-tool-call/`
+- Verified duplicate apply-patch root no longer exists:
+  - `plans/20260322_plan-tool-i20260322-apply-patch-tool-tool-call/`
+- Verified no erroneous `specs/apply-patch-observability/` root remains.
+- Verified the three audited source roots no longer exist at their former `/specs` paths.
+- Verified destination roots now contain preserved material:
+  - `plans/20260317_scheduler-persistence-daemon/`
+  - `plans/account-management/sources/`
+  - `specs/agent_framework/sources/20260319_tui-thin-client-attach/`
+- Architecture Sync: Verified (No doc changes) — `specs/architecture.md` already captures the repository lifecycle contract (`/plans` for active dated packages, semantic `/specs` for formalized specs) and the final pass only corrected taxonomy/provenance placement without changing module boundaries, data flow, or runtime contracts.
+
 ## Remaining
 
 - `plans/shared-context-structure/` still needs an explicit future decision: remain a plans-only exception, merge into an existing semantic root, or be retired.
+- `specs/system-prompt/` remains better treated as reference/architecture inventory than as a feature spec; if desired later, it should be normalized by documentation strategy rather than forced into prompt-interface taxonomy.
 - New canonical roots may still warrant later content-level flattening if you want fewer preserved `sources/` subtrees:
   - `specs/builder_framework/`
   - `specs/agent_framework/`

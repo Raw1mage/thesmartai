@@ -60,3 +60,13 @@
 - [x] 9.4 Merge `specs/autorunner/` + `specs/continuous-orchestration/` + `specs/subagents/` + `specs/20260315_openclaw_reproduction/` into `specs/agent_framework/`
 - [x] 9.5 Update `docs/events/event_20260322_specs_reorganization.md` with fourth-pass regrouping and verification
 - [x] 9.6 Record architecture sync result for the regrouping pass
+
+## 10. Final taxonomy cleanup
+
+- [x] 10.1 Consolidate duplicate apply-patch plan roots into `/plans/20260322_apply-patch-tool-tool-call`
+- [x] 10.2 Re-evaluate proposed `prompt_interface` merge and reject incorrect source roots (`20260317_dialog-optimization`, `kill-switch`)
+- [x] 10.3 Move `specs/20260317_scheduler-persistence-daemon/` into `/plans/20260317_scheduler-persistence-daemon/`
+- [x] 10.4 Fold `specs/20260318_webapp-provider-gemini-cli-api-key-account-name-account-name-ge/` into `/plans/account-management/`
+- [x] 10.5 Fold `specs/20260319_tui-thin-client-attach/` into `specs/agent_framework/`
+- [x] 10.6 Update `docs/events/event_20260322_specs_reorganization.md` with final-pass cleanup and verification
+- [x] 10.7 Record architecture sync result for the final pass

@@ -184,7 +184,7 @@ if (process.env.NODE_ENV !== "test") {
       dstRoot: bundledSkillsDst,
       templatesRoot: templatesDir,
       dataRoot: Global.Path.data,
-      version: "1",
+      version: "2",
     })
   }
 }
@@ -207,8 +207,8 @@ if (version !== CACHE_VERSION) {
       ),
     )
   } catch (e) {
-      console.warn("Failed to clear cache during version migration", e)
-    }
+    console.warn("Failed to clear cache during version migration", e)
+  }
   await Bun.file(path.join(Global.Path.cache, "version")).write(CACHE_VERSION)
 }
 
