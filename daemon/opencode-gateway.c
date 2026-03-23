@@ -1,17 +1,20 @@
 /*
  * opencode-gateway — C root daemon
  *
- * Architecture:
+ * Architecture (post-hardening):
  *   - Binds TCP :1080 (configurable via OPENCODE_GATEWAY_PORT)
- *   - Serves login.html on GET /
- *   - Accepts POST /auth/login → PAM auth → signs JWT cookie
- *   - JWT valid → finds/spawns per-user daemon → splice() proxy
+ *   - Non-blocking accept + per-connection HTTP buffering (PendingRequest)
+ *   - Tagged EpollCtx per fd (LISTEN / PENDING / SPLICE_CLIENT / SPLICE_DAEMON / AUTH_NOTIFY)
+ *   - Thread-per-auth PAM (pthread + eventfd notification)
+ *   - JWT with file-backed persistent secret
+ *   - Per-IP login rate limiting
+ *   - splice() proxy with proper lifecycle (EPOLL_CTL_DEL before close, closed flag)
  *
- * @event_20260319_daemonization Phase α
+ * @event_20260319_daemonization Phase α hardening
  *
  * Build:
  *   gcc -O2 -Wall -D_GNU_SOURCE -o opencode-gateway opencode-gateway.c \
- *       -lpam -lpam_misc -lcrypto
+ *       -lpam -lpam_misc -lcrypto -lpthread
  *
  * Requires: libpam-dev, libssl-dev
  */
@@ -24,10 +27,12 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <time.h>
+#include <pthread.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <sys/sendfile.h>
@@ -50,6 +55,15 @@
 #define JWT_EXP_SECONDS       (8 * 3600)   /* 8 hours */
 #define DAEMON_WAIT_MS        15000         /* max wait for per-user daemon socket */
 #define MAX_USERS             64
+#define MAX_CONNS             1024
+#define MAX_PENDING           512
+#define PENDING_BUF_SIZE      8192
+#define PENDING_TIMEOUT_SEC   30
+#define RATE_LIMIT_MAX        5            /* max failures per window */
+#define RATE_LIMIT_WINDOW     60           /* seconds */
+#define RATE_LIMIT_TABLE_SIZE 256
+#define MAX_AUTH_QUEUE        32
+#define MAX_OPENCODE_ARGV     32
 
 /* ─── Logging ────────────────────────────────────────────────────── */
 #define LOG(level, fmt, ...) \
@@ -62,6 +76,54 @@
 #define LOGI(fmt, ...) LOG("INFO ", fmt, ##__VA_ARGS__)
 #define LOGW(fmt, ...) LOG("WARN ", fmt, ##__VA_ARGS__)
 #define LOGE(fmt, ...) LOG("ERROR", fmt, ##__VA_ARGS__)
+
+/* ─── Forward declarations ──────────────────────────────────────── */
+typedef struct Connection Connection;
+typedef struct PendingRequest PendingRequest;
+
+/* ─── EpollCtx: tagged context for every epoll-monitored fd ─────── */
+typedef enum {
+    ECTX_LISTEN,          /* listen socket */
+    ECTX_PENDING,         /* accumulating HTTP request */
+    ECTX_SPLICE_CLIENT,   /* splice proxy: client side */
+    ECTX_SPLICE_DAEMON,   /* splice proxy: daemon side */
+    ECTX_AUTH_NOTIFY       /* eventfd for PAM thread completion */
+} EpollCtxType;
+
+typedef struct {
+    EpollCtxType type;
+    union {
+        PendingRequest *pending;
+        Connection     *conn;
+    };
+} EpollCtx;
+
+/* ─── PendingRequest: per-connection HTTP accumulation buffer ───── */
+struct PendingRequest {
+    int       fd;
+    EpollCtx  ectx;            /* embedded, points back to self */
+    char      buf[PENDING_BUF_SIZE];
+    size_t    buf_len;
+    time_t    accept_time;
+    uint32_t  peer_ip;          /* for rate limiting */
+    int       in_use;
+};
+
+static PendingRequest g_pending[MAX_PENDING];
+
+/* ─── Connection: splice proxy state with lifecycle guard ────────── */
+struct Connection {
+    int       client_fd;
+    int       daemon_fd;
+    int       pipe_c2d[2];     /* client → daemon splice pipe */
+    int       pipe_d2c[2];     /* daemon → client splice pipe */
+    int       closed;          /* guard for in-flight epoll events */
+    EpollCtx  ectx_client;     /* embedded, for client_fd */
+    EpollCtx  ectx_daemon;     /* embedded, for daemon_fd */
+};
+
+static Connection g_conns[MAX_CONNS];
+static int        g_nconns = 0;
 
 /* ─── Per-user daemon registry ───────────────────────────────────── */
 typedef enum { DAEMON_NONE, DAEMON_STARTING, DAEMON_READY, DAEMON_DEAD } DaemonState;
@@ -78,26 +140,44 @@ typedef struct {
 static DaemonInfo g_daemons[MAX_USERS];
 static int        g_ndaemons = 0;
 
-/* ─── Connection tracking ────────────────────────────────────────── */
+/* ─── Rate limit table ──────────────────────────────────────────── */
 typedef struct {
-    int  client_fd;
-    int  daemon_fd;
-    int  pipe_c2d[2];  /* client → daemon splice pipe */
-    int  pipe_d2c[2];  /* daemon → client splice pipe */
-} Connection;
+    uint32_t ip;
+    int      failures;
+    time_t   window_start;
+} RateLimitEntry;
 
-#define MAX_CONNS 1024
-static Connection g_conns[MAX_CONNS];
-static int        g_nconns = 0;
+static RateLimitEntry g_rate_limit[RATE_LIMIT_TABLE_SIZE];
+
+/* ─── PAM auth thread queue ─────────────────────────────────────── */
+typedef struct {
+    int       client_fd;
+    char      username[256];
+    char      password[256];
+    int       is_secure;
+    uint32_t  peer_ip;
+    int       result;          /* 0=fail, 1=success */
+    int       done;
+} AuthJob;
+
+static AuthJob       g_auth_queue[MAX_AUTH_QUEUE];
+static int           g_auth_queue_head = 0;
+static int           g_auth_queue_tail = 0;
+static pthread_mutex_t g_auth_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* ─── Global state ───────────────────────────────────────────────── */
-static int    g_listen_fd   = -1;
-static int    g_epoll_fd    = -1;
-static int    g_running     = 1;
-static uint8_t g_jwt_secret[JWT_SECRET_LEN];
-static char   g_login_html[65536];
-static size_t g_login_html_len = 0;
-static char   g_opencode_bin[512] = "/usr/local/bin/opencode";
+static int       g_listen_fd     = -1;
+static int       g_epoll_fd      = -1;
+static int       g_auth_eventfd  = -1;
+static int       g_running       = 1;
+static uint8_t   g_jwt_secret[JWT_SECRET_LEN];
+static char      g_login_html[65536];
+static size_t    g_login_html_len = 0;
+static char      g_opencode_bin[512] = "/usr/local/bin/opencode";
+static char     *g_opencode_argv[MAX_OPENCODE_ARGV]; /* pre-parsed argv */
+static int       g_opencode_argc = 0;
+static EpollCtx  g_listen_ectx;
+static EpollCtx  g_auth_ectx;
 
 /* ─── Signal handling ────────────────────────────────────────────── */
 static void on_sigterm(int sig) { (void)sig; g_running = 0; }
@@ -119,7 +199,7 @@ static void on_sigchld(int sig) {
     errno = saved;
 }
 
-/* ─── Utility: set fd non-blocking ──────────────────────────────── */
+/* ─── Utility ────────────────────────────────────────────────────── */
 static int set_nonblock(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0) return -1;
@@ -131,7 +211,6 @@ static void reset_daemon_state(DaemonInfo *d) {
     d->state = DAEMON_NONE;
 }
 
-/* ─── Utility: simple URL-decode (in-place) ─────────────────────── */
 static void url_decode(char *dst, const char *src, size_t dstlen) {
     size_t i = 0;
     while (*src && i + 1 < dstlen) {
@@ -149,8 +228,62 @@ static void url_decode(char *dst, const char *src, size_t dstlen) {
     dst[i] = '\0';
 }
 
-/* ─── JWT (HMAC-SHA256, minimal subset) ─────────────────────────── */
-/* Base64url encoding (no padding) */
+/* ─── OPENCODE_BIN argv parsing (DD-8: no sh -c after setuid) ──── */
+static void parse_opencode_argv(void) {
+    char tmp[512];
+    strncpy(tmp, g_opencode_bin, sizeof(tmp) - 1);
+    tmp[sizeof(tmp) - 1] = '\0';
+
+    g_opencode_argc = 0;
+    char *saveptr = NULL;
+    char *tok = strtok_r(tmp, " \t", &saveptr);
+    while (tok && g_opencode_argc < MAX_OPENCODE_ARGV - 4) { /* reserve 3 for "serve --unix-socket <path>" + NULL */
+        g_opencode_argv[g_opencode_argc] = strdup(tok);
+        if (!g_opencode_argv[g_opencode_argc]) break;
+        g_opencode_argc++;
+        tok = strtok_r(NULL, " \t", &saveptr);
+    }
+}
+
+/* ─── Runtime path detection (DD-7: WSL2 environment adaptation) ── */
+/*
+ * Resolves the runtime directory for a given uid.
+ * Priority: /run/user/<uid> → $XDG_RUNTIME_DIR → /tmp/opencode-<uid>
+ * Writes the selected path to out (max outlen bytes) and logs the choice.
+ */
+static void resolve_runtime_dir(uid_t uid, char *out, size_t outlen) {
+    struct stat st;
+    char candidate[128];
+
+    /* 1. Standard systemd path */
+    snprintf(candidate, sizeof(candidate), "/run/user/%u", uid);
+    if (stat(candidate, &st) == 0 && S_ISDIR(st.st_mode)) {
+        snprintf(out, outlen, "%s", candidate);
+        return;
+    }
+
+    /* 2. XDG_RUNTIME_DIR if set and valid */
+    const char *xdg = getenv("XDG_RUNTIME_DIR");
+    if (xdg && xdg[0] && stat(xdg, &st) == 0 && S_ISDIR(st.st_mode)) {
+        LOGI("runtime dir: /run/user/%u not available, using XDG_RUNTIME_DIR=%s", uid, xdg);
+        snprintf(out, outlen, "%s", xdg);
+        return;
+    }
+
+    /* 3. Fallback: /tmp/opencode-<uid> (mkdir 700) */
+    snprintf(candidate, sizeof(candidate), "/tmp/opencode-%u", uid);
+    if (stat(candidate, &st) != 0) {
+        if (mkdir(candidate, 0700) == 0) {
+            LOGI("runtime dir: created fallback %s", candidate);
+        } else {
+            LOGW("runtime dir: failed to create %s: %s", candidate, strerror(errno));
+        }
+    }
+    LOGI("runtime dir: /run/user/%u not available, using fallback %s", uid, candidate);
+    snprintf(out, outlen, "%s", candidate);
+}
+
+/* ─── JWT (HMAC-SHA256) ─────────────────────────────────────────── */
 static void b64url_encode(const uint8_t *in, size_t inlen, char *out, size_t *outlen) {
     static const char tbl[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     size_t o = 0;
@@ -164,7 +297,6 @@ static void b64url_encode(const uint8_t *in, size_t inlen, char *out, size_t *ou
         out[o++] = (i+2 < inlen) ? tbl[v & 0x3f] : '=';
     }
     out[o] = '\0';
-    /* convert to base64url */
     for (size_t k = 0; k < o; k++) {
         if (out[k] == '+') out[k] = '-';
         else if (out[k] == '/') out[k] = '_';
@@ -189,10 +321,7 @@ static int b64url_decode(const char *in, uint8_t *out, size_t outcap, size_t *ou
     int decoded = EVP_DecodeBlock(out, (const unsigned char *)tmp, (int)(len + pad));
     if (decoded < 0) return 0;
     size_t actual = (size_t)decoded;
-    while (pad > 0 && actual > 0) {
-        actual--;
-        pad--;
-    }
+    while (pad > 0 && actual > 0) { actual--; pad--; }
     if (actual >= outcap) return 0;
     out[actual] = '\0';
     if (outlen) *outlen = actual;
@@ -218,20 +347,67 @@ static int json_extract_long(const char *json, const char *key, long *out) {
     char pattern[64];
     snprintf(pattern, sizeof(pattern), "\"%s\":", key);
     char *start = strstr(json, pattern);
-    char *endptr = NULL;
-    long value;
     if (!start) return 0;
     start += strlen(pattern);
+    char *endptr = NULL;
     errno = 0;
-    value = strtol(start, &endptr, 10);
+    long value = strtol(start, &endptr, 10);
     if (errno != 0 || endptr == start) return 0;
     *out = value;
     return 1;
 }
 
+/* ─── JWT secret persistence (DD-5) ─────────────────────────────── */
+static int jwt_load_or_create_secret(void) {
+    const char *key_path = getenv("OPENCODE_JWT_KEY_PATH");
+    if (!key_path) key_path = "/run/opencode-gateway/jwt.key";
+
+    /* Try to read existing key */
+    int fd = open(key_path, O_RDONLY);
+    if (fd >= 0) {
+        ssize_t n = read(fd, g_jwt_secret, JWT_SECRET_LEN);
+        close(fd);
+        if (n == JWT_SECRET_LEN) {
+            LOGI("loaded JWT secret from %s", key_path);
+            return 1;
+        }
+        LOGW("JWT key file %s has wrong size (%zd), regenerating", key_path, n);
+    }
+
+    /* Generate new secret */
+    if (RAND_bytes(g_jwt_secret, JWT_SECRET_LEN) != 1) {
+        LOGE("RAND_bytes failed");
+        return 0;
+    }
+
+    /* Ensure parent directory exists */
+    char dir[256];
+    strncpy(dir, key_path, sizeof(dir) - 1);
+    dir[sizeof(dir) - 1] = '\0';
+    char *slash = strrchr(dir, '/');
+    if (slash && slash != dir) {
+        *slash = '\0';
+        mkdir(dir, 0700);
+    }
+
+    /* Write key file (root-owned, 0600) */
+    fd = open(key_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) {
+        LOGW("cannot write JWT key to %s: %s (using ephemeral secret)", key_path, strerror(errno));
+        return 1; /* proceed with ephemeral secret */
+    }
+    ssize_t written = write(fd, g_jwt_secret, JWT_SECRET_LEN);
+    close(fd);
+    if (written == JWT_SECRET_LEN) {
+        LOGI("generated and saved JWT secret to %s", key_path);
+    } else {
+        LOGW("partial write to %s (%zd bytes)", key_path, written);
+    }
+    return 1;
+}
+
 static void jwt_sign(const char *payload, char *out_token, size_t toklen) {
-    /* header.payload */
-    const char *header = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"; /* {"alg":"HS256","typ":"JWT"} */
+    const char *header = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
     char pay64[512];
     size_t pay64len;
     b64url_encode((const uint8_t *)payload, strlen(payload), pay64, &pay64len);
@@ -252,25 +428,18 @@ static void jwt_sign(const char *payload, char *out_token, size_t toklen) {
 }
 
 static int jwt_verify(const char *token, char *out_username, uid_t *out_uid) {
-    char buf[1024];
-    char msg[1024];
-    char payload_json[512];
-    uint8_t payload_raw[512];
-    uint8_t sig[32];
+    char buf[1024], msg[1024], payload_json[512];
+    uint8_t payload_raw[512], sig[32];
     unsigned int siglen = 32;
     char sig64[64];
-    size_t sig64len;
-    size_t payload_len;
-    long exp;
-    char *dot1;
-    char *dot2;
-    struct passwd *pw;
+    size_t sig64len, payload_len;
+    long exp_val;
 
     strncpy(buf, token, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
-    dot1 = strchr(buf, '.');
+    char *dot1 = strchr(buf, '.');
     if (!dot1) return 0;
-    dot2 = strchr(dot1 + 1, '.');
+    char *dot2 = strchr(dot1 + 1, '.');
     if (!dot2) return 0;
 
     *dot1 = '\0';
@@ -291,10 +460,10 @@ static int jwt_verify(const char *token, char *out_username, uid_t *out_uid) {
     memcpy(payload_json, payload_raw, payload_len + 1);
 
     if (!json_extract_string(payload_json, "sub", out_username, 64)) return 0;
-    if (!json_extract_long(payload_json, "exp", &exp)) return 0;
-    if (exp <= (long)time(NULL)) return 0;
+    if (!json_extract_long(payload_json, "exp", &exp_val)) return 0;
+    if (exp_val <= (long)time(NULL)) return 0;
 
-    pw = getpwnam(out_username);
+    struct passwd *pw = getpwnam(out_username);
     if (!pw) return 0;
     *out_uid = pw->pw_uid;
     return 1;
@@ -321,9 +490,8 @@ static int pam_authenticate_user(const char *username, const char *password) {
     PamData pd = { .password = password };
     struct pam_conv conv = { pam_conversation, &pd };
     pam_handle_t *pamh = NULL;
-    int ret;
 
-    ret = pam_start("login", username, &conv, &pamh);
+    int ret = pam_start("login", username, &conv, &pamh);
     if (ret != PAM_SUCCESS) { LOGE("pam_start: %s", pam_strerror(pamh, ret)); return 0; }
 
     ret = pam_authenticate(pamh, PAM_SILENT);
@@ -345,24 +513,119 @@ static int pam_authenticate_user(const char *username, const char *password) {
     return 1;
 }
 
+/* ─── Rate limiting (DD-6) ──────────────────────────────────────── */
+static int rate_limit_check(uint32_t ip) {
+    time_t now = time(NULL);
+    int idx = (int)(ip % RATE_LIMIT_TABLE_SIZE);
+
+    if (g_rate_limit[idx].ip == ip) {
+        if (now - g_rate_limit[idx].window_start > RATE_LIMIT_WINDOW) {
+            /* Window expired, reset */
+            g_rate_limit[idx].failures = 0;
+            g_rate_limit[idx].window_start = now;
+            return 1; /* allow */
+        }
+        return g_rate_limit[idx].failures < RATE_LIMIT_MAX;
+    }
+    /* New IP in this slot — allow */
+    return 1;
+}
+
+static void rate_limit_record_failure(uint32_t ip) {
+    time_t now = time(NULL);
+    int idx = (int)(ip % RATE_LIMIT_TABLE_SIZE);
+
+    if (g_rate_limit[idx].ip != ip || now - g_rate_limit[idx].window_start > RATE_LIMIT_WINDOW) {
+        g_rate_limit[idx].ip = ip;
+        g_rate_limit[idx].failures = 0;
+        g_rate_limit[idx].window_start = now;
+    }
+    g_rate_limit[idx].failures++;
+}
+
+static void rate_limit_clear(uint32_t ip) {
+    int idx = (int)(ip % RATE_LIMIT_TABLE_SIZE);
+    if (g_rate_limit[idx].ip == ip) {
+        g_rate_limit[idx].failures = 0;
+    }
+}
+
+/* ─── PAM auth thread (DD-1: thread-per-auth) ──────────────────── */
+static void *auth_thread_fn(void *arg) {
+    AuthJob *job = (AuthJob *)arg;
+    job->result = pam_authenticate_user(job->username, job->password);
+
+    /* Clear password from memory immediately */
+    memset(job->password, 0, sizeof(job->password));
+
+    /* Signal completion: push to queue and notify main loop */
+    pthread_mutex_lock(&g_auth_mutex);
+    job->done = 1;
+    pthread_mutex_unlock(&g_auth_mutex);
+
+    uint64_t val = 1;
+    ssize_t w = write(g_auth_eventfd, &val, sizeof(val));
+    (void)w;
+
+    return NULL;
+}
+
+static int submit_auth_job(int client_fd, const char *username, const char *password,
+                           int is_secure, uint32_t peer_ip) {
+    pthread_mutex_lock(&g_auth_mutex);
+    int next = (g_auth_queue_tail + 1) % MAX_AUTH_QUEUE;
+    if (next == g_auth_queue_head) {
+        pthread_mutex_unlock(&g_auth_mutex);
+        LOGW("auth queue full, rejecting login");
+        return 0;
+    }
+    AuthJob *job = &g_auth_queue[g_auth_queue_tail];
+    memset(job, 0, sizeof(*job));
+    job->client_fd = client_fd;
+    snprintf(job->username, sizeof(job->username), "%s", username);
+    snprintf(job->password, sizeof(job->password), "%s", password);
+    job->is_secure = is_secure;
+    job->peer_ip = peer_ip;
+    job->done = 0;
+    g_auth_queue_tail = next;
+    pthread_mutex_unlock(&g_auth_mutex);
+
+    pthread_t tid;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    if (pthread_create(&tid, &attr, auth_thread_fn, job) != 0) {
+        LOGE("pthread_create for PAM auth: %s", strerror(errno));
+        pthread_mutex_lock(&g_auth_mutex);
+        g_auth_queue_tail = (g_auth_queue_tail - 1 + MAX_AUTH_QUEUE) % MAX_AUTH_QUEUE;
+        pthread_mutex_unlock(&g_auth_mutex);
+        pthread_attr_destroy(&attr);
+        return 0;
+    }
+    pthread_attr_destroy(&attr);
+    return 1;
+}
+
 /* ─── Per-user daemon management ─────────────────────────────────── */
 static DaemonInfo *find_or_create_daemon(const char *username) {
     struct passwd *pw = getpwnam(username);
     if (!pw) { LOGE("user not found: %s", username); return NULL; }
 
-    /* Find existing */
     for (int i = 0; i < g_ndaemons; i++) {
         if (g_daemons[i].uid == pw->pw_uid) return &g_daemons[i];
     }
 
-    /* Create new entry */
     if (g_ndaemons >= MAX_USERS) { LOGE("too many users"); return NULL; }
     DaemonInfo *d = &g_daemons[g_ndaemons++];
     d->uid = pw->pw_uid;
     d->gid = pw->pw_gid;
     snprintf(d->username, sizeof(d->username), "%s", username);
-    snprintf(d->socket_path, sizeof(d->socket_path),
-             "/run/user/%u/opencode/daemon.sock", pw->pw_uid);
+    {
+        char rtdir[128];
+        resolve_runtime_dir(pw->pw_uid, rtdir, sizeof(rtdir));
+        snprintf(d->socket_path, sizeof(d->socket_path),
+                 "%s/opencode/daemon.sock", rtdir);
+    }
     d->pid   = -1;
     d->state = DAEMON_NONE;
     return d;
@@ -402,7 +665,6 @@ static int wait_for_daemon_ready(DaemonInfo *d, pid_t pid, int timeout_ms) {
             return 0;
         }
         if (waited < 0 && errno == ECHILD) {
-            /* Child was reaped by SIGCHLD or reparented — check socket directly */
             LOGW("waitpid ECHILD for %s pid %d — child may have been reaped, checking socket", d->username, pid);
         } else if (waited < 0) {
             LOGE("waitpid readiness check failed for %s: %s", d->username, strerror(errno));
@@ -411,8 +673,7 @@ static int wait_for_daemon_ready(DaemonInfo *d, pid_t pid, int timeout_ms) {
         }
 
         struct stat st;
-        int stat_rc = stat(d->socket_path, &st);
-        if (stat_rc == 0 && S_ISSOCK(st.st_mode)) {
+        if (stat(d->socket_path, &st) == 0 && S_ISSOCK(st.st_mode)) {
             int probe_fd = connect_unix(d->socket_path);
             if (probe_fd >= 0) {
                 close(probe_fd);
@@ -434,15 +695,14 @@ static int wait_for_daemon_ready(DaemonInfo *d, pid_t pid, int timeout_ms) {
     }
 }
 
-/**
- * Try to adopt an already-running daemon by reading its discovery file.
- * This covers daemons spawned by TUI --attach or other mechanisms.
- * Returns 1 if a live daemon was adopted into d, 0 otherwise.
- */
 static int try_adopt_from_discovery(DaemonInfo *d) {
     char discovery_path[256];
-    snprintf(discovery_path, sizeof(discovery_path),
-             "/run/user/%u/opencode/daemon.json", d->uid);
+    {
+        char rtdir[128];
+        resolve_runtime_dir(d->uid, rtdir, sizeof(rtdir));
+        snprintf(discovery_path, sizeof(discovery_path),
+                 "%s/opencode/daemon.json", rtdir);
+    }
 
     FILE *f = fopen(discovery_path, "r");
     if (!f) return 0;
@@ -452,7 +712,6 @@ static int try_adopt_from_discovery(DaemonInfo *d) {
     fclose(f);
     buf[n] = '\0';
 
-    /* Minimal JSON parse: extract "socketPath" and "pid" */
     char *sp = strstr(buf, "\"socketPath\"");
     char *pp = strstr(buf, "\"pid\"");
     if (!sp || !pp) {
@@ -460,48 +719,33 @@ static int try_adopt_from_discovery(DaemonInfo *d) {
         return 0;
     }
 
-    /* socketPath value */
     char *colon = strchr(sp + 12, '"');
-    if (!colon) {
-        cleanup_stale_runtime(d, discovery_path, "discovery file has invalid socketPath");
-        return 0;
-    }
-    colon++; /* skip opening quote */
+    if (!colon) { cleanup_stale_runtime(d, discovery_path, "invalid socketPath"); return 0; }
+    colon++;
     char *end = strchr(colon, '"');
-    if (!end) {
-        cleanup_stale_runtime(d, discovery_path, "discovery file has unterminated socketPath");
-        return 0;
-    }
+    if (!end) { cleanup_stale_runtime(d, discovery_path, "unterminated socketPath"); return 0; }
     size_t pathlen = (size_t)(end - colon);
     if (pathlen == 0 || pathlen >= sizeof(d->socket_path)) {
-        cleanup_stale_runtime(d, discovery_path, "discovery socketPath length invalid");
+        cleanup_stale_runtime(d, discovery_path, "socketPath length invalid");
         return 0;
     }
     memcpy(d->socket_path, colon, pathlen);
     d->socket_path[pathlen] = '\0';
 
-    /* pid value */
     char *pval = strchr(pp + 5, ':');
-    if (!pval) {
-        cleanup_stale_runtime(d, discovery_path, "discovery file missing pid value");
-        return 0;
-    }
+    if (!pval) { cleanup_stale_runtime(d, discovery_path, "missing pid value"); return 0; }
     pid_t pid = (pid_t)atoi(pval + 1);
-    if (pid <= 0) {
-        cleanup_stale_runtime(d, discovery_path, "discovery pid invalid");
-        return 0;
-    }
+    if (pid <= 0) { cleanup_stale_runtime(d, discovery_path, "pid invalid"); return 0; }
 
-    /* Verify PID is alive */
     if (kill(pid, 0) != 0) {
-        cleanup_stale_runtime(d, discovery_path, "discovery pid is not alive");
+        cleanup_stale_runtime(d, discovery_path, "pid is not alive");
         return 0;
     }
 
     int probe_fd = connect_unix(d->socket_path);
     if (probe_fd < 0) {
         char reason[256];
-        snprintf(reason, sizeof(reason), "discovery socket is not connectable: %s", strerror(errno));
+        snprintf(reason, sizeof(reason), "socket not connectable: %s", strerror(errno));
         cleanup_stale_runtime(d, discovery_path, reason);
         return 0;
     }
@@ -516,15 +760,10 @@ static int try_adopt_from_discovery(DaemonInfo *d) {
 
 static int ensure_daemon_running(DaemonInfo *d) {
     if (d->state == DAEMON_READY) {
-        /* Verify still alive */
         if (d->pid > 0 && kill(d->pid, 0) == 0) {
             int probe_fd = connect_unix(d->socket_path);
-            if (probe_fd >= 0) {
-                close(probe_fd);
-                return 1;
-            }
-            LOGW("daemon for %s marked stale: socket connect failed: %s",
-                 d->username, strerror(errno));
+            if (probe_fd >= 0) { close(probe_fd); return 1; }
+            LOGW("daemon for %s marked stale: socket connect failed: %s", d->username, strerror(errno));
         } else {
             LOGW("daemon for %s marked stale: pid %d is not alive", d->username, d->pid);
         }
@@ -532,13 +771,9 @@ static int ensure_daemon_running(DaemonInfo *d) {
     }
 
     if (d->state == DAEMON_DEAD || d->state == DAEMON_NONE) {
-        /* Always try to adopt an existing per-user daemon first.
-         * Per-user daemons are independent processes — never kill them. */
         if (try_adopt_from_discovery(d)) return 1;
 
-        /* No existing daemon found — spawn a new one */
-        unlink(d->socket_path); /* remove stale socket only */
-
+        unlink(d->socket_path);
         LOGI("spawning daemon for %s (uid %u)", d->username, d->uid);
         d->state = DAEMON_STARTING;
 
@@ -551,37 +786,42 @@ static int ensure_daemon_running(DaemonInfo *d) {
             if (setgid(d->gid) < 0) { _exit(1); }
             if (setuid(d->uid) < 0) { _exit(1); }
 
-            /* Redirect stdin to /dev/null, stdout/stderr to per-user log */
             int devnull = open("/dev/null", O_RDWR);
             if (devnull >= 0) { dup2(devnull, 0); close(devnull); }
             {
+                char rtdir[128];
+                resolve_runtime_dir(d->uid, rtdir, sizeof(rtdir));
+
                 char daemon_log[512];
-                snprintf(daemon_log, sizeof(daemon_log), "/run/user/%u/opencode-per-user-daemon.log", d->uid);
+                snprintf(daemon_log, sizeof(daemon_log), "%s/opencode-per-user-daemon.log", rtdir);
                 int logfd = open(daemon_log, O_WRONLY | O_CREAT | O_APPEND, 0644);
                 if (logfd >= 0) { dup2(logfd, 1); dup2(logfd, 2); close(logfd); }
-            }
 
-            char xdg_runtime[256];
-            snprintf(xdg_runtime, sizeof(xdg_runtime), "/run/user/%u", d->uid);
-            setenv("XDG_RUNTIME_DIR", xdg_runtime, 1);
+                setenv("XDG_RUNTIME_DIR", rtdir, 1);
+            }
             setenv("OPENCODE_USER_DAEMON_MODE", "1", 1);
 
-            if (strchr(g_opencode_bin, ' ') != NULL) {
-                char command[1024];
-                snprintf(command, sizeof(command), "%s serve --unix-socket '%s'",
-                         g_opencode_bin, d->socket_path);
-                execl("/bin/sh", "sh", "-c", command, (char *)NULL);
+            /* DD-8: use pre-parsed argv, no sh -c */
+            if (g_opencode_argc > 0) {
+                char *argv[MAX_OPENCODE_ARGV];
+                int ac = 0;
+                for (int i = 0; i < g_opencode_argc && ac < MAX_OPENCODE_ARGV - 4; i++)
+                    argv[ac++] = g_opencode_argv[i];
+                argv[ac++] = "serve";
+                argv[ac++] = "--unix-socket";
+                argv[ac++] = d->socket_path;
+                argv[ac] = NULL;
+                execvp(argv[0], argv);
+            } else {
+                execl(g_opencode_bin, g_opencode_bin, "serve",
+                      "--unix-socket", d->socket_path, (char *)NULL);
             }
-
-            execl(g_opencode_bin, g_opencode_bin, "serve",
-                  "--unix-socket", d->socket_path, (char *)NULL);
             _exit(127);
         }
 
         d->pid = pid;
         LOGI("forked daemon child for %s: pid=%d", d->username, pid);
 
-        /* Wait for socket to appear */
         if (!wait_for_daemon_ready(d, pid, DAEMON_WAIT_MS)) {
             kill(pid, SIGTERM);
             return 0;
@@ -594,24 +834,38 @@ static int ensure_daemon_running(DaemonInfo *d) {
     return d->state == DAEMON_READY;
 }
 
-/* ─── splice() proxy ─────────────────────────────────────────────── */
+/* ─── Connection lifecycle (DD-4) ────────────────────────────────── */
 static Connection *alloc_conn(void) {
     for (int i = 0; i < MAX_CONNS; i++) {
-        if (g_conns[i].client_fd < 0) return &g_conns[i];
+        if (g_conns[i].client_fd < 0 && !g_conns[i].closed) return &g_conns[i];
     }
     return NULL;
 }
 
 static void close_conn(Connection *c) {
-    if (c->client_fd >= 0) { close(c->client_fd); c->client_fd = -1; }
-    if (c->daemon_fd >= 0) { close(c->daemon_fd); c->daemon_fd = -1; }
+    if (c->closed) return;
+    c->closed = 1;
+
+    /* EPOLL_CTL_DEL before close (DD-4) */
+    if (c->client_fd >= 0) {
+        epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, c->client_fd, NULL);
+        close(c->client_fd);
+        c->client_fd = -1;
+    }
+    if (c->daemon_fd >= 0) {
+        epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, c->daemon_fd, NULL);
+        close(c->daemon_fd);
+        c->daemon_fd = -1;
+    }
     if (c->pipe_c2d[0] >= 0) { close(c->pipe_c2d[0]); c->pipe_c2d[0] = -1; }
     if (c->pipe_c2d[1] >= 0) { close(c->pipe_c2d[1]); c->pipe_c2d[1] = -1; }
     if (c->pipe_d2c[0] >= 0) { close(c->pipe_d2c[0]); c->pipe_d2c[0] = -1; }
     if (c->pipe_d2c[1] >= 0) { close(c->pipe_d2c[1]); c->pipe_d2c[1] = -1; }
+
+    if (g_nconns > 0) g_nconns--;
 }
 
-/* Returns the Connection* on success so caller can re-send buffered data, NULL on error. */
+/* ─── splice() proxy (DD-3: directional splice) ──────────────────── */
 static Connection *start_splice_proxy(int client_fd, DaemonInfo *d) {
     int daemon_fd = connect_unix(d->socket_path);
     if (daemon_fd < 0) { LOGE("connect to daemon socket: %s", strerror(errno)); return NULL; }
@@ -627,31 +881,40 @@ static Connection *start_splice_proxy(int client_fd, DaemonInfo *d) {
 
     c->client_fd = client_fd;
     c->daemon_fd = daemon_fd;
+    c->closed = 0;
 
     set_nonblock(client_fd);
     set_nonblock(daemon_fd);
     set_nonblock(c->pipe_c2d[0]); set_nonblock(c->pipe_c2d[1]);
     set_nonblock(c->pipe_d2c[0]); set_nonblock(c->pipe_d2c[1]);
 
-    /* Register both fds with epoll for bidirectional splice */
-    struct epoll_event ev = { .events = EPOLLIN }; /* level-triggered for reliable splice */
-    ev.data.ptr = c;
+    /* Register with tagged EpollCtx — one per fd */
+    c->ectx_client.type = ECTX_SPLICE_CLIENT;
+    c->ectx_client.conn = c;
+    c->ectx_daemon.type = ECTX_SPLICE_DAEMON;
+    c->ectx_daemon.conn = c;
+
+    struct epoll_event ev;
+    ev.events = EPOLLIN;
+    ev.data.ptr = &c->ectx_client;
     epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, client_fd, &ev);
+    ev.data.ptr = &c->ectx_daemon;
     epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, daemon_fd, &ev);
 
     g_nconns++;
     return c;
 }
 
-/* Drain available data between two fds using splice() */
-static void splice_between(Connection *c, int src, int *pipe_in, int *pipe_out, int dst) {
+static void splice_one_direction(Connection *c, int src, int pipe_wr, int pipe_rd, int dst) {
+    if (c->closed) return;
     ssize_t n;
-    while ((n = splice(src, NULL, *pipe_in, NULL, PIPE_BUF_SIZE,
+    while ((n = splice(src, NULL, pipe_wr, NULL, PIPE_BUF_SIZE,
                        SPLICE_F_NONBLOCK | SPLICE_F_MOVE)) > 0) {
-        ssize_t m = splice(*pipe_out, NULL, dst, NULL, (size_t)n,
+        ssize_t m = splice(pipe_rd, NULL, dst, NULL, (size_t)n,
                            SPLICE_F_NONBLOCK | SPLICE_F_MOVE);
         if (m < 0 && errno != EAGAIN) { close_conn(c); return; }
     }
+    if (n == 0) { close_conn(c); return; } /* EOF */
     if (n < 0 && errno != EAGAIN) close_conn(c);
 }
 
@@ -667,17 +930,6 @@ static void http_send(int fd, int status, const char *statusmsg,
         "%s"
         "Connection: close\r\n\r\n",
         status, statusmsg, ctype, bodylen, headers ? headers : "");
-    LOGI("http_send: status=%d hdrlen=%d bodylen=%zu", status, hdrlen, bodylen);
-    if (status == 303) {
-        /* Log raw response for debugging cookie issues */
-        char dbg[2048];
-        int dlen = hdrlen < 2000 ? hdrlen : 2000;
-        memcpy(dbg, hdr, (size_t)dlen);
-        dbg[dlen] = '\0';
-        /* Replace \r\n with | for single-line logging */
-        for (int i = 0; i < dlen; i++) { if (dbg[i] == '\r') dbg[i] = '|'; if (dbg[i] == '\n') dbg[i] = ' '; }
-        LOGI("http_send 303 raw: %s", dbg);
-    }
     send(fd, hdr, (size_t)hdrlen, MSG_NOSIGNAL);
     if (body && bodylen > 0) send(fd, body, bodylen, MSG_NOSIGNAL);
 }
@@ -687,25 +939,23 @@ static void serve_login_page(int fd) {
               g_login_html, g_login_html_len);
 }
 
-/* ─── Request handler ────────────────────────────────────────────── */
+/* ─── Request parsing ────────────────────────────────────────────── */
 typedef struct {
     char method[8];
     char path[256];
     char cookie[1024];
     char body[4096];
     int  body_len;
-    int  is_secure; /* 1 if X-Forwarded-Proto: https */
+    int  is_secure;
 } HttpRequest;
 
 static int parse_request(const char *buf, size_t len, HttpRequest *req) {
     memset(req, 0, sizeof(*req));
-    /* First line: METHOD PATH HTTP/1.x */
     if (sscanf(buf, "%7s %255s", req->method, req->path) < 2) return 0;
 
-    /* Find Cookie header */
     const char *p = strstr(buf, "\r\nCookie:");
     if (p) {
-        p += 9; /* skip "\r\nCookie:" */
+        p += 9;
         while (*p == ' ') p++;
         const char *end = strstr(p, "\r\n");
         size_t clen = end ? (size_t)(end - p) : strlen(p);
@@ -713,16 +963,14 @@ static int parse_request(const char *buf, size_t len, HttpRequest *req) {
         memcpy(req->cookie, p, clen);
     }
 
-    /* Check X-Forwarded-Proto for SSL termination behind reverse proxy */
     const char *xfp = strstr(buf, "\r\nX-Forwarded-Proto:");
     if (!xfp) xfp = strstr(buf, "\r\nx-forwarded-proto:");
     if (xfp) {
-        xfp += 21; /* skip "\r\nX-Forwarded-Proto:" */
+        xfp += 21;
         while (*xfp == ' ') xfp++;
         req->is_secure = (strncasecmp(xfp, "https", 5) == 0);
     }
 
-    /* Find body (after \r\n\r\n) */
     const char *body = strstr(buf, "\r\n\r\n");
     if (body) {
         body += 4;
@@ -731,79 +979,49 @@ static int parse_request(const char *buf, size_t len, HttpRequest *req) {
         memcpy(req->body, body, blen);
         req->body_len = (int)blen;
     }
-    (void)len;
     return 1;
 }
 
-static void handle_auth_login(int client_fd, const char *body, int is_secure) {
-    /* Parse application/x-www-form-urlencoded: username=...&password=... */
-    char raw_user[256] = {}, raw_pass[256] = {};
-    const char *p = body;
-    while (*p) {
-        char key[64] = {}, val[256] = {};
-        int n = 0;
-        /* key */
-        while (*p && *p != '=' && n < 63) key[n++] = *p++;
-        if (*p == '=') p++;
-        /* val */
-        n = 0;
-        while (*p && *p != '&' && n < 255) val[n++] = *p++;
-        if (*p == '&') p++;
-
-        if (strcmp(key, "username") == 0) url_decode(raw_user, val, sizeof(raw_user));
-        else if (strcmp(key, "password") == 0) url_decode(raw_pass, val, sizeof(raw_pass));
+/* ─── PendingRequest management ──────────────────────────────────── */
+static PendingRequest *alloc_pending(void) {
+    for (int i = 0; i < MAX_PENDING; i++) {
+        if (!g_pending[i].in_use) return &g_pending[i];
     }
-
-    if (!raw_user[0] || !raw_pass[0]) {
-        LOGW("auth_login: empty username or password (user=%d pass=%d)", (int)strlen(raw_user), (int)strlen(raw_pass));
-        serve_login_page(client_fd);
-        return;
-    }
-    LOGI("auth_login: attempting PAM for user='%s' pass_len=%d", raw_user, (int)strlen(raw_pass));
-
-    if (!pam_authenticate_user(raw_user, raw_pass)) {
-        /* Return login page with error indication */
-        const char *redir = "HTTP/1.1 303 See Other\r\nLocation: /?error=1\r\nConnection: close\r\n\r\n";
-        send(client_fd, redir, strlen(redir), MSG_NOSIGNAL);
-        return;
-    }
-
-    /* Auth success: sign JWT */
-    LOGI("auth_login: PAM success for '%s', signing JWT", raw_user);
-    char payload[512];
-    time_t exp = time(NULL) + JWT_EXP_SECONDS;
-    snprintf(payload, sizeof(payload),
-             "{\"sub\":\"%s\",\"exp\":%ld}", raw_user, (long)exp);
-    char token[1024];
-    jwt_sign(payload, token, sizeof(token));
-    LOGI("auth_login: JWT signed, token_len=%d", (int)strlen(token));
-
-    /* Issue cookie via 200 + meta-refresh (avoids browser 303 Set-Cookie race) */
-    LOGI("auth_login: is_secure=%d (X-Forwarded-Proto detection)", is_secure);
-    char cookie_hdr[1200];
-    snprintf(cookie_hdr, sizeof(cookie_hdr),
-             "Set-Cookie: oc_jwt=%s; HttpOnly;%s Path=/; SameSite=Lax; Max-Age=%d\r\n",
-             token, is_secure ? " Secure;" : "", JWT_EXP_SECONDS);
-    const char *redir_body =
-        "<!DOCTYPE html><html><head>"
-        "<meta http-equiv=\"refresh\" content=\"0;url=/\">"
-        "</head><body>Redirecting...</body></html>";
-    LOGI("auth_login: sending 200 + Set-Cookie + meta-refresh for '%s'", raw_user);
-    http_send(client_fd, 200, "OK", "text/html; charset=utf-8", cookie_hdr,
-              redir_body, strlen(redir_body));
+    return NULL;
 }
 
-static void handle_new_connection(int client_fd) {
-    /* Read request (blocking with timeout — this is called from epoll accept path) */
-    char buf[8192];
-    ssize_t n = recv(client_fd, buf, sizeof(buf)-1, 0);
-    if (n <= 0) { close(client_fd); return; }
-    buf[n] = '\0';
+static void free_pending(PendingRequest *pr) {
+    if (pr->fd >= 0) {
+        epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, pr->fd, NULL);
+        close(pr->fd);
+    }
+    pr->fd = -1;
+    pr->in_use = 0;
+}
 
+/* ─── Route a complete HTTP request ─────────────────────────────── */
+static void route_complete_request(PendingRequest *pr) {
     HttpRequest req;
-    if (!parse_request(buf, (size_t)n, &req)) { LOGW("conn: parse_request failed"); close(client_fd); return; }
+    if (!parse_request(pr->buf, pr->buf_len, &req)) {
+        LOGW("parse_request failed");
+        free_pending(pr);
+        return;
+    }
 
-    LOGI("conn: %s %s cookie_len=%d has_jwt=%d", req.method, req.path, (int)strlen(req.cookie), strstr(req.cookie, "oc_jwt=") ? 1 : 0);
+    int fd = pr->fd;
+    uint32_t peer_ip = pr->peer_ip;
+    size_t raw_len = pr->buf_len;
+    char raw_buf[PENDING_BUF_SIZE];
+    memcpy(raw_buf, pr->buf, raw_len);
+
+    /* Detach fd from pending — we'll manage it from here */
+    epoll_ctl(g_epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+    pr->fd = -1;
+    pr->in_use = 0;
+
+    LOGI("req: %s %s cookie_len=%d has_jwt=%d",
+         req.method, req.path, (int)strlen(req.cookie),
+         strstr(req.cookie, "oc_jwt=") ? 1 : 0);
 
     /* Check for valid JWT cookie */
     char *jwt_val = strstr(req.cookie, "oc_jwt=");
@@ -815,55 +1033,161 @@ static void handle_new_connection(int client_fd) {
         char username[64] = {};
         uid_t uid = 0;
         if (jwt_verify(jwt_val, username, &uid)) {
-            LOGI("conn: JWT valid for user='%s' uid=%d", username, (int)uid);
+            LOGI("JWT valid for user='%s' uid=%d", username, (int)uid);
             DaemonInfo *d = find_or_create_daemon(username);
             if (d && d->uid == uid && ensure_daemon_running(d)) {
-                LOGI("conn: daemon ready for '%s', starting splice proxy", username);
-                Connection *conn = start_splice_proxy(client_fd, d);
+                LOGI("daemon ready for '%s', starting splice proxy", username);
+                Connection *conn = start_splice_proxy(fd, d);
                 if (conn) {
-                    send(conn->daemon_fd, buf, (size_t)n, MSG_NOSIGNAL);
+                    send(conn->daemon_fd, raw_buf, raw_len, MSG_NOSIGNAL);
                     return;
                 }
-                LOGW("conn: start_splice_proxy failed for '%s'", username);
-            } else {
-                LOGW("conn: daemon not ready for '%s' (d=%p uid_match=%d)", username, (void*)d, d ? (d->uid == uid) : -1);
+                LOGW("start_splice_proxy failed for '%s'", username);
             }
-            /* Daemon failed — clear cookie, redirect to login */
-            LOGW("conn: clearing stale JWT and redirecting to login");
+            /* Daemon failed — clear cookie */
             const char *clear = "HTTP/1.1 303 See Other\r\n"
                 "Set-Cookie: oc_jwt=; HttpOnly; Path=/; Max-Age=0\r\n"
                 "Location: /\r\nConnection: close\r\n\r\n";
-            send(client_fd, clear, strlen(clear), MSG_NOSIGNAL);
-            close(client_fd);
+            send(fd, clear, strlen(clear), MSG_NOSIGNAL);
+            close(fd);
             return;
         }
 
-        LOGW("conn: JWT verify failed, token_len=%d — clearing cookie", (int)strlen(jwt_val));
-        {
-            const char *clear = "HTTP/1.1 303 See Other\r\n"
-                "Set-Cookie: oc_jwt=; HttpOnly; Path=/; Max-Age=0\r\n"
-                "Location: /\r\nConnection: close\r\n\r\n";
-            send(client_fd, clear, strlen(clear), MSG_NOSIGNAL);
-        }
-        close(client_fd);
+        LOGW("JWT verify failed — clearing cookie");
+        const char *clear = "HTTP/1.1 303 See Other\r\n"
+            "Set-Cookie: oc_jwt=; HttpOnly; Path=/; Max-Age=0\r\n"
+            "Location: /\r\nConnection: close\r\n\r\n";
+        send(fd, clear, strlen(clear), MSG_NOSIGNAL);
+        close(fd);
         return;
     }
 
-    /* No valid session: route based on path */
+    /* No valid session */
     if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/auth/login") == 0) {
-        handle_auth_login(client_fd, req.body, req.is_secure);
-        close(client_fd);
-    } else if (strcmp(req.path, "/auth/test-cookie") == 0) {
-        /* Debug: test Set-Cookie without PAM */
+        /* Parse form body for username/password */
+        char raw_user[256] = {}, raw_pass[256] = {};
+        const char *p = req.body;
+        while (*p) {
+            char key[64] = {}, val[256] = {};
+            int n = 0;
+            while (*p && *p != '=' && n < 63) key[n++] = *p++;
+            if (*p == '=') p++;
+            n = 0;
+            while (*p && *p != '&' && n < 255) val[n++] = *p++;
+            if (*p == '&') p++;
+            if (strcmp(key, "username") == 0) url_decode(raw_user, val, sizeof(raw_user));
+            else if (strcmp(key, "password") == 0) url_decode(raw_pass, val, sizeof(raw_pass));
+        }
+
+        if (!raw_user[0] || !raw_pass[0]) {
+            serve_login_page(fd);
+            close(fd);
+            return;
+        }
+
+        /* Rate limit check */
+        if (!rate_limit_check(peer_ip)) {
+            LOGW("rate limited login from %u.%u.%u.%u",
+                 (peer_ip >> 24) & 0xff, (peer_ip >> 16) & 0xff,
+                 (peer_ip >> 8) & 0xff, peer_ip & 0xff);
+            http_send(fd, 429, "Too Many Requests", "text/plain", NULL,
+                      "Too many failed login attempts. Try again later.", 47);
+            close(fd);
+            return;
+        }
+
+        /* Submit PAM auth to thread — fd stays open, main loop continues */
+        LOGI("auth_login: submitting PAM for user='%s'", raw_user);
+        if (!submit_auth_job(fd, raw_user, raw_pass, req.is_secure, peer_ip)) {
+            http_send(fd, 503, "Service Unavailable", "text/plain", NULL,
+                      "Auth service busy", 17);
+            close(fd);
+        }
+        /* Clear password from stack */
+        memset(raw_pass, 0, sizeof(raw_pass));
+        return;
+    }
+
+    if (strcmp(req.path, "/auth/test-cookie") == 0) {
         char thdrs[512];
         snprintf(thdrs, sizeof(thdrs),
                  "Set-Cookie: oc_test=hello; HttpOnly; Path=/; SameSite=Lax; Max-Age=60\r\n"
                  "Location: /\r\n");
-        http_send(client_fd, 303, "See Other", "text/plain", thdrs, "", 0);
-        close(client_fd);
+        http_send(fd, 303, "See Other", "text/plain", thdrs, "", 0);
+        close(fd);
     } else {
-        serve_login_page(client_fd);
-        close(client_fd);
+        serve_login_page(fd);
+        close(fd);
+    }
+}
+
+/* ─── Handle completed PAM auth jobs ─────────────────────────────── */
+static void drain_auth_completions(void) {
+    /* Read eventfd to clear it */
+    uint64_t val;
+    ssize_t r = read(g_auth_eventfd, &val, sizeof(val));
+    (void)r;
+
+    /* Process all completed jobs */
+    while (1) {
+        pthread_mutex_lock(&g_auth_mutex);
+        if (g_auth_queue_head == g_auth_queue_tail) {
+            pthread_mutex_unlock(&g_auth_mutex);
+            break;
+        }
+        AuthJob *job = &g_auth_queue[g_auth_queue_head];
+        if (!job->done) {
+            pthread_mutex_unlock(&g_auth_mutex);
+            break;
+        }
+        /* Copy job data and advance head */
+        AuthJob local = *job;
+        g_auth_queue_head = (g_auth_queue_head + 1) % MAX_AUTH_QUEUE;
+        pthread_mutex_unlock(&g_auth_mutex);
+
+        if (local.result) {
+            /* PAM success: sign JWT */
+            rate_limit_clear(local.peer_ip);
+            LOGI("auth complete: PAM success for '%s', signing JWT", local.username);
+            char payload[512];
+            time_t exp_time = time(NULL) + JWT_EXP_SECONDS;
+            snprintf(payload, sizeof(payload),
+                     "{\"sub\":\"%s\",\"exp\":%ld}", local.username, (long)exp_time);
+            char token[1024];
+            jwt_sign(payload, token, sizeof(token));
+
+            char cookie_hdr[1200];
+            snprintf(cookie_hdr, sizeof(cookie_hdr),
+                     "Set-Cookie: oc_jwt=%s; HttpOnly;%s Path=/; SameSite=Lax; Max-Age=%d\r\n",
+                     token, local.is_secure ? " Secure;" : "", JWT_EXP_SECONDS);
+            const char *redir_body =
+                "<!DOCTYPE html><html><head>"
+                "<meta http-equiv=\"refresh\" content=\"0;url=/\">"
+                "</head><body>Redirecting...</body></html>";
+            http_send(local.client_fd, 200, "OK", "text/html; charset=utf-8", cookie_hdr,
+                      redir_body, strlen(redir_body));
+        } else {
+            /* PAM failure */
+            rate_limit_record_failure(local.peer_ip);
+            LOGW("auth complete: PAM failed for '%s'", local.username);
+            const char *redir = "HTTP/1.1 303 See Other\r\nLocation: /?error=1\r\nConnection: close\r\n\r\n";
+            send(local.client_fd, redir, strlen(redir), MSG_NOSIGNAL);
+        }
+        close(local.client_fd);
+    }
+}
+
+/* ─── Timeout sweep for pending requests ─────────────────────────── */
+static void sweep_pending_timeouts(void) {
+    time_t now = time(NULL);
+    for (int i = 0; i < MAX_PENDING; i++) {
+        PendingRequest *pr = &g_pending[i];
+        if (pr->in_use && now - pr->accept_time > PENDING_TIMEOUT_SEC) {
+            LOGW("pending request timeout (fd=%d, age=%lds)", pr->fd, (long)(now - pr->accept_time));
+            http_send(pr->fd, 408, "Request Timeout", "text/plain", NULL,
+                      "Request timeout", 15);
+            free_pending(pr);
+        }
     }
 }
 
@@ -871,17 +1195,21 @@ static void handle_new_connection(int client_fd) {
 int main(int argc, char *argv[]) {
     (void)argc; (void)argv;
 
-    /* Init connection table */
+    /* Init tables */
     for (int i = 0; i < MAX_CONNS; i++) {
         g_conns[i].client_fd = g_conns[i].daemon_fd = -1;
         g_conns[i].pipe_c2d[0] = g_conns[i].pipe_c2d[1] = -1;
         g_conns[i].pipe_d2c[0] = g_conns[i].pipe_d2c[1] = -1;
+        g_conns[i].closed = 0;
     }
+    for (int i = 0; i < MAX_PENDING; i++) {
+        g_pending[i].fd = -1;
+        g_pending[i].in_use = 0;
+    }
+    memset(g_rate_limit, 0, sizeof(g_rate_limit));
 
-    /* Generate JWT secret */
-    if (RAND_bytes(g_jwt_secret, JWT_SECRET_LEN) != 1) {
-        LOGE("RAND_bytes failed"); return 1;
-    }
+    /* JWT secret: file-backed persistence (DD-5) */
+    if (!jwt_load_or_create_secret()) return 1;
 
     /* Load login.html */
     const char *html_path = getenv("OPENCODE_LOGIN_HTML");
@@ -891,7 +1219,6 @@ int main(int argc, char *argv[]) {
         g_login_html_len = fread(g_login_html, 1, sizeof(g_login_html)-1, f);
         fclose(f);
     } else {
-        /* Embed minimal fallback */
         const char *fallback = "<html><body><h1>OpenCode Login</h1>"
             "<form method='POST' action='/auth/login'>"
             "User: <input name='username'><br>"
@@ -901,9 +1228,10 @@ int main(int argc, char *argv[]) {
         g_login_html_len = strlen(g_login_html);
     }
 
-    /* opencode binary path */
+    /* Parse OPENCODE_BIN into argv (DD-8) */
     const char *bin = getenv("OPENCODE_BIN");
     if (bin) strncpy(g_opencode_bin, bin, sizeof(g_opencode_bin)-1);
+    parse_opencode_argv();
 
     /* Signals */
     struct sigaction sa = { .sa_handler = on_sigterm, .sa_flags = 0 };
@@ -913,6 +1241,25 @@ int main(int argc, char *argv[]) {
     sa.sa_flags   = SA_RESTART | SA_NOCLDSTOP;
     sigaction(SIGCHLD, &sa, NULL);
     signal(SIGPIPE, SIG_IGN);
+
+    /* PAM availability probe (DD-7 / 4.2) */
+    {
+        pam_handle_t *probe_pamh = NULL;
+        int pam_rc = pam_start("login", "root", &(struct pam_conv){NULL, NULL}, &probe_pamh);
+        if (pam_rc != PAM_SUCCESS) {
+            LOGE("PAM unavailable (pam_start returned %d: %s). "
+                 "Ensure PAM is configured (e.g. /etc/pam.d/login exists).",
+                 pam_rc, pam_strerror(probe_pamh, pam_rc));
+            if (probe_pamh) pam_end(probe_pamh, pam_rc);
+            return 1;
+        }
+        pam_end(probe_pamh, PAM_SUCCESS);
+        LOGI("PAM probe: service 'login' available");
+    }
+
+    /* Auth eventfd for PAM thread notifications */
+    g_auth_eventfd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (g_auth_eventfd < 0) { LOGE("eventfd: %s", strerror(errno)); return 1; }
 
     /* Bind TCP socket */
     int port = GATEWAY_PORT_DEFAULT;
@@ -937,62 +1284,164 @@ int main(int argc, char *argv[]) {
     }
     set_nonblock(g_listen_fd);
 
-    /* epoll */
+    /* epoll setup */
     g_epoll_fd = epoll_create1(0);
     if (g_epoll_fd < 0) { LOGE("epoll_create1: %s", strerror(errno)); return 1; }
-    struct epoll_event ev = { .events = EPOLLIN, .data.ptr = NULL /* sentinel: NULL = listen fd */ };
+
+    /* Register listen fd */
+    g_listen_ectx.type = ECTX_LISTEN;
+    struct epoll_event ev;
+    ev.events = EPOLLIN;
+    ev.data.ptr = &g_listen_ectx;
     epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, g_listen_fd, &ev);
 
-    LOGI("opencode-gateway listening on :%d", port);
+    /* Register auth eventfd */
+    g_auth_ectx.type = ECTX_AUTH_NOTIFY;
+    ev.data.ptr = &g_auth_ectx;
+    epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, g_auth_eventfd, &ev);
+
+    LOGI("opencode-gateway listening on :%d (non-blocking, thread-per-auth)", port);
 
     struct epoll_event events[MAX_EVENTS];
+    time_t last_sweep = time(NULL);
+
     while (g_running) {
-        int n = epoll_wait(g_epoll_fd, events, MAX_EVENTS, 1000);
-        if (n < 0) {
+        int nev = epoll_wait(g_epoll_fd, events, MAX_EVENTS, 1000);
+        if (nev < 0) {
             if (errno == EINTR) continue;
             LOGE("epoll_wait: %s", strerror(errno));
             break;
         }
 
-        for (int i = 0; i < n; i++) {
-            Connection *c = (Connection *)events[i].data.ptr;
+        for (int i = 0; i < nev; i++) {
+            EpollCtx *ectx = (EpollCtx *)events[i].data.ptr;
 
-            if (c == NULL) {
-                /* Listen socket — accept new connections */
+            switch (ectx->type) {
+
+            case ECTX_LISTEN: {
+                /* Accept new connections — non-blocking, register as PENDING */
                 while (1) {
-                    int client = accept4(g_listen_fd, NULL, NULL, SOCK_CLOEXEC);
+                    struct sockaddr_in peer;
+                    socklen_t peerlen = sizeof(peer);
+                    int client = accept4(g_listen_fd, (struct sockaddr *)&peer, &peerlen, SOCK_CLOEXEC);
                     if (client < 0) {
                         if (errno == EAGAIN || errno == EWOULDBLOCK) break;
                         LOGE("accept: %s", strerror(errno));
                         break;
                     }
-                    handle_new_connection(client);
+                    set_nonblock(client);
+
+                    PendingRequest *pr = alloc_pending();
+                    if (!pr) {
+                        LOGW("pending table full, rejecting connection");
+                        const char *busy = "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n";
+                        send(client, busy, strlen(busy), MSG_NOSIGNAL);
+                        close(client);
+                        continue;
+                    }
+
+                    pr->fd = client;
+                    pr->buf_len = 0;
+                    pr->accept_time = time(NULL);
+                    pr->peer_ip = ntohl(peer.sin_addr.s_addr);
+                    pr->in_use = 1;
+
+                    pr->ectx.type = ECTX_PENDING;
+                    pr->ectx.pending = pr;
+
+                    struct epoll_event pev = { .events = EPOLLIN, .data.ptr = &pr->ectx };
+                    epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, client, &pev);
                 }
-            } else {
-                /* Splice proxy event — determine direction from epoll fd */
+                break;
+            }
+
+            case ECTX_PENDING: {
+                /* Accumulate HTTP request data */
+                PendingRequest *pr = ectx->pending;
+                if (!pr->in_use) break;
+
+                ssize_t n = recv(pr->fd, pr->buf + pr->buf_len,
+                                 PENDING_BUF_SIZE - pr->buf_len - 1, 0);
+                if (n <= 0) {
+                    if (n == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
+                        free_pending(pr);
+                    }
+                    break;
+                }
+                pr->buf_len += (size_t)n;
+                pr->buf[pr->buf_len] = '\0';
+
+                /* Check for complete header */
+                if (strstr(pr->buf, "\r\n\r\n")) {
+                    route_complete_request(pr);
+                } else if (pr->buf_len >= PENDING_BUF_SIZE - 1) {
+                    /* Buffer full, no complete header — reject */
+                    http_send(pr->fd, 400, "Bad Request", "text/plain", NULL,
+                              "Request too large", 17);
+                    free_pending(pr);
+                }
+                break;
+            }
+
+            case ECTX_AUTH_NOTIFY: {
+                drain_auth_completions();
+                break;
+            }
+
+            case ECTX_SPLICE_CLIENT: {
+                Connection *c = ectx->conn;
+                if (c->closed) break;
                 if (events[i].events & EPOLLIN) {
-                    /* We need to figure out which fd triggered.
-                     * epoll doesn't tell us directly when using data.ptr,
-                     * so we try both directions — splice on empty fd is a no-op (EAGAIN). */
-                    splice_between(c, c->client_fd, &c->pipe_c2d[1], &c->pipe_c2d[0], c->daemon_fd);
-                    splice_between(c, c->daemon_fd, &c->pipe_d2c[1], &c->pipe_d2c[0], c->client_fd);
+                    /* Client → daemon direction only */
+                    splice_one_direction(c, c->client_fd, c->pipe_c2d[1], c->pipe_c2d[0], c->daemon_fd);
                 }
                 if (events[i].events & (EPOLLHUP | EPOLLERR)) {
                     close_conn(c);
                 }
+                break;
             }
+
+            case ECTX_SPLICE_DAEMON: {
+                Connection *c = ectx->conn;
+                if (c->closed) break;
+                if (events[i].events & EPOLLIN) {
+                    /* Daemon → client direction only */
+                    splice_one_direction(c, c->daemon_fd, c->pipe_d2c[1], c->pipe_d2c[0], c->client_fd);
+                }
+                if (events[i].events & (EPOLLHUP | EPOLLERR)) {
+                    close_conn(c);
+                }
+                break;
+            }
+
+            } /* switch */
+        } /* for events */
+
+        /* Periodic sweep for pending request timeouts */
+        time_t now = time(NULL);
+        if (now - last_sweep >= 5) {
+            sweep_pending_timeouts();
+            last_sweep = now;
         }
     }
 
     /* Graceful shutdown */
     LOGI("shutting down");
     close(g_listen_fd);
+    close(g_auth_eventfd);
     for (int i = 0; i < g_ndaemons; i++) {
         if (g_daemons[i].pid > 0) kill(g_daemons[i].pid, SIGTERM);
     }
     for (int i = 0; i < MAX_CONNS; i++) {
         if (g_conns[i].client_fd >= 0) close_conn(&g_conns[i]);
     }
+    for (int i = 0; i < MAX_PENDING; i++) {
+        if (g_pending[i].in_use) free_pending(&g_pending[i]);
+    }
     close(g_epoll_fd);
+
+    /* Free parsed argv */
+    for (int i = 0; i < g_opencode_argc; i++) free(g_opencode_argv[i]);
+
     return 0;
 }

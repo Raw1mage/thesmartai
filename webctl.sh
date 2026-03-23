@@ -1099,6 +1099,10 @@ kill_existing() {
 # ---------------------------------------------------------------------------
 # dev-start
 # ---------------------------------------------------------------------------
+# Set OPENCODE_NO_GATEWAY=1 to bypass the C root gateway and run opencode
+# web directly. Useful for single-machine development where PAM auth and
+# per-user daemon multiplexing are not needed.
+# ---------------------------------------------------------------------------
 do_dev_start() {
     load_server_cfg
 
@@ -1114,38 +1118,73 @@ do_dev_start() {
 
     kill_existing
 
-    if [ "${IS_SOURCE_REPO}" -eq 1 ]; then
-        local BUN_BIN
-        BUN_BIN="$(find_bun)"
-        log_info "Starting server from source on port ${WEB_PORT}..."
-        if command -v script >/dev/null 2>&1; then
-            nohup script -qefc \
-                "env OPENCODE_LAUNCH_MODE=\"webctl\" OPENCODE_REPO_ROOT=\"${PROJECT_ROOT}\" OPENCODE_ALLOW_GLOBAL_FS_BROWSE=\"${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}\" OPENCODE_FRONTEND_PATH=\"${FRONTEND_DIST}\" OPENCODE_WEB_NO_OPEN=\"${OPENCODE_WEB_NO_OPEN:-1}\" OPENCODE_AUTH_MODE=\"${AUTH_MODE}\" \"${BUN_BIN}\" --conditions=browser \"${PROJECT_ROOT}/packages/opencode/src/index.ts\" web --port \"${WEB_PORT}\" --hostname \"${WEB_HOSTNAME}\"" \
-                /dev/null >"${SERVER_LOG_FILE}" 2>&1 < /dev/null &
-        else
-            nohup env OPENCODE_LAUNCH_MODE="webctl" OPENCODE_REPO_ROOT="${PROJECT_ROOT}" OPENCODE_ALLOW_GLOBAL_FS_BROWSE="${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}" OPENCODE_FRONTEND_PATH="${FRONTEND_DIST}" OPENCODE_WEB_NO_OPEN="${OPENCODE_WEB_NO_OPEN:-1}" OPENCODE_AUTH_MODE="${AUTH_MODE}" \
-                "${BUN_BIN}" --conditions=browser \
-                "${PROJECT_ROOT}/packages/opencode/src/index.ts" \
-                web --port "${WEB_PORT}" --hostname "${WEB_HOSTNAME}" \
-                >"${SERVER_LOG_FILE}" 2>&1 < /dev/null &
-        fi
-    else
-        if [ -z "${OPENCODE_BIN}" ] || [ ! -x "${OPENCODE_BIN}" ]; then
-            log_error "opencode binary not found. Please install opencode."
-            exit 1
-        fi
-        log_info "Starting standalone server on port ${WEB_PORT}..."
-        if command -v script >/dev/null 2>&1; then
-            nohup script -qefc \
-                "env OPENCODE_LAUNCH_MODE=\"webctl\" OPENCODE_ALLOW_GLOBAL_FS_BROWSE=\"${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}\" OPENCODE_FRONTEND_PATH=\"${FRONTEND_DIST}\" OPENCODE_WEB_NO_OPEN=\"${OPENCODE_WEB_NO_OPEN:-1}\" OPENCODE_AUTH_MODE=\"${AUTH_MODE}\" \"${OPENCODE_BIN}\" web --port \"${WEB_PORT}\" --hostname \"${WEB_HOSTNAME}\"" \
-                /dev/null >"${SERVER_LOG_FILE}" 2>&1 < /dev/null &
-        else
-            nohup env OPENCODE_LAUNCH_MODE="webctl" OPENCODE_ALLOW_GLOBAL_FS_BROWSE="${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}" OPENCODE_FRONTEND_PATH="${FRONTEND_DIST}" OPENCODE_WEB_NO_OPEN="${OPENCODE_WEB_NO_OPEN:-1}" OPENCODE_AUTH_MODE="${AUTH_MODE}" \
-                "${OPENCODE_BIN}" \
-                web --port "${WEB_PORT}" --hostname "${WEB_HOSTNAME}" \
-                >"${SERVER_LOG_FILE}" 2>&1 < /dev/null &
-        fi
+    # Direct mode: skip gateway, run opencode web process directly
+    if [ "${OPENCODE_NO_GATEWAY:-0}" = "1" ]; then
+        _dev_start_direct
+        return
     fi
+
+    compile_gateway
+    start_gateway dev
+
+    local pid
+    pid="$(cat "${GATEWAY_PID_FILE}" 2>/dev/null || true)"
+    if [ -z "${pid}" ]; then
+        log_error "Gateway PID file missing after start"
+        exit 1
+    fi
+    echo "${pid}" > "${PID_FILE}"
+    echo "${pid}" > "${BACKEND_PID_FILE}"
+
+    # Wait for health check
+    log_info "Waiting for server to be ready..."
+    local max_attempts=20
+
+    if ! wait_for_health "${max_attempts}"; then
+        log_warn "Server may not be ready yet. Check: ./webctl.sh status"
+    else
+        log_success "Gateway ingress started (pid ${pid})"
+    fi
+
+    echo ""
+    echo "  URL:      ${DISPLAY_URL}"
+    echo "  PID:      ${pid}"
+    echo "  Ingress:  C root gateway -> per-user daemon"
+    if [ "${IS_SOURCE_REPO:-0}" -eq 1 ]; then
+        echo "  Source:   ${PROJECT_ROOT}/packages/opencode/src/"
+    else
+        echo "  Source:   ${OPENCODE_BIN}"
+    fi
+    echo "  Frontend: ${FRONTEND_DIST}"
+    echo "  Gateway log: ${GATEWAY_LOG_FILE}"
+    print_runtime_context
+    print_auth_mode
+    echo ""
+    echo "PTY debug log: ./webctl.sh logs"
+    echo "To stop:       ./webctl.sh stop"
+    echo ""
+}
+
+# ---------------------------------------------------------------------------
+# _dev_start_direct — launch opencode web without the C root gateway
+# ---------------------------------------------------------------------------
+_dev_start_direct() {
+    local BUN_BIN
+    BUN_BIN="$(find_bun)"
+
+    local dev_port="${WEB_PORT:-1080}"
+    local dev_host="${WEB_HOSTNAME:-0.0.0.0}"
+
+    log_info "Starting opencode web directly on ${dev_host}:${dev_port} (no gateway)..."
+
+    OPENCODE_LAUNCH_MODE=webctl \
+    OPENCODE_FRONTEND_PATH="${FRONTEND_DIST}" \
+    OPENCODE_WEB_NO_OPEN="${OPENCODE_WEB_NO_OPEN:-1}" \
+    OPENCODE_AUTH_MODE="${AUTH_MODE}" \
+    nohup "${BUN_BIN}" --conditions=browser \
+        "${PROJECT_ROOT}/packages/opencode/src/index.ts" \
+        web --port "${dev_port}" --hostname "${dev_host}" \
+        >"${GATEWAY_LOG_FILE}" 2>&1 < /dev/null &
 
     local pid=$!
     echo "${pid}" > "${PID_FILE}"
@@ -1158,26 +1197,20 @@ do_dev_start() {
     if ! wait_for_health "${max_attempts}"; then
         log_warn "Server may not be ready yet. Check: ./webctl.sh status"
     else
-        local backend_port_pid
-        backend_port_pid=$(ss -tlnp 2>/dev/null | grep ":${WEB_PORT} " | grep -oP '(?<=pid=)[0-9]+' | head -1)
-        if [ -n "${backend_port_pid}" ]; then
-            pid="${backend_port_pid}"
-            echo "${pid}" > "${PID_FILE}"
-            echo "${pid}" > "${BACKEND_PID_FILE}"
-        fi
-        log_success "Server started (pid ${pid})"
+        log_success "Direct opencode web started (pid ${pid})"
     fi
 
     echo ""
-    echo "  URL:      ${DISPLAY_URL}"
+    echo "  URL:      http://${dev_host}:${dev_port}"
     echo "  PID:      ${pid}"
+    echo "  Ingress:  direct (no gateway)"
     if [ "${IS_SOURCE_REPO:-0}" -eq 1 ]; then
         echo "  Source:   ${PROJECT_ROOT}/packages/opencode/src/"
     else
         echo "  Source:   ${OPENCODE_BIN}"
     fi
     echo "  Frontend: ${FRONTEND_DIST}"
-    echo "  Server log: ${SERVER_LOG_FILE}"
+    echo "  Log:      ${GATEWAY_LOG_FILE}"
     print_runtime_context
     print_auth_mode
     echo ""
@@ -1194,14 +1227,21 @@ do_dev_stop() {
 
     local stopped_any=0
 
+    if [ -f "${GATEWAY_PID_FILE}" ]; then
+        local gateway_pid
+        gateway_pid=$(cat "${GATEWAY_PID_FILE}")
+        if kill -0 "${gateway_pid}" 2>/dev/null; then
+            stop_gateway
+            stopped_any=1
+        else
+            rm -f "${GATEWAY_PID_FILE}"
+        fi
+    fi
+
     if [ -f "${BACKEND_PID_FILE}" ]; then
         local backend_pid
         backend_pid=$(cat "${BACKEND_PID_FILE}")
-        if kill -0 "${backend_pid}" 2>/dev/null; then
-            log_info "Stopping backend (pid ${backend_pid})..."
-            kill "${backend_pid}" 2>/dev/null || true
-            stopped_any=1
-        else
+        if ! kill -0 "${backend_pid}" 2>/dev/null; then
             log_warn "Backend PID ${backend_pid} is not running"
         fi
         rm -f "${BACKEND_PID_FILE}"
@@ -1222,14 +1262,7 @@ do_dev_stop() {
         rm -f "${FRONTEND_PID_FILE}"
     fi
 
-    # Fallback by ports
-    local backend_port_pid
-    backend_port_pid=$(ss -tlnp 2>/dev/null | grep ":${WEB_PORT} " | grep -oP '(?<=pid=)[0-9]+' | head -1)
-    if [ -n "${backend_port_pid}" ]; then
-        log_info "Stopping process on backend port ${WEB_PORT} (pid ${backend_port_pid})..."
-        kill "${backend_port_pid}" 2>/dev/null || true
-        stopped_any=1
-    fi
+    do_daemon_killall >/dev/null 2>&1 || true
 
     local frontend_port_pid
     frontend_port_pid=$(ss -tlnp 2>/dev/null | grep ":${FRONTEND_PORT} " | grep -oP '(?<=pid=)[0-9]+' | head -1)
@@ -1826,7 +1859,7 @@ compile_gateway() {
 
     gcc -O2 -Wall -D_GNU_SOURCE \
         -o "${GATEWAY_BIN}" "${GATEWAY_SRC}" \
-        -lpam -lpam_misc -lcrypto
+        -lpam -lpam_misc -lcrypto -lpthread
 
     log_success "Gateway compiled: ${GATEWAY_BIN}"
 }
@@ -1865,20 +1898,42 @@ start_gateway() {
         old_pid=$(cat "${GATEWAY_PID_FILE}")
         if kill -0 "${old_pid}" 2>/dev/null; then
             log_warn "Gateway already running (pid ${old_pid}). Stopping first..."
-            kill "${old_pid}" 2>/dev/null || true
+            if [ "${EUID}" -eq 0 ]; then
+                kill "${old_pid}" 2>/dev/null || true
+            else
+                sudo -n kill "${old_pid}" 2>/dev/null || true
+            fi
             sleep 1
         fi
         rm -f "${GATEWAY_PID_FILE}"
     fi
 
-    nohup env \
-        OPENCODE_BIN="${oc_bin}" \
-        OPENCODE_LOGIN_HTML="${login_html}" \
-        OPENCODE_GATEWAY_PORT="${gw_port}" \
-        OPENCODE_LAUNCH_MODE="webctl" \
-        OPENCODE_REPO_ROOT="${PROJECT_ROOT}" \
-        "${gw_bin}" \
-        >"${GATEWAY_LOG_FILE}" 2>&1 < /dev/null &
+    local -a gateway_env
+    gateway_env=(
+        "OPENCODE_BIN=${oc_bin}"
+        "OPENCODE_LOGIN_HTML=${login_html}"
+        "OPENCODE_GATEWAY_PORT=${gw_port}"
+        "OPENCODE_LAUNCH_MODE=webctl"
+        "OPENCODE_REPO_ROOT=${PROJECT_ROOT}"
+        "OPENCODE_ALLOW_GLOBAL_FS_BROWSE=${OPENCODE_ALLOW_GLOBAL_FS_BROWSE:-1}"
+        "OPENCODE_FRONTEND_PATH=${FRONTEND_DIST}"
+        "OPENCODE_WEB_NO_OPEN=${OPENCODE_WEB_NO_OPEN:-1}"
+        "OPENCODE_AUTH_MODE=${AUTH_MODE}"
+    )
+
+    if [ "${EUID}" -eq 0 ]; then
+        nohup env "${gateway_env[@]}" \
+            "${gw_bin}" \
+            >"${GATEWAY_LOG_FILE}" 2>&1 < /dev/null &
+    else
+        if ! command -v sudo >/dev/null 2>&1; then
+            log_error "sudo not found; cannot start root gateway daemon."
+            return 1
+        fi
+        nohup sudo -n env "${gateway_env[@]}" \
+            "${gw_bin}" \
+            >"${GATEWAY_LOG_FILE}" 2>&1 < /dev/null &
+    fi
 
     local pid=$!
     echo "${pid}" > "${GATEWAY_PID_FILE}"
@@ -1899,7 +1954,11 @@ stop_gateway() {
         gw_pid=$(cat "${GATEWAY_PID_FILE}")
         if kill -0 "${gw_pid}" 2>/dev/null; then
             log_info "Stopping gateway (pid ${gw_pid})..."
-            kill "${gw_pid}" 2>/dev/null || true
+            if [ "${EUID}" -eq 0 ]; then
+                kill "${gw_pid}" 2>/dev/null || true
+            else
+                sudo -n kill "${gw_pid}" 2>/dev/null || true
+            fi
             local i=0
             while kill -0 "${gw_pid}" 2>/dev/null && [ "${i}" -lt 10 ]; do
                 sleep 0.5
@@ -1907,7 +1966,11 @@ stop_gateway() {
             done
             if kill -0 "${gw_pid}" 2>/dev/null; then
                 log_warn "Gateway still alive, sending SIGKILL..."
-                kill -9 "${gw_pid}" 2>/dev/null || true
+                if [ "${EUID}" -eq 0 ]; then
+                    kill -9 "${gw_pid}" 2>/dev/null || true
+                else
+                    sudo -n kill -9 "${gw_pid}" 2>/dev/null || true
+                fi
             fi
             log_success "Gateway stopped"
         else

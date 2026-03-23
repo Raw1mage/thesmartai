@@ -204,10 +204,17 @@ Internet → [C Gateway :1080] → Unix Socket → [Per-User Daemon (uid=user)]
 #### C Root Gateway (`daemon/opencode-gateway.c`)
 
 - Runs as root, listens on TCP port (default :1080)
-- **PAM Authentication**: Validates Linux credentials via `pam_authenticate`
-- **JWT Sessions**: Issues HMAC-SHA256 JWT cookies (uid, username, exp) on successful auth
-- **Per-User Daemon Spawning**: On first auth, `fork() → setgid() → setuid() → exec("opencode serve --unix-socket ...")`
-- **splice() Proxy**: Zero-copy bidirectional forwarding between TCP client and per-user Unix socket using Linux `splice()` with intermediate pipe pairs
+- **Non-blocking Event Loop**: Single-threaded `epoll_wait` loop; no blocking I/O in main loop. All sockets set `O_NONBLOCK` at accept time
+- **Tagged epoll Context** (`EpollCtx`): Discriminated union (`ECTX_LISTEN | ECTX_PENDING | ECTX_SPLICE_CLIENT | ECTX_SPLICE_DAEMON | ECTX_AUTH_NOTIFY`) attached to each epoll fd so events dispatch by type and direction
+- **HTTP Request Accumulation** (`PendingRequest`): Per-connection 8KB read buffer. TCP segments accumulated via EPOLLIN until `\r\n\r\n` detected, timeout (30s), or oversize (400/408). No assumption of single-recv completeness
+- **Thread-per-auth PAM**: Login requests spawn `pthread` for `pam_authenticate`; result notified to main loop via `eventfd`. Main loop never blocked by PAM
+- **Rate Limiting**: Per-IP hash table (mod 256), sliding window 5 failures / 60s → 429. Successful login clears counter
+- **JWT Sessions**: HMAC-SHA256 with **file-backed persistent secret** (`/run/opencode-gateway/jwt.key`, configurable via `OPENCODE_JWT_KEY_PATH`). Validates `sub` + `exp` claims; `sub` → `getpwnam()` → uid
+- **Per-User Daemon Spawning**: `fork() → initgroups() → setgid() → setuid() → execvp()` with pre-parsed argv array (no `sh -c` after setuid)
+- **splice() Proxy**: Zero-copy bidirectional forwarding (TCP ↔ pipe ↔ Unix socket). Directional: each epoll event splices one direction only based on `EpollCtx.type`
+- **Connection Lifecycle**: `EPOLL_CTL_DEL` before `close()` on all fds; `closed` flag guards against in-flight epoll events on same connection; `g_nconns` counter tracks active splice connections
+- **Runtime Path Detection** (WSL2-safe): `resolve_runtime_dir()` probes `/run/user/<uid>` → `$XDG_RUNTIME_DIR` → `/tmp/opencode-<uid>/` (mkdir 700) with logging at each fallback
+- **PAM Availability Probe**: Startup-time `pam_start("login", ...)` check; fails fast with guidance if PAM is unconfigured
 - **Registry**: In-memory UID → (pid, socket_path, state) mapping; SIGCHLD handler cleans up crashed daemons
 - **Login Page**: Serves static HTML login form for unauthenticated requests
 
@@ -233,8 +240,9 @@ Internet → [C Gateway :1080] → Unix Socket → [Per-User Daemon (uid=user)]
 #### Daemon Coordination (Discovery-First)
 
 - **Discovery file is truth, in-memory registry is cache**: Both TUI and C gateway use `daemon.json` as the canonical coordination point
-- **TUI auto-spawn**: `--attach` → no daemon → `Daemon.spawn()` → daemon writes `daemon.json` → TUI attaches
-- **Gateway adopt**: On web login, C gateway checks `daemon.json` before spawning a new daemon. If PID alive → adopt into registry → splice proxy. Covers daemons pre-spawned by TUI `--attach`
+- **TUI auto-spawn**: `--attach` → no daemon → `Daemon.spawn()` → daemon writes `daemon.json` → TUI attaches; this is the explicit attach contract and replaces prior fail-fast drift in older docs
+- **Gateway adopt**: On web login, C gateway checks `daemon.json` (path resolved via `resolve_runtime_dir()`) before spawning a new daemon. If PID alive and socket connect succeeds → adopt into registry → splice proxy. Stale discovery/socket state is explicitly cleaned instead of silently reused. Covers daemons pre-spawned by TUI `--attach`
+- **Gateway JWT validation**: Gateway base64url-decodes payload, validates `sub` + `exp` claims, derives uid via `getpwnam(sub)`, routes by verified identity. JWT secret is file-backed and survives gateway restarts
 - **Race safety**: `daemon.pid` acts as single-instance guard; whoever creates the daemon first wins, latecomers discover and adopt
 
 ### SSE Event ID + Catch-up (Phase ζ)

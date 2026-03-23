@@ -69,11 +69,36 @@
 - α.6e 新增 `try_adopt_from_discovery()`：C gateway 在 `ensure_daemon_running()` fork/exec 前，先讀 `/run/user/<uid>/opencode/daemon.json`（fallback `/tmp/opencode-<uid>/daemon.json`），若 PID alive 則 adopt 進 registry
 - Architecture sync：新增 "Daemon Coordination (Discovery-First)" 章節
 
+**Session 3 (2026-03-23)** — Gateway Hardening Plan Execution:
+- α.h1 JWT verify 從 prototype 改為實際 decode+validate：新增 base64url decode、payload JSON extract、`sub`/`exp` 驗證；identity strategy 採 `sub -> getpwnam() -> uid`
+- α.h2 後續 authenticated request routing 不再走 `g_daemons[0]` demo path，改為 `find_or_create_daemon(username)` + `ensure_daemon_running(d)` + verified identity check
+- α.h3 unauthorized / malformed / expired token path 明確回 401，不再容忍簽章通過但 claims 未驗證的請求
+- α.h4 lifecycle hardening：新增 stale discovery/socket cleanup、connectable socket probe、child exit before readiness 檢查、timeout observability、ready-state revalidation
+- α.h5 compile gate：`gcc -O2 -Wall -D_GNU_SOURCE` 可成功編譯；舊的 prototype markers（`g_daemons[0]` demo routing / JWT TODO / `/tmp` discovery fallback）已從當前 gateway code 移除
+
+**Session 4 (2026-03-23)** — Structural Hardening Build (plan `plans/20260323_c-root-daemon-splice-proxy/`):
+- Phase 1: Non-blocking event loop — replaced blocking recv()+PAM in accept path with `PendingRequest` HTTP accumulation buffer (8KB per-connection, `\r\n\r\n` detection, 30s timeout, oversize guard)
+- Phase 1: Thread-per-auth PAM — `pthread` + `eventfd` notification; auth job queue with mutex; main loop drains completions via `ECTX_AUTH_NOTIFY`
+- Phase 2: Tagged `EpollCtx` discriminated union — 5 types (LISTEN/PENDING/SPLICE_CLIENT/SPLICE_DAEMON/AUTH_NOTIFY); directional splice (one direction per event)
+- Phase 2: Connection lifecycle fix — `EPOLL_CTL_DEL` before `close()`, `closed` flag guard, proper `g_nconns` decrement, slot release
+- Phase 3: JWT file-backed persistent secret (`/run/opencode-gateway/jwt.key`, configurable via `OPENCODE_JWT_KEY_PATH`)
+- Phase 3: Per-IP rate limiting (hash table mod 256, 5 failures/60s → 429, success clears counter)
+- Phase 3: `parse_opencode_argv()` pre-split + `execvp()` — eliminates `sh -c` after setuid
+- Phase 4: `resolve_runtime_dir()` — `/run/user/<uid>` → `$XDG_RUNTIME_DIR` → `/tmp/opencode-<uid>/` (mkdir 700); all hardcoded `/run/user/` paths replaced
+- Phase 4: PAM availability probe at startup — `pam_start("login", ...)` check, fail-fast with guidance
+- Phase 5: V1 compile gate PASSED (`gcc -O2 -Wall -Werror -D_GNU_SOURCE -lpam -lpam_misc -lcrypto -lpthread`)
+- Phase 5: V2 static review PASSED (7 invariants: no blocking in loop, EPOLL_CTL_DEL before close, no sh -c, JWT claims complete, connection lifecycle, rate limiting, thread safety)
+- Phase 5: V3-V8 runtime verification deferred (requires running gateway + opencode backend environment)
+- `webctl.sh`: added `-lpthread` to gcc compile command
+
 **Issues Found**:
 - `Bun.serve()` TypeScript overload mismatch for Unix socket mode → resolved with double-cast
 - C compile error: `DaemonInfo` vs `Connection` struct member access → fixed
 - `sdkSet` scope issue in provider.ts → fixed by adding to state return object
 - Pre-existing TS errors in cron/*.ts, routes/session.ts, workflow-runner.ts — not introduced by our changes
+- Session 3 hardening 仍缺 runtime evidence：single-user authenticated forwarding、SSE/WebSocket forwarding、multi-user isolation 需在適當 Linux runtime 環境補驗
+- Session 4: `strncpy` truncation warnings in `submit_auth_job` → replaced with `snprintf`
+- Session 4: `-Wformat-truncation` with 256-byte rtdir + suffix → reduced rtdir/candidate to 128 bytes
 
 ### Root Cause
 _(N/A - new feature)_
@@ -83,9 +108,16 @@ _(N/A - new feature)_
 **Static Analysis**:
 - `tsc --noEmit`: No new errors introduced (pre-existing errors confirmed in unrelated modules)
 - `bash -n webctl.sh`: Syntax valid
-- `gcc -O2 -Wall`: C gateway compiles with no warnings (with `-D_GNU_SOURCE`)
+- `gcc -O2 -Wall -D_GNU_SOURCE -o daemon/opencode-gateway daemon/opencode-gateway.c -lpam -lpam_misc -lcrypto`: C gateway compiles successfully after Session 3 hardening
+- `gcc -O2 -Wall -Werror -D_GNU_SOURCE -o gateway opencode-gateway.c -lpam -lpam_misc -lcrypto -lpthread`: Session 4 compile with `-Werror` + `-lpthread` PASSED
+- Static contract review: current gateway code no longer contains `g_daemons[0]` demo routing, JWT TODO marker, or discovery fallback `/tmp/opencode-<uid>/daemon.json`
+- Session 4 V2 static review: 7 invariants verified (no blocking in epoll loop, EPOLL_CTL_DEL before close, no sh -c in child, JWT claim validation complete, connection lifecycle correct, rate limiting correct, thread safety correct)
 
-**Runtime Verification** (deferred — requires multi-user Linux environment):
+**Runtime Verification** (partially deferred — requires Linux runtime environment):
+- Deferred: single-user login → JWT issue → authenticated forwarding to same per-user daemon
+- Deferred: SSE forwarding through splice proxy
+- Deferred: WebSocket upgrade/streaming through splice proxy
+- Deferred: multi-user isolation (alice/bob)
 - β.6-7: Unix socket serve + discovery file lifecycle
 - γ.8-11: TUI attach flow, multi-client sync, disconnect independence
 - ε.7c/9/10: Account mutation concurrency, cross-client event propagation
@@ -99,13 +131,16 @@ _(N/A - new feature)_
 - [x] Phase γ 實作
 - [x] Phase ε 實作
 - [x] Phase α 實作
+- [x] Session 3 gateway hardening（JWT claims / verified routing / lifecycle cleanup）
+- [x] Session 4 structural hardening（non-blocking event loop / EpollCtx / PendingRequest / thread-per-auth / rate limiting / JWT persistence / WSL2 runtime path / PAM probe）
 - [x] Phase δ 實作
 - [x] Phase ζ/η/θ 實作
 - [x] Phase ω 實作
-- [x] Architecture sync
-- [ ] Runtime verification (requires deployment environment)
+- [ ] Runtime verification (single-user / SSE / WebSocket / multi-user still requires deployment environment)
 - [ ] Webapp-side changes (ζ.6-8 Last-Event-ID reconnection, ε.8 account event subscription)
 
 ## Architecture Sync
 
 Architecture Sync: Updated — added Daemon Architecture section (gateway, per-user daemon, TUI attach, SSE catch-up, security migration, performance hardening, deployment) to `specs/architecture.md`.
+
+Architecture Sync (Session 4): Updated — `specs/architecture.md` C Root Gateway section now reflects non-blocking event loop, EpollCtx tagged dispatch, PendingRequest HTTP accumulation, thread-per-auth PAM, rate limiting, JWT file-backed persistence, execvp argv, splice directional proxy, connection lifecycle, runtime path detection (WSL2-safe), and PAM availability probe.
