@@ -91,6 +91,16 @@
 - Phase 5: V3-V8 runtime verification deferred (requires running gateway + opencode backend environment)
 - `webctl.sh`: added `-lpthread` to gcc compile command
 
+**Session 5 (2026-03-23)** — Runtime Verification & Bug Fixes:
+- **Critical fix**: `wait_for_daemon_ready()` deadline nanosecond overflow — `timeout_ms * 1000000` for 15000ms = 15e9 exceeds `tv_nsec` range; only subtracted 1e9 once → timeout triggered in ~2s instead of 15s → gateway killed its own child with SIGTERM. Fix: split into `tv_sec += ms/1000` + `tv_nsec += (ms%1000)*1e6`
+- Added `setsid()` after fork in child process — isolates child from parent's process group signals (defense-in-depth, not root cause)
+- Added env forwarding from gateway to child: `OPENCODE_FRONTEND_PATH`, `OPENCODE_REPO_ROOT`, `OPENCODE_ALLOW_GLOBAL_FS_BROWSE`, `OPENCODE_WEB_NO_OPEN`
+- Added unauthenticated health endpoint: `GET /api/v2/global/health` returns `{"healthy":true,"gateway":true}` without JWT
+- Added comprehensive debug logging: SIGCHLD exit status/signal, JWT verify path, daemon state transitions, child exec args
+- Renamed branding: "OpenCode Gateway" → "TheSmartAI" (header comment, startup log, login page title, fallback HTML)
+- **Runtime verification PASSED**: JWT cookie auth → `find_or_create_daemon` → `ensure_daemon_running` → fork+setuid+exec → `opencode serve --unix-socket` → daemon ready → splice proxy → HTTP 200 with correct response
+- **End-to-end verified**: Frontend HTML (1631B), JS assets (865B), API (`/global/auth/session` → `{"enabled":false,"authenticated":true}`) all served correctly through gateway → splice → daemon
+
 **Issues Found**:
 - `Bun.serve()` TypeScript overload mismatch for Unix socket mode → resolved with double-cast
 - C compile error: `DaemonInfo` vs `Connection` struct member access → fixed
@@ -99,6 +109,8 @@
 - Session 3 hardening 仍缺 runtime evidence：single-user authenticated forwarding、SSE/WebSocket forwarding、multi-user isolation 需在適當 Linux runtime 環境補驗
 - Session 4: `strncpy` truncation warnings in `submit_auth_job` → replaced with `snprintf`
 - Session 4: `-Wformat-truncation` with 256-byte rtdir + suffix → reduced rtdir/candidate to 128 bytes
+- Session 5: `wait_for_daemon_ready` nsec overflow → child killed by gateway after ~2s → fixed with proper sec/nsec split
+- Session 5: Child missing `OPENCODE_FRONTEND_PATH` → daemon returned 404 for static files → fixed with env forwarding
 
 ### Root Cause
 _(N/A - new feature)_
@@ -113,8 +125,9 @@ _(N/A - new feature)_
 - Static contract review: current gateway code no longer contains `g_daemons[0]` demo routing, JWT TODO marker, or discovery fallback `/tmp/opencode-<uid>/daemon.json`
 - Session 4 V2 static review: 7 invariants verified (no blocking in epoll loop, EPOLL_CTL_DEL before close, no sh -c in child, JWT claim validation complete, connection lifecycle correct, rate limiting correct, thread safety correct)
 
-**Runtime Verification** (partially deferred — requires Linux runtime environment):
-- Deferred: single-user login → JWT issue → authenticated forwarding to same per-user daemon
+**Runtime Verification**:
+- PASSED: single-user JWT auth → daemon spawn → splice proxy → frontend HTML/JS/API all served correctly (Session 5)
+- Deferred: PAM login via browser (requires Linux password input)
 - Deferred: SSE forwarding through splice proxy
 - Deferred: WebSocket upgrade/streaming through splice proxy
 - Deferred: multi-user isolation (alice/bob)
@@ -136,7 +149,8 @@ _(N/A - new feature)_
 - [x] Phase δ 實作
 - [x] Phase ζ/η/θ 實作
 - [x] Phase ω 實作
-- [ ] Runtime verification (single-user / SSE / WebSocket / multi-user still requires deployment environment)
+- [x] Runtime verification — single-user JWT → daemon spawn → splice proxy → frontend+API (Session 5)
+- [ ] Runtime verification — PAM browser login / SSE / WebSocket / multi-user
 - [ ] Webapp-side changes (ζ.6-8 Last-Event-ID reconnection, ε.8 account event subscription)
 
 ## Architecture Sync
@@ -144,3 +158,5 @@ _(N/A - new feature)_
 Architecture Sync: Updated — added Daemon Architecture section (gateway, per-user daemon, TUI attach, SSE catch-up, security migration, performance hardening, deployment) to `specs/architecture.md`.
 
 Architecture Sync (Session 4): Updated — `specs/architecture.md` C Root Gateway section now reflects non-blocking event loop, EpollCtx tagged dispatch, PendingRequest HTTP accumulation, thread-per-auth PAM, rate limiting, JWT file-backed persistence, execvp argv, splice directional proxy, connection lifecycle, runtime path detection (WSL2-safe), and PAM availability probe.
+
+Architecture Sync (Session 5): Verified (No doc changes) — runtime bug fixes (deadline overflow, env forwarding) and branding rename do not change architectural boundaries or flows.

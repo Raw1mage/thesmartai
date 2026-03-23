@@ -1,5 +1,6 @@
+#define _GNU_SOURCE
 /*
- * opencode-gateway — C root daemon
+ * thesmartai-gateway — C root daemon
  *
  * Architecture (post-hardening):
  *   - Binds TCP :1080 (configurable via OPENCODE_GATEWAY_PORT)
@@ -36,6 +37,7 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <sys/sendfile.h>
+#include <poll.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <pwd.h>
@@ -173,6 +175,7 @@ static int       g_running       = 1;
 static uint8_t   g_jwt_secret[JWT_SECRET_LEN];
 static char      g_login_html[65536];
 static size_t    g_login_html_len = 0;
+static int       g_force_secure = 0;  /* force Secure flag on cookies (behind HTTPS proxy) */
 static char      g_opencode_bin[512] = "/usr/local/bin/opencode";
 static char     *g_opencode_argv[MAX_OPENCODE_ARGV]; /* pre-parsed argv */
 static int       g_opencode_argc = 0;
@@ -188,12 +191,20 @@ static void on_sigchld(int sig) {
     pid_t pid;
     int status;
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        int found = 0;
         for (int i = 0; i < g_ndaemons; i++) {
             if (g_daemons[i].pid == pid) {
-                LOGW("per-user daemon for %s (pid %d) exited", g_daemons[i].username, pid);
+                LOGW("SIGCHLD: daemon for %s (pid %d) exited status=%d (exit=%d sig=%d)",
+                     g_daemons[i].username, pid, status,
+                     WIFEXITED(status) ? WEXITSTATUS(status) : -1,
+                     WIFSIGNALED(status) ? WTERMSIG(status) : -1);
                 g_daemons[i].state = DAEMON_DEAD;
                 g_daemons[i].pid   = -1;
+                found = 1;
             }
+        }
+        if (!found) {
+            LOGW("SIGCHLD: unknown child pid %d exited status=%d", pid, status);
         }
     }
     errno = saved;
@@ -652,7 +663,8 @@ static int wait_for_daemon_ready(DaemonInfo *d, pid_t pid, int timeout_ms) {
     int last_connect_errno = 0;
 
     clock_gettime(CLOCK_MONOTONIC, &deadline);
-    deadline.tv_nsec += (long)timeout_ms * 1000000L;
+    deadline.tv_sec += timeout_ms / 1000;
+    deadline.tv_nsec += (long)(timeout_ms % 1000) * 1000000L;
     if (deadline.tv_nsec >= 1000000000L) { deadline.tv_sec++; deadline.tv_nsec -= 1000000000L; }
 
     while (1) {
@@ -759,10 +771,13 @@ static int try_adopt_from_discovery(DaemonInfo *d) {
 }
 
 static int ensure_daemon_running(DaemonInfo *d) {
+    LOGI("ensure_daemon_running: user='%s' state=%d pid=%d socket='%s'",
+         d->username, d->state, d->pid, d->socket_path);
+
     if (d->state == DAEMON_READY) {
         if (d->pid > 0 && kill(d->pid, 0) == 0) {
             int probe_fd = connect_unix(d->socket_path);
-            if (probe_fd >= 0) { close(probe_fd); return 1; }
+            if (probe_fd >= 0) { close(probe_fd); LOGI("daemon still alive and connectable"); return 1; }
             LOGW("daemon for %s marked stale: socket connect failed: %s", d->username, strerror(errno));
         } else {
             LOGW("daemon for %s marked stale: pid %d is not alive", d->username, d->pid);
@@ -771,20 +786,37 @@ static int ensure_daemon_running(DaemonInfo *d) {
     }
 
     if (d->state == DAEMON_DEAD || d->state == DAEMON_NONE) {
-        if (try_adopt_from_discovery(d)) return 1;
+        LOGI("trying adopt from discovery for '%s'...", d->username);
+        if (try_adopt_from_discovery(d)) { LOGI("adopted!"); return 1; }
+        LOGI("adopt failed, will spawn new daemon");
 
         unlink(d->socket_path);
-        LOGI("spawning daemon for %s (uid %u)", d->username, d->uid);
+        LOGI("spawning daemon for %s (uid %u) socket='%s'", d->username, d->uid, d->socket_path);
         d->state = DAEMON_STARTING;
 
         pid_t pid = fork();
         if (pid < 0) { LOGE("fork: %s", strerror(errno)); return 0; }
 
         if (pid == 0) {
+            /* Child: new session so it won't get parent's signals */
+            setsid();
+
             /* Child: drop privileges and exec opencode */
             if (initgroups(d->username, d->gid) < 0) { _exit(1); }
             if (setgid(d->gid) < 0) { _exit(1); }
             if (setuid(d->uid) < 0) { _exit(1); }
+
+            /* Set user environment from passwd entry */
+            {
+                struct passwd *pw = getpwuid(d->uid);
+                if (pw) {
+                    setenv("HOME", pw->pw_dir, 1);
+                    setenv("USER", pw->pw_name, 1);
+                    setenv("LOGNAME", pw->pw_name, 1);
+                    if (pw->pw_shell[0]) setenv("SHELL", pw->pw_shell, 1);
+                    if (chdir(pw->pw_dir) < 0) { /* best effort */ }
+                }
+            }
 
             int devnull = open("/dev/null", O_RDWR);
             if (devnull >= 0) { dup2(devnull, 0); close(devnull); }
@@ -801,6 +833,16 @@ static int ensure_daemon_running(DaemonInfo *d) {
             }
             setenv("OPENCODE_USER_DAEMON_MODE", "1", 1);
 
+            /* Forward env vars the daemon needs from gateway's env */
+            const char *fpath = getenv("OPENCODE_FRONTEND_PATH");
+            if (fpath) setenv("OPENCODE_FRONTEND_PATH", fpath, 1);
+            const char *repo_root = getenv("OPENCODE_REPO_ROOT");
+            if (repo_root) setenv("OPENCODE_REPO_ROOT", repo_root, 1);
+            const char *allow_browse = getenv("OPENCODE_ALLOW_GLOBAL_FS_BROWSE");
+            if (allow_browse) setenv("OPENCODE_ALLOW_GLOBAL_FS_BROWSE", allow_browse, 1);
+            const char *no_open = getenv("OPENCODE_WEB_NO_OPEN");
+            if (no_open) setenv("OPENCODE_WEB_NO_OPEN", no_open, 1);
+
             /* DD-8: use pre-parsed argv, no sh -c */
             if (g_opencode_argc > 0) {
                 char *argv[MAX_OPENCODE_ARGV];
@@ -811,10 +853,22 @@ static int ensure_daemon_running(DaemonInfo *d) {
                 argv[ac++] = "--unix-socket";
                 argv[ac++] = d->socket_path;
                 argv[ac] = NULL;
+
+                /* Debug: log exec args to stderr (which is the daemon log) */
+                dprintf(2, "[gateway-child] exec: ");
+                for (int i = 0; argv[i]; i++) dprintf(2, "'%s' ", argv[i]);
+                dprintf(2, "\n");
+                dprintf(2, "[gateway-child] uid=%u gid=%u XDG_RUNTIME_DIR=%s\n",
+                        getuid(), getgid(), getenv("XDG_RUNTIME_DIR") ?: "(null)");
+
                 execvp(argv[0], argv);
+                dprintf(2, "[gateway-child] execvp failed: %s\n", strerror(errno));
             } else {
+                dprintf(2, "[gateway-child] execl: '%s' serve --unix-socket '%s'\n",
+                        g_opencode_bin, d->socket_path);
                 execl(g_opencode_bin, g_opencode_bin, "serve",
                       "--unix-socket", d->socket_path, (char *)NULL);
+                dprintf(2, "[gateway-child] execl failed: %s\n", strerror(errno));
             }
             _exit(127);
         }
@@ -910,9 +964,19 @@ static void splice_one_direction(Connection *c, int src, int pipe_wr, int pipe_r
     ssize_t n;
     while ((n = splice(src, NULL, pipe_wr, NULL, PIPE_BUF_SIZE,
                        SPLICE_F_NONBLOCK | SPLICE_F_MOVE)) > 0) {
-        ssize_t m = splice(pipe_rd, NULL, dst, NULL, (size_t)n,
-                           SPLICE_F_NONBLOCK | SPLICE_F_MOVE);
-        if (m < 0 && errno != EAGAIN) { close_conn(c); return; }
+        size_t remaining = (size_t)n;
+        while (remaining > 0) {
+            ssize_t m = splice(pipe_rd, NULL, dst, NULL, remaining,
+                               SPLICE_F_NONBLOCK | SPLICE_F_MOVE);
+            if (m > 0) { remaining -= (size_t)m; continue; }
+            if (m < 0 && errno == EAGAIN) {
+                /* dst buffer full — poll until writable (max 5s) */
+                struct pollfd pfd = { .fd = dst, .events = POLLOUT };
+                if (poll(&pfd, 1, 5000) <= 0) { close_conn(c); return; }
+                continue;
+            }
+            close_conn(c); return; /* real error or EOF */
+        }
     }
     if (n == 0) { close_conn(c); return; } /* EOF */
     if (n < 0 && errno != EAGAIN) close_conn(c);
@@ -954,6 +1018,7 @@ static int parse_request(const char *buf, size_t len, HttpRequest *req) {
     if (sscanf(buf, "%7s %255s", req->method, req->path) < 2) return 0;
 
     const char *p = strstr(buf, "\r\nCookie:");
+    if (!p) p = strstr(buf, "\r\ncookie:");
     if (p) {
         p += 9;
         while (*p == ' ') p++;
@@ -970,6 +1035,7 @@ static int parse_request(const char *buf, size_t len, HttpRequest *req) {
         while (*xfp == ' ') xfp++;
         req->is_secure = (strncasecmp(xfp, "https", 5) == 0);
     }
+    if (g_force_secure) req->is_secure = 1;
 
     const char *body = strstr(buf, "\r\n\r\n");
     if (body) {
@@ -1019,9 +1085,22 @@ static void route_complete_request(PendingRequest *pr) {
     pr->fd = -1;
     pr->in_use = 0;
 
-    LOGI("req: %s %s cookie_len=%d has_jwt=%d",
+    LOGI("req: %s %s cookie_len=%d has_jwt=%d is_secure=%d",
          req.method, req.path, (int)strlen(req.cookie),
-         strstr(req.cookie, "oc_jwt=") ? 1 : 0);
+         strstr(req.cookie, "oc_jwt=") ? 1 : 0, req.is_secure);
+
+    /* Unauthenticated health endpoint — allows webctl health check */
+    if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/api/v2/global/health") == 0) {
+        http_send(fd, 200, "OK", "application/json", NULL,
+                  "{\"healthy\":true,\"gateway\":true}", 31);
+        close(fd);
+        return;
+    }
+
+    /* Handle auth routes BEFORE JWT check — these are gateway-owned */
+    if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/auth/login") == 0) {
+        goto handle_login;
+    }
 
     /* Check for valid JWT cookie */
     char *jwt_val = strstr(req.cookie, "oc_jwt=");
@@ -1035,34 +1114,61 @@ static void route_complete_request(PendingRequest *pr) {
         if (jwt_verify(jwt_val, username, &uid)) {
             LOGI("JWT valid for user='%s' uid=%d", username, (int)uid);
             DaemonInfo *d = find_or_create_daemon(username);
-            if (d && d->uid == uid && ensure_daemon_running(d)) {
-                LOGI("daemon ready for '%s', starting splice proxy", username);
-                Connection *conn = start_splice_proxy(fd, d);
-                if (conn) {
-                    send(conn->daemon_fd, raw_buf, raw_len, MSG_NOSIGNAL);
-                    return;
+            if (!d) {
+                LOGE("find_or_create_daemon returned NULL for '%s'", username);
+            } else if (d->uid != uid) {
+                LOGE("uid mismatch for '%s': jwt_uid=%u daemon_uid=%u", username, uid, d->uid);
+            } else {
+                LOGI("daemon entry for '%s': state=%d pid=%d socket='%s'",
+                     username, d->state, d->pid, d->socket_path);
+                if (ensure_daemon_running(d)) {
+                    LOGI("daemon ready for '%s', starting splice proxy → socket='%s'",
+                         username, d->socket_path);
+                    Connection *conn = start_splice_proxy(fd, d);
+                    if (conn) {
+                        LOGI("splice proxy started for '%s', forwarding %zu bytes",
+                             username, raw_len);
+                        send(conn->daemon_fd, raw_buf, raw_len, MSG_NOSIGNAL);
+                        return;
+                    }
+                    LOGW("start_splice_proxy failed for '%s': socket='%s'",
+                         username, d->socket_path);
+                } else {
+                    LOGE("ensure_daemon_running FAILED for '%s': state=%d pid=%d socket='%s'",
+                         username, d->state, d->pid, d->socket_path);
                 }
-                LOGW("start_splice_proxy failed for '%s'", username);
             }
-            /* Daemon failed — clear cookie */
-            const char *clear = "HTTP/1.1 303 See Other\r\n"
-                "Set-Cookie: oc_jwt=; HttpOnly; Path=/; Max-Age=0\r\n"
-                "Location: /\r\nConnection: close\r\n\r\n";
-            send(fd, clear, strlen(clear), MSG_NOSIGNAL);
+            /* Daemon failed — clear cookie via JS and redirect to login */
+            LOGW("daemon unavailable for '%s', clearing JWT and redirecting to login", username);
+            const char *clear_body =
+                "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+                "<script>"
+                "document.cookie=\"oc_jwt=; Path=/; Max-Age=0\";"
+                "window.location.replace(\"/\");"
+                "</script></head><body></body></html>";
+            http_send(fd, 200, "OK", "text/html; charset=utf-8",
+                      "Cache-Control: no-store\r\n",
+                      clear_body, strlen(clear_body));
             close(fd);
             return;
         }
 
-        LOGW("JWT verify failed — clearing cookie");
-        const char *clear = "HTTP/1.1 303 See Other\r\n"
-            "Set-Cookie: oc_jwt=; HttpOnly; Path=/; Max-Age=0\r\n"
-            "Location: /\r\nConnection: close\r\n\r\n";
-        send(fd, clear, strlen(clear), MSG_NOSIGNAL);
+        LOGW("JWT verify failed — clearing cookie via JS");
+        const char *clear_body =
+            "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+            "<script>"
+            "document.cookie=\"oc_jwt=; Path=/; Max-Age=0\";"
+            "window.location.replace(\"/\");"
+            "</script></head><body></body></html>";
+        http_send(fd, 200, "OK", "text/html; charset=utf-8",
+                  "Cache-Control: no-store\r\n",
+                  clear_body, strlen(clear_body));
         close(fd);
         return;
     }
 
-    /* No valid session */
+    /* No valid session — handle POST /auth/login */
+handle_login:
     if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/auth/login") == 0) {
         /* Parse form body for username/password */
         char raw_user[256] = {}, raw_pass[256] = {};
@@ -1108,17 +1214,8 @@ static void route_complete_request(PendingRequest *pr) {
         return;
     }
 
-    if (strcmp(req.path, "/auth/test-cookie") == 0) {
-        char thdrs[512];
-        snprintf(thdrs, sizeof(thdrs),
-                 "Set-Cookie: oc_test=hello; HttpOnly; Path=/; SameSite=Lax; Max-Age=60\r\n"
-                 "Location: /\r\n");
-        http_send(fd, 303, "See Other", "text/plain", thdrs, "", 0);
-        close(fd);
-    } else {
-        serve_login_page(fd);
-        close(fd);
-    }
+    serve_login_page(fd);
+    close(fd);
 }
 
 /* ─── Handle completed PAM auth jobs ─────────────────────────────── */
@@ -1156,16 +1253,22 @@ static void drain_auth_completions(void) {
             char token[1024];
             jwt_sign(payload, token, sizeof(token));
 
-            char cookie_hdr[1200];
-            snprintf(cookie_hdr, sizeof(cookie_hdr),
-                     "Set-Cookie: oc_jwt=%s; HttpOnly;%s Path=/; SameSite=Lax; Max-Age=%d\r\n",
-                     token, local.is_secure ? " Secure;" : "", JWT_EXP_SECONDS);
-            const char *redir_body =
-                "<!DOCTYPE html><html><head>"
-                "<meta http-equiv=\"refresh\" content=\"0;url=/\">"
-                "</head><body>Redirecting...</body></html>";
-            http_send(local.client_fd, 200, "OK", "text/html; charset=utf-8", cookie_hdr,
-                      redir_body, strlen(redir_body));
+            /* Set cookie via client-side JS instead of Set-Cookie header.
+               This bypasses reverse proxies that strip response headers
+               (e.g. nginx with unconditional Connection: upgrade). */
+            char js_body[2048];
+            snprintf(js_body, sizeof(js_body),
+                "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+                "</head><body><script>"
+                "document.cookie='oc_jwt=%s; Path=/; Max-Age=%d';"
+                "window.location.replace('/');"
+                "</script></body></html>",
+                token, JWT_EXP_SECONDS);
+            http_send(local.client_fd, 200, "OK", "text/html; charset=utf-8",
+                      "Cache-Control: no-store\r\n",
+                      js_body, strlen(js_body));
+            LOGI("auth 200+js-cookie sent: is_secure=%d token_len=%zu",
+                 local.is_secure, strlen(token));
         } else {
             /* PAM failure */
             rate_limit_record_failure(local.peer_ip);
@@ -1211,6 +1314,16 @@ int main(int argc, char *argv[]) {
     /* JWT secret: file-backed persistence (DD-5) */
     if (!jwt_load_or_create_secret()) return 1;
 
+    /* Force Secure cookie flag — auto-detect from OPENCODE_PUBLIC_URL or explicit env */
+    {
+        const char *fs = getenv("OPENCODE_GATEWAY_FORCE_SECURE");
+        const char *pub_url = getenv("OPENCODE_PUBLIC_URL");
+        if ((fs && fs[0] == '1') || (pub_url && strncmp(pub_url, "https", 5) == 0)) {
+            g_force_secure = 1;
+            LOGI("force-secure: cookies will always include Secure flag");
+        }
+    }
+
     /* Load login.html */
     const char *html_path = getenv("OPENCODE_LOGIN_HTML");
     if (!html_path) html_path = "/usr/local/share/opencode/login.html";
@@ -1219,7 +1332,7 @@ int main(int argc, char *argv[]) {
         g_login_html_len = fread(g_login_html, 1, sizeof(g_login_html)-1, f);
         fclose(f);
     } else {
-        const char *fallback = "<html><body><h1>OpenCode Login</h1>"
+        const char *fallback = "<html><body><h1>TheSmartAI Login</h1>"
             "<form method='POST' action='/auth/login'>"
             "User: <input name='username'><br>"
             "Pass: <input type='password' name='password'><br>"
@@ -1300,7 +1413,7 @@ int main(int argc, char *argv[]) {
     ev.data.ptr = &g_auth_ectx;
     epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, g_auth_eventfd, &ev);
 
-    LOGI("opencode-gateway listening on :%d (non-blocking, thread-per-auth)", port);
+    LOGI("thesmartai-gateway listening on :%d (non-blocking, thread-per-auth)", port);
 
     struct epoll_event events[MAX_EVENTS];
     time_t last_sweep = time(NULL);
