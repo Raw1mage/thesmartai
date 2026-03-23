@@ -939,22 +939,40 @@ export function terminateAllActiveWorkers(): number {
   let canceled = 0
   for (const worker of workers) {
     const current = worker.current
-    if (!current) continue
-    try {
-      const stdin = worker.proc.stdin
-      if (typeof stdin !== "number") {
-        stdin?.write(
-          JSON.stringify({
-            type: "cancel",
-            id: current.id,
-            sessionID: current.sessionID,
-          }) + "\n",
-        )
-        canceled++
+    // Cancel both active (current set) and busy (LLM stream may still be running) workers
+    if (!current && !worker.busy) continue
+    let stdinOk = false
+    if (current) {
+      try {
+        const stdin = worker.proc.stdin
+        if (typeof stdin !== "number") {
+          stdin?.write(
+            JSON.stringify({
+              type: "cancel",
+              id: current.id,
+              sessionID: current.sessionID,
+            }) + "\n",
+          )
+          stdinOk = true
+        }
+      } catch {
+        // stdin write failed — fall through to hard kill
       }
-    } catch {
-      // ignore — worker may already be dead
+      // Clear UI state: remove the subagent status bar for the parent session
+      if (current.parentSessionID) {
+        void SessionActiveChild.set(current.parentSessionID, null)
+      }
     }
+    // Hard kill: if stdin cancel failed or worker had no current but was busy,
+    // kill the process directly to ensure the subagent stops immediately.
+    if (!stdinOk) {
+      try {
+        worker.proc.kill()
+      } catch {
+        // already dead
+      }
+    }
+    canceled++
   }
   return canceled
 }
@@ -962,38 +980,46 @@ export function terminateAllActiveWorkers(): number {
 export async function terminateActiveChild(parentSessionID: string) {
   const activeChild = SessionActiveChild.get(parentSessionID)
   if (!activeChild) return false
-  if (activeChild.status !== "running") {
-    throw new Error(`active_child_not_terminable:${parentSessionID}:${activeChild.status}`)
-  }
-  if (!activeChild.workerID || activeChild.workerID === "handoff") {
-    throw new Error(`active_child_worker_missing:${parentSessionID}:${activeChild.sessionID}`)
-  }
-  const worker = workers.find((candidate) => candidate.id === activeChild.workerID)
-  if (!worker) {
-    throw new Error(`active_child_worker_missing:${parentSessionID}:${activeChild.workerID}`)
-  }
+  if (activeChild.status !== "running") return false
+
+  const worker = activeChild.workerID && activeChild.workerID !== "handoff"
+    ? workers.find((candidate) => candidate.id === activeChild.workerID)
+    : undefined
+  if (!worker) return false
+
+  // Try graceful cancel via stdin first
+  let stdinOk = false
   const current = worker.current
-  if (!current) {
-    throw new Error(`active_child_worker_idle:${parentSessionID}:${activeChild.workerID}`)
+  if (current) {
+    try {
+      const stdin = worker.proc.stdin
+      if (typeof stdin !== "number") {
+        stdin?.write(
+          JSON.stringify({
+            type: "cancel",
+            id: current.id,
+            sessionID: activeChild.sessionID,
+          }) + "\n",
+        )
+        stdinOk = true
+      }
+    } catch {
+      // stdin write failed — fall through to hard kill
+    }
   }
-  if (
-    current.sessionID !== activeChild.sessionID ||
-    current.parentSessionID !== parentSessionID ||
-    current.toolCallID !== activeChild.toolCallID
-  ) {
-    throw new Error(`active_child_worker_mismatch:${parentSessionID}:${activeChild.workerID}`)
+
+  // Hard kill fallback: if stdin failed or worker.current was already cleared
+  // but worker process is still alive, kill it directly
+  if (!stdinOk) {
+    try {
+      worker.proc.kill()
+    } catch {
+      // already dead
+    }
   }
-  const stdin = worker.proc.stdin
-  if (typeof stdin === "number") {
-    throw new Error(`active_child_worker_stdin_unavailable:${parentSessionID}:${activeChild.workerID}`)
-  }
-  stdin?.write(
-    JSON.stringify({
-      type: "cancel",
-      id: current.id,
-      sessionID: activeChild.sessionID,
-    }) + "\n",
-  )
+
+  // Clear UI state: remove the subagent status bar immediately
+  await SessionActiveChild.set(parentSessionID, null)
   return true
 }
 

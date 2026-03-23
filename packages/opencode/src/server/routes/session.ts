@@ -1055,28 +1055,22 @@ export const SessionRoutes = lazy(() =>
       async (c) => {
         // 1. Terminate all active worker processes FIRST — they run in separate
         //    processes and are invisible to SessionStatus.list().
-        const { terminateAllActiveWorkers } = await import("@/tool/task")
+        const { terminateAllActiveWorkers, terminateActiveChild } = await import("@/tool/task")
         const workersCanceled = terminateAllActiveWorkers()
 
         // 2. Cancel all sessions tracked in the main process.
+        //    Also terminate their active child workers — the orchestrator
+        //    session may be "busy" waiting for a tool call, but its child
+        //    worker might not have been caught by terminateAllActiveWorkers
+        //    if worker.current was already cleared.
         const busyIDs = await KillSwitchService.listBusySessionIDs()
         for (const id of busyIDs) {
           SessionPrompt.cancel(id)
+          terminateActiveChild(id).catch(() => {})
         }
 
         const totalAborted = busyIDs.length + workersCanceled
         const requestID = await KillSwitchService.idempotentRequestID("emergency_stop", "double-click stop", 5000)
-        await KillSwitchService.setState({
-          active: true,
-          state: "soft_paused",
-          requestID,
-          initiator: "emergency_stop",
-          reason: "Double-click emergency stop",
-          initiatedAt: Date.now(),
-          mode: "global",
-          scope: "global",
-          ttl: KillSwitchService.DEFAULT_TTL_MS,
-        })
         await KillSwitchService.writeAudit({
           requestID,
           initiator: "emergency_stop",
@@ -1084,7 +1078,10 @@ export const SessionRoutes = lazy(() =>
           result: "ok",
           meta: { aborted: totalAborted, sessions: busyIDs.length, workers: workersCanceled },
         })
-        return c.json({ aborted: totalAborted, killSwitchActive: true })
+        // Emergency stop is a one-shot action: audit the kill, then clear state
+        // immediately so the UI doesn't show a stale kill-switch banner.
+        await KillSwitchService.clearState()
+        return c.json({ aborted: totalAborted, killSwitchActive: false })
       },
     )
     .post(
