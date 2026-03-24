@@ -459,7 +459,12 @@ export namespace MCP {
 
     if (mcp.type === "local") {
       const [cmd, ...args] = mcp.command
-      const cwd = Instance.directory
+      // Bun standalone binaries read bunfig.toml from cwd ancestors at runtime.
+      // Internal MCP binaries (compiled with bun build --compile) must not inherit
+      // the project-level bunfig.toml (which has @opentui/solid/preload for the TUI).
+      // Use /tmp as cwd for these to avoid the preload-not-found crash.
+      const isInternalMcpBinary = cmd.startsWith("/usr/local/lib/opencode/mcp/")
+      const cwd = isInternalMcpBinary ? "/tmp" : Instance.directory
 
       // Ensure memory storage directory exists when MEMORY_FILE_PATH is configured.
       if (key.startsWith("memory")) {
