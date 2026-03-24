@@ -1528,8 +1528,8 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         // Activity-based timeout: subagent stays alive as long as it's working.
         // Only times out after INACTIVITY_TIMEOUT_MS of no heartbeat/events.
         // Hard cap (MAX_EXECUTION_MS) prevents truly runaway processes.
-        const INACTIVITY_TIMEOUT_MS = config.experimental?.task_timeout ?? 3 * 60 * 1000 // 3 min no activity = dead
-        const MAX_EXECUTION_MS = 60 * 60 * 1000 // 1 hour hard cap
+        const INACTIVITY_TIMEOUT_MS = config.experimental?.task_timeout ?? 10 * 60 * 1000 // 10 min no activity = dead
+        const MAX_EXECUTION_MS = 2 * 60 * 60 * 1000 // 2 hour hard cap
 
         // Activity tracking strategy (v2): heartbeat/event-first with low-frequency storage fallback.
         // Keep orphan/zombie safety by preserving stale detection + supervisor stall markers.
@@ -1561,7 +1561,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
 
         // Heartbeat check: if no activity for too long, process may be zombified
         const HEARTBEAT_INTERVAL_MS = 10_000 // Check frequently with cheap in-memory signals
-        const HEARTBEAT_STALE_MS = 120_000 // Consider stale after 2 minutes of no activity
+        const HEARTBEAT_STALE_MS = 5 * 60_000 // Consider stale after 5 minutes of no activity
 
         const heartbeatTimer = setInterval(() => {
           const worker = assignedWorkerID ? workers.find((w) => w.id === assignedWorkerID) : undefined

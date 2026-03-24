@@ -216,10 +216,12 @@ export function Prompt(props: PromptProps) {
     timers.clear("footer-tick")
   }
 
-  // 1-second timer for elapsed clock (only when session is active)
+  // 1-second timer for elapsed clock (only when session is active).
+  // IMPORTANT: Do NOT reset elapsedNow when re-entering active state — that
+  // causes the displayed H:M:S to jump back to 0:00 whenever SSE sync briefly
+  // drops the active_child signal.  Only start/stop the tick interval.
   createEffect(() => {
     if (hasActivity()) {
-      setElapsedNow(Date.now())
       timers.scheduleInterval("elapsed-clock", () => setElapsedNow(Date.now()), 1000)
     } else {
       timers.clear("elapsed-clock")
