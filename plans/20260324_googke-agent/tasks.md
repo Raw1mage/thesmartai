@@ -36,3 +36,12 @@
 - [x] 5.9 Verify type-check passes for all new files (0 new tsc errors)
 - [x] 5.10 Create event log and documentation sync
 - [x] 5.11 Web app market UI: sidebar entry (`app-market` icon) + Synology-style dialog with card grid, search, install/enable/disable/uninstall actions
+- [x] 5.12 Google Calendar OAuth connect flow: server-side connect/callback endpoints + frontend OAuth popup + auto-poll for auth completion
+- [x] 5.13 GCP OAuth credentials stored in `.env` (gitignored)
+
+## 6. Remaining (Post-MVP)
+
+- [ ] 6.1 Add redirect URIs in GCP Console for production + localhost callback paths
+- [ ] 6.2 Smoke test with real Google account (end-to-end OAuth + calendar CRUD)
+- [ ] 6.3 Documentation sync to `specs/architecture.md`
+- [ ] 6.4 External MCP marketplace integration

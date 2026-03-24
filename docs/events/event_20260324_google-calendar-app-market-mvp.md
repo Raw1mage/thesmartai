@@ -21,15 +21,17 @@
 
 ### OUT
 
-- Google Calendar OAuth connect flow UI
+- ~~Google Calendar OAuth connect flow UI~~ → **已實作（5.12）**
 - 遠端 marketplace backend
 - 第三方 app sandbox hardening
-- smoke test（需要真實 Google OAuth token）
+- smoke test（需要真實 Google OAuth token + GCP redirect URI 設定）
 
 ## Scope（引用 tasks.md）
 
 - 5.1–5.10 全部完成
 - 5.11 Web app market UI 完成
+- 5.12 Google Calendar OAuth connect flow 完成
+- 5.13 GCP OAuth credentials 已儲存
 
 ## Key Decisions
 
@@ -99,9 +101,35 @@ available → installing → installed → (configured + authenticated + enabled
 - TypeScript: 新增前端檔案零 type errors（`tsc --noEmit --project packages/app/tsconfig.json`）
 - Sidebar 按鈕位置：位於 open-project 下方、settings 上方
 
+## 5.12 Google Calendar OAuth Connect Flow
+
+### 新增/修改檔案
+
+- `packages/opencode/src/server/routes/mcp.ts` — 新增 `GET /apps/:appId/oauth/connect`（redirect to Google consent screen）+ `GET /apps/:appId/oauth/callback`（code exchange → Auth.set → auto-close HTML）
+- `packages/app/src/components/dialog-app-market.tsx` — 新增 `openOAuthConnect()` popup + polling；`performAction()` 增加 auto-enable after install、pending_auth 路由到 OAuth popup
+- `.env` — 新增 Google Calendar OAuth credentials（CLIENT_ID, CLIENT_SECRET, SCOPE, AUTH_URI, TOKEN_URI）
+
+### Key Decisions
+
+10. **OAuth Authorization Code flow**：connect endpoint 組裝 Google consent URL（含 `access_type=offline` + `prompt=consent`），callback 用 `application/x-www-form-urlencoded` POST 換 token。
+11. **`Auth.set("google-calendar", ...)`**：利用 canonical auth 的 identity resolution chain 自動建立 Account entry，不另建帳號邏輯。
+12. **Redirect URI 動態推導**：`${origin}/api/mcp/apps/google-calendar/oauth/callback`，自動適配 localhost 與 production URL。
+13. **Callback 回傳自動關閉 HTML**：`window.close()` 讓 popup 自行關閉，前端 polling 偵測 auth 狀態變化後更新 UI。
+14. **Credentials 存 `.env`（gitignored）**：不寫入程式碼或 config 檔案。
+
+### Verification
+
+- TypeScript: 零新增 type errors（backend `tsc --noEmit` + frontend `tsc --noEmit --project packages/app/tsconfig.json`）
+- Pre-existing error: `mcp.ts:178 error.reason` 已確認為既有問題，非本次變更引入
+
+### GCP Console 待辦
+
+- [ ] 新增 Authorized redirect URI: `https://cms.thesmart.cc/api/mcp/apps/google-calendar/oauth/callback`
+- [ ] 新增 Authorized redirect URI: `http://localhost:1080/api/mcp/apps/google-calendar/oauth/callback`
+
 ## Remaining
 
-- [ ] Documentation sync to `specs/architecture.md`
-- [ ] Google Calendar OAuth connect flow integration
-- [ ] Smoke test with real Google account
-- [ ] External MCP marketplace 串接
+- [ ] 6.1 GCP Console redirect URIs 設定
+- [ ] 6.2 Smoke test with real Google account（end-to-end OAuth + calendar CRUD）
+- [ ] 6.3 Documentation sync to `specs/architecture.md`
+- [ ] 6.4 External MCP marketplace 串接
