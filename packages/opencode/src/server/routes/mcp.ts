@@ -2,12 +2,280 @@ import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { MCP } from "../../mcp"
+import { ManagedAppRegistry } from "../../mcp"
 import { Config } from "../../config/config"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
 
+function managedAppUsageHttpStatus(reason: ManagedAppRegistry.UsageErrorReason): 401 | 409 | 503 {
+  switch (reason) {
+    case "unauthenticated":
+      return 401
+    case "misconfigured":
+      return 409
+    case "runtime_error":
+      return 503
+  }
+}
+
 export const McpRoutes = lazy(() =>
   new Hono()
+    .get(
+      "/apps",
+      describeRoute({
+        summary: "List managed MCP apps",
+        description:
+          "Get built-in managed app catalog entries with persisted and runtime state for Web/TUI management.",
+        operationId: "mcp.apps.list",
+        responses: {
+          200: {
+            description: "Managed app snapshots",
+            content: {
+              "application/json": {
+                schema: resolver(ManagedAppRegistry.AppSnapshot.array()),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        return c.json(await ManagedAppRegistry.list())
+      },
+    )
+    .get(
+      "/apps/:appId",
+      describeRoute({
+        summary: "Get managed MCP app",
+        description:
+          "Get a managed app snapshot including operator-visible install, config, runtime, and error states.",
+        operationId: "mcp.apps.get",
+        responses: {
+          200: {
+            description: "Managed app snapshot",
+            content: {
+              "application/json": {
+                schema: resolver(ManagedAppRegistry.AppSnapshot),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator("param", z.object({ appId: z.string() })),
+      async (c) => {
+        const { appId } = c.req.valid("param")
+        return c.json(await ManagedAppRegistry.get(appId))
+      },
+    )
+    .post(
+      "/apps/:appId/install",
+      describeRoute({
+        summary: "Install managed MCP app",
+        description: "Mark a built-in managed app as installed and available for later configuration and enablement.",
+        operationId: "mcp.apps.install",
+        responses: {
+          200: {
+            description: "Managed app snapshot",
+            content: {
+              "application/json": {
+                schema: resolver(ManagedAppRegistry.AppSnapshot),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ appId: z.string() })),
+      async (c) => {
+        const { appId } = c.req.valid("param")
+        return c.json(await ManagedAppRegistry.install(appId))
+      },
+    )
+    .post(
+      "/apps/:appId/uninstall",
+      describeRoute({
+        summary: "Uninstall managed MCP app",
+        description: "Reset a managed app to available state and detach any runtime attachment.",
+        operationId: "mcp.apps.uninstall",
+        responses: {
+          200: {
+            description: "Managed app snapshot",
+            content: {
+              "application/json": {
+                schema: resolver(ManagedAppRegistry.AppSnapshot),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ appId: z.string() })),
+      async (c) => {
+        const { appId } = c.req.valid("param")
+        return c.json(await ManagedAppRegistry.uninstall(appId))
+      },
+    )
+    .post(
+      "/apps/:appId/config",
+      describeRoute({
+        summary: "Update managed MCP app config keys",
+        description: "Persist operator-visible configuration completion keys for a managed app.",
+        operationId: "mcp.apps.config",
+        responses: {
+          200: {
+            description: "Managed app snapshot with runtime attachment state",
+            content: {
+              "application/json": {
+                schema: resolver(ManagedAppRegistry.ManagedAppSnapshot),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ appId: z.string() })),
+      validator(
+        "json",
+        z.object({
+          keys: z.array(z.string()),
+        }),
+      ),
+      async (c) => {
+        const { appId } = c.req.valid("param")
+        const { keys } = c.req.valid("json")
+        return c.json(await ManagedAppRegistry.setConfigKeys(appId, keys))
+      },
+    )
+    .post(
+      "/apps/:appId/enable",
+      describeRoute({
+        summary: "Enable managed MCP app",
+        description: "Enable a managed app after install and configuration complete.",
+        operationId: "mcp.apps.enable",
+        responses: {
+          200: {
+            description: "Managed app snapshot",
+            content: {
+              "application/json": {
+                schema: resolver(ManagedAppRegistry.AppSnapshot),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ appId: z.string() })),
+      async (c) => {
+        const { appId } = c.req.valid("param")
+        try {
+          return c.json(await ManagedAppRegistry.enable(appId))
+        } catch (error) {
+          if (error instanceof ManagedAppRegistry.UsageStateError) {
+            return c.json(error.toObject().data, managedAppUsageHttpStatus(error.reason))
+          }
+          throw error
+        }
+      },
+    )
+    .post(
+      "/apps/:appId/disable",
+      describeRoute({
+        summary: "Disable managed MCP app",
+        description: "Disable a managed app and detach any active runtime attachment.",
+        operationId: "mcp.apps.disable",
+        responses: {
+          200: {
+            description: "Managed app snapshot",
+            content: {
+              "application/json": {
+                schema: resolver(ManagedAppRegistry.AppSnapshot),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ appId: z.string() })),
+      async (c) => {
+        const { appId } = c.req.valid("param")
+        return c.json(await ManagedAppRegistry.disable(appId))
+      },
+    )
+    .get(
+      "/apps/:appId/runtime",
+      describeRoute({
+        summary: "Get managed MCP app runtime state",
+        description: "Get runtime attachment and status for a managed app without exposing full MCP tool flows.",
+        operationId: "mcp.apps.runtime",
+        responses: {
+          200: {
+            description: "Managed app runtime snapshot",
+            content: {
+              "application/json": {
+                schema: resolver(ManagedAppRegistry.RuntimeSnapshot),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator("param", z.object({ appId: z.string() })),
+      async (c) => {
+        const { appId } = c.req.valid("param")
+        return c.json(await ManagedAppRegistry.runtime(appId))
+      },
+    )
+    .get(
+      "/apps/:appId/usage",
+      describeRoute({
+        summary: "Get managed MCP app usage state",
+        description:
+          "Expose fail-fast unauthenticated, misconfigured, and runtime-error states for managed app usage without implicit fallback.",
+        operationId: "mcp.apps.usage",
+        responses: {
+          200: {
+            description: "Managed app usage is ready",
+            content: {
+              "application/json": {
+                schema: resolver(z.null()),
+              },
+            },
+          },
+          401: {
+            description: "Managed app requires explicit authentication binding",
+            content: {
+              "application/json": {
+                schema: resolver(ManagedAppRegistry.UsageError),
+              },
+            },
+          },
+          409: {
+            description: "Managed app is misconfigured",
+            content: {
+              "application/json": {
+                schema: resolver(ManagedAppRegistry.UsageError),
+              },
+            },
+          },
+          503: {
+            description: "Managed app hit a runtime error",
+            content: {
+              "application/json": {
+                schema: resolver(ManagedAppRegistry.UsageError),
+              },
+            },
+          },
+          ...errors(404),
+        },
+      }),
+      validator("param", z.object({ appId: z.string() })),
+      async (c) => {
+        const { appId } = c.req.valid("param")
+        const usage = await ManagedAppRegistry.usage(appId)
+        if (!usage) return c.json(null)
+        return c.json(usage, managedAppUsageHttpStatus(usage.reason))
+      },
+    )
     .get(
       "/",
       describeRoute({

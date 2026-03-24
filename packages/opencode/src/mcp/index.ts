@@ -1,4 +1,8 @@
+export * from "./app-registry"
+
 import { dynamicTool, type Tool, jsonSchema, type JSONSchema7 } from "ai"
+import { ManagedAppRegistry } from "./app-registry"
+import { GoogleCalendarApp } from "./apps/google-calendar"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
@@ -150,6 +154,70 @@ export namespace MCP {
     })
   }
 
+  function managedAppToolKey(namespace: string, toolId: string) {
+    const sanitizedNamespace = namespace.replace(/[^a-zA-Z0-9_-]/g, "_")
+    const sanitizedToolId = toolId.replace(/[^a-zA-Z0-9_-]/g, "_")
+    return `${sanitizedNamespace}_${sanitizedToolId}`
+  }
+
+  function managedAppArgumentSchema(argument: ManagedAppRegistry.ToolArgument): JSONSchema7 {
+    switch (argument.type) {
+      case "string":
+        return { type: "string", description: argument.description }
+      case "string[]":
+        return { type: "array", items: { type: "string" }, description: argument.description }
+      case "datetime":
+        return { type: "string", format: "date-time", description: argument.description }
+      case "datetime[]":
+        return {
+          type: "array",
+          items: { type: "string", format: "date-time" },
+          description: argument.description,
+        }
+      case "number":
+        return { type: "number", description: argument.description }
+      case "boolean":
+        return { type: "boolean", description: argument.description }
+      case "object":
+        return { type: "object", additionalProperties: true, description: argument.description }
+    }
+  }
+
+  function managedAppInputSchema(tool: ManagedAppRegistry.ToolDescriptor): JSONSchema7 {
+    return {
+      type: "object",
+      properties: Object.fromEntries(
+        tool.arguments.map((argument: ManagedAppRegistry.ToolArgument) => [
+          argument.name,
+          managedAppArgumentSchema(argument),
+        ]),
+      ),
+      required: tool.arguments
+        .filter((argument: ManagedAppRegistry.ToolArgument) => argument.required)
+        .map((argument: ManagedAppRegistry.ToolArgument) => argument.name),
+      additionalProperties: false,
+    }
+  }
+
+  const managedAppExecutors: Record<string, (toolId: string, args: Record<string, unknown>) => Promise<string>> = {
+    "google-calendar": GoogleCalendarApp.execute,
+  }
+
+  function convertManagedAppTool(binding: ManagedAppRegistry.ReadyToolBinding): Tool {
+    return dynamicTool({
+      description: binding.tool.description,
+      inputSchema: jsonSchema(managedAppInputSchema(binding.tool)),
+      execute: async (args) => {
+        await ManagedAppRegistry.requireReady(binding.appId)
+        const executor = managedAppExecutors[binding.appId]
+        if (!executor) {
+          throw new Error(`No executor registered for managed app: ${binding.appId}`)
+        }
+        return executor(binding.tool.id, args as Record<string, unknown>)
+      },
+    })
+  }
+
   // Store transports for OAuth servers to allow finishing auth
   type TransportWithAuth = StreamableHTTPClientTransport | SSEClientTransport
   const pendingOAuthTransports = new Map<string, TransportWithAuth>()
@@ -213,6 +281,9 @@ export namespace MCP {
       const unsubscribeToolsChanged = Bus.subscribe(ToolsChanged, () => {
         invalidateToolsCache(toolsCache)
       })
+      const unsubscribeManagedAppsUpdated = Bus.subscribe(ManagedAppRegistry.Event.Updated, () => {
+        invalidateToolsCache(toolsCache)
+      })
 
       // Phase 2: Auto-connect enabled servers in background (progressive)
       if (pendingAutoConnect.length > 0) {
@@ -241,6 +312,7 @@ export namespace MCP {
         clients,
         toolsCache,
         unsubscribeToolsChanged,
+        unsubscribeManagedAppsUpdated,
       }
     },
     async (state) => {
@@ -254,6 +326,7 @@ export namespace MCP {
         ),
       )
       state.unsubscribeToolsChanged?.()
+      state.unsubscribeManagedAppsUpdated?.()
       pendingOAuthTransports.clear()
     },
   )
@@ -546,7 +619,10 @@ export namespace MCP {
       }
     }
 
-    const result = await withTimeout(mcpClient.listTools(), mcp.timeout ?? DEFAULT_TIMEOUT).catch((err) => {
+    const result: Awaited<ReturnType<MCPClient["listTools"]>> | undefined = await withTimeout(
+      mcpClient.listTools(),
+      mcp.timeout ?? DEFAULT_TIMEOUT,
+    ).catch((err) => {
       log.error("failed to get tools from client", { key, error: err })
       return undefined
     })
@@ -694,6 +770,10 @@ export namespace MCP {
         const sanitizedToolName = mcpTool.name.replace(/[^a-zA-Z0-9_-]/g, "_")
         result[sanitizedClientName + "_" + sanitizedToolName] = await convertMcpTool(mcpTool, client, timeout)
       }
+    }
+
+    for (const binding of await ManagedAppRegistry.readyTools()) {
+      result[managedAppToolKey(binding.namespace, binding.tool.id)] = convertManagedAppTool(binding)
     }
 
     s.toolsCache.value = result
