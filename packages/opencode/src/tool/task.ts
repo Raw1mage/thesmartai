@@ -473,6 +473,10 @@ function cancelIdleReap(worker: TaskWorker) {
 
 function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
   beacon.hit("worker.spawn")
+  // Capture Instance context at spawn time so the fire-and-forget stdout reader
+  // retains the correct project directory for Bus.publish() even after the
+  // originating HTTP request's Instance.provide() scope has ended.
+  const capturedDirectory = Instance.directory
   const workerID = `task-worker-${++workerSeq}`
   const proc = Bun.spawn(buildWorkerCmd(), {
     env: {
@@ -560,9 +564,9 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
               if (!req) continue
               if (fMsg.ok) {
                 req.resolve({ workerID: worker.id, requestID: req.id, sessionID: req.sessionID, createdAt: req.createdAt, dispatchedAt: req.dispatchedAt, firstEventAt: req.firstEventAt, lastEventAt: req.lastEventAt, eventCount: req.eventCount, doneAt: Date.now() })
-                Bus.publish(TaskWorkerEvent.Done, { workerID: worker.id, sessionID: req.sessionID, parentSessionID: req.parentSessionID, parentMessageID: req.parentMessageID, toolCallID: req.toolCallID, linkedTodoID: req.linkedTodoID }).catch((err) => log.error("bus publish Done failed (flush)", { workerID, error: String(err) }))
+                Bus.publish(TaskWorkerEvent.Done, { workerID: worker.id, sessionID: req.sessionID, parentSessionID: req.parentSessionID, parentMessageID: req.parentMessageID, toolCallID: req.toolCallID, linkedTodoID: req.linkedTodoID }, { directory: capturedDirectory }).catch((err) => log.error("bus publish Done failed (flush)", { workerID, error: String(err) }))
               } else {
-                Bus.publish(TaskWorkerEvent.Failed, { workerID: worker.id, sessionID: req.sessionID, parentSessionID: req.parentSessionID, parentMessageID: req.parentMessageID, toolCallID: req.toolCallID, linkedTodoID: req.linkedTodoID, error: fMsg.error || "worker run failed" }).catch((err) => log.error("bus publish Failed failed (flush)", { workerID, error: String(err) }))
+                Bus.publish(TaskWorkerEvent.Failed, { workerID: worker.id, sessionID: req.sessionID, parentSessionID: req.parentSessionID, parentMessageID: req.parentMessageID, toolCallID: req.toolCallID, linkedTodoID: req.linkedTodoID, error: fMsg.error || "worker run failed" }, { directory: capturedDirectory }).catch((err) => log.error("bus publish Failed failed (flush)", { workerID, error: String(err) }))
                 req.reject(new Error(fMsg.error || "worker run failed"))
               }
               void ensureStandbyWorker(config)
@@ -658,7 +662,7 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
               parentMessageID: req.parentMessageID,
               toolCallID: req.toolCallID,
               linkedTodoID: req.linkedTodoID,
-            }).catch((err) => log.error("bus publish TaskWorkerEvent.Done failed", { workerID: worker.id, error: String(err) }))
+            }, { directory: capturedDirectory }).catch((err) => log.error("bus publish TaskWorkerEvent.Done failed", { workerID: worker.id, error: String(err) }))
           } else {
             log.info("publishing TaskWorkerEvent.Failed", { workerID: worker.id, sessionID: req.sessionID, parentSessionID: req.parentSessionID, toolCallID: req.toolCallID, error: msg.error })
             Bus.publish(TaskWorkerEvent.Failed, {
@@ -669,7 +673,7 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
               toolCallID: req.toolCallID,
               linkedTodoID: req.linkedTodoID,
               error: msg.error || "worker run failed",
-            }).catch((err) => log.error("bus publish TaskWorkerEvent.Failed failed", { workerID: worker.id, error: String(err) }))
+            }, { directory: capturedDirectory }).catch((err) => log.error("bus publish TaskWorkerEvent.Failed failed", { workerID: worker.id, error: String(err) }))
             req.reject(new Error(msg.error || "worker run failed"))
           }
           void ensureStandbyWorker(config)
@@ -692,7 +696,7 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
             toolCallID: req.toolCallID,
             linkedTodoID: req.linkedTodoID,
             error: "worker run canceled",
-          }).catch((err) => log.error("bus publish TaskWorkerEvent.Failed failed (canceled)", { workerID: worker.id, error: String(err) }))
+          }, { directory: capturedDirectory }).catch((err) => log.error("bus publish TaskWorkerEvent.Failed failed (canceled)", { workerID: worker.id, error: String(err) }))
           req.reject(new Error("worker run canceled"))
           void ensureStandbyWorker(config)
           continue
@@ -715,7 +719,7 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
               toolCallID: req.toolCallID,
               linkedTodoID: req.linkedTodoID,
               error: msg.error || "worker error",
-            }).catch((err) => log.error("bus publish TaskWorkerEvent.Failed failed (error msg)", { workerID: worker.id, error: String(err) }))
+            }, { directory: capturedDirectory }).catch((err) => log.error("bus publish TaskWorkerEvent.Failed failed (error msg)", { workerID: worker.id, error: String(err) }))
             req.reject(new Error(msg.error || "worker error"))
             void ensureStandbyWorker(config)
           }
@@ -755,7 +759,7 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
         toolCallID: req.toolCallID,
         linkedTodoID: req.linkedTodoID,
         error: `worker process exited unexpectedly (exitCode=${exitCode})`,
-      }).catch((err) => log.error("bus publish TaskWorkerEvent.Failed failed (exit)", { workerID: worker.id, error: String(err) }))
+      }, { directory: capturedDirectory }).catch((err) => log.error("bus publish TaskWorkerEvent.Failed failed (exit)", { workerID: worker.id, error: String(err) }))
       const detail = [
         `exitCode=${exitCode}`,
         worker.lastPhase ? `lastPhase=${worker.lastPhase}` : undefined,

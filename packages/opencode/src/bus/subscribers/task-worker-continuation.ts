@@ -7,6 +7,7 @@ import { Todo } from "@/session/todo"
 import { ProcessSupervisor } from "@/process/supervisor"
 import { enqueuePendingContinuation, resumePendingContinuations } from "@/session/workflow-runner"
 import { SessionStatus } from "@/session/status"
+import { Instance } from "@/project/instance"
 import { Log } from "@/util/log"
 import z from "zod"
 
@@ -224,19 +225,28 @@ export function registerTaskWorkerContinuationSubscriber() {
 
   Bus.subscribeGlobal(TaskWorkerEvent.Done.type, 0, async (event) => {
     log.info("TaskWorkerEvent.Done received", { workerID: event.properties.workerID, sessionID: event.properties.sessionID, parentSessionID: event.properties.parentSessionID, toolCallID: event.properties.toolCallID })
-    await enqueueParentContinuation({
+    // In daemon mode the Bus subscriber fires outside the original HTTP request's
+    // Instance.provide() scope.  Re-establish the project context so Session.get(),
+    // MessageV2.get(), etc. resolve to the correct storage.
+    const directory = event.context?.directory
+    const run = () => enqueueParentContinuation({
       parentSessionID: event.properties.parentSessionID,
       parentMessageID: event.properties.parentMessageID,
       toolCallID: event.properties.toolCallID,
       childSessionID: event.properties.sessionID,
       linkedTodoID: event.properties.linkedTodoID,
       ok: true,
-    }).catch((err) => log.error("enqueueParentContinuation failed (Done)", { parentSessionID: event.properties.parentSessionID, error: String(err) }))
+    })
+    const result = directory
+      ? Instance.provide({ directory, fn: run })
+      : run()
+    await result.catch((err) => log.error("enqueueParentContinuation failed (Done)", { parentSessionID: event.properties.parentSessionID, error: String(err) }))
   })
 
   Bus.subscribeGlobal(TaskWorkerEvent.Failed.type, 0, async (event) => {
     log.info("TaskWorkerEvent.Failed received", { workerID: event.properties.workerID, sessionID: event.properties.sessionID, parentSessionID: event.properties.parentSessionID, toolCallID: event.properties.toolCallID, error: event.properties.error })
-    await enqueueParentContinuation({
+    const directory = event.context?.directory
+    const run = () => enqueueParentContinuation({
       parentSessionID: event.properties.parentSessionID,
       parentMessageID: event.properties.parentMessageID,
       toolCallID: event.properties.toolCallID,
@@ -244,6 +254,10 @@ export function registerTaskWorkerContinuationSubscriber() {
       linkedTodoID: event.properties.linkedTodoID,
       ok: false,
       error: event.properties.error,
-    }).catch((err) => log.error("enqueueParentContinuation failed (Failed)", { parentSessionID: event.properties.parentSessionID, error: String(err) }))
+    })
+    const result = directory
+      ? Instance.provide({ directory, fn: run })
+      : run()
+    await result.catch((err) => log.error("enqueueParentContinuation failed (Failed)", { parentSessionID: event.properties.parentSessionID, error: String(err) }))
   })
 }
