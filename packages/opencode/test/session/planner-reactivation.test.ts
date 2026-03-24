@@ -724,6 +724,15 @@ describe("planner reactivation", () => {
 
           const { PlanExitTool } = await import("../../src/tool/plan")
           const tool = await PlanExitTool.init()
+          const expectedBetaAnswers = [
+            tmp.path,
+            tmp.path,
+            "cms",
+            `${tmp.path}-beta`,
+            `${tmp.path}-beta`,
+            `feature/${session.slug}-beta`,
+            tmp.path,
+          ]
           const execute = tool.execute({}, {
             sessionID: session.id,
             abort: new AbortController().signal,
@@ -1046,6 +1055,15 @@ describe("planner reactivation", () => {
 
           const { PlanExitTool } = await import("../../src/tool/plan")
           const tool = await PlanExitTool.init()
+          const expectedBetaAnswers = [
+            tmp.path,
+            tmp.path,
+            "cms",
+            `${tmp.path}-beta`,
+            `${tmp.path}-beta`,
+            `feature/${session.slug}-beta`,
+            tmp.path,
+          ]
           const execute = tool.execute({}, {
             sessionID: session.id,
             abort: new AbortController().signal,
@@ -1062,6 +1080,7 @@ describe("planner reactivation", () => {
           const pending = await Question.list()
           expect(pending.length).toBe(1)
           await Question.reply({ requestID: pending[0].id, answers: [["Yes"]] })
+          await answerNextQuestion(session.id, expectedBetaAnswers)
           await execute
 
           let latestUser: MessageV2.WithParts | undefined
@@ -1076,7 +1095,7 @@ describe("planner reactivation", () => {
           const handoffPart = latestUser.parts.find((part) => part.type === "text" && part.synthetic)
           if (!handoffPart || handoffPart.type !== "text") throw new Error("expected synthetic handoff part")
           expect(handoffPart.metadata?.handoff?.contract).toBe("implementation_spec")
-          expect(handoffPart.text).toContain("structured todos/action metadata")
+          expect(handoffPart.text).toContain("Build mode is now active.")
           expect(handoffPart.metadata?.handoff?.materializedTodos?.length).toBeGreaterThanOrEqual(3)
           expect(handoffPart.metadata?.handoff?.todoMaterializationPolicy).toMatchObject({
             source: "tasks.md unchecked checklist items",
@@ -1184,6 +1203,15 @@ describe("planner reactivation", () => {
 
           const { PlanExitTool } = await import("../../src/tool/plan")
           const tool = await PlanExitTool.init()
+          const expectedBetaAnswers = [
+            tmp.path,
+            tmp.path,
+            "cms",
+            `${tmp.path}-beta`,
+            `${tmp.path}-beta`,
+            `feature/${session.slug}-beta`,
+            tmp.path,
+          ]
           const execution = tool.execute({}, {
             sessionID: session.id,
             abort: new AbortController().signal,
@@ -1196,15 +1224,7 @@ describe("planner reactivation", () => {
             extra: {},
           } as any)
           await answerNextQuestion(session.id, ["Yes"])
-          await answerNextQuestion(session.id, [
-            "/repo",
-            "/repo",
-            "cms",
-            "/repo-beta",
-            "/repo-beta",
-            "feature/test-beta",
-            "/repo",
-          ])
+          await answerNextQuestion(session.id, expectedBetaAnswers)
           await execution
 
           const updated = await Session.get(session.id)
@@ -1273,6 +1293,15 @@ describe("planner reactivation", () => {
 
           const { PlanExitTool } = await import("../../src/tool/plan")
           const tool = await PlanExitTool.init()
+          const expectedBetaAnswers = [
+            tmp.path,
+            tmp.path,
+            "cms",
+            `${tmp.path}-beta`,
+            `${tmp.path}-beta`,
+            `feature/${session.slug}-beta`,
+            tmp.path,
+          ]
           const execution = tool.execute({}, {
             sessionID: session.id,
             abort: new AbortController().signal,
@@ -1287,22 +1316,14 @@ describe("planner reactivation", () => {
           await answerNextQuestion(session.id, ["Yes"])
           await answerNextQuestion(session.id, [
             "/wrong",
-            "/repo",
+            tmp.path,
             "cms",
-            "/repo-beta",
-            "/repo-beta",
-            "feature/test-beta",
-            "/repo",
+            `${tmp.path}-beta`,
+            `${tmp.path}-beta`,
+            `feature/${session.slug}-beta`,
+            tmp.path,
           ])
-          await answerNextQuestion(session.id, [
-            "/repo",
-            "/repo",
-            "cms",
-            "/repo-beta",
-            "/repo-beta",
-            "feature/test-beta",
-            "/repo",
-          ])
+          await answerNextQuestion(session.id, expectedBetaAnswers)
           await execution
 
           const updated = await Session.get(session.id)
@@ -1385,19 +1406,19 @@ describe("planner reactivation", () => {
           await answerNextQuestion(session.id, ["Yes"])
           await answerNextQuestion(session.id, [
             "/wrong",
-            "/repo",
+            tmp.path,
             "wrong",
-            "/repo-beta",
-            "/repo-beta",
+            `${tmp.path}-beta`,
+            `${tmp.path}-beta`,
             "wrong",
             "/wrong",
           ])
           await answerNextQuestion(session.id, [
             "/wrong",
-            "/repo",
+            tmp.path,
             "wrong",
-            "/repo-beta",
-            "/repo-beta",
+            `${tmp.path}-beta`,
+            `${tmp.path}-beta`,
             "wrong",
             "/wrong",
           ])

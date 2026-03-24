@@ -1061,6 +1061,17 @@ async function askBetaAdmissionQuiz(input: {
   >
 }
 
+function buildForcedBetaMission(session: Session.Info): NonNullable<Session.MissionContract["beta"]> {
+  return {
+    branchName: `feature/${session.slug}-beta`,
+    baseBranch: "cms",
+    repoPath: Instance.worktree,
+    mainWorktreePath: Instance.worktree,
+    betaPath: `${Instance.worktree}-beta`,
+    runtimePolicy: "manual",
+  }
+}
+
 export const PlanExitTool = Tool.define("plan_exit", {
   description: EXIT_DESCRIPTION,
   parameters: z.object({}),
@@ -1170,10 +1181,8 @@ export const PlanExitTool = Tool.define("plan_exit", {
         tasks: digest(artifacts.tasks),
         handoff: digest(artifacts.handoff),
       },
-      beta: session.mission?.beta,
-      admission: session.mission?.beta
-        ? { betaQuiz: { status: "pending", reflectionUsed: false, mismatchCount: 0, lastMismatches: [] } }
-        : undefined,
+      beta: buildForcedBetaMission(session),
+      admission: { betaQuiz: { status: "pending", reflectionUsed: false, mismatchCount: 0, lastMismatches: [] } },
     }
 
     await Session.setMission({

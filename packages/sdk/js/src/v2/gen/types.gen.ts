@@ -70,6 +70,16 @@ export type EventAccountActivated = {
   }
 }
 
+export type EventCronDeliveryAnnounce = {
+  type: "cron.delivery.announce"
+  properties: {
+    sessionID: string
+    text: string
+    jobId: string
+    runId: string
+  }
+}
+
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -907,6 +917,8 @@ export type EventSessionRoundTelemetry = {
   type: "session.round.telemetry"
   properties: {
     sessionID: string
+    roundIndex?: number
+    requestId?: string
     providerId: string
     modelId: string
     accountId?: string
@@ -944,6 +956,20 @@ export type EventSessionCompactionTelemetry = {
     compactionResult: string
     compactionDraftTokens?: number
     timestamp: number
+  }
+}
+
+export type EventTaskRateLimitEscalation = {
+  type: "task.rate_limit_escalation"
+  properties: {
+    sessionID: string
+    currentModel: {
+      providerId: string
+      modelID: string
+      accountId?: string
+    }
+    error: string
+    triedVectors: Array<string>
   }
 }
 
@@ -1007,6 +1033,10 @@ export type EventTaskWorkerDone = {
   properties: {
     workerID: string
     sessionID: string
+    parentSessionID: string
+    parentMessageID: string
+    toolCallID: string
+    linkedTodoID?: string
   }
 }
 
@@ -1015,6 +1045,11 @@ export type EventTaskWorkerFailed = {
   properties: {
     workerID: string
     sessionID: string
+    parentSessionID: string
+    parentMessageID: string
+    toolCallID: string
+    linkedTodoID?: string
+    error?: string
   }
 }
 
@@ -1022,6 +1057,46 @@ export type EventTaskWorkerRemoved = {
   type: "task.worker.removed"
   properties: {
     workerID: string
+  }
+}
+
+export type EventSessionActiveChildUpdated = {
+  type: "session.active-child.updated"
+  properties: {
+    parentSessionID: string
+    activeChild: {
+      sessionID: string
+      parentMessageID: string
+      toolCallID: string
+      workerID: string
+      title: string
+      agent: string
+      status: "running" | "handoff"
+      todo?: {
+        id: string
+        content: string
+        status: string
+        /**
+         * Structured planner metadata for autonomous session execution
+         */
+        action?: {
+          kind:
+            | "implement"
+            | "delegate"
+            | "wait"
+            | "approval"
+            | "decision"
+            | "push"
+            | "destructive"
+            | "architecture_change"
+          risk?: "low" | "medium" | "high"
+          needsApproval?: boolean
+          canDelegate?: boolean
+          waitingOn?: "subagent" | "approval" | "decision" | "external"
+          dependsOn?: Array<string>
+        }
+      }
+    } | null
   }
 }
 
@@ -1104,13 +1179,6 @@ export type Session = {
       consecutiveResumeFailures?: number
       lastResumeCategory?: string
       lastResumeError?: string
-      lastGovernorTraceAt?: number
-      lastGovernorTrace?: {
-        [key: string]: unknown
-      }
-      governorTraceHistory?: Array<{
-        [key: string]: unknown
-      }>
     }
   }
   mission?: {
@@ -1128,11 +1196,34 @@ export type Session = {
       handoff: string
       idef0?: string
       grafcet?: string
+      c4?: string
+      sequence?: string
     }
     artifactIntegrity?: {
       implementationSpec: string
       tasks: string
       handoff: string
+    }
+    beta?: {
+      branchName: string
+      baseBranch: string
+      repoPath?: string
+      mainWorktreePath?: string
+      betaPath: string
+      runtimePolicy?: string
+    }
+    admission?: {
+      betaQuiz?: {
+        status: "pending" | "passed" | "failed"
+        reflectionUsed: boolean
+        passedAt?: number
+        mismatchCount?: number
+        lastMismatches?: Array<{
+          field: string
+          expected: string
+          actual: string
+        }>
+      }
     }
     executionReady: boolean
   }
@@ -1204,13 +1295,6 @@ export type EventSessionWorkflowUpdated = {
         consecutiveResumeFailures?: number
         lastResumeCategory?: string
         lastResumeError?: string
-        lastGovernorTraceAt?: number
-        lastGovernorTrace?: {
-          [key: string]: unknown
-        }
-        governorTraceHistory?: Array<{
-          [key: string]: unknown
-        }>
       }
     }
   }
@@ -1523,6 +1607,7 @@ export type Event =
   | EventAccountAdded
   | EventAccountRemoved
   | EventAccountActivated
+  | EventCronDeliveryAnnounce
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
   | EventServerConnected
@@ -1554,6 +1639,8 @@ export type Event =
   | EventQuestionRejected
   | EventTodoUpdated
   | EventSessionRoundTelemetry
+  | EventSessionCompactionTelemetry
+  | EventTaskRateLimitEscalation
   | EventSessionCompacted
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
@@ -1564,6 +1651,7 @@ export type Event =
   | EventTaskWorkerDone
   | EventTaskWorkerFailed
   | EventTaskWorkerRemoved
+  | EventSessionActiveChildUpdated
   | EventSessionCreated
   | EventSessionUpdated
   | EventSessionDeleted
@@ -2454,6 +2542,14 @@ export type Config = {
      * Token buffer for compaction. Leaves enough window to avoid overflow during compaction.
      */
     reserved?: number
+    /**
+     * Minimum tokens to keep free before triggering compaction (default: 8000). Lower values delay compaction longer, preserving LLM cache but risking tighter context.
+     */
+    headroom?: number
+    /**
+     * Minimum user-visible rounds between compactions (default: 8). Prevents compaction oscillation that destroys LLM server-side cache.
+     */
+    cooldownRounds?: number
   }
   experimental?: {
     hook?: {
@@ -2791,13 +2887,6 @@ export type GlobalSession = {
       consecutiveResumeFailures?: number
       lastResumeCategory?: string
       lastResumeError?: string
-      lastGovernorTraceAt?: number
-      lastGovernorTrace?: {
-        [key: string]: unknown
-      }
-      governorTraceHistory?: Array<{
-        [key: string]: unknown
-      }>
     }
   }
   mission?: {
@@ -2815,11 +2904,34 @@ export type GlobalSession = {
       handoff: string
       idef0?: string
       grafcet?: string
+      c4?: string
+      sequence?: string
     }
     artifactIntegrity?: {
       implementationSpec: string
       tasks: string
       handoff: string
+    }
+    beta?: {
+      branchName: string
+      baseBranch: string
+      repoPath?: string
+      mainWorktreePath?: string
+      betaPath: string
+      runtimePolicy?: string
+    }
+    admission?: {
+      betaQuiz?: {
+        status: "pending" | "passed" | "failed"
+        reflectionUsed: boolean
+        passedAt?: number
+        mismatchCount?: number
+        lastMismatches?: Array<{
+          field: string
+          expected: string
+          actual: string
+        }>
+      }
     }
     executionReady: boolean
   }
@@ -3257,7 +3369,7 @@ export type GlobalWebRestartResponses = {
     ok: true
     accepted: true
     mode: "controlled_restart"
-    runtimeMode: "dev-source" | "dev-standalone" | "service" | "unknown"
+    runtimeMode: "dev-source" | "dev-standalone" | "service" | "gateway-daemon" | "unknown"
     probePath: "/api/v2/global/health"
     recommendedInitialDelayMs: number
     fallbackReloadAfterMs: number
@@ -8328,7 +8440,7 @@ export type GlobalWebRestart2Responses = {
     ok: true
     accepted: true
     mode: "controlled_restart"
-    runtimeMode: "dev-source" | "dev-standalone" | "service" | "unknown"
+    runtimeMode: "dev-source" | "dev-standalone" | "service" | "gateway-daemon" | "unknown"
     probePath: "/api/v2/global/health"
     recommendedInitialDelayMs: number
     fallbackReloadAfterMs: number

@@ -286,6 +286,7 @@
                         "dev-source",
                         "dev-standalone",
                         "service",
+                        "gateway-daemon",
                         "unknown"
                       ]
                     },
@@ -12011,6 +12012,7 @@
                         "dev-source",
                         "dev-standalone",
                         "service",
+                        "gateway-daemon",
                         "unknown"
                       ]
                     },
@@ -23681,6 +23683,42 @@
           "properties"
         ]
       },
+      "Event.cron.delivery.announce": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "cron.delivery.announce"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "jobId": {
+                "type": "string"
+              },
+              "runId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sessionID",
+              "text",
+              "jobId",
+              "runId"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -26091,6 +26129,9 @@
               "sessionID": {
                 "type": "string"
               },
+              "promptId": {
+                "type": "string"
+              },
               "providerId": {
                 "type": "string"
               },
@@ -26148,6 +26189,7 @@
             },
             "required": [
               "sessionID",
+              "promptId",
               "providerId",
               "modelId",
               "finalSystemTokens",
@@ -26461,6 +26503,12 @@
               "sessionID": {
                 "type": "string"
               },
+              "roundIndex": {
+                "type": "number"
+              },
+              "requestId": {
+                "type": "string"
+              },
               "providerId": {
                 "type": "string"
               },
@@ -26509,6 +26557,15 @@
               "needsCompaction": {
                 "type": "boolean"
               },
+              "compactionResult": {
+                "type": "string"
+              },
+              "compactionDraftTokens": {
+                "type": "number"
+              },
+              "compactionCount": {
+                "type": "number"
+              },
               "timestamp": {
                 "type": "number"
               }
@@ -26530,6 +26587,119 @@
               "observedTokens",
               "needsCompaction",
               "timestamp"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.session.compaction.telemetry": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.compaction.telemetry"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "roundIndex": {
+                "type": "number"
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "providerId": {
+                "type": "string"
+              },
+              "modelId": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "compactionAttemptId": {
+                "type": "string"
+              },
+              "compactionCount": {
+                "type": "number"
+              },
+              "compactionResult": {
+                "type": "string"
+              },
+              "compactionDraftTokens": {
+                "type": "number"
+              },
+              "timestamp": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "sessionID",
+              "providerId",
+              "modelId",
+              "compactionAttemptId",
+              "compactionResult",
+              "timestamp"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.task.rate_limit_escalation": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "task.rate_limit_escalation"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "currentModel": {
+                "type": "object",
+                "properties": {
+                  "providerId": {
+                    "type": "string"
+                  },
+                  "modelID": {
+                    "type": "string"
+                  },
+                  "accountId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "providerId",
+                  "modelID"
+                ]
+              },
+              "error": {
+                "type": "string"
+              },
+              "triedVectors": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "sessionID",
+              "currentModel",
+              "error",
+              "triedVectors"
             ]
           }
         },
@@ -26762,11 +26932,28 @@
               "sessionID": {
                 "type": "string",
                 "pattern": "^ses.*"
+              },
+              "parentSessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "parentMessageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              },
+              "toolCallID": {
+                "type": "string"
+              },
+              "linkedTodoID": {
+                "type": "string"
               }
             },
             "required": [
               "workerID",
-              "sessionID"
+              "sessionID",
+              "parentSessionID",
+              "parentMessageID",
+              "toolCallID"
             ]
           }
         },
@@ -26791,11 +26978,31 @@
               "sessionID": {
                 "type": "string",
                 "pattern": "^ses.*"
+              },
+              "parentSessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "parentMessageID": {
+                "type": "string",
+                "pattern": "^msg.*"
+              },
+              "toolCallID": {
+                "type": "string"
+              },
+              "linkedTodoID": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
               }
             },
             "required": [
               "workerID",
-              "sessionID"
+              "sessionID",
+              "parentSessionID",
+              "parentMessageID",
+              "toolCallID"
             ]
           }
         },
@@ -26820,6 +27027,150 @@
             },
             "required": [
               "workerID"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.session.active-child.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.active-child.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "parentSessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "activeChild": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^ses.*"
+                      },
+                      "parentMessageID": {
+                        "type": "string",
+                        "pattern": "^msg.*"
+                      },
+                      "toolCallID": {
+                        "type": "string"
+                      },
+                      "workerID": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "agent": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "running",
+                          "handoff"
+                        ]
+                      },
+                      "todo": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "content": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "action": {
+                            "description": "Structured planner metadata for autonomous session execution",
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "implement",
+                                  "delegate",
+                                  "wait",
+                                  "approval",
+                                  "decision",
+                                  "push",
+                                  "destructive",
+                                  "architecture_change"
+                                ]
+                              },
+                              "risk": {
+                                "type": "string",
+                                "enum": [
+                                  "low",
+                                  "medium",
+                                  "high"
+                                ]
+                              },
+                              "needsApproval": {
+                                "type": "boolean"
+                              },
+                              "canDelegate": {
+                                "type": "boolean"
+                              },
+                              "waitingOn": {
+                                "type": "string",
+                                "enum": [
+                                  "subagent",
+                                  "approval",
+                                  "decision",
+                                  "external"
+                                ]
+                              },
+                              "dependsOn": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "content",
+                          "status"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "sessionID",
+                      "parentMessageID",
+                      "toolCallID",
+                      "workerID",
+                      "title",
+                      "agent",
+                      "status"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "parentSessionID",
+              "activeChild"
             ]
           }
         },
@@ -27115,26 +27466,6 @@
                   },
                   "lastResumeError": {
                     "type": "string"
-                  },
-                  "lastGovernorTraceAt": {
-                    "type": "number"
-                  },
-                  "lastGovernorTrace": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
-                  },
-                  "governorTraceHistory": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {}
-                    }
                   }
                 }
               }
@@ -27191,6 +27522,12 @@
                   },
                   "grafcet": {
                     "type": "string"
+                  },
+                  "c4": {
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -27221,6 +27558,89 @@
                   "tasks",
                   "handoff"
                 ]
+              },
+              "beta": {
+                "type": "object",
+                "properties": {
+                  "branchName": {
+                    "type": "string"
+                  },
+                  "baseBranch": {
+                    "type": "string"
+                  },
+                  "repoPath": {
+                    "type": "string"
+                  },
+                  "mainWorktreePath": {
+                    "type": "string"
+                  },
+                  "betaPath": {
+                    "type": "string"
+                  },
+                  "runtimePolicy": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "branchName",
+                  "baseBranch",
+                  "betaPath"
+                ]
+              },
+              "admission": {
+                "type": "object",
+                "properties": {
+                  "betaQuiz": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "passed",
+                          "failed"
+                        ]
+                      },
+                      "reflectionUsed": {
+                        "type": "boolean"
+                      },
+                      "passedAt": {
+                        "type": "number"
+                      },
+                      "mismatchCount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "lastMismatches": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "field": {
+                              "type": "string"
+                            },
+                            "expected": {
+                              "type": "string"
+                            },
+                            "actual": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "expected",
+                            "actual"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "reflectionUsed"
+                    ]
+                  }
+                }
               },
               "executionReady": {
                 "type": "boolean"
@@ -27474,26 +27894,6 @@
                       },
                       "lastResumeError": {
                         "type": "string"
-                      },
-                      "lastGovernorTraceAt": {
-                        "type": "number"
-                      },
-                      "lastGovernorTrace": {
-                        "type": "object",
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "additionalProperties": {}
-                      },
-                      "governorTraceHistory": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "propertyNames": {
-                            "type": "string"
-                          },
-                          "additionalProperties": {}
-                        }
                       }
                     }
                   }
@@ -29035,6 +29435,9 @@
             "$ref": "#/components/schemas/Event.account.activated"
           },
           {
+            "$ref": "#/components/schemas/Event.cron.delivery.announce"
+          },
+          {
             "$ref": "#/components/schemas/Event.installation.updated"
           },
           {
@@ -29128,6 +29531,12 @@
             "$ref": "#/components/schemas/Event.session.round.telemetry"
           },
           {
+            "$ref": "#/components/schemas/Event.session.compaction.telemetry"
+          },
+          {
+            "$ref": "#/components/schemas/Event.task.rate_limit_escalation"
+          },
+          {
             "$ref": "#/components/schemas/Event.session.compacted"
           },
           {
@@ -29156,6 +29565,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.task.worker.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.active-child.updated"
           },
           {
             "$ref": "#/components/schemas/Event.session.created"
@@ -30762,6 +31174,18 @@
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 9007199254740991
+              },
+              "headroom": {
+                "description": "Minimum tokens to keep free before triggering compaction (default: 8000). Lower values delay compaction longer, preserving LLM cache but risking tighter context.",
+                "type": "integer",
+                "minimum": 2000,
+                "maximum": 9007199254740991
+              },
+              "cooldownRounds": {
+                "description": "Minimum user-visible rounds between compactions (default: 8). Prevents compaction oscillation that destroys LLM server-side cache.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               }
             }
           },
@@ -31810,26 +32234,6 @@
                   },
                   "lastResumeError": {
                     "type": "string"
-                  },
-                  "lastGovernorTraceAt": {
-                    "type": "number"
-                  },
-                  "lastGovernorTrace": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
-                  },
-                  "governorTraceHistory": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {}
-                    }
                   }
                 }
               }
@@ -31886,6 +32290,12 @@
                   },
                   "grafcet": {
                     "type": "string"
+                  },
+                  "c4": {
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -31916,6 +32326,89 @@
                   "tasks",
                   "handoff"
                 ]
+              },
+              "beta": {
+                "type": "object",
+                "properties": {
+                  "branchName": {
+                    "type": "string"
+                  },
+                  "baseBranch": {
+                    "type": "string"
+                  },
+                  "repoPath": {
+                    "type": "string"
+                  },
+                  "mainWorktreePath": {
+                    "type": "string"
+                  },
+                  "betaPath": {
+                    "type": "string"
+                  },
+                  "runtimePolicy": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "branchName",
+                  "baseBranch",
+                  "betaPath"
+                ]
+              },
+              "admission": {
+                "type": "object",
+                "properties": {
+                  "betaQuiz": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "passed",
+                          "failed"
+                        ]
+                      },
+                      "reflectionUsed": {
+                        "type": "boolean"
+                      },
+                      "passedAt": {
+                        "type": "number"
+                      },
+                      "mismatchCount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "lastMismatches": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "field": {
+                              "type": "string"
+                            },
+                            "expected": {
+                              "type": "string"
+                            },
+                            "actual": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "expected",
+                            "actual"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "reflectionUsed"
+                    ]
+                  }
+                }
               },
               "executionReady": {
                 "type": "boolean"
@@ -32130,6 +32623,65 @@
           },
           "activeToolStatus": {
             "type": "string"
+          },
+          "telemetry": {
+            "type": "object",
+            "properties": {
+              "roundIndex": {
+                "type": "number"
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "compactionResult": {
+                "type": "string"
+              },
+              "compactionDraftTokens": {
+                "type": "number"
+              },
+              "compactionCount": {
+                "type": "number"
+              },
+              "source": {
+                "type": "string",
+                "const": "projector"
+              },
+              "promptSummary": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "roundSummary": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "compactionSummary": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "sessionSummary": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "freshness": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            }
           },
           "updated": {
             "type": "number"
