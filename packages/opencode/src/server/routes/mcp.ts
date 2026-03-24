@@ -27,6 +27,35 @@ function managedAppUsageHttpStatus(reason: ManagedAppRegistry.UsageErrorReason):
 export const McpRoutes = lazy(() =>
   new Hono()
     .get(
+      "/market",
+      describeRoute({
+        summary: "Unified MCP app market",
+        description:
+          "Returns all MCP components (standard servers + managed apps) in a unified card format for the app market UI.",
+        operationId: "mcp.market",
+        responses: {
+          200: { description: "Unified app market entries" },
+        },
+      }),
+      async (c) => {
+        const [serverApps, managedApps] = await Promise.all([MCP.serverApps(), ManagedAppRegistry.list()])
+
+        // Convert managed apps to unified format
+        const managedCards: MCP.ServerApp[] = managedApps.map((app) => ({
+          id: app.id,
+          name: app.name,
+          description: app.description,
+          icon: app.id === "google-calendar" ? "📅" : "📦",
+          kind: "managed-app" as const,
+          status: app.runtimeStatus,
+          tools: app.toolContract.tools.map((t) => ({ id: t.id, name: t.label, description: "" })),
+          enabled: app.operator.install === "installed" && app.runtimeStatus === "ready",
+        }))
+
+        return c.json([...serverApps, ...managedCards])
+      },
+    )
+    .get(
       "/apps",
       describeRoute({
         summary: "List managed MCP apps",

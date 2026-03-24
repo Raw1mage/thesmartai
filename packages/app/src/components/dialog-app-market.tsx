@@ -4,41 +4,52 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useLanguage } from "@/context/language"
 
-interface AppSnapshot {
+/** Unified MCP app entry — covers both standard servers and managed apps */
+interface MarketApp {
   id: string
   name: string
   description: string
-  version: string
-  runtimeStatus: string
-  operator: {
-    install: string
-    auth: string
-    config: string
-    runtime: string
-    error: string
+  icon: string
+  kind: "mcp-server" | "managed-app"
+  type?: "local" | "remote"
+  status: string
+  error?: string
+  tools: Array<{ id: string; name: string; description: string }>
+  enabled: boolean
+}
+
+type StatusDisplay = { labelKey: string; color: string }
+
+function statusDisplay(app: MarketApp): StatusDisplay {
+  if (app.kind === "mcp-server") {
+    switch (app.status) {
+      case "connected":
+        return { labelKey: "app_market.status.ready", color: "text-success-base" }
+      case "disabled":
+        return { labelKey: "app_market.status.disabled", color: "text-text-weak" }
+      case "failed":
+        return { labelKey: "app_market.status.error", color: "text-danger-base" }
+      case "needs_auth":
+        return { labelKey: "app_market.status.pending_auth", color: "text-warning-base" }
+      default:
+        return { labelKey: "app_market.status.disabled", color: "text-text-weak" }
+    }
   }
-  capabilities: Array<{ id: string; label: string; kind: string }>
-  toolContract: { namespace: string; tools: Array<{ id: string; label: string }> }
-}
-
-type StatusKey = "available" | "pending_install" | "pending_auth" | "pending_config" | "disabled" | "ready" | "error"
-
-const statusMeta: Record<StatusKey, { labelKey: string; color: string; actionKey: string }> = {
-  available: { labelKey: "app_market.status.available", color: "text-text-weaker", actionKey: "app_market.action.install" },
-  pending_install: { labelKey: "app_market.status.pending_install", color: "text-text-weaker", actionKey: "app_market.action.install" },
-  pending_auth: { labelKey: "app_market.status.pending_auth", color: "text-warning-base", actionKey: "app_market.action.connect" },
-  pending_config: { labelKey: "app_market.status.pending_config", color: "text-warning-base", actionKey: "app_market.action.connect" },
-  disabled: { labelKey: "app_market.status.disabled", color: "text-text-weak", actionKey: "app_market.action.enable" },
-  ready: { labelKey: "app_market.status.ready", color: "text-success-base", actionKey: "app_market.action.open" },
-  error: { labelKey: "app_market.status.error", color: "text-danger-base", actionKey: "app_market.action.repair" },
-}
-
-function appIcon(appId: string) {
-  switch (appId) {
-    case "google-calendar":
-      return "📅"
+  // managed-app
+  switch (app.status) {
+    case "ready":
+      return { labelKey: "app_market.status.ready", color: "text-success-base" }
+    case "disabled":
+      return { labelKey: "app_market.status.disabled", color: "text-text-weak" }
+    case "pending_auth":
+    case "pending_config":
+      return { labelKey: "app_market.status.pending_auth", color: "text-warning-base" }
+    case "pending_install":
+      return { labelKey: "app_market.status.available", color: "text-text-weaker" }
+    case "error":
+      return { labelKey: "app_market.status.error", color: "text-danger-base" }
     default:
-      return "📦"
+      return { labelKey: "app_market.status.available", color: "text-text-weaker" }
   }
 }
 
@@ -47,21 +58,21 @@ export const DialogAppMarket: Component = () => {
   const language = useLanguage()
   const [filter, setFilter] = createSignal("")
   const [actionLoading, setActionLoading] = createSignal<string | null>(null)
-  const [appMap, setAppMap] = createSignal<Map<string, AppSnapshot>>(new Map())
+  const [appMap, setAppMap] = createSignal<Map<string, MarketApp>>(new Map())
   const [initialLoaded, setInitialLoaded] = createSignal(false)
 
-  async function fetchApps(): Promise<AppSnapshot[]> {
-    const res = await globalSDK.fetch(`${globalSDK.url}/api/v2/mcp/apps`)
+  async function fetchMarket(): Promise<MarketApp[]> {
+    const res = await globalSDK.fetch(`${globalSDK.url}/api/v2/mcp/market`)
     if (!res.ok) return []
-    const list: AppSnapshot[] = await res.json()
-    const next = new Map<string, AppSnapshot>()
+    const list: MarketApp[] = await res.json()
+    const next = new Map<string, MarketApp>()
     for (const app of list) next.set(app.id, app)
     setAppMap(next)
     if (!initialLoaded()) setInitialLoaded(true)
     return list
   }
 
-  const [, { refetch }] = createResource(fetchApps)
+  const [, { refetch }] = createResource(fetchMarket)
 
   const appList = createMemo(() => Array.from(appMap().values()))
 
@@ -74,41 +85,58 @@ export const DialogAppMarket: Component = () => {
     )
   })
 
-  const installedCount = createMemo(() => appList().filter((a) => a.operator.install === "installed").length)
+  const enabledCount = createMemo(() => appList().filter((a) => a.enabled).length)
   const totalCount = createMemo(() => appList().length)
 
   function getApp(id: string) {
     return appMap().get(id)
   }
 
+  // --- Actions for standard MCP servers ---
+  async function toggleMcpServer(app: MarketApp) {
+    if (actionLoading()) return
+    setActionLoading(app.id)
+    try {
+      if (app.status === "connected") {
+        await globalSDK.fetch(`${globalSDK.url}/api/v2/mcp/${app.id}/disconnect`, { method: "POST" })
+      } else {
+        await globalSDK.fetch(`${globalSDK.url}/api/v2/mcp/${app.id}/connect`, { method: "POST" })
+      }
+      await refetch()
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  // --- Actions for managed apps ---
   function openOAuthConnect(appId: string) {
     window.open(`${globalSDK.url}/api/v2/mcp/apps/${appId}/oauth/connect`, "_blank", "width=600,height=700")
     const poll = setInterval(async () => {
       await refetch()
       const updated = getApp(appId)
-      if (updated && updated.runtimeStatus !== "pending_auth" && updated.runtimeStatus !== "pending_config") {
+      if (updated && updated.status !== "pending_auth" && updated.status !== "pending_config") {
         clearInterval(poll)
       }
     }, 3000)
     setTimeout(() => clearInterval(poll), 120_000)
   }
 
-  async function performAction(app: AppSnapshot) {
+  async function performManagedAction(app: MarketApp) {
     if (actionLoading()) return
     setActionLoading(app.id)
     try {
       const base = `${globalSDK.url}/api/v2/mcp/apps/${app.id}`
-      if (app.operator.install !== "installed") {
+      if (app.status === "pending_install" || app.status === "available") {
         await globalSDK.fetch(`${base}/install`, { method: "POST" })
         await refetch()
         await globalSDK.fetch(`${base}/enable`, { method: "POST" })
-      } else if (app.operator.runtime === "ready") {
+      } else if (app.status === "ready") {
         await globalSDK.fetch(`${base}/disable`, { method: "POST" })
-      } else if (app.runtimeStatus === "pending_auth" || app.runtimeStatus === "pending_config") {
+      } else if (app.status === "pending_auth" || app.status === "pending_config") {
         openOAuthConnect(app.id)
-      } else if (app.runtimeStatus === "disabled") {
+      } else if (app.status === "disabled") {
         await globalSDK.fetch(`${base}/enable`, { method: "POST" })
-      } else if (app.runtimeStatus === "error") {
+      } else if (app.status === "error") {
         const res = await globalSDK.fetch(`${base}/uninstall`, { method: "POST" })
         if (res.ok) await globalSDK.fetch(`${base}/install`, { method: "POST" })
       }
@@ -118,7 +146,7 @@ export const DialogAppMarket: Component = () => {
     }
   }
 
-  async function uninstall(app: AppSnapshot) {
+  async function uninstallManaged(app: MarketApp) {
     if (actionLoading()) return
     setActionLoading(app.id)
     try {
@@ -129,33 +157,74 @@ export const DialogAppMarket: Component = () => {
     }
   }
 
-  function statusOf(app: AppSnapshot) {
-    if (app.operator.install !== "installed") return statusMeta["available"]
-    return statusMeta[app.runtimeStatus as StatusKey] ?? statusMeta["available"]
+  // Dispatch action based on kind
+  function handleAction(app: MarketApp) {
+    if (app.kind === "mcp-server") return toggleMcpServer(app)
+    return performManagedAction(app)
+  }
+
+  function actionLabel(app: MarketApp): string {
+    if (actionLoading() === app.id) return language.t("app_market.action.loading")
+    if (app.kind === "mcp-server") {
+      return app.status === "connected"
+        ? language.t("app_market.action.disable")
+        : language.t("app_market.action.enable")
+    }
+    // managed-app
+    if (app.status === "ready") return language.t("app_market.action.disable")
+    if (app.status === "pending_auth" || app.status === "pending_config") return language.t("app_market.action.connect")
+    if (app.status === "disabled") return language.t("app_market.action.enable")
+    if (app.status === "error") return language.t("app_market.action.repair")
+    return language.t("app_market.action.install")
+  }
+
+  /** Per-app custom action buttons — extensible per app.id */
+  function renderAppActions(app: MarketApp, isLoading: boolean) {
+    switch (app.id) {
+      case "google-calendar":
+        return (
+          <Show when={app.status === "ready" || app.status === "pending_auth" || app.status === "pending_config"}>
+            <button
+              onClick={() => openOAuthConnect(app.id)}
+              disabled={isLoading}
+              class="px-2 py-1 rounded-md text-12-medium text-text-weak bg-background-input hover:bg-background-input-hover transition-colors disabled:opacity-50"
+              title="Google OAuth"
+            >
+              <Icon name="settings-gear" size="small" />
+            </button>
+          </Show>
+        )
+      default:
+        return null
+    }
   }
 
   return (
     <Dialog
       title={language.t("app_market.title")}
-      description={language.t("app_market.description", { installed: String(installedCount()), total: String(totalCount()) })}
+      description={
+        <div class="flex items-center justify-between gap-4">
+          <span class="text-text-weak text-12-regular shrink-0">
+            {language.t("app_market.description", { installed: String(enabledCount()), total: String(totalCount()) })}
+          </span>
+          <div class="relative w-48">
+            <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-icon-base">
+              <Icon name="magnifying-glass" size="small" />
+            </div>
+            <input
+              type="text"
+              placeholder={language.t("app_market.search.placeholder")}
+              value={filter()}
+              onInput={(e) => setFilter(e.currentTarget.value)}
+              class="w-full pl-8 pr-3 py-1 bg-background-input border border-border-base rounded-sm text-12-regular text-text-base placeholder:text-text-weaker focus:outline-none focus:border-border-focus"
+              autofocus
+            />
+          </div>
+        </div>
+      }
       size="large"
     >
       <div class="flex flex-col gap-4 min-h-[320px] px-2 pt-2 pb-3">
-        {/* Search */}
-        <div class="relative">
-          <div class="absolute left-3 top-1/2 -translate-y-1/2 text-icon-base">
-            <Icon name="magnifying-glass" size="small" />
-          </div>
-          <input
-            type="text"
-            placeholder={language.t("app_market.search.placeholder")}
-            value={filter()}
-            onInput={(e) => setFilter(e.currentTarget.value)}
-            class="w-full pl-9 pr-3 py-2 bg-background-input border border-border-base rounded-sm text-13-regular text-text-base placeholder:text-text-weaker focus:outline-none focus:border-border-focus"
-            autofocus
-          />
-        </div>
-
         {/* Initial loading */}
         <Show when={!initialLoaded()}>
           <div class="flex items-center justify-center py-12 text-text-weak text-13-regular">
@@ -163,7 +232,7 @@ export const DialogAppMarket: Component = () => {
           </div>
         </Show>
 
-        {/* Grid */}
+        {/* Cards */}
         <Show when={initialLoaded()}>
           <Show
             when={filtered().length > 0}
@@ -173,77 +242,83 @@ export const DialogAppMarket: Component = () => {
               </div>
             }
           >
-            <div class="flex flex-wrap gap-4">
+            <div class="flex flex-wrap gap-3">
               <For each={filtered()}>
                 {(app) => {
-                  const meta = () => statusOf(getApp(app.id) ?? app)
                   const live = () => getApp(app.id) ?? app
-                  const isInstalled = () => live().operator.install === "installed"
-                  const isReady = () => live().runtimeStatus === "ready"
+                  const sd = () => statusDisplay(live())
                   const loading = () => actionLoading() === app.id
+                  const isActive = () => live().enabled || live().status === "connected"
 
                   return (
-                    <div class="flex flex-col w-[280px] rounded-lg border border-border-base bg-[#1a1a2e] hover:border-border-hover transition-colors overflow-hidden">
-                      {/* Header + description */}
-                      <div class="p-4 pb-2">
-                        <div class="flex items-center gap-3 mb-2">
-                          <div class="shrink-0 w-10 h-10 rounded-lg bg-background-base border border-border-base flex items-center justify-center text-lg">
-                            {appIcon(app.id)}
+                    <div class="flex flex-col w-[260px] rounded-lg border border-border-base bg-[#1a1a2e] hover:border-border-hover transition-colors overflow-hidden">
+                      {/* Header */}
+                      <div class="p-3 pb-2">
+                        <div class="flex items-center gap-2.5 mb-1.5">
+                          <div class="shrink-0 w-9 h-9 rounded-lg bg-background-base border border-border-base flex items-center justify-center text-base">
+                            {live().icon}
                           </div>
                           <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-1.5">
                               <span class="text-13-medium text-text-base truncate">{live().name}</span>
-                              <span class="text-11-regular text-text-weaker">v{live().version}</span>
+                              <Show when={live().type}>
+                                <span class="px-1 py-px rounded text-[10px] text-text-weaker bg-white/5 uppercase">{live().type}</span>
+                              </Show>
                             </div>
-                            <span class={`text-11-regular ${meta().color}`}>
-                              {language.t(meta().labelKey)}
+                            <span class={`text-11-regular ${sd().color}`}>
+                              {language.t(sd().labelKey)}
                             </span>
                           </div>
                         </div>
-                        <p class="text-12-regular text-text-weak line-clamp-2 leading-snug">
+                        <p class="text-11-regular text-text-weak line-clamp-2 leading-snug">
                           {live().description}
                         </p>
                       </div>
 
-                      {/* Capabilities band */}
-                      <div class="flex flex-wrap gap-1.5 px-3 py-2 mx-3 mb-3 rounded-md bg-background-base/60 border border-border-base/30">
-                        <For each={live().capabilities.filter((c) => c.kind === "tool").slice(0, 3)}>
-                          {(cap) => (
-                            <span class="px-2 py-0.5 rounded bg-white/5 text-11-regular text-text-weak">
-                              {cap.label}
+                      {/* Tools band */}
+                      <Show when={live().tools.length > 0}>
+                        <div class="flex flex-wrap gap-1 px-3 py-1.5 mx-2 mb-2 rounded bg-background-base/60 border border-border-base/30">
+                          <For each={live().tools.slice(0, 4)}>
+                            {(tool) => (
+                              <span class="px-1.5 py-px rounded bg-white/5 text-[10px] text-text-weak truncate max-w-[100px]" title={tool.name}>
+                                {tool.name}
+                              </span>
+                            )}
+                          </For>
+                          <Show when={live().tools.length > 4}>
+                            <span class="px-1.5 py-px rounded bg-white/5 text-[10px] text-text-weaker">
+                              +{live().tools.length - 4}
                             </span>
-                          )}
-                        </For>
-                        <Show when={live().toolContract.tools.length > 0}>
-                          <span class="px-2 py-0.5 rounded bg-white/5 text-11-regular text-text-weaker">
-                            {language.t("app_market.tools_count", { count: String(live().toolContract.tools.length) })}
+                          </Show>
+                          <span class="px-1.5 py-px rounded bg-white/5 text-[10px] text-text-weaker ml-auto">
+                            {language.t("app_market.tools_count", { count: String(live().tools.length) })}
                           </span>
-                        </Show>
-                      </div>
+                        </div>
+                      </Show>
 
                       {/* Actions bar */}
-                      <div class="flex items-center gap-2 px-4 py-2.5 mt-auto border-t border-border-base/50 bg-white/[0.03]">
+                      <div class="flex items-center gap-1.5 px-3 py-2 mt-auto border-t border-border-base/50 bg-white/[0.03]">
                         <button
-                          onClick={() => performAction(live())}
+                          onClick={() => handleAction(live())}
                           disabled={loading()}
                           classList={{
-                            "flex-1 py-1.5 rounded-md text-12-medium transition-colors text-center": true,
-                            "bg-brand-base text-white hover:bg-brand-hover": !isInstalled() || !isReady(),
-                            "bg-background-input text-text-base hover:bg-background-input-hover": isReady(),
+                            "flex-1 py-1 rounded-md text-12-medium transition-colors text-center": true,
+                            "bg-brand-base text-white hover:bg-brand-hover": !isActive(),
+                            "bg-background-input text-text-base hover:bg-background-input-hover": isActive(),
                             "opacity-50 cursor-not-allowed": loading(),
                           }}
                         >
-                          {loading()
-                            ? language.t("app_market.action.loading")
-                            : isReady()
-                              ? language.t("app_market.action.disable")
-                              : language.t(meta().actionKey)}
+                          {actionLabel(live())}
                         </button>
-                        <Show when={isInstalled()}>
+
+                        {/* Per-app custom buttons */}
+                        {renderAppActions(live(), loading())}
+
+                        <Show when={live().kind === "managed-app" && live().status !== "pending_install" && live().status !== "available"}>
                           <button
-                            onClick={() => uninstall(live())}
+                            onClick={() => uninstallManaged(live())}
                             disabled={loading()}
-                            class="px-2.5 py-1.5 rounded-md text-12-medium text-danger-base bg-background-input hover:bg-background-input-hover transition-colors disabled:opacity-50"
+                            class="px-2 py-1 rounded-md text-12-medium text-danger-base bg-background-input hover:bg-background-input-hover transition-colors disabled:opacity-50"
                             title={language.t("app_market.action.uninstall")}
                           >
                             <Icon name="trash" size="small" />

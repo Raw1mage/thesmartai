@@ -668,6 +668,91 @@ export namespace MCP {
     return result
   }
 
+  /** Metadata for built-in MCP servers — shown in app market cards */
+  const SERVER_META: Record<string, { description: string; icon: string }> = {
+    "beta-tool": {
+      description: "Experimental tools for testing new capabilities before they are promoted to stable.",
+      icon: "🧪",
+    },
+    fetch: {
+      description: "HTTP fetch tool for retrieving web content, APIs, and remote resources.",
+      icon: "🌐",
+    },
+    filesystem: {
+      description: "File system operations — read, write, search, and manage files within the workspace.",
+      icon: "📁",
+    },
+    memory: {
+      description: "Persistent key-value memory store for retaining context across sessions.",
+      icon: "🧠",
+    },
+    "sequential-thinking": {
+      description: "Step-by-step reasoning tool for complex multi-step problem solving.",
+      icon: "🔗",
+    },
+    "system-manager": {
+      description: "System administration tools — process management, environment inspection, and runtime control.",
+      icon: "⚙️",
+    },
+  }
+
+  export interface ServerApp {
+    id: string
+    name: string
+    description: string
+    icon: string
+    kind: "mcp-server" | "managed-app"
+    type?: "local" | "remote"
+    status: string
+    error?: string
+    tools: Array<{ id: string; name: string; description: string }>
+    enabled: boolean
+  }
+
+  /** Return all MCP servers as app-market-compatible cards */
+  export async function serverApps(): Promise<ServerApp[]> {
+    const s = await state()
+    const cfg = await Config.get()
+    const config = cfg.mcp ?? {}
+    const clientsSnapshot = await clients()
+    const result: ServerApp[] = []
+
+    for (const [key, mcp] of Object.entries(config)) {
+      if (!isMcpConfigured(mcp)) continue
+      const serverStatus = s.status[key] ?? { status: "disabled" as const }
+      const meta = SERVER_META[key] ?? { description: `MCP server: ${key}`, icon: "📦" }
+      const isConnected = serverStatus.status === "connected"
+
+      // Get tools for connected servers
+      const toolList: ServerApp["tools"] = []
+      if (isConnected && clientsSnapshot[key]) {
+        try {
+          const toolsResult = await clientsSnapshot[key].listTools()
+          for (const t of toolsResult.tools) {
+            toolList.push({ id: t.name, name: t.name, description: t.description ?? "" })
+          }
+        } catch {
+          // tools unavailable
+        }
+      }
+
+      result.push({
+        id: key,
+        name: key,
+        description: meta.description,
+        icon: meta.icon,
+        kind: "mcp-server",
+        type: mcp.type,
+        status: serverStatus.status,
+        error: "error" in serverStatus ? serverStatus.error : undefined,
+        tools: toolList,
+        enabled: serverStatus.status !== "disabled",
+      })
+    }
+
+    return result
+  }
+
   export async function clients() {
     return state().then((state) => state.clients)
   }
