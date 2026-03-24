@@ -9,6 +9,7 @@ import { useRoute } from "@tui/context/route"
 import { Account } from "@/account"
 import { Keybind } from "@/util/keybind"
 import { debugCheckpoint } from "@/util/debug"
+import { useSDK } from "@tui/context/sdk"
 
 export function useConnected() {
   const sync = useSync()
@@ -28,6 +29,7 @@ export function DialogModel(props: { providerId?: string }) {
   const sync = useSync()
   const dialog = useDialog()
   const toast = useToast()
+  const sdk = useSDK()
   const { theme } = useTheme()
   const [ref, setRef] = createSignal<DialogSelectRef<OptionValue>>()
   const [query, setQuery] = createSignal("")
@@ -79,7 +81,14 @@ export function DialogModel(props: { providerId?: string }) {
     const currentProviderKey = current ? (providerKey(current.providerId) ?? current.providerId) : undefined
     if (currentAccountId && currentProviderKey === targetProviderKey) return currentAccountId
     if (!targetProviderKey) return undefined
-    return (await Account.getActive(targetProviderKey)) ?? undefined
+    try {
+      const res = await sdk.client.account.listAll()
+      const payload = res.data as { providers?: Record<string, Account.ProviderData> } | undefined
+      const providerData = payload?.providers?.[targetProviderKey]
+      return providerData?.activeAccount ?? undefined
+    } catch {
+      return undefined
+    }
   }
 
   const toggleProviderExpanded = (providerId: string) => {

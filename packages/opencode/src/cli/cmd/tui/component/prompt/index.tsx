@@ -256,7 +256,9 @@ export function Prompt(props: PromptProps) {
       if (!selectedAccountId) return undefined
       try {
         const providerKey = Account.parseProvider(providerId) || providerId
-        const info = await Account.get(providerKey, selectedAccountId)
+        const res = await sdk.client.account.listAll()
+        const payload = res.data as { providers?: Record<string, Account.ProviderData> } | undefined
+        const info = payload?.providers?.[providerKey]?.accounts?.[selectedAccountId]
         if (!info) {
           return {
             id: selectedAccountId,

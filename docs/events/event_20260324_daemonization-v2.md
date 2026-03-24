@@ -49,15 +49,28 @@
 - 完整追蹤 8 層資料流（thread → app → sdk → SDK client → server middleware → Instance.provide → session route → Session.listGlobal）
 - 發現 `local.tsx` line 25 呼叫 `Account.listAll()` 是 **in-process call**，不走 HTTP
 
-### Root Cause
-- `local.tsx` import `@/account` 並呼叫 `Account.listAll()` → 直接讀 accounts.json
-- Worker mode 中 TUI process 內有完整 server runtime，Account module 可正常運作
-- Attach mode 中 TUI process 只是 thin client，沒有 Account storage layer → 回傳空結果
-- Causal chain: TUI attach → local.tsx init → Account.listAll() → no storage → empty {} → UI 顯示空白
+### Root Cause（修正）
 
-### Secondary Finding
-- V1 `--attach` mode 沒有傳 `directory` 給 `tui()` → server 用 `defaultDirectory`（user home）
-- sessions 篩選結果可能也是空的（sessions 在 `/home/pkcs12/projects/opencode` 不是 `/home/pkcs12`）
+兩個獨立成因：
+
+1. **Directory 未傳遞（session 空白的直接原因）**：
+   - V1 `--attach` code path 未傳 `directory` 給 `tui()` → SDK 不發 `x-opencode-directory` header
+   - Server middleware fallback 到 `defaultDirectory`（user home `/home/pkcs12`）
+   - Sessions 是以 project directory 為 key（`/home/pkcs12/projects/opencode`）→ 過濾結果為空
+
+2. **Account list 應走 daemon HTTP（架構原則）**：
+   - `Account.listAll()` 技術上可在 TUI 進程內運作（純 filesystem 讀取，不需 server context）
+   - 但依據「Daemon = 唯一執行主體」原則，TUI 作為 thin client 不應直接讀寫 `accounts.json`
+   - 改為 `sdk.client.account.listAll()` 是正確的架構方向，而非 root cause fix
+   - 注意：原先的 root cause 描述（「沒有 Account storage layer」）是錯誤的 — Account module 不需 server init
+
+### 架構澄清（Session 2 追加）
+
+使用者確立核心原則：
+- **Daemon 是唯一執行主體**，持有所有狀態
+- **TUI 和 Gateway 都是 thin client**，一律透過 daemon HTTP API
+- **TUI 直連 daemon**，不繞 gateway
+- `accounts.json` 是 daemon 管理的資源，TUI 不直接碰
 
 ## Validation
 
@@ -74,10 +87,38 @@
 - [ ] `bun run dev` 再開一個 TUI → adopt 同一 daemon
 - [ ] TUI 退出後 daemon 持續運行
 
+### Phase 2.5 Completed (Session 2)
+- `dialog-account.tsx`：`Account.listAll()` → `sdk.client.account.listAll()`; `Account.setActive()` → `sdk.client.account.setActive()`; `Auth.remove()` → `sdk.client.account.remove()`
+- `dialog-admin.tsx`：coreAll/activityAccounts resources、codexQuota、resolveGoogleApiKey、selectActivity、edit/view/delete handlers 全部遷移
+- `DialogAccountEdit.save()`：`Account.get()` + `Account.update()` + `Account.refresh()` → `sdk.client.account.update()`
+- `DialogGoogleApiAdd` / `DialogApiKeyAdd`：Account.list() check → `sdk.client.account.listAll()` + filter
+
+### Phase 2.5 Continued (Session 3)
+- `dialog-model.tsx:82`：`Account.getActive()` → `sdk.client.account.listAll()` + `activeAccount` lookup
+- `prompt/index.tsx:259`：`Account.get()` → `sdk.client.account.listAll()` + accounts lookup
+- `app.tsx:436`：`Account.getActive()` → `sdk.client.account.listAll()` + `activeAccount` lookup（新發現）
+- TUI 中已無任何 Account I/O 殘留（僅保留純運算 utility：parseProvider, getDisplayName 等）
+
+### Phase 4 Completed (Session 3)
+- `opencode-gateway.c`：`start_splice_proxy` 失敗時 mark `DAEMON_DEAD` + retry-once loop（ensure + splice）
+- `Connection` struct 新增 `DaemonInfo *daemon` back-pointer
+- `ECTX_SPLICE_DAEMON` EPOLLHUP/EPOLLERR handler：daemon crash 時 mark `DAEMON_DEAD`
+- `DaemonInfo` 改為 named struct（`struct DaemonInfo`）以支援 forward declaration
+- 4.1 已驗證：`try_adopt_from_discovery()` 已包含 `connect_unix()` socket probe
+- 編譯驗證：`gcc -O2 -Wall -Wextra` 零 warning
+
+### Phase 5 Partial (Session 3) — webctl.sh reload/restart
+- `do_reload()` 重寫：自動偵測 dev/prod mode
+  - Dev mode：build frontend + sync + kill daemons（bun 重啟時直接讀新 source）
+  - Prod mode：build frontend + build binary + atomic install + deploy + kill daemons
+  - 兩者都 compile stale MCP servers，都不動 gateway
+- `do_restart()` 重寫：`do_reload --force` + gateway recompile（if source changed）+ `systemctl restart`
+- Help text 和 header comment 已同步更新
+- 語法驗證：`bash -n webctl.sh` pass
+
 ### Known Remaining Issues
-- `dialog-admin.tsx` / `dialog-account.tsx` 仍有 in-process Account calls（需後續遷移）
-- Gateway Phase 4 hardening（lazy liveness check for adopted daemons）待實作
-- systemd / webctl.sh Phase 5 整合待實作
+- `Auth.set()` 在 Add dialogs 中仍直接寫 accounts.json（daemon 無 account.add HTTP 端點）
+- Phase 5 剩餘項：systemd per-user service 決策、do_status/do_stop 統一、EXPERIMENTAL flag 移除
 
 ## Architecture Sync
 

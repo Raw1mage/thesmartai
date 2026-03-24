@@ -119,6 +119,8 @@ struct PendingRequest {
 static PendingRequest g_pending[MAX_PENDING];
 
 /* ─── Connection: splice proxy state with lifecycle guard ────────── */
+typedef struct DaemonInfo DaemonInfo;
+
 struct Connection {
     int       client_fd;
     int       daemon_fd;
@@ -127,6 +129,7 @@ struct Connection {
     int       closed;          /* guard for in-flight epoll events */
     EpollCtx  ectx_client;     /* embedded, for client_fd */
     EpollCtx  ectx_daemon;     /* embedded, for daemon_fd */
+    DaemonInfo *daemon;        /* back-pointer for liveness tracking */
 };
 
 static Connection g_conns[MAX_CONNS];
@@ -135,14 +138,14 @@ static int        g_nconns = 0;
 /* ─── Per-user daemon registry ───────────────────────────────────── */
 typedef enum { DAEMON_NONE, DAEMON_STARTING, DAEMON_READY, DAEMON_DEAD } DaemonState;
 
-typedef struct {
+struct DaemonInfo {
     uid_t uid;
     gid_t gid;
     char  username[64];
     char  socket_path[256];
     pid_t pid;
     DaemonState state;
-} DaemonInfo;
+};
 
 static DaemonInfo g_daemons[MAX_USERS];
 static int        g_ndaemons = 0;
@@ -966,6 +969,40 @@ static int ensure_daemon_running(DaemonInfo *d) {
             const char *no_open = getenv("OPENCODE_WEB_NO_OPEN");
             if (no_open) setenv("OPENCODE_WEB_NO_OPEN", no_open, 1);
 
+            /* DD-9: dev mode (bun + source) needs project root as cwd
+             * so bun can resolve node_modules/package.json/workspace.
+             * Detect dev mode by checking if OPENCODE_BIN contains a .ts entry.
+             * Derive project root from the entry path (strip packages/... suffix).
+             */
+            {
+                const char *ts_entry = NULL;
+                for (int i = 0; i < g_opencode_argc; i++) {
+                    size_t len = strlen(g_opencode_argv[i]);
+                    if (len > 3 && strcmp(g_opencode_argv[i] + len - 3, ".ts") == 0) {
+                        ts_entry = g_opencode_argv[i];
+                        break;
+                    }
+                }
+                if (ts_entry) {
+                    /* Find "/packages/" in the path and chdir to its parent */
+                    const char *pkg = strstr(ts_entry, "/packages/");
+                    if (pkg) {
+                        char project_root[512];
+                        size_t prlen = (size_t)(pkg - ts_entry);
+                        if (prlen > 0 && prlen < sizeof(project_root)) {
+                            memcpy(project_root, ts_entry, prlen);
+                            project_root[prlen] = '\0';
+                            if (chdir(project_root) == 0) {
+                                dprintf(2, "[gateway-child] dev mode: chdir to project root '%s'\n", project_root);
+                            } else {
+                                dprintf(2, "[gateway-child] dev mode: chdir('%s') failed: %s\n",
+                                        project_root, strerror(errno));
+                            }
+                        }
+                    }
+                }
+            }
+
             /* DD-8: use pre-parsed argv, no sh -c */
             if (g_opencode_argc > 0) {
                 char *argv[MAX_OPENCODE_ARGV];
@@ -1069,6 +1106,7 @@ static Connection *start_splice_proxy(int client_fd, DaemonInfo *d) {
 
     c->client_fd = client_fd;
     c->daemon_fd = daemon_fd;
+    c->daemon    = d;
     c->closed = 0;
 
     set_nonblock(client_fd);
@@ -1255,9 +1293,19 @@ static void route_complete_request(PendingRequest *pr) {
             } else {
                 LOGI("daemon entry for '%s': state=%d pid=%d socket='%s'",
                      username, d->state, d->pid, d->socket_path);
-                if (ensure_daemon_running(d)) {
-                    LOGI("daemon ready for '%s', starting splice proxy → socket='%s'",
-                         username, d->socket_path);
+                /* Phase 4 (daemonization-v2): retry-once on splice failure.
+                 * If start_splice_proxy fails, the daemon may have crashed
+                 * between ensure_daemon_running and connect_unix. Mark DEAD
+                 * and retry ensure+splice once before giving up. */
+                for (int attempt = 0; attempt < 2; attempt++) {
+                    if (!ensure_daemon_running(d)) {
+                        LOGE("ensure_daemon_running FAILED for '%s' (attempt %d): "
+                             "state=%d pid=%d socket='%s'",
+                             username, attempt, d->state, d->pid, d->socket_path);
+                        break;
+                    }
+                    LOGI("daemon ready for '%s' (attempt %d), starting splice proxy → socket='%s'",
+                         username, attempt, d->socket_path);
                     Connection *conn = start_splice_proxy(fd, d);
                     if (conn) {
                         LOGI("splice proxy started for '%s', forwarding %zu bytes",
@@ -1265,11 +1313,13 @@ static void route_complete_request(PendingRequest *pr) {
                         send(conn->daemon_fd, raw_buf, raw_len, MSG_NOSIGNAL);
                         return;
                     }
-                    LOGW("start_splice_proxy failed for '%s': socket='%s'",
-                         username, d->socket_path);
-                } else {
-                    LOGE("ensure_daemon_running FAILED for '%s': state=%d pid=%d socket='%s'",
-                         username, d->state, d->pid, d->socket_path);
+                    /* Splice connect failed — mark daemon dead so retry
+                     * will re-adopt or re-spawn (handles adopted non-child
+                     * daemons that crashed without SIGCHLD). */
+                    LOGW("start_splice_proxy failed for '%s' (attempt %d): "
+                         "socket='%s', marking DAEMON_DEAD",
+                         username, attempt, d->socket_path);
+                    d->state = DAEMON_DEAD;
                 }
             }
             /* Daemon failed — clear cookie via JS and redirect to login */
@@ -1671,6 +1721,14 @@ int main(int argc, char *argv[]) {
                     splice_one_direction(c, c->daemon_fd, c->pipe_d2c[1], c->pipe_d2c[0], c->client_fd);
                 }
                 if (events[i].events & (EPOLLHUP | EPOLLERR)) {
+                    /* Phase 4 (daemonization-v2): mark daemon dead on
+                     * daemon-side HUP/ERR so next request re-adopts or
+                     * re-spawns immediately (no stale PID check needed). */
+                    if (c->daemon && c->daemon->state == DAEMON_READY) {
+                        LOGW("daemon-side HUP/ERR for %s (pid %d), marking DAEMON_DEAD",
+                             c->daemon->username, c->daemon->pid);
+                        c->daemon->state = DAEMON_DEAD;
+                    }
                     close_conn(c);
                 }
                 break;

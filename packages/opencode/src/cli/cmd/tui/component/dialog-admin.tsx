@@ -412,9 +412,9 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
   const [coreAll] = createResource(refreshSignal, async () => {
     try {
-      // Refresh from disk to get latest account data
-      await Account.refresh()
-      return await Account.listAll()
+      const res = await sdk.client.account.listAll()
+      const payload = res.data as { providers?: Record<string, Account.ProviderData> } | undefined
+      return payload?.providers ?? {}
     } catch (e) {
       return {}
     }
@@ -480,16 +480,19 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   const [activityProviders] = createResource<Record<string, Provider.Info>>(() => Provider.list().catch(() => ({})))
   const [activityAccounts] = createResource(refreshSignal, async () => {
     try {
-      await Account.refresh()
-      return await Account.listAll()
+      const res = await sdk.client.account.listAll()
+      const payload = res.data as { providers?: Record<string, Account.ProviderData> } | undefined
+      return payload?.providers ?? {}
     } catch (e) {
       return {}
     }
   })
   const [codexQuota] = createResource(quotaRefresh, async () => {
     try {
-      const accounts = await Account.list("openai")
-      const ids = Object.entries(accounts)
+      const allAccounts = coreAll() ?? {}
+      const openaiData = allAccounts["openai"]
+      if (!openaiData?.accounts) return {}
+      const ids = Object.entries(openaiData.accounts)
         .filter(([, info]) => info.type === "subscription")
         .map(([id]) => id)
       return await getQuotaHintsForAccounts({ providerId: "openai", accountIds: ids, format: "admin" })
@@ -679,18 +682,20 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
   const resolveGoogleApiKey = async () => {
     return debugSpan("admin.google", "resolve api key", {}, async () => {
       try {
-        const accounts = await Account.list("google-api")
-        const activeId = await Account.getActive("google-api")
+        const allAccounts = coreAll() ?? {}
+        const googleData = allAccounts["google-api"]
+        if (!googleData?.accounts) return null
+        const activeId = googleData.activeAccount
         const pickKey = (id?: string) => {
           if (!id) return null
-          const info = accounts[id]
-          if (info?.type === "api") return info.apiKey
+          const info = googleData.accounts[id]
+          if (info?.type === "api") return (info as Account.ApiAccount).apiKey
           return null
         }
         const activeKey = pickKey(activeId)
         if (activeKey) return activeKey
-        for (const info of Object.values(accounts)) {
-          if (info.type === "api") return info.apiKey
+        for (const info of Object.values(googleData.accounts)) {
+          if (info.type === "api") return (info as Account.ApiAccount).apiKey
         }
         return null
       } catch (error) {
@@ -1136,7 +1141,8 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
       const modelLabel = providerInfo?.models?.[modelID]?.name ?? modelID
       let selectedAccountLabel = "default account"
       if (accountId && accountId !== "-") {
-        const info = await Account.get(providerKey, accountId)
+        const providerData = (coreAll() ?? {})[providerKey]
+        const info = providerData?.accounts?.[accountId]
         selectedAccountLabel = info ? Account.getDisplayName(accountId, info, resolvedProvider) : accountId
       }
       toast.show({
@@ -2054,7 +2060,8 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
               // Use coreProviderKey for account lookup (accounts may be stored in different provider bucket than displayed)
               const accountId = adminOption.coreId || val
               const lookupProviderKey = adminOption.coreProviderKey || providerKey
-              const accountInfo = await Account.get(lookupProviderKey, accountId)
+              const providerData = (coreAll() ?? {})[lookupProviderKey]
+              const accountInfo = providerData?.accounts?.[accountId]
               if (!accountInfo) {
                 toast.show({ message: "Account not found", variant: "error", duration: 2000 })
                 return
@@ -2100,7 +2107,8 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
               // Use coreProviderKey for account lookup (accounts may be stored in different provider bucket than displayed)
               const accountId = adminOption.coreId || val
               const lookupProviderKey = adminOption.coreProviderKey || providerKey
-              const accountInfo = await Account.get(lookupProviderKey, accountId)
+              const providerDataView = (coreAll() ?? {})[lookupProviderKey]
+              const accountInfo = providerDataView?.accounts?.[accountId]
               if (!accountInfo) {
                 toast.show({ message: "Account not found", variant: "error", duration: 2000 })
                 return
@@ -2156,11 +2164,10 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
                         if (confirmed) {
                           try {
-                            // Remove from core Account module (single source of truth)
+                            // Remove via daemon HTTP API (single source of truth)
                             // Use the mapped coreId and coreProviderKey for correct lookup
                             const coreId = adminOption.coreId || val
-                            await Account.remove(lookupProviderKey, coreId)
-                            await Account.refresh()
+                            await sdk.client.account.remove({ family: lookupProviderKey, accountId: coreId })
 
                             debugCheckpoint("admin", "delete account success", {
                               providerKey: lookupProviderKey,
@@ -2276,6 +2283,7 @@ export function DialogAdmin(props: DialogAdminProps = {}) {
 
 function DialogGoogleApiAdd(props: { onCancel: () => void; onSaved: () => void }) {
   const dialog = useDialog()
+  const sdk = useSDK()
   const toast = useToast()
   const keybind = useKeybind()
   const theme = useTheme().theme
@@ -2382,8 +2390,11 @@ function DialogGoogleApiAdd(props: { onCancel: () => void; onSaved: () => void }
       }
 
       const id = Account.generateId("google-api", "api", nextName)
-      const existing = await Account.list("google-api")
-        .then((list) => list[id])
+      const existing = await sdk.client.account.listAll()
+        .then((res) => {
+          const payload = res.data as { providers?: Record<string, Account.ProviderData> } | undefined
+          return payload?.providers?.["google-api"]?.accounts?.[id]
+        })
         .catch((err) => {
           const msg = String(err instanceof Error ? err.stack || err.message : err)
           setSaveErr(msg)
@@ -2403,6 +2414,8 @@ function DialogGoogleApiAdd(props: { onCancel: () => void; onSaved: () => void }
         }
       }
 
+      // TODO(daemonization-v2): Auth.set() writes directly to accounts.json.
+      // Needs a daemon HTTP endpoint for account.add to complete thin client migration.
       const { Auth } = await import("../../../../auth")
       const wrote = await Auth.set("google-api", {
         type: "api",
@@ -2636,6 +2649,7 @@ function DialogApiKeyAdd(props: {
   onSaved: () => void
 }) {
   const dialog = useDialog()
+  const sdk = useSDK()
   const toast = useToast()
   const keybind = useKeybind()
   const theme = useTheme().theme
@@ -2741,8 +2755,11 @@ function DialogApiKeyAdd(props: {
     }
 
     const id = Account.generateId(props.providerId, "api", nextName)
-    const existing = await Account.list(props.providerId)
-      .then((list) => list[id])
+    const existing = await sdk.client.account.listAll()
+      .then((res) => {
+        const payload = res.data as { providers?: Record<string, Account.ProviderData> } | undefined
+        return payload?.providers?.[props.providerId]?.accounts?.[id]
+      })
       .catch((err) => {
         const msg = String(err instanceof Error ? err.stack || err.message : err)
         setSaveErr(msg)
@@ -2762,6 +2779,8 @@ function DialogApiKeyAdd(props: {
       }
     }
 
+    // TODO(daemonization-v2): Auth.set() writes directly to accounts.json.
+    // Needs a daemon HTTP endpoint for account.add to complete thin client migration.
     const { Auth } = await import("../../../../auth")
     const wrote = await Auth.set(props.providerId, {
       type: "api",
@@ -3051,6 +3070,7 @@ function DialogAccountEdit(props: {
   onSaved: () => void
 }) {
   const dialog = useDialog()
+  const sdk = useSDK()
   const toast = useToast()
   const theme = useTheme().theme
   const [cursor, setCursor] = createSignal(0) // 0=name, 1=save, 2=cancel
@@ -3113,16 +3133,8 @@ function DialogAccountEdit(props: {
 
     setSaving(true)
     try {
-      const info = await Account.get(props.providerKey, props.accountId)
-      if (!info) {
-        setNameErr("Account not found")
-        setSaving(false)
-        return
-      }
-
-      // Update the account with new name
-      await Account.update(props.providerKey, props.accountId, { ...info, name: newName })
-      await Account.refresh()
+      // Update account name via daemon HTTP API
+      await sdk.client.account.update({ family: props.providerKey, accountId: props.accountId, name: newName })
 
       debugCheckpoint("admin.account_edit", "save success", {
         providerKey: props.providerKey,

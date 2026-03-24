@@ -13,7 +13,8 @@
 #   dev-stop, dev-down Stop the development server
 #   stop              Stop active dev / production server(s)
 #   flush             Clean orphaned webctl/opencode bun process trees
-#   restart           Refresh active dev / production server(s)
+#   reload            Rebuild + kill daemons (gateway untouched; dev & prod)
+#   restart           reload + gateway restart
 #   dev-refresh       Build frontend + restart dev server
 #   web-start         Start production systemd service
 #   web-stop          Stop production systemd service
@@ -1467,24 +1468,12 @@ do_dev_restart() {
 do_restart() {
     load_server_cfg
 
-    # Detect current mode from cfg
-    local current_bin
-    current_bin="$(grep '^OPENCODE_BIN=' "${OPENCODE_CFG}" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' || true)"
-    local mode="prod"
-    if echo "${current_bin}" | grep -q 'bun\|index\.ts'; then
-        mode="dev"
-    fi
+    log_info "Restarting (reload + gateway)..."
 
-    log_info "Restarting in ${mode} mode..."
+    # 1. Reload daemons (build + kill — gateway untouched by reload)
+    do_reload --force
 
-    # 1. Rebuild frontend if source repo available
-    if [ "${IS_SOURCE_REPO:-0}" -eq 1 ]; then
-        log_info "Building frontend..."
-        do_build_frontend
-        sync_frontend_dist_if_needed
-    fi
-
-    # 2. Recompile gateway if source changed
+    # 2. Recompile + restart gateway
     local gateway_changed=0
     if [ "${IS_SOURCE_REPO:-0}" -eq 1 ] && [ -f "${GATEWAY_SRC}" ]; then
         if [ ! -f "${GATEWAY_INSTALL_BIN}" ] || [ "${GATEWAY_SRC}" -nt "${GATEWAY_INSTALL_BIN}" ]; then
@@ -1497,38 +1486,21 @@ do_restart() {
         fi
     fi
 
-    # 3. Prod mode: rebuild opencode binary if source changed
-    if [ "${mode}" = "prod" ] && [ "${IS_SOURCE_REPO:-0}" -eq 1 ]; then
-        if [ ! -x "/usr/local/bin/opencode" ] || \
-           [ "$(find packages/opencode/src -newer /usr/local/bin/opencode -print -quit 2>/dev/null)" ]; then
-            log_info "Source changed, rebuilding opencode binary..."
-            do_build_binary
-            sudo cp "$(ls -t packages/opencode/dist/opencode-* 2>/dev/null | head -1)" /usr/local/bin/opencode 2>/dev/null || \
-                log_warn "Binary build/install skipped (no dist output found)"
-        else
-            log_info "Opencode binary up-to-date, skipping rebuild"
-        fi
-    fi
-
-    # 4. Compile stale MCP servers
-    compile_internal_mcp_if_stale 2>/dev/null || true
-
-    # 5. Restart gateway service if binary changed
     if [ "${gateway_changed}" -eq 1 ]; then
         log_info "Gateway binary updated, restarting service..."
         sudo systemctl restart "${SYSTEM_SERVICE_NAME}.service"
         sleep 1
+    else
+        log_info "Restarting gateway service..."
+        sudo systemctl restart "${SYSTEM_SERVICE_NAME}.service"
+        sleep 1
     fi
 
-    # 6. Kill per-user daemons — they respawn with fresh code on next request
-    log_info "Killing per-user daemons..."
-    do_daemon_killall
-
-    # Verify gateway is healthy
+    # 3. Verify gateway is healthy
     if system_service_is_active; then
-        log_success "Restart complete (${mode} mode). Per-user daemons will respawn on next request."
+        log_success "Restart complete. Gateway + daemons refreshed."
     else
-        log_warn "Gateway service not active. Starting..."
+        log_warn "Gateway service not active after restart. Starting..."
         sudo systemctl start "${SYSTEM_SERVICE_NAME}.service"
     fi
 }
@@ -2421,7 +2393,9 @@ do_daemon_killall() {
 }
 
 # ---------------------------------------------------------------------------
-# reload — build + atomic install + kill daemons (gateway untouched)
+# reload — rebuild + kill daemons (gateway untouched)
+#   Dev mode:  bun picks up source changes → just kill daemons
+#   Prod mode: build binary + atomic install + deploy frontend + kill daemons
 # ---------------------------------------------------------------------------
 do_reload() {
     load_server_cfg
@@ -2437,6 +2411,14 @@ do_reload() {
             --force) force=1 ;;
         esac
     done
+
+    # Detect current mode from cfg
+    local current_bin
+    current_bin="$(grep '^OPENCODE_BIN=' "${OPENCODE_CFG}" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' || true)"
+    local mode="prod"
+    if echo "${current_bin}" | grep -q 'bun\|index\.ts'; then
+        mode="dev"
+    fi
 
     local BUN_BIN
     BUN_BIN="$(find_bun)"
@@ -2457,48 +2439,66 @@ do_reload() {
         log_info "Frontend source unchanged — skip build"
     fi
 
-    # 2. Build binary (smart: skip if source unchanged)
-    if [ "${force}" -eq 1 ] || _binary_needs_build; then
-        log_info "Binary source changed — building..."
-        "${BUN_BIN}" run build -- --single --skip-install
-        _write_binary_stamp
-        did_build_bin=1
-    else
-        log_info "Binary source unchanged — skip build"
+    # 2. Sync frontend dist if served from a separate path
+    if [ "${did_build_fe}" -eq 1 ]; then
+        sync_frontend_dist_if_needed
     fi
 
-    # 3. Install binary (smart: skip if checksum matches)
-    local install_bin="${OPENCODE_BIN:-/usr/local/bin/opencode}"
-    if echo "${install_bin}" | grep -q 'bun\|index\.ts'; then
-        install_bin="/usr/local/bin/opencode"
+    if [ "${mode}" = "prod" ]; then
+        # ── Prod mode: build binary + atomic install + deploy frontend ──
+
+        # 3. Build binary (smart: skip if source unchanged)
+        if [ "${force}" -eq 1 ] || _binary_needs_build; then
+            log_info "Binary source changed — building..."
+            "${BUN_BIN}" run build -- --single --skip-install
+            _write_binary_stamp
+            did_build_bin=1
+        else
+            log_info "Binary source unchanged — skip build"
+        fi
+
+        # 4. Install binary (smart: skip if checksum matches)
+        local install_bin="${OPENCODE_BIN:-/usr/local/bin/opencode}"
+        if echo "${install_bin}" | grep -q 'bun\|index\.ts'; then
+            install_bin="/usr/local/bin/opencode"
+        fi
+
+        if _binary_needs_install "${install_bin}"; then
+            log_info "Installing binary (atomic replace)..."
+            local dist_bin="${PROJECT_ROOT}/dist/opencode-linux-x64/bin/opencode"
+            sudo cp "${dist_bin}" "${install_bin}.new"
+            sudo mv "${install_bin}.new" "${install_bin}"
+            sudo chmod +x "${install_bin}"
+            did_install_bin=1
+        else
+            log_info "Installed binary already up-to-date — skip install"
+        fi
+
+        # 5. Deploy frontend (smart: skip if tar checksum matches)
+        if _frontend_needs_deploy; then
+            local frontend_tar="${PROJECT_ROOT}/dist/opencode-frontend.tar.gz"
+            log_info "Deploying frontend..."
+            sudo rm -rf "${FRONTEND_DIST}"
+            sudo mkdir -p "${FRONTEND_DIST}"
+            sudo tar -xzf "${frontend_tar}" -C "${FRONTEND_DIST}"
+            _write_frontend_deploy_stamp
+            did_deploy_fe=1
+        else
+            log_info "Deployed frontend already up-to-date — skip deploy"
+        fi
     fi
 
-    if _binary_needs_install "${install_bin}"; then
-        log_info "Installing binary (atomic replace)..."
-        local dist_bin="${PROJECT_ROOT}/dist/opencode-linux-x64/bin/opencode"
-        sudo cp "${dist_bin}" "${install_bin}.new"
-        sudo mv "${install_bin}.new" "${install_bin}"
-        sudo chmod +x "${install_bin}"
-        did_install_bin=1
-    else
-        log_info "Installed binary already up-to-date — skip install"
-    fi
+    # 6. Compile stale internal MCP servers
+    compile_internal_mcp_if_stale 2>/dev/null || true
 
-    # 4. Deploy frontend (smart: skip if tar checksum matches)
-    if _frontend_needs_deploy; then
-        local frontend_tar="${PROJECT_ROOT}/dist/opencode-frontend.tar.gz"
-        log_info "Deploying frontend..."
-        sudo rm -rf "${FRONTEND_DIST}"
-        sudo mkdir -p "${FRONTEND_DIST}"
-        sudo tar -xzf "${frontend_tar}" -C "${FRONTEND_DIST}"
-        _write_frontend_deploy_stamp
-        did_deploy_fe=1
-    else
-        log_info "Deployed frontend already up-to-date — skip deploy"
-    fi
-
-    # 5. Kill daemons only if something actually changed
-    if [ "${did_install_bin}" -eq 1 ] || [ "${did_deploy_fe}" -eq 1 ] || [ "${force}" -eq 1 ]; then
+    # 7. Kill daemons
+    if [ "${mode}" = "dev" ]; then
+        # Dev mode: bun re-reads source on spawn, always kill to pick up changes
+        log_info "Killing per-user daemons (dev mode — respawn picks up source changes)..."
+        do_daemon_killall
+        did_kill=1
+    elif [ "${did_install_bin}" -eq 1 ] || [ "${did_deploy_fe}" -eq 1 ] || [ "${force}" -eq 1 ]; then
+        # Prod mode: kill only if artifacts actually changed
         log_info "Killing per-user daemons (new artifacts installed)..."
         do_daemon_killall
         did_kill=1
@@ -2506,14 +2506,23 @@ do_reload() {
         log_info "No artifacts changed — daemons untouched"
     fi
 
-    # 6. Summary
-    local version=""
-    version="$(strings "${install_bin}" 2>/dev/null | grep -oP 'Installation\.VERSION = "\K[^"]+' | head -1)" || true
+    # 8. Summary
     echo ""
-    log_success "Reload complete"
-    [ -n "${version}" ] && echo "  Version:   ${version}"
-    echo "  Binary:    ${install_bin} $([ "${did_install_bin}" -eq 1 ] && echo "(updated)" || echo "(unchanged)")"
-    echo "  Frontend:  ${FRONTEND_DIST} $([ "${did_deploy_fe}" -eq 1 ] && echo "(updated)" || echo "(unchanged)")"
+    log_success "Reload complete (${mode} mode)"
+    if [ "${mode}" = "prod" ]; then
+        local install_bin="${OPENCODE_BIN:-/usr/local/bin/opencode}"
+        if echo "${install_bin}" | grep -q 'bun\|index\.ts'; then
+            install_bin="/usr/local/bin/opencode"
+        fi
+        local version=""
+        version="$(strings "${install_bin}" 2>/dev/null | grep -oP 'Installation\.VERSION = "\K[^"]+' | head -1)" || true
+        [ -n "${version}" ] && echo "  Version:   ${version}"
+        echo "  Binary:    ${install_bin} $([ "${did_install_bin}" -eq 1 ] && echo "(updated)" || echo "(unchanged)")"
+        echo "  Frontend:  ${FRONTEND_DIST} $([ "${did_deploy_fe}" -eq 1 ] && echo "(updated)" || echo "(unchanged)")"
+    else
+        echo "  Source:    ${PROJECT_ROOT}/packages/opencode/src/"
+        echo "  Frontend:  $([ "${did_build_fe}" -eq 1 ] && echo "rebuilt" || echo "unchanged")"
+    fi
     echo "  Gateway:   untouched (pid $(systemctl show -p MainPID --value ${SYSTEM_SERVICE_NAME}.service 2>/dev/null || echo '?'))"
     echo "  Daemons:   $([ "${did_kill}" -eq 1 ] && echo "killed — will respawn on next request" || echo "untouched")"
     echo ""
@@ -2552,8 +2561,9 @@ do_help() {
     echo "  daemon-list       List all per-user daemons (alias: daemons)"
     echo "  daemon-kill <user> Stop a specific user's daemon"
     echo "  daemon-killall    Stop all per-user daemons"
-    echo "  reload            Smart build + install + reload daemons (skips unchanged)"
+    echo "  reload            Rebuild + kill daemons; gateway untouched (dev & prod)"
     echo "                    Options: --force (rebuild everything)"
+    echo "  restart           reload + gateway restart"
     echo "  help              Show this help message"
     echo ""
     echo "Environment Variables:"

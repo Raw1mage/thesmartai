@@ -1,5 +1,42 @@
 # Design: Daemonization V2 — Unified Per-User Process Model
 
+## 0. Architecture Principle: Execution Body vs Thin Clients
+
+```
+┌─────────────────────────────────────────────────┐
+│              Daemon (執行主體)                    │
+│                                                 │
+│  Owns:                                          │
+│  · accounts.json (R/W)     · sessions           │
+│  · LLM calls               · plugin/MCP         │
+│  · config bootstrap         · state management  │
+│                                                 │
+│  Exposes: HTTP API via Unix socket              │
+├───────────────────┬─────────────────────────────┤
+│                   │                             │
+│   TUI ────────────┘       Gateway ──────────────┘
+│   (thin client)            (thin client)
+│   Unix socket 直連          splice → web UI
+│                                                 │
+│   禁止: 直接讀寫 accounts.json                    │
+│   禁止: in-process Account I/O calls             │
+│   允許: Account 純運算 utility                    │
+│   允許: 本地 UI state (model.json, theme)         │
+└─────────────────────────────────────────────────┘
+```
+
+### Thin Client 邊界判定
+
+| 類別 | TUI 可直接使用？ | 說明 |
+|------|:---:|------|
+| `Account.parseProvider()`, `getDisplayName()` 等純運算 | ✅ | 不讀寫 filesystem |
+| `Account.PROVIDERS` 常量 | ✅ | 靜態資料 |
+| `Account.listAll()`, `get()`, `list()` | ❌ | 讀 accounts.json → 改用 `sdk.client.account.listAll()` |
+| `Account.update()`, `remove()`, `setActive()`, `add()` | ❌ | 寫 accounts.json → 改用 `sdk.client.account.*` |
+| `Account.refresh()` | ❌ | 重載 cache → HTTP 每次取最新，無需 refresh |
+| `model.json` (本地 UI state) | ✅ | TUI 自有的顯示偏好，不經 daemon |
+| `sdk.client.*` (HTTP over Unix socket) | ✅ | thin client 的正規資料通道 |
+
 ## 1. Process Lifecycle State Machine
 
 ```

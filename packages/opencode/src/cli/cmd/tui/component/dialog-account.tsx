@@ -32,7 +32,9 @@ export function DialogAccount() {
 
   const loadAccounts = async () => {
     try {
-      const all = await Account.listAll()
+      const res = await sdk.client.account.listAll()
+      const payload = res.data as { providers?: Record<string, Account.ProviderData> } | undefined
+      const all = payload?.providers ?? {}
       setProviderAccounts(all)
 
       // Auto-switch away from invalid gemini-cli accounts
@@ -53,7 +55,7 @@ export function DialogAccount() {
   }
 
   const setActive = async (providerKey: string, accountId: string) => {
-    await Account.setActive(providerKey, accountId)
+    await sdk.client.account.setActive({ family: providerKey, accountId })
     await loadAccounts()
   }
 
@@ -71,10 +73,9 @@ export function DialogAccount() {
       }
       return next
     })
-    
-    // Perform backend deletion
-    const { Auth } = await import("../../../../auth")
-    await Auth.remove(accountId)
+
+    // Perform backend deletion via daemon HTTP API
+    await sdk.client.account.remove({ family: providerKey, accountId })
     // Silently refresh true state in background
     loadAccounts()
   }

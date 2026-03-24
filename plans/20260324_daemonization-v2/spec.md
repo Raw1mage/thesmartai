@@ -2,7 +2,41 @@
 
 ## 1. Process Model
 
-### 1.1 Single Daemon Invariant
+### 1.1 Core Principle: Daemon = 唯一執行主體
+
+```
+┌─────────────────────────────────────────────┐
+│            Daemon (執行主體)                  │
+│  accounts.json R/W, sessions, LLM calls,    │
+│  bootstrap, state management                │
+│  HTTP API via Unix socket                   │
+├──────────────────┬──────────────────────────┤
+│                  │                          │
+│  TUI ────────────┘      Gateway ────────────┘
+│  (thin client            (thin client
+│   Unix socket直連)        HTTP → web UI)
+└─────────────────────────────────────────────┘
+```
+
+- **Daemon** 是每個 Linux user 的唯一 opencode 執行體。持有所有狀態（accounts、sessions、config）、執行所有 LLM 呼叫、管理所有 plugin/MCP。
+- **TUI** 和 **Gateway** 都是 thin client，一律透過 daemon HTTP API 取得/變更資料。
+- **TUI 直連 daemon**（Unix socket），不繞 gateway。
+- **Gateway 直連 daemon**（Unix socket splice），服務 web UI。
+
+### 1.1.1 Thin Client 邊界規則
+
+TUI 和 Gateway 作為 thin client：
+
+- **禁止**：直接讀寫 `accounts.json`、直接呼叫 `Account.*` 的 I/O 函數（`listAll`, `get`, `update`, `remove`, `setActive`, `refresh`, `add`, `list`）
+- **允許**：使用 `Account.*` 的純運算 utility（`parseProvider`, `getDisplayName`, `parseFamily`, `getProviderLabel`, `generateId`, `PROVIDERS` 常量）
+- **所有資料存取**：一律透過 `sdk.client.account.*` / `sdk.client.session.*` 等 SDK HTTP 呼叫
+
+### 1.1.2 名詞區分
+
+- **Login user**：Linux user，透過 shell（TUI）或 PAM auth（web/gateway）確認身份
+- **Account（accounts.json）**：管理對外 LLM provider 的 API keys（Anthropic、Google、OpenAI 等），與 Linux login 無關
+
+### 1.2 Single Daemon Invariant
 
 每個 Linux user 在同一時間最多有一個 opencode daemon process。
 
@@ -10,7 +44,7 @@
 - **Lock**: `$XDG_RUNTIME_DIR/opencode/daemon.pid` (single-instance guard)
 - **Socket**: `$XDG_RUNTIME_DIR/opencode/daemon.sock`
 
-### 1.2 Spawn Sources（兩種啟動途徑）
+### 1.3 Spawn Sources（兩種啟動途徑）
 
 | Source | Trigger | Mechanism |
 |--------|---------|-----------|
@@ -19,7 +53,7 @@
 
 兩者都寫入相同的 `daemon.json`，遵守相同的 `daemon.pid` single-instance guard。
 
-### 1.3 Adopt Protocol
+### 1.4 Adopt Protocol
 
 後到者（TUI 或 gateway）在 spawn 之前必須先嘗試 adopt：
 
@@ -35,7 +69,7 @@ readDiscovery() → daemon.json exists?
 
 Gateway 已有 `try_adopt_from_discovery()` 實作此邏輯。TUI 的 `Daemon.spawn()` 需在 spawn 前加入相同的 adopt-first 檢查。
 
-### 1.4 Access Modes（兩種存取方式）
+### 1.5 Access Modes（兩種存取方式）
 
 | Mode | Transport | Consumer |
 |------|-----------|----------|
@@ -212,17 +246,31 @@ const spawnArgs = isBunRuntime
   : [bin, ...args]
 ```
 
-## 7. Known Issue: Attach Mode Empty State
+## 7. Known Issue: Attach Mode Empty State（已修正）
 
-`bun run dev --attach` 連接到 daemon 後，TUI 顯示空的 accounts/sessions。API 驗證結果正常（直接 curl daemon socket 可取得 21 providers、12 accounts、5 sessions），但 TUI 端未能正確 hydrate。
+V1 `--attach` mode 的 empty state 有兩個成因：
 
-可能原因（待 V2 實作時 debug）：
-- attach mode 的 `createUnixEventSource()` SSE 連接是否正確接收 bootstrap events
-- TUI SDK client 在 attach mode 是否帶了正確的 `directory` header（Worker mode 不帶 directory，但 daemon 可能需要）
-- daemon 端 `Instance.provide()` 在沒有 `x-opencode-directory` header 時的 fallback 行為
-- attach mode 連接的 daemon 是否已完成 bootstrap（若 daemon 剛啟動，可能 state 尚未載入）
+1. **Directory 未傳遞**：V1 attach code path 未傳 `directory` 給 `tui()`，SDK 不發 `x-opencode-directory` header，server 以 user home 過濾 sessions → 結果為空。V2 always-attach 統一傳入 directory，已修正。
+2. **Account list 需走 daemon HTTP**：`local.tsx` 原本 in-process 呼叫 `Account.listAll()`。依據 thin client 原則（§1.1.1），TUI 不應直接存取 `accounts.json`，已改為 `sdk.client.account.listAll()` 透過 daemon HTTP API 取得。
 
-V2 的 always-attach 設計需要確保這個問題被根治，而不只是從 Worker mode 繞過。
+### 7.1 TUI 中殘存的 in-process Account 呼叫
+
+`dialog-admin.tsx` 和 `dialog-account.tsx` 仍有大量 in-process `Account.*` I/O 呼叫（`listAll`, `get`, `update`, `remove`, `setActive`, `refresh`, `list`），違反 thin client 邊界。這些需要全部遷移到 SDK HTTP。
+
+受影響操作：
+
+| 函數 | 出現次數 | SDK HTTP 對應 |
+|------|---------|---------------|
+| `Account.listAll()` | 2 | `sdk.client.account.listAll()` |
+| `Account.refresh()` | 3 | N/A（改為重新 fetch listAll） |
+| `Account.list(provider)` | 3 | `sdk.client.account.listAll()` → 篩選 |
+| `Account.get(provider, id)` | 3 | `sdk.client.account.listAll()` → 查找 |
+| `Account.setActive(provider, id)` | 1 | `sdk.client.account.setActive()` |
+| `Account.remove(provider, id)` | 1 | `sdk.client.account.remove()` |
+| `Account.update(provider, id, info)` | 1 | `sdk.client.account.update()` |
+| `Account.generateId(...)` | 2 | 純運算，可保留 |
+
+純運算 utility（`parseProvider`, `getDisplayName`, `getProviderLabel`, `parseFamily`, `generateId`, `PROVIDERS`）不涉及 I/O，可保留在 TUI 進程。
 
 ## 8. Backwards Compatibility
 
