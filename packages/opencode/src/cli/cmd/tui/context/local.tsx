@@ -22,7 +22,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const sync = useSync()
     const sdk = useSDK()
     const toast = useToast()
-    const [accountFamilies] = createResource(() => Account.listAll())
+    // Use SDK HTTP call instead of in-process Account.listAll() — in attach mode
+    // the TUI process doesn't have the Account storage layer initialized.
+    const [accountFamilies] = createResource(async () => {
+      const res = await sdk.client.account.listAll()
+      if (!res.data) return undefined
+      // SDK returns { providers, families } — use providers (canonical)
+      return (res.data as { providers?: Record<string, any> }).providers
+    })
     const accountDisplayNames = createMemo(() => {
       const families = accountFamilies()
       if (!families) return {}
