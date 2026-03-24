@@ -107,20 +107,22 @@ export const SettingsGeneral: Component = () => {
         throw new Error(formatRestartErrorResponse(text, response.status))
       }
       const data = (await response.json()) as {
-        runtimeMode: "dev-source" | "dev-standalone" | "service" | "unknown"
+        runtimeMode: "dev-source" | "dev-standalone" | "service" | "gateway-daemon" | "unknown"
         recommendedInitialDelayMs: number
         fallbackReloadAfterMs: number
         recoveryDeadlineMs: number
       }
       setRestartState("waiting")
       const modeLabel =
-        data.runtimeMode === "service"
-          ? "service"
-          : data.runtimeMode === "dev-standalone"
-            ? "dev-standalone"
-            : data.runtimeMode === "dev-source"
-              ? "dev-source"
-              : "runtime"
+        data.runtimeMode === "gateway-daemon"
+          ? "daemon"
+          : data.runtimeMode === "service"
+            ? "service"
+            : data.runtimeMode === "dev-standalone"
+              ? "dev-standalone"
+              : data.runtimeMode === "dev-source"
+                ? "dev-source"
+                : "runtime"
       setRestartMessage(`Restarting ${modeLabel}… this page will reload automatically after recovery.`)
       await waitForRestartRecovery({
         initialDelayMs: data.recommendedInitialDelayMs,

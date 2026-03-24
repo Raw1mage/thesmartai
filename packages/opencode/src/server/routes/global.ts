@@ -17,7 +17,7 @@ import { WebAuth } from "../web-auth"
 
 const log = Log.create({ service: "server" })
 
-type RestartRuntimeMode = "dev-source" | "dev-standalone" | "service" | "unknown"
+type RestartRuntimeMode = "dev-source" | "dev-standalone" | "service" | "gateway-daemon" | "unknown"
 
 function resolveRestartRuntimeMode(): RestartRuntimeMode {
   const launchMode = process.env.OPENCODE_LAUNCH_MODE
@@ -26,6 +26,11 @@ function resolveRestartRuntimeMode(): RestartRuntimeMode {
   }
   if (launchMode === "service") return "service"
   return "unknown"
+}
+
+/** True when this process is a per-user daemon spawned by the C root gateway. */
+function isGatewayDaemon(): boolean {
+  return process.env.OPENCODE_USER_DAEMON_MODE === "1"
 }
 
 function resolveWebctlPath() {
@@ -269,6 +274,10 @@ export const GlobalRoutes = lazy(() =>
           WebAuth.invalidate(session)
           c.header("Set-Cookie", WebAuth.clearCookieHeader(c))
         }
+        // Also clear gateway JWT cookie so the C root gateway sees the
+        // user as unauthenticated on the next request.
+        const secure = c.req.url.startsWith("https")
+        c.header("Set-Cookie", `oc_jwt=; Path=/; Max-Age=0${secure ? "; Secure" : ""}`, { append: true })
         return c.json({ ok: true })
       },
     )
@@ -429,7 +438,7 @@ export const GlobalRoutes = lazy(() =>
                     ok: z.literal(true),
                     accepted: z.literal(true),
                     mode: z.literal("controlled_restart"),
-                    runtimeMode: z.enum(["dev-source", "dev-standalone", "service", "unknown"]),
+                    runtimeMode: z.enum(["dev-source", "dev-standalone", "service", "gateway-daemon", "unknown"]),
                     probePath: z.literal("/api/v2/global/health"),
                     recommendedInitialDelayMs: z.number(),
                     fallbackReloadAfterMs: z.number(),
@@ -443,8 +452,34 @@ export const GlobalRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        const webctlPath = resolveWebctlPath()
         const runtimeMode = resolveRestartRuntimeMode()
+
+        // Gateway daemon mode: self-terminate, gateway will respawn on next request
+        if (isGatewayDaemon()) {
+          log.info("restart requested in gateway-daemon mode — scheduling self-termination")
+
+          // Respond first, then exit after a brief delay so the response reaches the client
+          setTimeout(async () => {
+            const { Daemon } = await import("@/server/daemon")
+            log.info("gateway-daemon self-terminating for restart")
+            await Daemon.removeDiscovery().catch(() => {})
+            process.exit(0)
+          }, 300)
+
+          return c.json({
+            ok: true,
+            accepted: true,
+            mode: "controlled_restart",
+            runtimeMode: "gateway-daemon",
+            probePath: "/api/v2/global/health",
+            recommendedInitialDelayMs: 1000,
+            fallbackReloadAfterMs: 5000,
+            recoveryDeadlineMs: 30000,
+          })
+        }
+
+        // Legacy mode: use webctl.sh restart
+        const webctlPath = resolveWebctlPath()
         const txid = `web-${Date.now()}-${process.pid}`
         const runtimeTmp = process.env.XDG_RUNTIME_DIR || "/tmp"
         const errorLogPath = path.join(runtimeTmp, `opencode-web-restart-${txid}.error.log`)
