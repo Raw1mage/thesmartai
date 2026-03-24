@@ -23,7 +23,7 @@ interface AppSnapshot {
 const statusConfig: Record<string, { label: string; color: string; action: string }> = {
   available: { label: "Available", color: "text-text-weaker", action: "Install" },
   pending_install: { label: "Not Installed", color: "text-text-weaker", action: "Install" },
-  pending_auth: { label: "Auth Required", color: "text-warning-base", action: "Configure" },
+  pending_auth: { label: "Auth Required", color: "text-warning-base", action: "Connect" },
   pending_config: { label: "Config Required", color: "text-warning-base", action: "Configure" },
   disabled: { label: "Disabled", color: "text-text-weak", action: "Enable" },
   ready: { label: "Ready", color: "text-success-base", action: "Open" },
@@ -64,6 +64,19 @@ export const DialogAppMarket: Component = () => {
   const installedCount = createMemo(() => (apps() ?? []).filter((a) => a.operator.install === "installed").length)
   const totalCount = createMemo(() => (apps() ?? []).length)
 
+  function openOAuthConnect(appId: string) {
+    window.open(`${globalSDK.url}/api/mcp/apps/${appId}/oauth/connect`, "_blank", "width=600,height=700")
+    // Poll for auth completion
+    const poll = setInterval(async () => {
+      await refetch()
+      const updated = (apps() ?? []).find((a) => a.id === appId)
+      if (updated && updated.runtimeStatus !== "pending_auth") {
+        clearInterval(poll)
+      }
+    }, 2000)
+    setTimeout(() => clearInterval(poll), 120_000)
+  }
+
   async function performAction(app: AppSnapshot) {
     if (actionLoading()) return
     setActionLoading(app.id)
@@ -71,10 +84,13 @@ export const DialogAppMarket: Component = () => {
       const base = `${globalSDK.url}/api/mcp/apps/${app.id}`
       if (app.operator.install !== "installed") {
         await globalSDK.fetch(`${base}/install`, { method: "POST" })
+        await refetch()
+        // After install, auto-enable
+        await globalSDK.fetch(`${base}/enable`, { method: "POST" })
       } else if (app.operator.runtime === "ready") {
         await globalSDK.fetch(`${base}/disable`, { method: "POST" })
-      } else if (app.operator.auth === "required" || app.operator.config === "required") {
-        // TODO: open configure flow
+      } else if (app.runtimeStatus === "pending_auth") {
+        openOAuthConnect(app.id)
       } else if (app.runtimeStatus === "disabled") {
         await globalSDK.fetch(`${base}/enable`, { method: "POST" })
       } else if (app.runtimeStatus === "error") {

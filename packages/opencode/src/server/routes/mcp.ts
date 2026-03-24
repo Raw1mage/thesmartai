@@ -4,8 +4,12 @@ import z from "zod"
 import { MCP } from "../../mcp"
 import { ManagedAppRegistry } from "../../mcp"
 import { Config } from "../../config/config"
+import { Auth } from "../../auth"
+import { Log } from "../../util/log"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
+
+const oauthLog = Log.create({ service: "managed-app-oauth" })
 
 function managedAppUsageHttpStatus(reason: ManagedAppRegistry.UsageErrorReason): 401 | 409 | 503 {
   switch (reason) {
@@ -274,6 +278,136 @@ export const McpRoutes = lazy(() =>
         const usage = await ManagedAppRegistry.usage(appId)
         if (!usage) return c.json(null)
         return c.json(usage, managedAppUsageHttpStatus(usage.reason))
+      },
+    )
+    .get(
+      "/apps/:appId/oauth/connect",
+      describeRoute({
+        summary: "Start managed app OAuth connect flow",
+        description:
+          "Redirect user to the OAuth provider consent screen for a managed app. Currently supports google-calendar.",
+        operationId: "mcp.apps.oauth.connect",
+        responses: {
+          302: { description: "Redirect to OAuth provider" },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ appId: z.string() })),
+      async (c) => {
+        const { appId } = c.req.valid("param")
+        if (appId !== "google-calendar") {
+          return c.json({ error: `OAuth connect not supported for app: ${appId}` }, 400)
+        }
+        const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID
+        if (!clientId) {
+          return c.json({ error: "GOOGLE_CALENDAR_CLIENT_ID not configured" }, 400)
+        }
+        const scope = process.env.GOOGLE_CALENDAR_SCOPE || "https://www.googleapis.com/auth/calendar"
+        const authUri = process.env.GOOGLE_CALENDAR_AUTH_URI || "https://accounts.google.com/o/oauth2/auth"
+
+        // Determine redirect URI from request origin
+        const origin = new URL(c.req.url).origin
+        const redirectUri = `${origin}/api/mcp/apps/google-calendar/oauth/callback`
+
+        const state = crypto.randomUUID()
+        const params = new URLSearchParams({
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          response_type: "code",
+          scope,
+          access_type: "offline",
+          prompt: "consent",
+          state,
+        })
+
+        oauthLog.info("starting OAuth connect", { appId, redirectUri })
+        return c.redirect(`${authUri}?${params.toString()}`)
+      },
+    )
+    .get(
+      "/apps/:appId/oauth/callback",
+      describeRoute({
+        summary: "Handle managed app OAuth callback",
+        description:
+          "Exchange authorization code for tokens and create canonical account binding for the managed app.",
+        operationId: "mcp.apps.oauth.callback",
+        responses: {
+          200: { description: "OAuth completed, shows success page" },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ appId: z.string() })),
+      async (c) => {
+        const { appId } = c.req.valid("param")
+        if (appId !== "google-calendar") {
+          return c.json({ error: `OAuth callback not supported for app: ${appId}` }, 400)
+        }
+
+        const code = c.req.query("code")
+        const error = c.req.query("error")
+        if (error) {
+          oauthLog.error("OAuth denied by user", { error })
+          return c.html(
+            `<html><body><h2>Authorization denied</h2><p>${error}</p><script>setTimeout(()=>window.close(),3000)</script></body></html>`,
+          )
+        }
+        if (!code) {
+          return c.json({ error: "Missing authorization code" }, 400)
+        }
+
+        const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID
+        const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET
+        const tokenUri = process.env.GOOGLE_CALENDAR_TOKEN_URI || "https://oauth2.googleapis.com/token"
+        if (!clientId || !clientSecret) {
+          return c.json({ error: "GOOGLE_CALENDAR_CLIENT_ID or CLIENT_SECRET not configured" }, 400)
+        }
+
+        const origin = new URL(c.req.url).origin
+        const redirectUri = `${origin}/api/mcp/apps/google-calendar/oauth/callback`
+
+        // Exchange authorization code for tokens
+        const tokenResponse = await fetch(tokenUri, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            code,
+            client_id: clientId,
+            client_secret: clientSecret,
+            redirect_uri: redirectUri,
+            grant_type: "authorization_code",
+          }),
+        })
+
+        if (!tokenResponse.ok) {
+          const body = await tokenResponse.text()
+          oauthLog.error("token exchange failed", { status: tokenResponse.status, body })
+          return c.json({ error: "Token exchange failed", detail: body }, 400)
+        }
+
+        const tokens = (await tokenResponse.json()) as {
+          access_token: string
+          refresh_token?: string
+          expires_in: number
+          token_type: string
+        }
+
+        oauthLog.info("token exchange succeeded", { hasRefresh: !!tokens.refresh_token })
+
+        // Store via canonical Auth.set — this creates the Account automatically
+        await Auth.set("google-calendar", {
+          type: "oauth",
+          access: tokens.access_token,
+          refresh: tokens.refresh_token || "",
+          expires: Date.now() + tokens.expires_in * 1000,
+        })
+
+        // Publish registry update so UI refreshes
+        const snap = await ManagedAppRegistry.get(appId)
+        oauthLog.info("OAuth connect complete", { appId, authStatus: snap.authBinding.status })
+
+        return c.html(
+          `<html><body style="font-family:system-ui;text-align:center;padding:60px"><h2>Google Calendar connected</h2><p>You can close this window.</p><script>setTimeout(()=>window.close(),2000)</script></body></html>`,
+        )
       },
     )
     .get(
