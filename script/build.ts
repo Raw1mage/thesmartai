@@ -189,7 +189,6 @@ for (const item of targets) {
   await $`cp ./webctl.sh dist/${name}/bin/webctl.sh`
 
   const parserWorker = fs.realpathSync(path.resolve(dir, "./node_modules/@opentui/core/parser.worker.js"))
-  const workerPath = "./packages/opencode/src/cli/cmd/tui/worker.ts"
 
   // Use platform-specific bunfs root path based on target OS
   const bunfsRoot = item.os === "win32" ? "B:/~BUN/root/" : "/$bunfs/root/"
@@ -211,11 +210,10 @@ for (const item of targets) {
       execArgv: [`--user-agent=opencode/${Script.version}`, "--use-system-ca", "--"],
       windows: {},
     },
-    entrypoints: ["./packages/opencode/src/index.ts", parserWorker, workerPath],
+    entrypoints: ["./packages/opencode/src/index.ts", parserWorker],
     define: {
       OPENCODE_VERSION: `'${Script.version}'`,
       OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
-      OPENCODE_WORKER_PATH: workerPath,
       OPENCODE_CHANNEL: `'${Script.channel}'`,
       OPENCODE_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
     },

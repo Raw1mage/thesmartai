@@ -17,6 +17,7 @@ export namespace Daemon {
     pid: number
     startedAt: number
     version: string
+    spawnedBy?: "tui" | "gateway"
   }
 
   function runtimeDir(): string {
@@ -81,6 +82,41 @@ export namespace Daemon {
     return info
   }
 
+  /**
+   * Probe whether a daemon's Unix socket is actually connectable by
+   * hitting its health endpoint with a short timeout.
+   */
+  export async function isSocketConnectable(sock: string): Promise<boolean> {
+    try {
+      const res = await fetch("http://opencode.daemon/v2/global/health", {
+        unix: sock,
+        signal: AbortSignal.timeout(2000),
+      } as RequestInit & { unix: string })
+      return res.ok
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Adopt an existing daemon if alive and connectable, otherwise spawn a new one.
+   * This is the unified entry point for both TUI and programmatic callers.
+   */
+  export async function spawnOrAdopt(opts?: {
+    timeoutMs?: number
+    spawnedBy?: "tui" | "gateway"
+  }): Promise<Info> {
+    const existing = await readDiscovery()
+    if (existing && await isSocketConnectable(existing.socketPath)) {
+      return existing
+    }
+    // Cleanup stale discovery if PID alive but socket dead
+    if (existing) {
+      await removeDiscovery().catch(() => {})
+    }
+    return spawn({ timeoutMs: opts?.timeoutMs, spawnedBy: opts?.spawnedBy ?? "tui" })
+  }
+
   /** Check if a PID is still alive using kill -0 semantics. */
   export function isPidAlive(pid: number): boolean {
     try {
@@ -121,17 +157,32 @@ export namespace Daemon {
    *
    * Returns the daemon Info on success, throws on timeout.
    */
-  export async function spawn(opts?: { timeoutMs?: number }): Promise<Info> {
+  export async function spawn(opts?: { timeoutMs?: number; spawnedBy?: "tui" | "gateway" }): Promise<Info> {
     const timeout = opts?.timeoutMs ?? 10_000
+    const spawnedBy = opts?.spawnedBy ?? "tui"
     const sock = socketPath()
 
     // Determine the executable: honour OPENCODE_BIN, else re-use ourselves
     const bin = process.env.OPENCODE_BIN ?? Bun.argv[0]
     const args = ["serve", "--unix-socket", sock]
 
-    // If running via bun (argv[0] is bun), the real entry is argv[1]
-    const spawnArgs = Bun.argv[0].endsWith("bun") || Bun.argv[0].endsWith("bun.exe")
-      ? [Bun.argv[0], ...Bun.argv.slice(1, 2), ...args]  // bun <entry> serve --unix-socket ...
+    const isBunRuntime = Bun.argv[0].endsWith("bun") || Bun.argv[0].endsWith("bun.exe")
+
+    // Preserve critical bun flags (--conditions, etc.) that precede the entry file
+    const bunFlags: string[] = []
+    if (isBunRuntime) {
+      const entryFile = Bun.argv[1]
+      for (let i = 1; i < Bun.argv.length; i++) {
+        const arg = Bun.argv[i]
+        if (arg === entryFile) break
+        if (arg.startsWith("--conditions=") || arg.startsWith("--preload=")) {
+          bunFlags.push(arg)
+        }
+      }
+    }
+
+    const spawnArgs = isBunRuntime
+      ? [Bun.argv[0], ...bunFlags, ...Bun.argv.slice(1, 2), ...args]  // bun [flags] <entry> serve --unix-socket ...
       : [bin, ...args]
 
     await ensureDir()
