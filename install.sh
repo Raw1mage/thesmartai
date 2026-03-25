@@ -243,6 +243,16 @@ EOF
   local planner_templates_src="${ROOT_DIR}/templates/specs"
   local planner_templates_dst="${env_dir}/specs"
   run_as_root install -d -m 755 "${env_dir}"
+
+  # Initialize Google binding registry (gateway reads, per-user daemons write)
+  local binding_file="${env_dir}/google-bindings.json"
+  if [ ! -f "${binding_file}" ] || [ ! -s "${binding_file}" ]; then
+    echo '{}' | run_as_root tee "${binding_file}" > /dev/null
+    log_ok "Initialized Google binding registry: ${binding_file}"
+  fi
+  run_as_root chown "root:${SYSTEM_SERVICE_USER}" "${binding_file}" 2>/dev/null || true
+  run_as_root chmod 0664 "${binding_file}"
+
   if files_identical_root "${ROOT_DIR}/webctl.sh" "${runtime_webctl_dst}"; then
     log_ok "Runtime web controller up-to-date: ${runtime_webctl_dst}"
   else

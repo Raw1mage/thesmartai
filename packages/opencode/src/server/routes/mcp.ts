@@ -10,6 +10,8 @@ import { Global } from "../../global"
 import { Log } from "../../util/log"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
+import { GoogleBinding } from "../../google-binding"
+import { RequestUser } from "@/runtime/request-user"
 
 const oauthLog = Log.create({ service: "managed-app-oauth" })
 
@@ -350,7 +352,8 @@ export const McpRoutes = lazy(() =>
         const authUri = process.env.GOOGLE_CALENDAR_AUTH_URI || "https://accounts.google.com/o/oauth2/auth"
 
         // Merge scopes from all installed Google OAuth apps + the connecting app
-        const scopeSet = new Set<string>()
+        // Always include identity scopes for automatic Google binding piggyback
+        const scopeSet = new Set<string>(["openid", "email", "profile"])
         for (const [id, cfg] of Object.entries(GOOGLE_OAUTH_APPS)) {
           // Always include the connecting app's scopes
           if (id === appId) {
@@ -476,6 +479,32 @@ export const McpRoutes = lazy(() =>
         await Bun.write(gauthPath, JSON.stringify(gauthData, null, 2))
         await fs.chmod(gauthPath, 0o600)
         oauthLog.info("tokens written to gauth.json", { path: gauthPath })
+
+        // Piggyback: auto-bind Google identity for gateway login (best-effort, non-blocking)
+        const username = RequestUser.username()
+        if (username && tokens.access_token) {
+          try {
+            const userinfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+              headers: { Authorization: `${tokens.token_type} ${tokens.access_token}` },
+            })
+            if (userinfoRes.ok) {
+              const userinfo = (await userinfoRes.json()) as { email: string; verified_email: boolean }
+              if (userinfo.email && userinfo.verified_email) {
+                await GoogleBinding.bind(userinfo.email, username)
+                oauthLog.info("Google identity auto-bound via MCP OAuth", {
+                  email: userinfo.email,
+                  username,
+                })
+              }
+            }
+          } catch (e) {
+            // Best-effort — binding may already exist or userinfo may fail; don't block MCP flow
+            oauthLog.info("Google binding piggyback skipped", {
+              username,
+              reason: e instanceof Error ? e.message : String(e),
+            })
+          }
+        }
 
         // Mark config complete and enable ALL installed Google OAuth apps (shared token)
         const appNames: string[] = []

@@ -18,9 +18,9 @@
  *
  * Build:
  *   gcc -O2 -Wall -D_GNU_SOURCE -o opencode-gateway opencode-gateway.c \
- *       -lpam -lpam_misc -lcrypto -lpthread
+ *       -lpam -lpam_misc -lcrypto -lpthread -lcurl
  *
- * Requires: libpam-dev, libssl-dev
+ * Requires: libpam-dev, libssl-dev, libcurl4-openssl-dev
  */
 
 #include <stdio.h>
@@ -51,6 +51,7 @@
 #include <openssl/sha.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <curl/curl.h>
 
 /* ─── Configuration ─────────────────────────────────────────────── */
 #define GATEWAY_PORT_DEFAULT  1080
@@ -76,6 +77,8 @@
 #define CONSEC_FAIL_TABLE_SIZE 256
 #define MAX_AUTH_QUEUE        32
 #define MAX_OPENCODE_ARGV     32
+#define OAUTH_STATE_TABLE_SIZE 64
+#define OAUTH_STATE_TTL        300   /* 5 minutes */
 
 /* ─── Logging ────────────────────────────────────────────────────── */
 #define LOG(level, fmt, ...) \
@@ -101,6 +104,7 @@ static void send_login_success_ex(int fd, const char *username,
 static int submit_auth_job_ex(int client_fd, const char *username,
                               const char *password, int is_secure,
                               uint32_t peer_ip, int is_json_api);
+static void url_decode(char *dst, const char *src, size_t dstlen);
 
 /* ─── EpollCtx: tagged context for every epoll-monitored fd ─────── */
 typedef enum {
@@ -204,6 +208,116 @@ static char     *g_opencode_argv[MAX_OPENCODE_ARGV]; /* pre-parsed argv */
 static int       g_opencode_argc = 0;
 static EpollCtx  g_listen_ectx;
 static EpollCtx  g_auth_ectx;
+
+/* ─── OAuth state table (for Google login redirect flow) ──────────── */
+typedef struct {
+    char   state_token[65];   /* hex random state */
+    char   redirect_uri[512]; /* callback URI for token exchange */
+    time_t created;
+    int    in_use;
+} OAuthState;
+
+static OAuthState g_oauth_states[OAUTH_STATE_TABLE_SIZE];
+
+static OAuthState *oauth_state_alloc(void) {
+    time_t now = time(NULL);
+    for (int i = 0; i < OAUTH_STATE_TABLE_SIZE; i++) {
+        if (!g_oauth_states[i].in_use ||
+            (now - g_oauth_states[i].created > OAUTH_STATE_TTL)) {
+            g_oauth_states[i].in_use = 1;
+            g_oauth_states[i].created = now;
+            return &g_oauth_states[i];
+        }
+    }
+    return NULL; /* table full */
+}
+
+static OAuthState *oauth_state_find(const char *token) {
+    time_t now = time(NULL);
+    for (int i = 0; i < OAUTH_STATE_TABLE_SIZE; i++) {
+        if (g_oauth_states[i].in_use &&
+            strcmp(g_oauth_states[i].state_token, token) == 0) {
+            if (now - g_oauth_states[i].created > OAUTH_STATE_TTL) {
+                g_oauth_states[i].in_use = 0;
+                return NULL; /* expired */
+            }
+            return &g_oauth_states[i];
+        }
+    }
+    return NULL;
+}
+
+static void oauth_state_free(OAuthState *st) {
+    st->in_use = 0;
+}
+
+/* curl write callback for collecting response body */
+typedef struct {
+    char  *data;
+    size_t len;
+    size_t cap;
+} CurlBuf;
+
+static size_t curl_write_cb(void *ptr, size_t size, size_t nmemb, void *userdata) {
+    CurlBuf *buf = (CurlBuf *)userdata;
+    size_t total = size * nmemb;
+    if (buf->len + total >= buf->cap) return 0; /* overflow guard */
+    memcpy(buf->data + buf->len, ptr, total);
+    buf->len += total;
+    buf->data[buf->len] = '\0';
+    return total;
+}
+
+/* Generate random hex state token */
+static void generate_state_token(char *out, size_t outlen) {
+    unsigned char raw[32];
+    RAND_bytes(raw, sizeof(raw));
+    for (size_t i = 0; i < sizeof(raw) && (i * 2 + 2) < outlen; i++) {
+        snprintf(out + i * 2, 3, "%02x", raw[i]);
+    }
+}
+
+/* URL-encode a string for OAuth parameters */
+static void url_encode(const char *src, char *dst, size_t dstlen) {
+    size_t j = 0;
+    for (size_t i = 0; src[i] && j + 3 < dstlen; i++) {
+        unsigned char c = (unsigned char)src[i];
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') {
+            dst[j++] = c;
+        } else {
+            snprintf(dst + j, 4, "%%%02X", c);
+            j += 3;
+        }
+    }
+    dst[j] = '\0';
+}
+
+/* Extract query parameter from URL path like /path?key=value&key2=value2 */
+static int query_extract_value(const char *path, const char *key, char *out, size_t outlen) {
+    char *q = strchr(path, '?');
+    if (!q) return 0;
+    q++; /* skip '?' */
+    size_t keylen = strlen(key);
+    const char *p = q;
+    while (*p) {
+        if (strncmp(p, key, keylen) == 0 && p[keylen] == '=') {
+            p += keylen + 1;
+            size_t i = 0;
+            while (*p && *p != '&' && i < outlen - 1) {
+                out[i++] = *p++;
+            }
+            out[i] = '\0';
+            /* URL-decode in place */
+            url_decode(out, out, outlen);
+            return 1;
+        }
+        /* skip to next & */
+        while (*p && *p != '&') p++;
+        if (*p == '&') p++;
+    }
+    return 0;
+}
 
 /* ─── Signal handling ────────────────────────────────────────────── */
 static void on_sigterm(int sig) { (void)sig; g_running = 0; }
@@ -1405,6 +1519,266 @@ static void route_complete_request(PendingRequest *pr) {
         return;
     }
 
+    /* ── Google OAuth redirect: GET /auth/login/google ────────────── */
+    if (strcmp(req.method, "GET") == 0 && strcmp(req.path, "/auth/login/google") == 0) {
+        const char *client_id = getenv("GOOGLE_CALENDAR_CLIENT_ID");
+        if (!client_id || !client_id[0]) {
+            http_send(fd, 500, "Internal Server Error", "text/plain", NULL,
+                      "GOOGLE_CALENDAR_CLIENT_ID not configured", 40);
+            close(fd);
+            return;
+        }
+        const char *auth_uri = getenv("GOOGLE_CALENDAR_AUTH_URI");
+        if (!auth_uri) auth_uri = "https://accounts.google.com/o/oauth2/auth";
+
+        OAuthState *ost = oauth_state_alloc();
+        if (!ost) {
+            http_send(fd, 503, "Service Unavailable", "text/plain", NULL,
+                      "OAuth state table full", 22);
+            close(fd);
+            return;
+        }
+        generate_state_token(ost->state_token, sizeof(ost->state_token));
+
+        /* Build redirect_uri from Host header */
+        const char *proto = req.is_secure ? "https" : "http";
+        /* Extract Host from raw request headers */
+        char host[256] = {};
+        {
+            const char *h = strstr(raw_buf, "\r\nHost: ");
+            if (!h) h = strstr(raw_buf, "\r\nhost: ");
+            if (h) {
+                h += 8; /* skip "\r\nHost: " */
+                int n = 0;
+                while (*h && *h != '\r' && *h != '\n' && n < (int)sizeof(host)-1)
+                    host[n++] = *h++;
+                host[n] = '\0';
+            }
+        }
+        /* Check X-Forwarded-Proto */
+        {
+            const char *xfp = strstr(raw_buf, "\r\nX-Forwarded-Proto: ");
+            if (!xfp) xfp = strstr(raw_buf, "\r\nx-forwarded-proto: ");
+            if (xfp) {
+                xfp += 21;
+                if (strncmp(xfp, "https", 5) == 0) proto = "https";
+            }
+        }
+        /* Check X-Forwarded-Host */
+        {
+            const char *xfh = strstr(raw_buf, "\r\nX-Forwarded-Host: ");
+            if (!xfh) xfh = strstr(raw_buf, "\r\nx-forwarded-host: ");
+            if (xfh) {
+                xfh += 20;
+                int n = 0;
+                while (*xfh && *xfh != '\r' && *xfh != '\n' && n < (int)sizeof(host)-1)
+                    host[n++] = *xfh++;
+                host[n] = '\0';
+            }
+        }
+        if (!host[0]) {
+            http_send(fd, 400, "Bad Request", "text/plain", NULL,
+                      "Missing Host header", 19);
+            oauth_state_free(ost);
+            close(fd);
+            return;
+        }
+
+        snprintf(ost->redirect_uri, sizeof(ost->redirect_uri),
+                 "%s://%s/auth/google/callback", proto, host);
+
+        char redir_enc[600];
+        url_encode(ost->redirect_uri, redir_enc, sizeof(redir_enc));
+
+        char location[2048];
+        snprintf(location, sizeof(location),
+                 "%s?client_id=%s&redirect_uri=%s&response_type=code"
+                 "&scope=openid%%20email%%20profile&access_type=online"
+                 "&prompt=select_account&state=%s",
+                 auth_uri, client_id, redir_enc, ost->state_token);
+
+        char hdr[2200];
+        snprintf(hdr, sizeof(hdr), "Location: %s\r\nCache-Control: no-store\r\n", location);
+        http_send(fd, 302, "Found", "text/plain", hdr, "Redirecting to Google", 21);
+        LOGI("google oauth redirect: state=%s", ost->state_token);
+        close(fd);
+        return;
+    }
+
+    /* ── Google OAuth callback: GET /auth/google/callback ─────────── */
+    if (strcmp(req.method, "GET") == 0 &&
+        strncmp(req.path, "/auth/google/callback", 21) == 0) {
+        /* Extract query params from path */
+        char code[512] = {}, state_tok[128] = {}, oauth_err[256] = {};
+        query_extract_value(req.path, "code", code, sizeof(code));
+        query_extract_value(req.path, "state", state_tok, sizeof(state_tok));
+        query_extract_value(req.path, "error", oauth_err, sizeof(oauth_err));
+
+        if (oauth_err[0]) {
+            LOGW("google oauth denied by user: %s", oauth_err);
+            const char *deny_html =
+                "<html><body style='font-family:system-ui;text-align:center;padding:60px'>"
+                "<h2>Authorization denied</h2>"
+                "<p><a href='/'>Back to login</a></p></body></html>";
+            http_send(fd, 403, "Forbidden", "text/html", NULL,
+                      deny_html, strlen(deny_html));
+            close(fd);
+            return;
+        }
+
+        if (!code[0] || !state_tok[0]) {
+            http_send(fd, 400, "Bad Request", "text/plain", NULL,
+                      "Missing code or state", 21);
+            close(fd);
+            return;
+        }
+
+        /* Validate state */
+        OAuthState *ost = oauth_state_find(state_tok);
+        if (!ost) {
+            http_send(fd, 400, "Bad Request", "text/plain", NULL,
+                      "Invalid or expired OAuth state", 29);
+            close(fd);
+            return;
+        }
+        char callback_uri[512];
+        strncpy(callback_uri, ost->redirect_uri, sizeof(callback_uri)-1);
+        callback_uri[sizeof(callback_uri)-1] = '\0';
+        oauth_state_free(ost);
+
+        /* Exchange code for tokens via curl */
+        const char *client_id = getenv("GOOGLE_CALENDAR_CLIENT_ID");
+        const char *client_secret = getenv("GOOGLE_CALENDAR_CLIENT_SECRET");
+        const char *token_uri = getenv("GOOGLE_CALENDAR_TOKEN_URI");
+        if (!token_uri) token_uri = "https://oauth2.googleapis.com/token";
+
+        if (!client_id || !client_secret) {
+            http_send(fd, 500, "Internal Server Error", "text/plain", NULL,
+                      "OAuth credentials not configured", 31);
+            close(fd);
+            return;
+        }
+
+        char postfields[2048];
+        {
+            char code_enc[600], redir_enc[600];
+            url_encode(code, code_enc, sizeof(code_enc));
+            url_encode(callback_uri, redir_enc, sizeof(redir_enc));
+            snprintf(postfields, sizeof(postfields),
+                     "code=%s&client_id=%s&client_secret=%s&redirect_uri=%s&grant_type=authorization_code",
+                     code_enc, client_id, client_secret, redir_enc);
+        }
+
+        char token_buf[8192] = {};
+        CurlBuf cbuf = { .data = token_buf, .len = 0, .cap = sizeof(token_buf)-1 };
+        CURL *curl = curl_easy_init();
+        if (!curl) {
+            http_send(fd, 500, "Internal Server Error", "text/plain", NULL,
+                      "curl init failed", 16);
+            close(fd);
+            return;
+        }
+        curl_easy_setopt(curl, CURLOPT_URL, token_uri);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postfields);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &cbuf);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+        CURLcode res = curl_easy_perform(curl);
+        curl_easy_cleanup(curl);
+
+        if (res != CURLE_OK) {
+            LOGE("google token exchange curl error: %s", curl_easy_strerror(res));
+            http_send(fd, 502, "Bad Gateway", "text/plain", NULL,
+                      "Token exchange failed", 21);
+            close(fd);
+            return;
+        }
+
+        /* Extract access_token from JSON response */
+        char access_token[2048] = {};
+        if (!json_extract_string(token_buf, "access_token", access_token, sizeof(access_token))) {
+            LOGE("google token response missing access_token: %.*s", (int)cbuf.len, token_buf);
+            http_send(fd, 502, "Bad Gateway", "text/plain", NULL,
+                      "No access token in response", 27);
+            close(fd);
+            return;
+        }
+
+        /* Fetch userinfo to get verified email */
+        char userinfo_buf[4096] = {};
+        CurlBuf ubuf = { .data = userinfo_buf, .len = 0, .cap = sizeof(userinfo_buf)-1 };
+        curl = curl_easy_init();
+        if (!curl) {
+            http_send(fd, 500, "Internal Server Error", "text/plain", NULL,
+                      "curl init failed", 16);
+            close(fd);
+            return;
+        }
+        char auth_header[2200];
+        snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", access_token);
+        struct curl_slist *headers = NULL;
+        headers = curl_slist_append(headers, auth_header);
+        curl_easy_setopt(curl, CURLOPT_URL, "https://www.googleapis.com/oauth2/v2/userinfo");
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ubuf);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+        res = curl_easy_perform(curl);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+
+        if (res != CURLE_OK) {
+            LOGE("google userinfo curl error: %s", curl_easy_strerror(res));
+            http_send(fd, 502, "Bad Gateway", "text/plain", NULL,
+                      "Userinfo fetch failed", 21);
+            close(fd);
+            return;
+        }
+
+        /* Extract email from userinfo */
+        char google_email[256] = {};
+        if (!json_extract_string(userinfo_buf, "email", google_email, sizeof(google_email)) ||
+            !google_email[0]) {
+            LOGE("google userinfo missing email");
+            http_send(fd, 502, "Bad Gateway", "text/plain", NULL,
+                      "No email in Google response", 27);
+            close(fd);
+            return;
+        }
+
+        /* Check binding */
+        char bound_username[256] = {};
+        if (!google_binding_lookup(google_email, bound_username, sizeof(bound_username))) {
+            LOGW("google oauth login rejected: unbound identity '%s'", google_email);
+            const char *unbound_html =
+                "<html><body style='font-family:system-ui;text-align:center;padding:60px'>"
+                "<h2>Google identity not bound</h2>"
+                "<p>This Google account is not linked to any Linux user.</p>"
+                "<p>Please log in with your Linux credentials first, then bind your Google account in Settings.</p>"
+                "<p><a href='/'>Back to login</a></p></body></html>";
+            http_send(fd, 403, "Forbidden", "text/html", NULL,
+                      unbound_html, strlen(unbound_html));
+            close(fd);
+            return;
+        }
+
+        /* Verify Linux user exists */
+        struct passwd *pw = getpwnam(bound_username);
+        if (!pw) {
+            LOGW("google oauth login rejected: bound Linux user missing for '%s' -> '%s'",
+                 google_email, bound_username);
+            http_send(fd, 403, "Forbidden", "text/plain", NULL,
+                      "Bound Linux user is unavailable", 32);
+            close(fd);
+            return;
+        }
+
+        LOGI("google oauth login accepted: '%s' -> '%s'", google_email, bound_username);
+        send_login_success(fd, pw->pw_name, req.is_secure);
+        close(fd);
+        return;
+    }
+
     /* Handle auth routes BEFORE JWT check — these are gateway-owned */
     if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/auth/login/google") == 0) {
         char google_email[256] = {};
@@ -1710,6 +2084,10 @@ int main(int argc, char *argv[]) {
     }
     memset(g_rate_limit, 0, sizeof(g_rate_limit));
     memset(g_consec_fail, 0, sizeof(g_consec_fail));
+    memset(g_oauth_states, 0, sizeof(g_oauth_states));
+
+    /* libcurl global init (for Google OAuth token exchange) */
+    curl_global_init(CURL_GLOBAL_DEFAULT);
 
     /* Ban list: load persistent bans from file */
     banlist_load();
@@ -1975,6 +2353,8 @@ int main(int argc, char *argv[]) {
 
     /* Free parsed argv */
     for (int i = 0; i < g_opencode_argc; i++) free(g_opencode_argv[i]);
+
+    curl_global_cleanup();
 
     return 0;
 }

@@ -1990,7 +1990,7 @@ compile_gateway() {
 
     gcc -O2 -Wall -D_GNU_SOURCE \
         -o "${GATEWAY_BIN}" "${GATEWAY_SRC}" \
-        -lpam -lpam_misc -lcrypto -lpthread
+        -lpam -lpam_misc -lcrypto -lpthread -lcurl
 
     log_success "Gateway compiled: ${GATEWAY_BIN}"
 }

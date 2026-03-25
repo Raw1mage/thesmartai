@@ -52,6 +52,7 @@ const API_PREFIXES = [
   "/event",
   "/instance",
   "/doc",
+  "/google-binding",
 ]
 
 function now() {
