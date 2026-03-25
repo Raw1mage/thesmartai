@@ -565,12 +565,15 @@ export const Terminal = (props: TerminalProps) => {
       cleanups.push(() => disposeIfDisposable(onKey))
 
       const startResize = () => {
+        // FitAddon.observeResize() sets up its own ResizeObserver internally
+        // and calls fit() automatically.  The t.onResize handler (above) then
+        // forwards the new cols/rows to the server via scheduleSize().
+        // Adding a *second* ResizeObserver that also calls forceFit() causes
+        // duplicate fit() calls on every browser resize, which triggers rapid
+        // SIGWINCH storms on the PTY and garbled shell redraws.
         fit.observeResize()
-        const observer = new ResizeObserver(() => {
-          forceFit()
-        })
-        observer.observe(container)
-        cleanups.push(() => observer.disconnect())
+        // Keep only the window-level listener as a fallback (e.g. for
+        // cross-frame resize events that the container observer may miss).
         handleResize = scheduleFit
         window.addEventListener("resize", handleResize)
         cleanups.push(() => window.removeEventListener("resize", handleResize))
