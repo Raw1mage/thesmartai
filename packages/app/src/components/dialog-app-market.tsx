@@ -1,4 +1,5 @@
 import { Component, createMemo, createSignal, For, Show, createResource } from "solid-js"
+import { createMediaQuery } from "@solid-primitives/media"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -63,6 +64,7 @@ export const DialogAppMarket: Component = () => {
   const [actionLoading, setActionLoading] = createSignal<string | null>(null)
   const [appMap, setAppMap] = createSignal<Map<string, MarketApp>>(new Map())
   const [initialLoaded, setInitialLoaded] = createSignal(false)
+  const isMobileViewport = createMediaQuery("(max-width: 767px)")
 
   async function fetchMarket(): Promise<MarketApp[]> {
     const res = await globalSDK.fetch(`${globalSDK.url}/api/v2/mcp/market`)
@@ -232,7 +234,6 @@ export const DialogAppMarket: Component = () => {
               value={filter()}
               onInput={(e) => setFilter(e.currentTarget.value)}
               class="w-full pl-8 pr-3 py-1 bg-background-input border border-border-base rounded-sm text-12-regular text-text-base placeholder:text-text-weaker focus:outline-none focus:border-border-focus font-normal"
-              autofocus
             />
           </div>
         </div>
@@ -268,21 +269,25 @@ export const DialogAppMarket: Component = () => {
                 const isActive = () => live().enabled || live().status === "connected"
 
                 return (
-                  <div class="flex flex-col rounded-lg border border-border-base bg-[#1a1a2e] hover:border-border-hover transition-colors overflow-hidden h-[200px] md:h-[220px]">
-                    {/* Title row: name + type + tools count + action buttons + status */}
-                    <div class="flex items-center gap-1.5 px-3 pt-3 pb-1">
-                      <span class="text-13-medium text-text-base truncate">{live().name}</span>
-                      <Show when={live().type}>
-                        <span class="px-1 py-px rounded text-[10px] text-text-weaker bg-white/5 uppercase shrink-0">
-                          {live().type}
+                  <div class="app-market-card flex flex-col rounded-lg border border-border-base bg-[#1a1a2e] hover:border-border-hover transition-colors overflow-hidden h-auto md:h-[220px]">
+                    {/* Title row */}
+                    <div class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 px-2.5 pt-2.5 pb-1.5 md:flex md:items-center md:gap-1.5">
+                      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1">
+                        <span class="app-market-card-title min-w-0 whitespace-normal break-words leading-tight text-[15px] font-semibold text-text-strong md:truncate md:text-13-medium md:font-medium md:text-text-base">
+                          {live().name}
                         </span>
-                      </Show>
-                      <Show when={live().tools.length > 0}>
-                        <span class="text-[10px] text-text-weaker shrink-0">
-                          {language.t("app_market.tools_count", { count: String(live().tools.length) })}
-                        </span>
-                      </Show>
-                      <div class="flex items-center gap-0.5 ml-auto shrink-0">
+                        <Show when={live().type}>
+                          <span class="px-1 py-px rounded text-[10px] text-text-weaker bg-white/5 uppercase shrink-0">
+                            {live().type}
+                          </span>
+                        </Show>
+                        <Show when={!isMobileViewport() && live().tools.length > 0}>
+                          <span class="text-[10px] text-text-weaker shrink-0">
+                            {language.t("app_market.tools_count", { count: String(live().tools.length) })}
+                          </span>
+                        </Show>
+                      </div>
+                      <div class="flex flex-wrap items-center justify-end gap-0.5 shrink-0 md:ml-auto">
                         <button
                           onClick={() => handleAction(live())}
                           disabled={loading()}
@@ -312,22 +317,19 @@ export const DialogAppMarket: Component = () => {
                             <Icon name="trash" size="small" />
                           </button>
                         </Show>
-                        <span class={`text-11-regular ml-1 ${sd().color}`}>{language.t(sd().labelKey as any)}</span>
+                        <span class={`text-11-regular ml-1 whitespace-nowrap ${sd().color}`}>
+                          {language.t(sd().labelKey as any)}
+                        </span>
                       </div>
+                      <p class="app-market-description min-w-0 text-11-regular text-text-weak leading-snug overflow-hidden md:col-span-2 md:px-0 md:pb-2">
+                        {language.t("app_market.card.description", { description: live().description })}
+                      </p>
                     </div>
 
-                    {/* Description */}
-                    <p
-                      class="shrink-0 text-11-regular text-text-weak leading-snug px-3 pb-2 overflow-hidden"
-                      style={{ display: "-webkit-box", "-webkit-line-clamp": "3", "-webkit-box-orient": "vertical" }}
-                    >
-                      {live().description}
-                    </p>
-
                     {/* Tools list — fills remaining card height, scrollable */}
-                    <Show when={live().tools.length > 0}>
-                      <div class="flex-1 min-h-0 mx-2 mb-2">
-                        <div class="flex flex-wrap gap-1 px-2 py-1.5 rounded bg-background-base/60 border border-border-base/30 overflow-y-auto h-full content-start">
+                    <Show when={!isMobileViewport() && live().tools.length > 0}>
+                      <div class="app-market-tools flex-1 min-h-0 mx-3 mb-3 md:mx-2 md:mb-2">
+                        <div class="flex flex-wrap gap-1 px-2 py-1.5 rounded bg-background-base/60 border border-border-base/30 overflow-y-auto h-full content-start md:h-full md:overflow-y-auto">
                           <For each={live().tools}>
                             {(tool) => (
                               <span

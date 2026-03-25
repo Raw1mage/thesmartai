@@ -1,7 +1,7 @@
 /* Allow container to grow when content is resized */
 [data-slot="dialog-container"]:has(.app-market-resizable) {
   height: auto !important;
-  max-height: calc(100vh - 16px) !important;
+  max-height: calc(100vh - 24px) !important;
 }
 
 /* Resizable app market dialog — applied to dialog-content via class prop */
@@ -13,20 +13,73 @@
   max-height: calc(100vh - 32px) !important;
 }
 
+.app-market-resizable [data-slot="dialog-header"] {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-raised-stronger-non-alpha);
+}
+
+.app-market-resizable [data-slot="dialog-title"] {
+  color: var(--text-strong);
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: var(--font-weight-semibold);
+}
+
 .app-market-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(260px, calc(100vw - 64px)), 1fr)) !important;
 }
 
+.app-market-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 @media (max-width: 767px) {
+  [data-slot="dialog-container"]:has(.app-market-resizable) {
+    margin-top: 40px;
+  }
+
   .app-market-resizable {
     resize: none !important;
     min-width: 0 !important;
     min-height: 0 !important;
-    max-width: calc(100vw - 16px) !important;
-    max-height: calc(100vh - 16px) !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: calc(100vh - 64px) !important;
+    overflow-y: auto;
   }
 
   .app-market-grid {
-    grid-template-columns: repeat(auto-fit, minmax(min(220px, calc(100vw - 32px)), 1fr)) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .app-market-grid > * {
+    min-width: 0;
+    aspect-ratio: auto;
+  }
+
+  .app-market-card {
+    min-height: 0;
+    height: auto;
+  }
+
+  .app-market-card-title {
+    font-size: 15px;
+    line-height: 19px;
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-strong);
+  }
+
+  .app-market-description {
+    grid-column: 1 / -1;
+    margin-top: -2px;
+    -webkit-line-clamp: 1;
+  }
+
+  .app-market-tools {
+    max-height: 96px;
   }
 }

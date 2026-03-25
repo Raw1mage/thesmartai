@@ -846,6 +846,7 @@ export const dict = {
   // App Market
   "app_market.title": "应用市场",
   "app_market.description": "已安装 {{installed}} / 共 {{total}} 个",
+  "app_market.card.description": "说明：{{description}}",
   "app_market.search.placeholder": "搜索应用...",
   "app_market.loading": "加载中...",
   "app_market.empty": "找不到应用",

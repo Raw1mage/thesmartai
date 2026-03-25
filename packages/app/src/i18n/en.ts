@@ -866,6 +866,7 @@ export const dict = {
   // App Market
   "app_market.title": "App Market",
   "app_market.description": "{{installed}} installed / {{total}} available",
+  "app_market.card.description": "Description: {{description}}",
   "app_market.search.placeholder": "Search apps...",
   "app_market.loading": "Loading...",
   "app_market.empty": "No apps found",
