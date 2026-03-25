@@ -2,9 +2,9 @@ import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Button } from "@opencode-ai/ui/button"
-import { createCronApi, type CronJob, type CronJobCreateInput } from "./api"
+import { createCronApi, type CronJob, type CronJobCreateInput, type CronJobPatchInput } from "./api"
 import { TaskCard } from "./task-card"
-import { TaskCreateDialog } from "./task-create-dialog"
+import { TaskEditDialog } from "./task-create-dialog"
 
 export default function TaskList() {
   const globalSDK = useGlobalSDK()
@@ -14,6 +14,7 @@ export default function TaskList() {
   const [loading, setLoading] = createSignal(true)
   const [error, setError] = createSignal<string>()
   const [showCreate, setShowCreate] = createSignal(false)
+  const [editingJob, setEditingJob] = createSignal<CronJob>()
 
   async function refresh() {
     try {
@@ -53,8 +54,9 @@ export default function TaskList() {
     setTimeout(() => void refresh(), 1500)
   }
 
-  async function handleUpdate(id: string, patch: Partial<CronJobCreateInput>) {
+  async function handleUpdate(id: string, patch: CronJobPatchInput) {
     await api().updateJob(id, patch)
+    setEditingJob(undefined)
     await refresh()
   }
 
@@ -115,6 +117,7 @@ export default function TaskList() {
                   onToggle={() => void handleToggle(job)}
                   onTrigger={() => void handleTrigger(job.id)}
                   onUpdate={(patch) => void handleUpdate(job.id, patch)}
+                  onEdit={() => setEditingJob(job)}
                 />
               )}
             </For>
@@ -124,10 +127,21 @@ export default function TaskList() {
 
       {/* Create dialog */}
       <Show when={showCreate()}>
-        <TaskCreateDialog
+        <TaskEditDialog
           onClose={() => setShowCreate(false)}
           onCreate={handleCreate}
         />
+      </Show>
+
+      {/* Edit dialog */}
+      <Show when={editingJob()}>
+        {(job) => (
+          <TaskEditDialog
+            job={job()}
+            onClose={() => setEditingJob(undefined)}
+            onUpdate={handleUpdate}
+          />
+        )}
       </Show>
     </div>
   )

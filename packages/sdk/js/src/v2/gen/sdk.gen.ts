@@ -68,6 +68,32 @@ import type {
   ConfigUpdate2Responses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
+  CronJobsCreate2Errors,
+  CronJobsCreate2Responses,
+  CronJobsCreateErrors,
+  CronJobsCreateResponses,
+  CronJobsDelete2Errors,
+  CronJobsDelete2Responses,
+  CronJobsDeleteErrors,
+  CronJobsDeleteResponses,
+  CronJobsGet2Errors,
+  CronJobsGet2Responses,
+  CronJobsGetErrors,
+  CronJobsGetResponses,
+  CronJobsList2Responses,
+  CronJobsListResponses,
+  CronJobsRuns2Errors,
+  CronJobsRuns2Responses,
+  CronJobsRunsErrors,
+  CronJobsRunsResponses,
+  CronJobsTrigger2Errors,
+  CronJobsTrigger2Responses,
+  CronJobsTriggerErrors,
+  CronJobsTriggerResponses,
+  CronJobsUpdate2Errors,
+  CronJobsUpdate2Responses,
+  CronJobsUpdateErrors,
+  CronJobsUpdateResponses,
   EventSubscribe2Responses,
   EventSubscribeResponses,
   EventTuiCommandExecute,
@@ -145,6 +171,46 @@ import type {
   McpAdd2Responses,
   McpAddErrors,
   McpAddResponses,
+  McpAppsConfig2Errors,
+  McpAppsConfig2Responses,
+  McpAppsConfigErrors,
+  McpAppsConfigResponses,
+  McpAppsDisable2Errors,
+  McpAppsDisable2Responses,
+  McpAppsDisableErrors,
+  McpAppsDisableResponses,
+  McpAppsEnable2Errors,
+  McpAppsEnable2Responses,
+  McpAppsEnableErrors,
+  McpAppsEnableResponses,
+  McpAppsGet2Errors,
+  McpAppsGet2Responses,
+  McpAppsGetErrors,
+  McpAppsGetResponses,
+  McpAppsInstall2Errors,
+  McpAppsInstall2Responses,
+  McpAppsInstallErrors,
+  McpAppsInstallResponses,
+  McpAppsList2Responses,
+  McpAppsListResponses,
+  McpAppsOauthCallback2Errors,
+  McpAppsOauthCallback2Responses,
+  McpAppsOauthCallbackErrors,
+  McpAppsOauthCallbackResponses,
+  McpAppsOauthConnect2Errors,
+  McpAppsOauthConnectErrors,
+  McpAppsRuntime2Errors,
+  McpAppsRuntime2Responses,
+  McpAppsRuntimeErrors,
+  McpAppsRuntimeResponses,
+  McpAppsUninstall2Errors,
+  McpAppsUninstall2Responses,
+  McpAppsUninstallErrors,
+  McpAppsUninstallResponses,
+  McpAppsUsage2Errors,
+  McpAppsUsage2Responses,
+  McpAppsUsageErrors,
+  McpAppsUsageResponses,
   McpAuthAuthenticate2Errors,
   McpAuthAuthenticate2Responses,
   McpAuthAuthenticateErrors,
@@ -166,6 +232,8 @@ import type {
   McpDisconnect2Responses,
   McpDisconnectResponses,
   McpLocalConfig,
+  McpMarket2Responses,
+  McpMarketResponses,
   McpRemoteConfig,
   McpStatus2Responses,
   McpStatusResponses,
@@ -6176,6 +6244,675 @@ export class Provider extends HeyApiClient {
   }
 }
 
+export class Oauth2 extends HeyApiClient {
+  /**
+   * Start managed app OAuth connect flow
+   *
+   * Redirect user to the Google OAuth consent screen for a managed app. Supports google-calendar and gmail with shared token and merged scopes.
+   */
+  public connect<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<unknown, McpAppsOauthConnectErrors, ThrowOnError>({
+      url: "/api/v2/mcp/apps/{appId}/oauth/connect",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Handle managed app OAuth callback
+   *
+   * Exchange authorization code for tokens and enable all installed Google OAuth apps sharing gauth.json.
+   */
+  public callback<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      McpAppsOauthCallbackResponses,
+      McpAppsOauthCallbackErrors,
+      ThrowOnError
+    >({
+      url: "/api/v2/mcp/apps/{appId}/oauth/callback",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Start managed app OAuth connect flow
+   *
+   * Redirect user to the Google OAuth consent screen for a managed app. Supports google-calendar and gmail with shared token and merged scopes.
+   */
+  public connect2<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<unknown, McpAppsOauthConnect2Errors, ThrowOnError>({
+      url: "/mcp/apps/{appId}/oauth/connect",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Handle managed app OAuth callback
+   *
+   * Exchange authorization code for tokens and enable all installed Google OAuth apps sharing gauth.json.
+   */
+  public callback2<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      McpAppsOauthCallback2Responses,
+      McpAppsOauthCallback2Errors,
+      ThrowOnError
+    >({
+      url: "/mcp/apps/{appId}/oauth/callback",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Apps extends HeyApiClient {
+  /**
+   * List managed MCP apps
+   *
+   * Get built-in managed app catalog entries with persisted and runtime state for Web/TUI management.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<McpAppsListResponses, unknown, ThrowOnError>({
+      url: "/api/v2/mcp/apps",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get managed MCP app
+   *
+   * Get a managed app snapshot including operator-visible install, config, runtime, and error states.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpAppsGetResponses, McpAppsGetErrors, ThrowOnError>({
+      url: "/api/v2/mcp/apps/{appId}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Install managed MCP app
+   *
+   * Mark a built-in managed app as installed and available for later configuration and enablement.
+   */
+  public install<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpAppsInstallResponses, McpAppsInstallErrors, ThrowOnError>({
+      url: "/api/v2/mcp/apps/{appId}/install",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Uninstall managed MCP app
+   *
+   * Reset a managed app to available state and detach any runtime attachment.
+   */
+  public uninstall<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpAppsUninstallResponses, McpAppsUninstallErrors, ThrowOnError>({
+      url: "/api/v2/mcp/apps/{appId}/uninstall",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update managed MCP app config keys
+   *
+   * Persist operator-visible configuration completion keys for a managed app.
+   */
+  public config<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+      keys?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "keys" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpAppsConfigResponses, McpAppsConfigErrors, ThrowOnError>({
+      url: "/api/v2/mcp/apps/{appId}/config",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Enable managed MCP app
+   *
+   * Enable a managed app after install and configuration complete.
+   */
+  public enable<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpAppsEnableResponses, McpAppsEnableErrors, ThrowOnError>({
+      url: "/api/v2/mcp/apps/{appId}/enable",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Disable managed MCP app
+   *
+   * Disable a managed app and detach any active runtime attachment.
+   */
+  public disable<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpAppsDisableResponses, McpAppsDisableErrors, ThrowOnError>({
+      url: "/api/v2/mcp/apps/{appId}/disable",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get managed MCP app runtime state
+   *
+   * Get runtime attachment and status for a managed app without exposing full MCP tool flows.
+   */
+  public runtime<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpAppsRuntimeResponses, McpAppsRuntimeErrors, ThrowOnError>({
+      url: "/api/v2/mcp/apps/{appId}/runtime",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get managed MCP app usage state
+   *
+   * Expose fail-fast unauthenticated, misconfigured, and runtime-error states for managed app usage without implicit fallback.
+   */
+  public usage<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpAppsUsageResponses, McpAppsUsageErrors, ThrowOnError>({
+      url: "/api/v2/mcp/apps/{appId}/usage",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List managed MCP apps
+   *
+   * Get built-in managed app catalog entries with persisted and runtime state for Web/TUI management.
+   */
+  public list2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<McpAppsList2Responses, unknown, ThrowOnError>({
+      url: "/mcp/apps",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get managed MCP app
+   *
+   * Get a managed app snapshot including operator-visible install, config, runtime, and error states.
+   */
+  public get2<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpAppsGet2Responses, McpAppsGet2Errors, ThrowOnError>({
+      url: "/mcp/apps/{appId}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Install managed MCP app
+   *
+   * Mark a built-in managed app as installed and available for later configuration and enablement.
+   */
+  public install2<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpAppsInstall2Responses, McpAppsInstall2Errors, ThrowOnError>({
+      url: "/mcp/apps/{appId}/install",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Uninstall managed MCP app
+   *
+   * Reset a managed app to available state and detach any runtime attachment.
+   */
+  public uninstall2<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpAppsUninstall2Responses, McpAppsUninstall2Errors, ThrowOnError>({
+      url: "/mcp/apps/{appId}/uninstall",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update managed MCP app config keys
+   *
+   * Persist operator-visible configuration completion keys for a managed app.
+   */
+  public config2<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+      keys?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "keys" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpAppsConfig2Responses, McpAppsConfig2Errors, ThrowOnError>({
+      url: "/mcp/apps/{appId}/config",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Enable managed MCP app
+   *
+   * Enable a managed app after install and configuration complete.
+   */
+  public enable2<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpAppsEnable2Responses, McpAppsEnable2Errors, ThrowOnError>({
+      url: "/mcp/apps/{appId}/enable",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Disable managed MCP app
+   *
+   * Disable a managed app and detach any active runtime attachment.
+   */
+  public disable2<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpAppsDisable2Responses, McpAppsDisable2Errors, ThrowOnError>({
+      url: "/mcp/apps/{appId}/disable",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get managed MCP app runtime state
+   *
+   * Get runtime attachment and status for a managed app without exposing full MCP tool flows.
+   */
+  public runtime2<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpAppsRuntime2Responses, McpAppsRuntime2Errors, ThrowOnError>({
+      url: "/mcp/apps/{appId}/runtime",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get managed MCP app usage state
+   *
+   * Expose fail-fast unauthenticated, misconfigured, and runtime-error states for managed app usage without implicit fallback.
+   */
+  public usage2<ThrowOnError extends boolean = false>(
+    parameters: {
+      appId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "appId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<McpAppsUsage2Responses, McpAppsUsage2Errors, ThrowOnError>({
+      url: "/mcp/apps/{appId}/usage",
+      ...options,
+      ...params,
+    })
+  }
+
+  private _oauth?: Oauth2
+  get oauth(): Oauth2 {
+    return (this._oauth ??= new Oauth2({ client: this.client }))
+  }
+}
+
 export class Auth3 extends HeyApiClient {
   /**
    * Remove MCP OAuth
@@ -6440,6 +7177,25 @@ export class Auth3 extends HeyApiClient {
 
 export class Mcp extends HeyApiClient {
   /**
+   * Unified MCP app market
+   *
+   * Returns all MCP components (standard servers + managed apps) in a unified card format for the app market UI.
+   */
+  public market<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<McpMarketResponses, unknown, ThrowOnError>({
+      url: "/api/v2/mcp/market",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Get MCP status
    *
    * Get the status of all Model Context Protocol (MCP) servers.
@@ -6546,6 +7302,25 @@ export class Mcp extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<McpDisconnectResponses, unknown, ThrowOnError>({
       url: "/api/v2/mcp/{name}/disconnect",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Unified MCP app market
+   *
+   * Returns all MCP components (standard servers + managed apps) in a unified card format for the app market UI.
+   */
+  public market2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<McpMarket2Responses, unknown, ThrowOnError>({
+      url: "/mcp/market",
       ...options,
       ...params,
     })
@@ -6661,6 +7436,11 @@ export class Mcp extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  private _apps?: Apps
+  get apps(): Apps {
+    return (this._apps ??= new Apps({ client: this.client }))
   }
 
   private _auth?: Auth3
@@ -8822,6 +9602,593 @@ export class Killswitch extends HeyApiClient {
   }
 }
 
+export class Jobs extends HeyApiClient {
+  /**
+   * List all cron jobs
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<CronJobsListResponses, unknown, ThrowOnError>({
+      url: "/api/v2/cron/jobs",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create a cron job
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      name?: string
+      description?: string
+      enabled?: boolean
+      schedule?:
+        | {
+            kind: "at"
+            at: string
+          }
+        | {
+            kind: "every"
+            everyMs: number
+            anchorMs?: number
+          }
+        | {
+            kind: "cron"
+            expr: string
+            tz?: string
+            staggerMs?: number
+          }
+      payload?:
+        | {
+            kind: "systemEvent"
+            text: string
+          }
+        | {
+            kind: "agentTurn"
+            message: string
+            model?: string
+            timeoutSeconds?: number
+            lightContext?: boolean
+          }
+      delivery?: {
+        mode: "none" | "announce" | "webhook"
+        webhookUrl?: string
+        webhookBearerToken?: string
+        announceSessionID?: string
+        bestEffort?: boolean
+      }
+      sessionTarget?: "main" | "isolated"
+      wakeMode?: "next-heartbeat" | "now"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "name" },
+            { in: "body", key: "description" },
+            { in: "body", key: "enabled" },
+            { in: "body", key: "schedule" },
+            { in: "body", key: "payload" },
+            { in: "body", key: "delivery" },
+            { in: "body", key: "sessionTarget" },
+            { in: "body", key: "wakeMode" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<CronJobsCreateResponses, CronJobsCreateErrors, ThrowOnError>({
+      url: "/api/v2/cron/jobs",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete a cron job
+   */
+  public delete<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<CronJobsDeleteResponses, CronJobsDeleteErrors, ThrowOnError>({
+      url: "/api/v2/cron/jobs/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get a cron job by ID
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<CronJobsGetResponses, CronJobsGetErrors, ThrowOnError>({
+      url: "/api/v2/cron/jobs/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update a cron job
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      name?: string
+      description?: string
+      enabled?: boolean
+      schedule?:
+        | {
+            kind: "at"
+            at: string
+          }
+        | {
+            kind: "every"
+            everyMs: number
+            anchorMs?: number
+          }
+        | {
+            kind: "cron"
+            expr: string
+            tz?: string
+            staggerMs?: number
+          }
+      payload?:
+        | {
+            kind: "systemEvent"
+            text: string
+          }
+        | {
+            kind: "agentTurn"
+            message: string
+            model?: string
+            timeoutSeconds?: number
+            lightContext?: boolean
+          }
+      delivery?: {
+        mode: "none" | "announce" | "webhook"
+        webhookUrl?: string
+        webhookBearerToken?: string
+        announceSessionID?: string
+        bestEffort?: boolean
+      }
+      sessionTarget?: "main" | "isolated"
+      wakeMode?: "next-heartbeat" | "now"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "name" },
+            { in: "body", key: "description" },
+            { in: "body", key: "enabled" },
+            { in: "body", key: "schedule" },
+            { in: "body", key: "payload" },
+            { in: "body", key: "delivery" },
+            { in: "body", key: "sessionTarget" },
+            { in: "body", key: "wakeMode" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<CronJobsUpdateResponses, CronJobsUpdateErrors, ThrowOnError>({
+      url: "/api/v2/cron/jobs/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get run history for a cron job
+   */
+  public runs<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<CronJobsRunsResponses, CronJobsRunsErrors, ThrowOnError>({
+      url: "/api/v2/cron/jobs/{id}/runs",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Trigger immediate execution of a cron job
+   */
+  public trigger<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<CronJobsTriggerResponses, CronJobsTriggerErrors, ThrowOnError>({
+      url: "/api/v2/cron/jobs/{id}/run",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List all cron jobs
+   */
+  public list2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<CronJobsList2Responses, unknown, ThrowOnError>({
+      url: "/cron/jobs",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create a cron job
+   */
+  public create2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      name?: string
+      description?: string
+      enabled?: boolean
+      schedule?:
+        | {
+            kind: "at"
+            at: string
+          }
+        | {
+            kind: "every"
+            everyMs: number
+            anchorMs?: number
+          }
+        | {
+            kind: "cron"
+            expr: string
+            tz?: string
+            staggerMs?: number
+          }
+      payload?:
+        | {
+            kind: "systemEvent"
+            text: string
+          }
+        | {
+            kind: "agentTurn"
+            message: string
+            model?: string
+            timeoutSeconds?: number
+            lightContext?: boolean
+          }
+      delivery?: {
+        mode: "none" | "announce" | "webhook"
+        webhookUrl?: string
+        webhookBearerToken?: string
+        announceSessionID?: string
+        bestEffort?: boolean
+      }
+      sessionTarget?: "main" | "isolated"
+      wakeMode?: "next-heartbeat" | "now"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "name" },
+            { in: "body", key: "description" },
+            { in: "body", key: "enabled" },
+            { in: "body", key: "schedule" },
+            { in: "body", key: "payload" },
+            { in: "body", key: "delivery" },
+            { in: "body", key: "sessionTarget" },
+            { in: "body", key: "wakeMode" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<CronJobsCreate2Responses, CronJobsCreate2Errors, ThrowOnError>({
+      url: "/cron/jobs",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Delete a cron job
+   */
+  public delete2<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<CronJobsDelete2Responses, CronJobsDelete2Errors, ThrowOnError>({
+      url: "/cron/jobs/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get a cron job by ID
+   */
+  public get2<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<CronJobsGet2Responses, CronJobsGet2Errors, ThrowOnError>({
+      url: "/cron/jobs/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update a cron job
+   */
+  public update2<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      name?: string
+      description?: string
+      enabled?: boolean
+      schedule?:
+        | {
+            kind: "at"
+            at: string
+          }
+        | {
+            kind: "every"
+            everyMs: number
+            anchorMs?: number
+          }
+        | {
+            kind: "cron"
+            expr: string
+            tz?: string
+            staggerMs?: number
+          }
+      payload?:
+        | {
+            kind: "systemEvent"
+            text: string
+          }
+        | {
+            kind: "agentTurn"
+            message: string
+            model?: string
+            timeoutSeconds?: number
+            lightContext?: boolean
+          }
+      delivery?: {
+        mode: "none" | "announce" | "webhook"
+        webhookUrl?: string
+        webhookBearerToken?: string
+        announceSessionID?: string
+        bestEffort?: boolean
+      }
+      sessionTarget?: "main" | "isolated"
+      wakeMode?: "next-heartbeat" | "now"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "name" },
+            { in: "body", key: "description" },
+            { in: "body", key: "enabled" },
+            { in: "body", key: "schedule" },
+            { in: "body", key: "payload" },
+            { in: "body", key: "delivery" },
+            { in: "body", key: "sessionTarget" },
+            { in: "body", key: "wakeMode" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<CronJobsUpdate2Responses, CronJobsUpdate2Errors, ThrowOnError>({
+      url: "/cron/jobs/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get run history for a cron job
+   */
+  public runs2<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<CronJobsRuns2Responses, CronJobsRuns2Errors, ThrowOnError>({
+      url: "/cron/jobs/{id}/runs",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Trigger immediate execution of a cron job
+   */
+  public trigger2<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<CronJobsTrigger2Responses, CronJobsTrigger2Errors, ThrowOnError>({
+      url: "/cron/jobs/{id}/run",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Cron extends HeyApiClient {
+  private _jobs?: Jobs
+  get jobs(): Jobs {
+    return (this._jobs ??= new Jobs({ client: this.client }))
+  }
+}
+
 export class Find extends HeyApiClient {
   /**
    * Find text
@@ -9726,6 +11093,11 @@ export class OpencodeClient extends HeyApiClient {
   private _killswitch?: Killswitch
   get killswitch(): Killswitch {
     return (this._killswitch ??= new Killswitch({ client: this.client }))
+  }
+
+  private _cron?: Cron
+  get cron(): Cron {
+    return (this._cron ??= new Cron({ client: this.client }))
   }
 
   private _find?: Find

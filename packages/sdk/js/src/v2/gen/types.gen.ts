@@ -980,6 +980,108 @@ export type EventSessionCompacted = {
   }
 }
 
+export type EventManagedAppUpdated = {
+  type: "managed_app.updated"
+  properties: {
+    app: {
+      id: string
+      name: string
+      description: string
+      version: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      capabilities: Array<{
+        id: string
+        label: string
+        kind: "tool" | "oauth" | "resource" | "service"
+        description: string
+        operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+      }>
+      permissions: Array<{
+        id: string
+        label: string
+        required: boolean
+      }>
+      requiredConfig: Array<string>
+      auth: {
+        providerKey: string
+        ownership: "canonical-account"
+        type: "oauth"
+        required: boolean
+        allowImplicitActiveAccount: boolean
+        scopes: Array<string>
+      }
+      configContract: {
+        fields: Array<{
+          key: string
+          label: string
+          required: boolean
+          secret: boolean
+        }>
+      }
+      toolContract: {
+        namespace: string
+        tools: Array<{
+          id: string
+          label: string
+          capabilityId: string
+          description: string
+          mutates: boolean
+          requiresConfirmation: boolean
+          arguments: Array<{
+            name: string
+            type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+            description: string
+            required: boolean
+          }>
+        }>
+      }
+      state: {
+        appId: string
+        source: {
+          type: "builtin"
+          owner: "opencode"
+          package: string
+          entrypoint: string
+          localOnly: true
+        }
+        installState: "available" | "installing" | "installed" | "uninstalling"
+        enableState: "disabled" | "enabled"
+        configStatus: "unknown" | "required" | "configured" | "invalid"
+        config?: {
+          keys: Array<string>
+          updatedAt: number
+        }
+        error?: {
+          code: string
+          message: string
+          ts: number
+        }
+        installedAt?: number
+        updatedAt: number
+      }
+      authBinding: {
+        providerKey: string
+        accountId?: string
+        status: "not_required" | "required" | "authenticated" | "invalid"
+      }
+      runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+      operator: {
+        install: "available" | "installed"
+        auth: "not_required" | "required" | "authenticated" | "invalid"
+        config: "not_required" | "required" | "configured" | "invalid"
+        runtime: "inactive" | "ready" | "error"
+        error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+      }
+    }
+  }
+}
+
 export type EventMcpToolsChanged = {
   type: "mcp.tools.changed"
   properties: {
@@ -1642,6 +1744,7 @@ export type Event =
   | EventSessionCompactionTelemetry
   | EventTaskRateLimitEscalation
   | EventSessionCompacted
+  | EventManagedAppUpdated
   | EventMcpToolsChanged
   | EventMcpBrowserOpenFailed
   | EventCommandExecuted
@@ -2550,6 +2653,18 @@ export type Config = {
      * Minimum user-visible rounds between compactions (default: 8). Prevents compaction oscillation that destroys LLM server-side cache.
      */
     cooldownRounds?: number
+    /**
+     * Enable shared context space for structured knowledge tracking (default: true)
+     */
+    sharedContext?: boolean
+    /**
+     * Token budget for the shared context space itself (default: 8192)
+     */
+    sharedContextBudget?: number
+    /**
+     * Context utilization threshold for idle compaction after task dispatch (default: 0.6). Set to 1.0 to disable.
+     */
+    opportunisticThreshold?: number
   }
   experimental?: {
     hook?: {
@@ -6464,6 +6579,1062 @@ export type ProviderOauthCallbackResponses = {
 
 export type ProviderOauthCallbackResponse = ProviderOauthCallbackResponses[keyof ProviderOauthCallbackResponses]
 
+export type McpMarketData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/market"
+}
+
+export type McpMarketResponses = {
+  /**
+   * Unified app market entries
+   */
+  200: unknown
+}
+
+export type McpAppsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/apps"
+}
+
+export type McpAppsListResponses = {
+  /**
+   * Managed app snapshots
+   */
+  200: Array<{
+    id: string
+    name: string
+    description: string
+    version: string
+    source: {
+      type: "builtin"
+      owner: "opencode"
+      package: string
+      entrypoint: string
+      localOnly: true
+    }
+    capabilities: Array<{
+      id: string
+      label: string
+      kind: "tool" | "oauth" | "resource" | "service"
+      description: string
+      operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+    }>
+    permissions: Array<{
+      id: string
+      label: string
+      required: boolean
+    }>
+    requiredConfig: Array<string>
+    auth: {
+      providerKey: string
+      ownership: "canonical-account"
+      type: "oauth"
+      required: boolean
+      allowImplicitActiveAccount: boolean
+      scopes: Array<string>
+    }
+    configContract: {
+      fields: Array<{
+        key: string
+        label: string
+        required: boolean
+        secret: boolean
+      }>
+    }
+    toolContract: {
+      namespace: string
+      tools: Array<{
+        id: string
+        label: string
+        capabilityId: string
+        description: string
+        mutates: boolean
+        requiresConfirmation: boolean
+        arguments: Array<{
+          name: string
+          type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+          description: string
+          required: boolean
+        }>
+      }>
+    }
+    state: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }>
+}
+
+export type McpAppsListResponse = McpAppsListResponses[keyof McpAppsListResponses]
+
+export type McpAppsGetData = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/apps/{appId}"
+}
+
+export type McpAppsGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsGetError = McpAppsGetErrors[keyof McpAppsGetErrors]
+
+export type McpAppsGetResponses = {
+  /**
+   * Managed app snapshot
+   */
+  200: {
+    id: string
+    name: string
+    description: string
+    version: string
+    source: {
+      type: "builtin"
+      owner: "opencode"
+      package: string
+      entrypoint: string
+      localOnly: true
+    }
+    capabilities: Array<{
+      id: string
+      label: string
+      kind: "tool" | "oauth" | "resource" | "service"
+      description: string
+      operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+    }>
+    permissions: Array<{
+      id: string
+      label: string
+      required: boolean
+    }>
+    requiredConfig: Array<string>
+    auth: {
+      providerKey: string
+      ownership: "canonical-account"
+      type: "oauth"
+      required: boolean
+      allowImplicitActiveAccount: boolean
+      scopes: Array<string>
+    }
+    configContract: {
+      fields: Array<{
+        key: string
+        label: string
+        required: boolean
+        secret: boolean
+      }>
+    }
+    toolContract: {
+      namespace: string
+      tools: Array<{
+        id: string
+        label: string
+        capabilityId: string
+        description: string
+        mutates: boolean
+        requiresConfirmation: boolean
+        arguments: Array<{
+          name: string
+          type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+          description: string
+          required: boolean
+        }>
+      }>
+    }
+    state: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }
+}
+
+export type McpAppsGetResponse = McpAppsGetResponses[keyof McpAppsGetResponses]
+
+export type McpAppsInstallData = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/apps/{appId}/install"
+}
+
+export type McpAppsInstallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsInstallError = McpAppsInstallErrors[keyof McpAppsInstallErrors]
+
+export type McpAppsInstallResponses = {
+  /**
+   * Managed app snapshot
+   */
+  200: {
+    id: string
+    name: string
+    description: string
+    version: string
+    source: {
+      type: "builtin"
+      owner: "opencode"
+      package: string
+      entrypoint: string
+      localOnly: true
+    }
+    capabilities: Array<{
+      id: string
+      label: string
+      kind: "tool" | "oauth" | "resource" | "service"
+      description: string
+      operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+    }>
+    permissions: Array<{
+      id: string
+      label: string
+      required: boolean
+    }>
+    requiredConfig: Array<string>
+    auth: {
+      providerKey: string
+      ownership: "canonical-account"
+      type: "oauth"
+      required: boolean
+      allowImplicitActiveAccount: boolean
+      scopes: Array<string>
+    }
+    configContract: {
+      fields: Array<{
+        key: string
+        label: string
+        required: boolean
+        secret: boolean
+      }>
+    }
+    toolContract: {
+      namespace: string
+      tools: Array<{
+        id: string
+        label: string
+        capabilityId: string
+        description: string
+        mutates: boolean
+        requiresConfirmation: boolean
+        arguments: Array<{
+          name: string
+          type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+          description: string
+          required: boolean
+        }>
+      }>
+    }
+    state: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }
+}
+
+export type McpAppsInstallResponse = McpAppsInstallResponses[keyof McpAppsInstallResponses]
+
+export type McpAppsUninstallData = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/apps/{appId}/uninstall"
+}
+
+export type McpAppsUninstallErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsUninstallError = McpAppsUninstallErrors[keyof McpAppsUninstallErrors]
+
+export type McpAppsUninstallResponses = {
+  /**
+   * Managed app snapshot
+   */
+  200: {
+    id: string
+    name: string
+    description: string
+    version: string
+    source: {
+      type: "builtin"
+      owner: "opencode"
+      package: string
+      entrypoint: string
+      localOnly: true
+    }
+    capabilities: Array<{
+      id: string
+      label: string
+      kind: "tool" | "oauth" | "resource" | "service"
+      description: string
+      operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+    }>
+    permissions: Array<{
+      id: string
+      label: string
+      required: boolean
+    }>
+    requiredConfig: Array<string>
+    auth: {
+      providerKey: string
+      ownership: "canonical-account"
+      type: "oauth"
+      required: boolean
+      allowImplicitActiveAccount: boolean
+      scopes: Array<string>
+    }
+    configContract: {
+      fields: Array<{
+        key: string
+        label: string
+        required: boolean
+        secret: boolean
+      }>
+    }
+    toolContract: {
+      namespace: string
+      tools: Array<{
+        id: string
+        label: string
+        capabilityId: string
+        description: string
+        mutates: boolean
+        requiresConfirmation: boolean
+        arguments: Array<{
+          name: string
+          type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+          description: string
+          required: boolean
+        }>
+      }>
+    }
+    state: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }
+}
+
+export type McpAppsUninstallResponse = McpAppsUninstallResponses[keyof McpAppsUninstallResponses]
+
+export type McpAppsConfigData = {
+  body?: {
+    keys: Array<string>
+  }
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/apps/{appId}/config"
+}
+
+export type McpAppsConfigErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsConfigError = McpAppsConfigErrors[keyof McpAppsConfigErrors]
+
+export type McpAppsConfigResponses = {
+  /**
+   * Managed app snapshot with runtime attachment state
+   */
+  200: {
+    catalog: {
+      id: string
+      name: string
+      description: string
+      version: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      capabilities: Array<{
+        id: string
+        label: string
+        kind: "tool" | "oauth" | "resource" | "service"
+        description: string
+        operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+      }>
+      permissions: Array<{
+        id: string
+        label: string
+        required: boolean
+      }>
+      requiredConfig: Array<string>
+      auth: {
+        providerKey: string
+        ownership: "canonical-account"
+        type: "oauth"
+        required: boolean
+        allowImplicitActiveAccount: boolean
+        scopes: Array<string>
+      }
+      configContract: {
+        fields: Array<{
+          key: string
+          label: string
+          required: boolean
+          secret: boolean
+        }>
+      }
+      toolContract: {
+        namespace: string
+        tools: Array<{
+          id: string
+          label: string
+          capabilityId: string
+          description: string
+          mutates: boolean
+          requiresConfirmation: boolean
+          arguments: Array<{
+            name: string
+            type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+            description: string
+            required: boolean
+          }>
+        }>
+      }
+    }
+    persisted: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtime: {
+      appId: string
+      status: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+      attachment?: {
+        owner: "system" | "session"
+        ownerId: string
+        attachedAt: number
+      }
+    }
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }
+}
+
+export type McpAppsConfigResponse = McpAppsConfigResponses[keyof McpAppsConfigResponses]
+
+export type McpAppsEnableData = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/apps/{appId}/enable"
+}
+
+export type McpAppsEnableErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsEnableError = McpAppsEnableErrors[keyof McpAppsEnableErrors]
+
+export type McpAppsEnableResponses = {
+  /**
+   * Managed app snapshot
+   */
+  200: {
+    id: string
+    name: string
+    description: string
+    version: string
+    source: {
+      type: "builtin"
+      owner: "opencode"
+      package: string
+      entrypoint: string
+      localOnly: true
+    }
+    capabilities: Array<{
+      id: string
+      label: string
+      kind: "tool" | "oauth" | "resource" | "service"
+      description: string
+      operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+    }>
+    permissions: Array<{
+      id: string
+      label: string
+      required: boolean
+    }>
+    requiredConfig: Array<string>
+    auth: {
+      providerKey: string
+      ownership: "canonical-account"
+      type: "oauth"
+      required: boolean
+      allowImplicitActiveAccount: boolean
+      scopes: Array<string>
+    }
+    configContract: {
+      fields: Array<{
+        key: string
+        label: string
+        required: boolean
+        secret: boolean
+      }>
+    }
+    toolContract: {
+      namespace: string
+      tools: Array<{
+        id: string
+        label: string
+        capabilityId: string
+        description: string
+        mutates: boolean
+        requiresConfirmation: boolean
+        arguments: Array<{
+          name: string
+          type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+          description: string
+          required: boolean
+        }>
+      }>
+    }
+    state: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }
+}
+
+export type McpAppsEnableResponse = McpAppsEnableResponses[keyof McpAppsEnableResponses]
+
+export type McpAppsDisableData = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/apps/{appId}/disable"
+}
+
+export type McpAppsDisableErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsDisableError = McpAppsDisableErrors[keyof McpAppsDisableErrors]
+
+export type McpAppsDisableResponses = {
+  /**
+   * Managed app snapshot
+   */
+  200: {
+    id: string
+    name: string
+    description: string
+    version: string
+    source: {
+      type: "builtin"
+      owner: "opencode"
+      package: string
+      entrypoint: string
+      localOnly: true
+    }
+    capabilities: Array<{
+      id: string
+      label: string
+      kind: "tool" | "oauth" | "resource" | "service"
+      description: string
+      operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+    }>
+    permissions: Array<{
+      id: string
+      label: string
+      required: boolean
+    }>
+    requiredConfig: Array<string>
+    auth: {
+      providerKey: string
+      ownership: "canonical-account"
+      type: "oauth"
+      required: boolean
+      allowImplicitActiveAccount: boolean
+      scopes: Array<string>
+    }
+    configContract: {
+      fields: Array<{
+        key: string
+        label: string
+        required: boolean
+        secret: boolean
+      }>
+    }
+    toolContract: {
+      namespace: string
+      tools: Array<{
+        id: string
+        label: string
+        capabilityId: string
+        description: string
+        mutates: boolean
+        requiresConfirmation: boolean
+        arguments: Array<{
+          name: string
+          type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+          description: string
+          required: boolean
+        }>
+      }>
+    }
+    state: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }
+}
+
+export type McpAppsDisableResponse = McpAppsDisableResponses[keyof McpAppsDisableResponses]
+
+export type McpAppsRuntimeData = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/apps/{appId}/runtime"
+}
+
+export type McpAppsRuntimeErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsRuntimeError = McpAppsRuntimeErrors[keyof McpAppsRuntimeErrors]
+
+export type McpAppsRuntimeResponses = {
+  /**
+   * Managed app runtime snapshot
+   */
+  200: {
+    appId: string
+    status: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    attachment?: {
+      owner: "system" | "session"
+      ownerId: string
+      attachedAt: number
+    }
+  }
+}
+
+export type McpAppsRuntimeResponse = McpAppsRuntimeResponses[keyof McpAppsRuntimeResponses]
+
+export type McpAppsUsageData = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/apps/{appId}/usage"
+}
+
+export type McpAppsUsageErrors = {
+  /**
+   * Managed app requires explicit authentication binding
+   */
+  401: {
+    appId: string
+    status: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    reason: "unauthenticated" | "misconfigured" | "runtime_error"
+    code: string
+    message: string
+  }
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Managed app is misconfigured
+   */
+  409: {
+    appId: string
+    status: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    reason: "unauthenticated" | "misconfigured" | "runtime_error"
+    code: string
+    message: string
+  }
+  /**
+   * Managed app hit a runtime error
+   */
+  503: {
+    appId: string
+    status: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    reason: "unauthenticated" | "misconfigured" | "runtime_error"
+    code: string
+    message: string
+  }
+}
+
+export type McpAppsUsageError = McpAppsUsageErrors[keyof McpAppsUsageErrors]
+
+export type McpAppsUsageResponses = {
+  /**
+   * Managed app usage is ready
+   */
+  200: null
+}
+
+export type McpAppsUsageResponse = McpAppsUsageResponses[keyof McpAppsUsageResponses]
+
+export type McpAppsOauthConnectData = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/apps/{appId}/oauth/connect"
+}
+
+export type McpAppsOauthConnectErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsOauthConnectError = McpAppsOauthConnectErrors[keyof McpAppsOauthConnectErrors]
+
+export type McpAppsOauthCallbackData = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/apps/{appId}/oauth/callback"
+}
+
+export type McpAppsOauthCallbackErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsOauthCallbackError = McpAppsOauthCallbackErrors[keyof McpAppsOauthCallbackErrors]
+
+export type McpAppsOauthCallbackResponses = {
+  /**
+   * OAuth completed, shows success page
+   */
+  200: unknown
+}
+
 export type McpStatusData = {
   body?: never
   path?: never
@@ -7936,6 +9107,549 @@ export type KillswitchTaskControlResponses = {
 }
 
 export type KillswitchTaskControlResponse = KillswitchTaskControlResponses[keyof KillswitchTaskControlResponses]
+
+export type CronJobsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/cron/jobs"
+}
+
+export type CronJobsListResponses = {
+  /**
+   * Array of cron jobs
+   */
+  200: Array<{
+    id: string
+    name: string
+    description?: string
+    enabled: boolean
+    deleteAfterRun?: boolean
+    createdAtMs: number
+    updatedAtMs: number
+    schedule:
+      | {
+          kind: "at"
+          at: string
+        }
+      | {
+          kind: "every"
+          everyMs: number
+          anchorMs?: number
+        }
+      | {
+          kind: "cron"
+          expr: string
+          tz?: string
+          staggerMs?: number
+        }
+    sessionTarget: "main" | "isolated"
+    wakeMode: "next-heartbeat" | "now"
+    payload:
+      | {
+          kind: "systemEvent"
+          text: string
+        }
+      | {
+          kind: "agentTurn"
+          message: string
+          model?: string
+          timeoutSeconds?: number
+          lightContext?: boolean
+        }
+    delivery?: {
+      mode: "none" | "announce" | "webhook"
+      webhookUrl?: string
+      webhookBearerToken?: string
+      announceSessionID?: string
+      bestEffort?: boolean
+    }
+    failureAlert?:
+      | false
+      | {
+          after?: number
+          cooldownMs?: number
+        }
+    state: {
+      nextRunAtMs?: number
+      runningAtMs?: number
+      lastRunAtMs?: number
+      lastRunStatus?: "ok" | "error" | "skipped"
+      lastError?: string
+      lastErrorReason?: string
+      lastDurationMs?: number
+      consecutiveErrors?: number
+      lastFailureAlertAtMs?: number
+      scheduleErrorCount?: number
+      lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
+      lastDeliveryError?: string
+    }
+  }>
+}
+
+export type CronJobsListResponse = CronJobsListResponses[keyof CronJobsListResponses]
+
+export type CronJobsCreateData = {
+  body?: {
+    name: string
+    description?: string
+    enabled?: boolean
+    schedule:
+      | {
+          kind: "at"
+          at: string
+        }
+      | {
+          kind: "every"
+          everyMs: number
+          anchorMs?: number
+        }
+      | {
+          kind: "cron"
+          expr: string
+          tz?: string
+          staggerMs?: number
+        }
+    payload:
+      | {
+          kind: "systemEvent"
+          text: string
+        }
+      | {
+          kind: "agentTurn"
+          message: string
+          model?: string
+          timeoutSeconds?: number
+          lightContext?: boolean
+        }
+    delivery?: {
+      mode: "none" | "announce" | "webhook"
+      webhookUrl?: string
+      webhookBearerToken?: string
+      announceSessionID?: string
+      bestEffort?: boolean
+    }
+    sessionTarget?: "main" | "isolated"
+    wakeMode?: "next-heartbeat" | "now"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/cron/jobs"
+}
+
+export type CronJobsCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type CronJobsCreateError = CronJobsCreateErrors[keyof CronJobsCreateErrors]
+
+export type CronJobsCreateResponses = {
+  /**
+   * Created cron job
+   */
+  201: {
+    id: string
+    name: string
+    description?: string
+    enabled: boolean
+    deleteAfterRun?: boolean
+    createdAtMs: number
+    updatedAtMs: number
+    schedule:
+      | {
+          kind: "at"
+          at: string
+        }
+      | {
+          kind: "every"
+          everyMs: number
+          anchorMs?: number
+        }
+      | {
+          kind: "cron"
+          expr: string
+          tz?: string
+          staggerMs?: number
+        }
+    sessionTarget: "main" | "isolated"
+    wakeMode: "next-heartbeat" | "now"
+    payload:
+      | {
+          kind: "systemEvent"
+          text: string
+        }
+      | {
+          kind: "agentTurn"
+          message: string
+          model?: string
+          timeoutSeconds?: number
+          lightContext?: boolean
+        }
+    delivery?: {
+      mode: "none" | "announce" | "webhook"
+      webhookUrl?: string
+      webhookBearerToken?: string
+      announceSessionID?: string
+      bestEffort?: boolean
+    }
+    failureAlert?:
+      | false
+      | {
+          after?: number
+          cooldownMs?: number
+        }
+    state: {
+      nextRunAtMs?: number
+      runningAtMs?: number
+      lastRunAtMs?: number
+      lastRunStatus?: "ok" | "error" | "skipped"
+      lastError?: string
+      lastErrorReason?: string
+      lastDurationMs?: number
+      consecutiveErrors?: number
+      lastFailureAlertAtMs?: number
+      scheduleErrorCount?: number
+      lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
+      lastDeliveryError?: string
+    }
+  }
+}
+
+export type CronJobsCreateResponse = CronJobsCreateResponses[keyof CronJobsCreateResponses]
+
+export type CronJobsDeleteData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/cron/jobs/{id}"
+}
+
+export type CronJobsDeleteErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type CronJobsDeleteError = CronJobsDeleteErrors[keyof CronJobsDeleteErrors]
+
+export type CronJobsDeleteResponses = {
+  /**
+   * Job deleted
+   */
+  200: unknown
+}
+
+export type CronJobsGetData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/cron/jobs/{id}"
+}
+
+export type CronJobsGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type CronJobsGetError = CronJobsGetErrors[keyof CronJobsGetErrors]
+
+export type CronJobsGetResponses = {
+  /**
+   * Cron job
+   */
+  200: {
+    id: string
+    name: string
+    description?: string
+    enabled: boolean
+    deleteAfterRun?: boolean
+    createdAtMs: number
+    updatedAtMs: number
+    schedule:
+      | {
+          kind: "at"
+          at: string
+        }
+      | {
+          kind: "every"
+          everyMs: number
+          anchorMs?: number
+        }
+      | {
+          kind: "cron"
+          expr: string
+          tz?: string
+          staggerMs?: number
+        }
+    sessionTarget: "main" | "isolated"
+    wakeMode: "next-heartbeat" | "now"
+    payload:
+      | {
+          kind: "systemEvent"
+          text: string
+        }
+      | {
+          kind: "agentTurn"
+          message: string
+          model?: string
+          timeoutSeconds?: number
+          lightContext?: boolean
+        }
+    delivery?: {
+      mode: "none" | "announce" | "webhook"
+      webhookUrl?: string
+      webhookBearerToken?: string
+      announceSessionID?: string
+      bestEffort?: boolean
+    }
+    failureAlert?:
+      | false
+      | {
+          after?: number
+          cooldownMs?: number
+        }
+    state: {
+      nextRunAtMs?: number
+      runningAtMs?: number
+      lastRunAtMs?: number
+      lastRunStatus?: "ok" | "error" | "skipped"
+      lastError?: string
+      lastErrorReason?: string
+      lastDurationMs?: number
+      consecutiveErrors?: number
+      lastFailureAlertAtMs?: number
+      scheduleErrorCount?: number
+      lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
+      lastDeliveryError?: string
+    }
+  }
+}
+
+export type CronJobsGetResponse = CronJobsGetResponses[keyof CronJobsGetResponses]
+
+export type CronJobsUpdateData = {
+  body?: {
+    name?: string
+    description?: string
+    enabled?: boolean
+    schedule?:
+      | {
+          kind: "at"
+          at: string
+        }
+      | {
+          kind: "every"
+          everyMs: number
+          anchorMs?: number
+        }
+      | {
+          kind: "cron"
+          expr: string
+          tz?: string
+          staggerMs?: number
+        }
+    payload?:
+      | {
+          kind: "systemEvent"
+          text: string
+        }
+      | {
+          kind: "agentTurn"
+          message: string
+          model?: string
+          timeoutSeconds?: number
+          lightContext?: boolean
+        }
+    delivery?: {
+      mode: "none" | "announce" | "webhook"
+      webhookUrl?: string
+      webhookBearerToken?: string
+      announceSessionID?: string
+      bestEffort?: boolean
+    }
+    sessionTarget?: "main" | "isolated"
+    wakeMode?: "next-heartbeat" | "now"
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/cron/jobs/{id}"
+}
+
+export type CronJobsUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type CronJobsUpdateError = CronJobsUpdateErrors[keyof CronJobsUpdateErrors]
+
+export type CronJobsUpdateResponses = {
+  /**
+   * Updated cron job
+   */
+  200: {
+    id: string
+    name: string
+    description?: string
+    enabled: boolean
+    deleteAfterRun?: boolean
+    createdAtMs: number
+    updatedAtMs: number
+    schedule:
+      | {
+          kind: "at"
+          at: string
+        }
+      | {
+          kind: "every"
+          everyMs: number
+          anchorMs?: number
+        }
+      | {
+          kind: "cron"
+          expr: string
+          tz?: string
+          staggerMs?: number
+        }
+    sessionTarget: "main" | "isolated"
+    wakeMode: "next-heartbeat" | "now"
+    payload:
+      | {
+          kind: "systemEvent"
+          text: string
+        }
+      | {
+          kind: "agentTurn"
+          message: string
+          model?: string
+          timeoutSeconds?: number
+          lightContext?: boolean
+        }
+    delivery?: {
+      mode: "none" | "announce" | "webhook"
+      webhookUrl?: string
+      webhookBearerToken?: string
+      announceSessionID?: string
+      bestEffort?: boolean
+    }
+    failureAlert?:
+      | false
+      | {
+          after?: number
+          cooldownMs?: number
+        }
+    state: {
+      nextRunAtMs?: number
+      runningAtMs?: number
+      lastRunAtMs?: number
+      lastRunStatus?: "ok" | "error" | "skipped"
+      lastError?: string
+      lastErrorReason?: string
+      lastDurationMs?: number
+      consecutiveErrors?: number
+      lastFailureAlertAtMs?: number
+      scheduleErrorCount?: number
+      lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
+      lastDeliveryError?: string
+    }
+  }
+}
+
+export type CronJobsUpdateResponse = CronJobsUpdateResponses[keyof CronJobsUpdateResponses]
+
+export type CronJobsRunsData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/cron/jobs/{id}/runs"
+}
+
+export type CronJobsRunsErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type CronJobsRunsError = CronJobsRunsErrors[keyof CronJobsRunsErrors]
+
+export type CronJobsRunsResponses = {
+  /**
+   * Array of run log entries
+   */
+  200: Array<{
+    jobId: string
+    runId: string
+    startedAtMs: number
+    completedAtMs?: number
+    status?: "ok" | "error" | "skipped"
+    error?: string
+    summary?: string
+    sessionId?: string
+    durationMs?: number
+    deliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
+  }>
+}
+
+export type CronJobsRunsResponse = CronJobsRunsResponses[keyof CronJobsRunsResponses]
+
+export type CronJobsTriggerData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/cron/jobs/{id}/run"
+}
+
+export type CronJobsTriggerErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type CronJobsTriggerError = CronJobsTriggerErrors[keyof CronJobsTriggerErrors]
+
+export type CronJobsTriggerResponses = {
+  /**
+   * Job triggered
+   */
+  200: unknown
+}
 
 export type FindTextData = {
   body?: never
@@ -11538,6 +13252,1062 @@ export type ProviderOauthCallback2Responses = {
 
 export type ProviderOauthCallback2Response = ProviderOauthCallback2Responses[keyof ProviderOauthCallback2Responses]
 
+export type McpMarket2Data = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/market"
+}
+
+export type McpMarket2Responses = {
+  /**
+   * Unified app market entries
+   */
+  200: unknown
+}
+
+export type McpAppsList2Data = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/apps"
+}
+
+export type McpAppsList2Responses = {
+  /**
+   * Managed app snapshots
+   */
+  200: Array<{
+    id: string
+    name: string
+    description: string
+    version: string
+    source: {
+      type: "builtin"
+      owner: "opencode"
+      package: string
+      entrypoint: string
+      localOnly: true
+    }
+    capabilities: Array<{
+      id: string
+      label: string
+      kind: "tool" | "oauth" | "resource" | "service"
+      description: string
+      operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+    }>
+    permissions: Array<{
+      id: string
+      label: string
+      required: boolean
+    }>
+    requiredConfig: Array<string>
+    auth: {
+      providerKey: string
+      ownership: "canonical-account"
+      type: "oauth"
+      required: boolean
+      allowImplicitActiveAccount: boolean
+      scopes: Array<string>
+    }
+    configContract: {
+      fields: Array<{
+        key: string
+        label: string
+        required: boolean
+        secret: boolean
+      }>
+    }
+    toolContract: {
+      namespace: string
+      tools: Array<{
+        id: string
+        label: string
+        capabilityId: string
+        description: string
+        mutates: boolean
+        requiresConfirmation: boolean
+        arguments: Array<{
+          name: string
+          type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+          description: string
+          required: boolean
+        }>
+      }>
+    }
+    state: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }>
+}
+
+export type McpAppsList2Response = McpAppsList2Responses[keyof McpAppsList2Responses]
+
+export type McpAppsGet2Data = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/apps/{appId}"
+}
+
+export type McpAppsGet2Errors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsGet2Error = McpAppsGet2Errors[keyof McpAppsGet2Errors]
+
+export type McpAppsGet2Responses = {
+  /**
+   * Managed app snapshot
+   */
+  200: {
+    id: string
+    name: string
+    description: string
+    version: string
+    source: {
+      type: "builtin"
+      owner: "opencode"
+      package: string
+      entrypoint: string
+      localOnly: true
+    }
+    capabilities: Array<{
+      id: string
+      label: string
+      kind: "tool" | "oauth" | "resource" | "service"
+      description: string
+      operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+    }>
+    permissions: Array<{
+      id: string
+      label: string
+      required: boolean
+    }>
+    requiredConfig: Array<string>
+    auth: {
+      providerKey: string
+      ownership: "canonical-account"
+      type: "oauth"
+      required: boolean
+      allowImplicitActiveAccount: boolean
+      scopes: Array<string>
+    }
+    configContract: {
+      fields: Array<{
+        key: string
+        label: string
+        required: boolean
+        secret: boolean
+      }>
+    }
+    toolContract: {
+      namespace: string
+      tools: Array<{
+        id: string
+        label: string
+        capabilityId: string
+        description: string
+        mutates: boolean
+        requiresConfirmation: boolean
+        arguments: Array<{
+          name: string
+          type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+          description: string
+          required: boolean
+        }>
+      }>
+    }
+    state: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }
+}
+
+export type McpAppsGet2Response = McpAppsGet2Responses[keyof McpAppsGet2Responses]
+
+export type McpAppsInstall2Data = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/apps/{appId}/install"
+}
+
+export type McpAppsInstall2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsInstall2Error = McpAppsInstall2Errors[keyof McpAppsInstall2Errors]
+
+export type McpAppsInstall2Responses = {
+  /**
+   * Managed app snapshot
+   */
+  200: {
+    id: string
+    name: string
+    description: string
+    version: string
+    source: {
+      type: "builtin"
+      owner: "opencode"
+      package: string
+      entrypoint: string
+      localOnly: true
+    }
+    capabilities: Array<{
+      id: string
+      label: string
+      kind: "tool" | "oauth" | "resource" | "service"
+      description: string
+      operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+    }>
+    permissions: Array<{
+      id: string
+      label: string
+      required: boolean
+    }>
+    requiredConfig: Array<string>
+    auth: {
+      providerKey: string
+      ownership: "canonical-account"
+      type: "oauth"
+      required: boolean
+      allowImplicitActiveAccount: boolean
+      scopes: Array<string>
+    }
+    configContract: {
+      fields: Array<{
+        key: string
+        label: string
+        required: boolean
+        secret: boolean
+      }>
+    }
+    toolContract: {
+      namespace: string
+      tools: Array<{
+        id: string
+        label: string
+        capabilityId: string
+        description: string
+        mutates: boolean
+        requiresConfirmation: boolean
+        arguments: Array<{
+          name: string
+          type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+          description: string
+          required: boolean
+        }>
+      }>
+    }
+    state: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }
+}
+
+export type McpAppsInstall2Response = McpAppsInstall2Responses[keyof McpAppsInstall2Responses]
+
+export type McpAppsUninstall2Data = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/apps/{appId}/uninstall"
+}
+
+export type McpAppsUninstall2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsUninstall2Error = McpAppsUninstall2Errors[keyof McpAppsUninstall2Errors]
+
+export type McpAppsUninstall2Responses = {
+  /**
+   * Managed app snapshot
+   */
+  200: {
+    id: string
+    name: string
+    description: string
+    version: string
+    source: {
+      type: "builtin"
+      owner: "opencode"
+      package: string
+      entrypoint: string
+      localOnly: true
+    }
+    capabilities: Array<{
+      id: string
+      label: string
+      kind: "tool" | "oauth" | "resource" | "service"
+      description: string
+      operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+    }>
+    permissions: Array<{
+      id: string
+      label: string
+      required: boolean
+    }>
+    requiredConfig: Array<string>
+    auth: {
+      providerKey: string
+      ownership: "canonical-account"
+      type: "oauth"
+      required: boolean
+      allowImplicitActiveAccount: boolean
+      scopes: Array<string>
+    }
+    configContract: {
+      fields: Array<{
+        key: string
+        label: string
+        required: boolean
+        secret: boolean
+      }>
+    }
+    toolContract: {
+      namespace: string
+      tools: Array<{
+        id: string
+        label: string
+        capabilityId: string
+        description: string
+        mutates: boolean
+        requiresConfirmation: boolean
+        arguments: Array<{
+          name: string
+          type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+          description: string
+          required: boolean
+        }>
+      }>
+    }
+    state: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }
+}
+
+export type McpAppsUninstall2Response = McpAppsUninstall2Responses[keyof McpAppsUninstall2Responses]
+
+export type McpAppsConfig2Data = {
+  body?: {
+    keys: Array<string>
+  }
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/apps/{appId}/config"
+}
+
+export type McpAppsConfig2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsConfig2Error = McpAppsConfig2Errors[keyof McpAppsConfig2Errors]
+
+export type McpAppsConfig2Responses = {
+  /**
+   * Managed app snapshot with runtime attachment state
+   */
+  200: {
+    catalog: {
+      id: string
+      name: string
+      description: string
+      version: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      capabilities: Array<{
+        id: string
+        label: string
+        kind: "tool" | "oauth" | "resource" | "service"
+        description: string
+        operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+      }>
+      permissions: Array<{
+        id: string
+        label: string
+        required: boolean
+      }>
+      requiredConfig: Array<string>
+      auth: {
+        providerKey: string
+        ownership: "canonical-account"
+        type: "oauth"
+        required: boolean
+        allowImplicitActiveAccount: boolean
+        scopes: Array<string>
+      }
+      configContract: {
+        fields: Array<{
+          key: string
+          label: string
+          required: boolean
+          secret: boolean
+        }>
+      }
+      toolContract: {
+        namespace: string
+        tools: Array<{
+          id: string
+          label: string
+          capabilityId: string
+          description: string
+          mutates: boolean
+          requiresConfirmation: boolean
+          arguments: Array<{
+            name: string
+            type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+            description: string
+            required: boolean
+          }>
+        }>
+      }
+    }
+    persisted: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtime: {
+      appId: string
+      status: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+      attachment?: {
+        owner: "system" | "session"
+        ownerId: string
+        attachedAt: number
+      }
+    }
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }
+}
+
+export type McpAppsConfig2Response = McpAppsConfig2Responses[keyof McpAppsConfig2Responses]
+
+export type McpAppsEnable2Data = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/apps/{appId}/enable"
+}
+
+export type McpAppsEnable2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsEnable2Error = McpAppsEnable2Errors[keyof McpAppsEnable2Errors]
+
+export type McpAppsEnable2Responses = {
+  /**
+   * Managed app snapshot
+   */
+  200: {
+    id: string
+    name: string
+    description: string
+    version: string
+    source: {
+      type: "builtin"
+      owner: "opencode"
+      package: string
+      entrypoint: string
+      localOnly: true
+    }
+    capabilities: Array<{
+      id: string
+      label: string
+      kind: "tool" | "oauth" | "resource" | "service"
+      description: string
+      operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+    }>
+    permissions: Array<{
+      id: string
+      label: string
+      required: boolean
+    }>
+    requiredConfig: Array<string>
+    auth: {
+      providerKey: string
+      ownership: "canonical-account"
+      type: "oauth"
+      required: boolean
+      allowImplicitActiveAccount: boolean
+      scopes: Array<string>
+    }
+    configContract: {
+      fields: Array<{
+        key: string
+        label: string
+        required: boolean
+        secret: boolean
+      }>
+    }
+    toolContract: {
+      namespace: string
+      tools: Array<{
+        id: string
+        label: string
+        capabilityId: string
+        description: string
+        mutates: boolean
+        requiresConfirmation: boolean
+        arguments: Array<{
+          name: string
+          type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+          description: string
+          required: boolean
+        }>
+      }>
+    }
+    state: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }
+}
+
+export type McpAppsEnable2Response = McpAppsEnable2Responses[keyof McpAppsEnable2Responses]
+
+export type McpAppsDisable2Data = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/apps/{appId}/disable"
+}
+
+export type McpAppsDisable2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsDisable2Error = McpAppsDisable2Errors[keyof McpAppsDisable2Errors]
+
+export type McpAppsDisable2Responses = {
+  /**
+   * Managed app snapshot
+   */
+  200: {
+    id: string
+    name: string
+    description: string
+    version: string
+    source: {
+      type: "builtin"
+      owner: "opencode"
+      package: string
+      entrypoint: string
+      localOnly: true
+    }
+    capabilities: Array<{
+      id: string
+      label: string
+      kind: "tool" | "oauth" | "resource" | "service"
+      description: string
+      operations: Array<"list" | "read" | "create" | "update" | "delete" | "query">
+    }>
+    permissions: Array<{
+      id: string
+      label: string
+      required: boolean
+    }>
+    requiredConfig: Array<string>
+    auth: {
+      providerKey: string
+      ownership: "canonical-account"
+      type: "oauth"
+      required: boolean
+      allowImplicitActiveAccount: boolean
+      scopes: Array<string>
+    }
+    configContract: {
+      fields: Array<{
+        key: string
+        label: string
+        required: boolean
+        secret: boolean
+      }>
+    }
+    toolContract: {
+      namespace: string
+      tools: Array<{
+        id: string
+        label: string
+        capabilityId: string
+        description: string
+        mutates: boolean
+        requiresConfirmation: boolean
+        arguments: Array<{
+          name: string
+          type: "string" | "string[]" | "datetime" | "datetime[]" | "number" | "boolean" | "object"
+          description: string
+          required: boolean
+        }>
+      }>
+    }
+    state: {
+      appId: string
+      source: {
+        type: "builtin"
+        owner: "opencode"
+        package: string
+        entrypoint: string
+        localOnly: true
+      }
+      installState: "available" | "installing" | "installed" | "uninstalling"
+      enableState: "disabled" | "enabled"
+      configStatus: "unknown" | "required" | "configured" | "invalid"
+      config?: {
+        keys: Array<string>
+        updatedAt: number
+      }
+      error?: {
+        code: string
+        message: string
+        ts: number
+      }
+      installedAt?: number
+      updatedAt: number
+    }
+    authBinding: {
+      providerKey: string
+      accountId?: string
+      status: "not_required" | "required" | "authenticated" | "invalid"
+    }
+    runtimeStatus: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    operator: {
+      install: "available" | "installed"
+      auth: "not_required" | "required" | "authenticated" | "invalid"
+      config: "not_required" | "required" | "configured" | "invalid"
+      runtime: "inactive" | "ready" | "error"
+      error: "none" | "auth_required" | "invalid_auth" | "invalid_config" | "runtime_error"
+    }
+  }
+}
+
+export type McpAppsDisable2Response = McpAppsDisable2Responses[keyof McpAppsDisable2Responses]
+
+export type McpAppsRuntime2Data = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/apps/{appId}/runtime"
+}
+
+export type McpAppsRuntime2Errors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsRuntime2Error = McpAppsRuntime2Errors[keyof McpAppsRuntime2Errors]
+
+export type McpAppsRuntime2Responses = {
+  /**
+   * Managed app runtime snapshot
+   */
+  200: {
+    appId: string
+    status: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    attachment?: {
+      owner: "system" | "session"
+      ownerId: string
+      attachedAt: number
+    }
+  }
+}
+
+export type McpAppsRuntime2Response = McpAppsRuntime2Responses[keyof McpAppsRuntime2Responses]
+
+export type McpAppsUsage2Data = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/apps/{appId}/usage"
+}
+
+export type McpAppsUsage2Errors = {
+  /**
+   * Managed app requires explicit authentication binding
+   */
+  401: {
+    appId: string
+    status: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    reason: "unauthenticated" | "misconfigured" | "runtime_error"
+    code: string
+    message: string
+  }
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Managed app is misconfigured
+   */
+  409: {
+    appId: string
+    status: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    reason: "unauthenticated" | "misconfigured" | "runtime_error"
+    code: string
+    message: string
+  }
+  /**
+   * Managed app hit a runtime error
+   */
+  503: {
+    appId: string
+    status: "ready" | "disabled" | "error" | "pending_config" | "pending_install" | "pending_auth"
+    reason: "unauthenticated" | "misconfigured" | "runtime_error"
+    code: string
+    message: string
+  }
+}
+
+export type McpAppsUsage2Error = McpAppsUsage2Errors[keyof McpAppsUsage2Errors]
+
+export type McpAppsUsage2Responses = {
+  /**
+   * Managed app usage is ready
+   */
+  200: null
+}
+
+export type McpAppsUsage2Response = McpAppsUsage2Responses[keyof McpAppsUsage2Responses]
+
+export type McpAppsOauthConnect2Data = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/apps/{appId}/oauth/connect"
+}
+
+export type McpAppsOauthConnect2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsOauthConnect2Error = McpAppsOauthConnect2Errors[keyof McpAppsOauthConnect2Errors]
+
+export type McpAppsOauthCallback2Data = {
+  body?: never
+  path: {
+    appId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/apps/{appId}/oauth/callback"
+}
+
+export type McpAppsOauthCallback2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type McpAppsOauthCallback2Error = McpAppsOauthCallback2Errors[keyof McpAppsOauthCallback2Errors]
+
+export type McpAppsOauthCallback2Responses = {
+  /**
+   * OAuth completed, shows success page
+   */
+  200: unknown
+}
+
 export type McpStatus2Data = {
   body?: never
   path?: never
@@ -13010,6 +15780,549 @@ export type KillswitchTaskControl2Responses = {
 }
 
 export type KillswitchTaskControl2Response = KillswitchTaskControl2Responses[keyof KillswitchTaskControl2Responses]
+
+export type CronJobsList2Data = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/cron/jobs"
+}
+
+export type CronJobsList2Responses = {
+  /**
+   * Array of cron jobs
+   */
+  200: Array<{
+    id: string
+    name: string
+    description?: string
+    enabled: boolean
+    deleteAfterRun?: boolean
+    createdAtMs: number
+    updatedAtMs: number
+    schedule:
+      | {
+          kind: "at"
+          at: string
+        }
+      | {
+          kind: "every"
+          everyMs: number
+          anchorMs?: number
+        }
+      | {
+          kind: "cron"
+          expr: string
+          tz?: string
+          staggerMs?: number
+        }
+    sessionTarget: "main" | "isolated"
+    wakeMode: "next-heartbeat" | "now"
+    payload:
+      | {
+          kind: "systemEvent"
+          text: string
+        }
+      | {
+          kind: "agentTurn"
+          message: string
+          model?: string
+          timeoutSeconds?: number
+          lightContext?: boolean
+        }
+    delivery?: {
+      mode: "none" | "announce" | "webhook"
+      webhookUrl?: string
+      webhookBearerToken?: string
+      announceSessionID?: string
+      bestEffort?: boolean
+    }
+    failureAlert?:
+      | false
+      | {
+          after?: number
+          cooldownMs?: number
+        }
+    state: {
+      nextRunAtMs?: number
+      runningAtMs?: number
+      lastRunAtMs?: number
+      lastRunStatus?: "ok" | "error" | "skipped"
+      lastError?: string
+      lastErrorReason?: string
+      lastDurationMs?: number
+      consecutiveErrors?: number
+      lastFailureAlertAtMs?: number
+      scheduleErrorCount?: number
+      lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
+      lastDeliveryError?: string
+    }
+  }>
+}
+
+export type CronJobsList2Response = CronJobsList2Responses[keyof CronJobsList2Responses]
+
+export type CronJobsCreate2Data = {
+  body?: {
+    name: string
+    description?: string
+    enabled?: boolean
+    schedule:
+      | {
+          kind: "at"
+          at: string
+        }
+      | {
+          kind: "every"
+          everyMs: number
+          anchorMs?: number
+        }
+      | {
+          kind: "cron"
+          expr: string
+          tz?: string
+          staggerMs?: number
+        }
+    payload:
+      | {
+          kind: "systemEvent"
+          text: string
+        }
+      | {
+          kind: "agentTurn"
+          message: string
+          model?: string
+          timeoutSeconds?: number
+          lightContext?: boolean
+        }
+    delivery?: {
+      mode: "none" | "announce" | "webhook"
+      webhookUrl?: string
+      webhookBearerToken?: string
+      announceSessionID?: string
+      bestEffort?: boolean
+    }
+    sessionTarget?: "main" | "isolated"
+    wakeMode?: "next-heartbeat" | "now"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/cron/jobs"
+}
+
+export type CronJobsCreate2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type CronJobsCreate2Error = CronJobsCreate2Errors[keyof CronJobsCreate2Errors]
+
+export type CronJobsCreate2Responses = {
+  /**
+   * Created cron job
+   */
+  201: {
+    id: string
+    name: string
+    description?: string
+    enabled: boolean
+    deleteAfterRun?: boolean
+    createdAtMs: number
+    updatedAtMs: number
+    schedule:
+      | {
+          kind: "at"
+          at: string
+        }
+      | {
+          kind: "every"
+          everyMs: number
+          anchorMs?: number
+        }
+      | {
+          kind: "cron"
+          expr: string
+          tz?: string
+          staggerMs?: number
+        }
+    sessionTarget: "main" | "isolated"
+    wakeMode: "next-heartbeat" | "now"
+    payload:
+      | {
+          kind: "systemEvent"
+          text: string
+        }
+      | {
+          kind: "agentTurn"
+          message: string
+          model?: string
+          timeoutSeconds?: number
+          lightContext?: boolean
+        }
+    delivery?: {
+      mode: "none" | "announce" | "webhook"
+      webhookUrl?: string
+      webhookBearerToken?: string
+      announceSessionID?: string
+      bestEffort?: boolean
+    }
+    failureAlert?:
+      | false
+      | {
+          after?: number
+          cooldownMs?: number
+        }
+    state: {
+      nextRunAtMs?: number
+      runningAtMs?: number
+      lastRunAtMs?: number
+      lastRunStatus?: "ok" | "error" | "skipped"
+      lastError?: string
+      lastErrorReason?: string
+      lastDurationMs?: number
+      consecutiveErrors?: number
+      lastFailureAlertAtMs?: number
+      scheduleErrorCount?: number
+      lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
+      lastDeliveryError?: string
+    }
+  }
+}
+
+export type CronJobsCreate2Response = CronJobsCreate2Responses[keyof CronJobsCreate2Responses]
+
+export type CronJobsDelete2Data = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/cron/jobs/{id}"
+}
+
+export type CronJobsDelete2Errors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type CronJobsDelete2Error = CronJobsDelete2Errors[keyof CronJobsDelete2Errors]
+
+export type CronJobsDelete2Responses = {
+  /**
+   * Job deleted
+   */
+  200: unknown
+}
+
+export type CronJobsGet2Data = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/cron/jobs/{id}"
+}
+
+export type CronJobsGet2Errors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type CronJobsGet2Error = CronJobsGet2Errors[keyof CronJobsGet2Errors]
+
+export type CronJobsGet2Responses = {
+  /**
+   * Cron job
+   */
+  200: {
+    id: string
+    name: string
+    description?: string
+    enabled: boolean
+    deleteAfterRun?: boolean
+    createdAtMs: number
+    updatedAtMs: number
+    schedule:
+      | {
+          kind: "at"
+          at: string
+        }
+      | {
+          kind: "every"
+          everyMs: number
+          anchorMs?: number
+        }
+      | {
+          kind: "cron"
+          expr: string
+          tz?: string
+          staggerMs?: number
+        }
+    sessionTarget: "main" | "isolated"
+    wakeMode: "next-heartbeat" | "now"
+    payload:
+      | {
+          kind: "systemEvent"
+          text: string
+        }
+      | {
+          kind: "agentTurn"
+          message: string
+          model?: string
+          timeoutSeconds?: number
+          lightContext?: boolean
+        }
+    delivery?: {
+      mode: "none" | "announce" | "webhook"
+      webhookUrl?: string
+      webhookBearerToken?: string
+      announceSessionID?: string
+      bestEffort?: boolean
+    }
+    failureAlert?:
+      | false
+      | {
+          after?: number
+          cooldownMs?: number
+        }
+    state: {
+      nextRunAtMs?: number
+      runningAtMs?: number
+      lastRunAtMs?: number
+      lastRunStatus?: "ok" | "error" | "skipped"
+      lastError?: string
+      lastErrorReason?: string
+      lastDurationMs?: number
+      consecutiveErrors?: number
+      lastFailureAlertAtMs?: number
+      scheduleErrorCount?: number
+      lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
+      lastDeliveryError?: string
+    }
+  }
+}
+
+export type CronJobsGet2Response = CronJobsGet2Responses[keyof CronJobsGet2Responses]
+
+export type CronJobsUpdate2Data = {
+  body?: {
+    name?: string
+    description?: string
+    enabled?: boolean
+    schedule?:
+      | {
+          kind: "at"
+          at: string
+        }
+      | {
+          kind: "every"
+          everyMs: number
+          anchorMs?: number
+        }
+      | {
+          kind: "cron"
+          expr: string
+          tz?: string
+          staggerMs?: number
+        }
+    payload?:
+      | {
+          kind: "systemEvent"
+          text: string
+        }
+      | {
+          kind: "agentTurn"
+          message: string
+          model?: string
+          timeoutSeconds?: number
+          lightContext?: boolean
+        }
+    delivery?: {
+      mode: "none" | "announce" | "webhook"
+      webhookUrl?: string
+      webhookBearerToken?: string
+      announceSessionID?: string
+      bestEffort?: boolean
+    }
+    sessionTarget?: "main" | "isolated"
+    wakeMode?: "next-heartbeat" | "now"
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/cron/jobs/{id}"
+}
+
+export type CronJobsUpdate2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type CronJobsUpdate2Error = CronJobsUpdate2Errors[keyof CronJobsUpdate2Errors]
+
+export type CronJobsUpdate2Responses = {
+  /**
+   * Updated cron job
+   */
+  200: {
+    id: string
+    name: string
+    description?: string
+    enabled: boolean
+    deleteAfterRun?: boolean
+    createdAtMs: number
+    updatedAtMs: number
+    schedule:
+      | {
+          kind: "at"
+          at: string
+        }
+      | {
+          kind: "every"
+          everyMs: number
+          anchorMs?: number
+        }
+      | {
+          kind: "cron"
+          expr: string
+          tz?: string
+          staggerMs?: number
+        }
+    sessionTarget: "main" | "isolated"
+    wakeMode: "next-heartbeat" | "now"
+    payload:
+      | {
+          kind: "systemEvent"
+          text: string
+        }
+      | {
+          kind: "agentTurn"
+          message: string
+          model?: string
+          timeoutSeconds?: number
+          lightContext?: boolean
+        }
+    delivery?: {
+      mode: "none" | "announce" | "webhook"
+      webhookUrl?: string
+      webhookBearerToken?: string
+      announceSessionID?: string
+      bestEffort?: boolean
+    }
+    failureAlert?:
+      | false
+      | {
+          after?: number
+          cooldownMs?: number
+        }
+    state: {
+      nextRunAtMs?: number
+      runningAtMs?: number
+      lastRunAtMs?: number
+      lastRunStatus?: "ok" | "error" | "skipped"
+      lastError?: string
+      lastErrorReason?: string
+      lastDurationMs?: number
+      consecutiveErrors?: number
+      lastFailureAlertAtMs?: number
+      scheduleErrorCount?: number
+      lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
+      lastDeliveryError?: string
+    }
+  }
+}
+
+export type CronJobsUpdate2Response = CronJobsUpdate2Responses[keyof CronJobsUpdate2Responses]
+
+export type CronJobsRuns2Data = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/cron/jobs/{id}/runs"
+}
+
+export type CronJobsRuns2Errors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type CronJobsRuns2Error = CronJobsRuns2Errors[keyof CronJobsRuns2Errors]
+
+export type CronJobsRuns2Responses = {
+  /**
+   * Array of run log entries
+   */
+  200: Array<{
+    jobId: string
+    runId: string
+    startedAtMs: number
+    completedAtMs?: number
+    status?: "ok" | "error" | "skipped"
+    error?: string
+    summary?: string
+    sessionId?: string
+    durationMs?: number
+    deliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
+  }>
+}
+
+export type CronJobsRuns2Response = CronJobsRuns2Responses[keyof CronJobsRuns2Responses]
+
+export type CronJobsTrigger2Data = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/cron/jobs/{id}/run"
+}
+
+export type CronJobsTrigger2Errors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type CronJobsTrigger2Error = CronJobsTrigger2Errors[keyof CronJobsTrigger2Errors]
+
+export type CronJobsTrigger2Responses = {
+  /**
+   * Job triggered
+   */
+  200: unknown
+}
 
 export type FindText2Data = {
   body?: never

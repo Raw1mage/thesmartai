@@ -1,16 +1,37 @@
 import { createSignal, For, Show } from "solid-js"
 import { Button } from "@opencode-ai/ui/button"
-import type { CronJobCreateInput } from "./api"
+import type { CronJob, CronJobCreateInput, CronJobPatchInput } from "./api"
 import { CRON_PRESETS, describeCronExpr } from "./cron-utils"
 
-export function TaskCreateDialog(props: {
+/** Dual-mode dialog: create new task or edit existing one */
+export function TaskEditDialog(props: {
+  job?: CronJob
   onClose: () => void
-  onCreate: (input: CronJobCreateInput) => Promise<void>
+  onCreate?: (input: CronJobCreateInput) => Promise<void>
+  onUpdate?: (id: string, patch: CronJobPatchInput) => Promise<void>
 }) {
-  const [name, setName] = createSignal("")
-  const [prompt, setPrompt] = createSignal("")
-  const [cronExpr, setCronExpr] = createSignal("*/30 * * * *")
-  const [timezone, setTimezone] = createSignal("")
+  const isEdit = () => !!props.job
+
+  const initPrompt = () => {
+    if (!props.job) return ""
+    const p = props.job.payload
+    return p.kind === "agentTurn" ? p.message : p.kind === "systemEvent" ? p.text : ""
+  }
+  const initCron = () => {
+    if (!props.job) return "*/30 * * * *"
+    const s = props.job.schedule
+    return s.kind === "cron" ? s.expr : ""
+  }
+  const initTz = () => {
+    if (!props.job) return ""
+    const s = props.job.schedule
+    return s.kind === "cron" ? (s.tz ?? "") : ""
+  }
+
+  const [name, setName] = createSignal(props.job?.name ?? "")
+  const [prompt, setPrompt] = createSignal(initPrompt())
+  const [cronExpr, setCronExpr] = createSignal(initCron())
+  const [timezone, setTimezone] = createSignal(initTz())
   const [submitting, setSubmitting] = createSignal(false)
   const [error, setError] = createSignal<string>()
 
@@ -27,22 +48,38 @@ export function TaskCreateDialog(props: {
     setSubmitting(true)
     setError(undefined)
     try {
-      await props.onCreate({
-        name: n,
-        enabled: true,
-        schedule: {
-          kind: "cron",
-          expr: c,
-          tz: timezone().trim() || undefined,
-        },
-        payload: {
-          kind: "agentTurn",
-          message: p,
-          lightContext: true,
-        },
-        sessionTarget: "isolated",
-        wakeMode: "now",
-      })
+      if (isEdit() && props.onUpdate) {
+        await props.onUpdate(props.job!.id, {
+          name: n,
+          schedule: {
+            kind: "cron",
+            expr: c,
+            tz: timezone().trim() || undefined,
+          },
+          payload: {
+            kind: "agentTurn",
+            message: p,
+            lightContext: true,
+          },
+        })
+      } else if (props.onCreate) {
+        await props.onCreate({
+          name: n,
+          enabled: true,
+          schedule: {
+            kind: "cron",
+            expr: c,
+            tz: timezone().trim() || undefined,
+          },
+          payload: {
+            kind: "agentTurn",
+            message: p,
+            lightContext: true,
+          },
+          sessionTarget: "isolated",
+          wakeMode: "now",
+        })
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -58,7 +95,7 @@ export function TaskCreateDialog(props: {
       >
         {/* Header */}
         <div class="flex items-center justify-between px-5 py-3 border-b border-border-weak-base">
-          <h2 class="text-15-semibold text-color-primary">New Scheduled Task</h2>
+          <h2 class="text-15-semibold text-color-primary">{isEdit() ? "Edit Task" : "New Scheduled Task"}</h2>
           <button class="text-color-dimmed hover:text-color-secondary text-16-medium" onClick={props.onClose}>
             &times;
           </button>
@@ -144,10 +181,13 @@ export function TaskCreateDialog(props: {
             Cancel
           </Button>
           <Button size="small" onClick={handleSubmit} disabled={submitting()}>
-            {submitting() ? "Creating..." : "Create Task"}
+            {submitting() ? (isEdit() ? "Saving..." : "Creating...") : (isEdit() ? "Save Changes" : "Create Task")}
           </Button>
         </div>
       </div>
     </div>
   )
 }
+
+/** Backward-compatible alias */
+export const TaskCreateDialog = TaskEditDialog
