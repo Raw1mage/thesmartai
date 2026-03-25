@@ -75,8 +75,10 @@
 
   .app-market-description {
     grid-column: 1 / -1;
-    margin-top: -2px;
-    -webkit-line-clamp: 1;
+    margin-top: 0;
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
   }
 
   .app-market-tools {

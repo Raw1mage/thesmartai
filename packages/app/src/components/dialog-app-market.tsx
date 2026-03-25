@@ -270,18 +270,20 @@ export const DialogAppMarket: Component = () => {
 
                 return (
                   <div class="app-market-card flex flex-col rounded-lg border border-border-base bg-[#1a1a2e] hover:border-border-hover transition-colors overflow-hidden h-auto md:h-[220px]">
-                    {/* Title row */}
-                    <div class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 px-2.5 pt-2.5 pb-1.5 md:flex md:items-center md:gap-1.5">
-                      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1">
-                        <span class="app-market-card-title min-w-0 whitespace-normal break-words leading-tight text-[15px] font-semibold text-text-strong md:truncate md:text-13-medium md:font-medium md:text-text-base">
-                          {live().name}
-                        </span>
+                    <div class="px-2.5 pt-2.5 md:px-2 md:pt-2">
+                      <span class="app-market-card-title block min-w-0 whitespace-normal break-words leading-tight text-[15px] font-semibold text-text-strong md:truncate md:text-13-medium md:font-medium md:text-text-base">
+                        {live().name}
+                      </span>
+                    </div>
+
+                    <div class="grid min-w-0 gap-1 px-2.5 pt-1 pb-1.5 md:flex md:items-center md:gap-1.5 md:px-2 md:pt-1 md:pb-1.5">
+                      <div class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
                         <Show when={live().type}>
                           <span class="px-1 py-px rounded text-[10px] text-text-weaker bg-white/5 uppercase shrink-0">
                             {live().type}
                           </span>
                         </Show>
-                        <Show when={!isMobileViewport() && live().tools.length > 0}>
+                        <Show when={live().tools.length > 0}>
                           <span class="text-[10px] text-text-weaker shrink-0">
                             {language.t("app_market.tools_count", { count: String(live().tools.length) })}
                           </span>
@@ -321,10 +323,11 @@ export const DialogAppMarket: Component = () => {
                           {language.t(sd().labelKey as any)}
                         </span>
                       </div>
-                      <p class="app-market-description min-w-0 text-11-regular text-text-weak leading-snug overflow-hidden md:col-span-2 md:px-0 md:pb-2">
-                        {language.t("app_market.card.description", { description: live().description })}
-                      </p>
                     </div>
+
+                    <p class="app-market-description min-w-0 px-2.5 text-11-regular text-text-weak leading-snug md:px-2 md:pb-2">
+                      {language.t("app_market.card.description", { description: live().description })}
+                    </p>
 
                     {/* Tools list — fills remaining card height, scrollable */}
                     <Show when={!isMobileViewport() && live().tools.length > 0}>
