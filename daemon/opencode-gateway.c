@@ -30,6 +30,7 @@
 #include <signal.h>
 #include <time.h>
 #include <pthread.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -66,6 +67,8 @@
 #define RATE_LIMIT_WINDOW     60           /* seconds */
 #define RATE_LIMIT_TABLE_SIZE 256
 #define BAN_FILE_PATH         "/etc/opencode/banlist.txt"
+#define GOOGLE_BINDINGS_PATH_DEFAULT "/etc/opencode/google-bindings.json"
+#define GOOGLE_BINDINGS_PATH_ENV      "OPENCODE_GOOGLE_BINDINGS_PATH"
 #define BAN_TABLE_SIZE        4096         /* open-addressing hash set */
 #define BAN_CONSEC_MAX        5            /* consecutive failures before permanent ban */
 #define CONSEC_FAIL_TABLE_SIZE 256
@@ -87,6 +90,10 @@
 /* ─── Forward declarations ──────────────────────────────────────── */
 typedef struct Connection Connection;
 typedef struct PendingRequest PendingRequest;
+static void jwt_sign(const char *payload, char *out_token, size_t toklen);
+static void http_send(int fd, int status, const char *statusmsg,
+                      const char *ctype, const char *headers,
+                      const char *body, size_t bodylen);
 
 /* ─── EpollCtx: tagged context for every epoll-monitored fd ─────── */
 typedef enum {
@@ -374,6 +381,87 @@ static int json_extract_long(const char *json, const char *key, long *out) {
     if (errno != 0 || endptr == start) return 0;
     *out = value;
     return 1;
+}
+
+static int form_extract_value(const char *body, const char *field, char *out, size_t outlen) {
+    const char *p = body;
+    while (*p) {
+        char key[64] = {}, val[256] = {};
+        int n = 0;
+        while (*p && *p != '=' && n < (int)sizeof(key) - 1) key[n++] = *p++;
+        key[n] = '\0';
+        if (*p == '=') p++;
+        n = 0;
+        while (*p && *p != '&' && n < (int)sizeof(val) - 1) val[n++] = *p++;
+        val[n] = '\0';
+        if (*p == '&') p++;
+        if (strcmp(key, field) == 0) {
+            url_decode(out, val, outlen);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* Binding registry is gateway-owned and separate from shared Google OAuth token storage. */
+static int google_binding_lookup(const char *google_email, char *out_username, size_t outlen) {
+    const char *path = getenv(GOOGLE_BINDINGS_PATH_ENV);
+    if (!path) path = GOOGLE_BINDINGS_PATH_DEFAULT;
+
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        LOGW("google binding registry unavailable at %s", path);
+        return 0;
+    }
+
+    char buf[16384];
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+
+    char keypat[320];
+    if (snprintf(keypat, sizeof(keypat), "\"%s\"", google_email) >= (int)sizeof(keypat)) return 0;
+    char *p = strstr(buf, keypat);
+    if (!p) return 0;
+
+    p += strlen(keypat);
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p != ':') return 0;
+    p++;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (*p != '"') return 0;
+    p++;
+
+    char *end = strchr(p, '"');
+    if (!end) return 0;
+    size_t len = (size_t)(end - p);
+    if (len == 0 || len >= outlen) return 0;
+    memcpy(out_username, p, len);
+    out_username[len] = '\0';
+    return 1;
+}
+
+static void send_login_success(int fd, const char *username, int is_secure) {
+    char payload[512];
+    time_t exp_time = time(NULL) + JWT_EXP_SECONDS;
+    snprintf(payload, sizeof(payload),
+             "{\"sub\":\"%s\",\"exp\":%ld}", username, (long)exp_time);
+    char token[1024];
+    jwt_sign(payload, token, sizeof(token));
+
+    char js_body[2048];
+    snprintf(js_body, sizeof(js_body),
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+        "</head><body><script>"
+        "document.cookie='oc_jwt=%s; Path=/; Max-Age=%d';"
+        "window.location.replace('/');"
+        "</script></body></html>",
+        token, JWT_EXP_SECONDS);
+    http_send(fd, 200, "OK", "text/html; charset=utf-8",
+              "Cache-Control: no-store\r\n",
+              js_body, strlen(js_body));
+    LOGI("auth 200+js-cookie sent: is_secure=%d token_len=%zu",
+         is_secure, strlen(token));
 }
 
 /* ─── JWT secret persistence (DD-5) ─────────────────────────────── */
@@ -1270,6 +1358,39 @@ static void route_complete_request(PendingRequest *pr) {
     }
 
     /* Handle auth routes BEFORE JWT check — these are gateway-owned */
+    if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/auth/login/google") == 0) {
+        char google_email[256] = {};
+        if (!form_extract_value(req.body, "google_email", google_email, sizeof(google_email)) || !google_email[0]) {
+            http_send(fd, 400, "Bad Request", "text/plain", NULL,
+                      "Missing google_email", 21);
+            close(fd);
+            return;
+        }
+
+        char bound_username[256] = {};
+        if (!google_binding_lookup(google_email, bound_username, sizeof(bound_username))) {
+            LOGW("google login rejected: unbound identity '%s'", google_email);
+            http_send(fd, 403, "Forbidden", "text/plain", NULL,
+                      "Google identity is not bound to a Linux user", 46);
+            close(fd);
+            return;
+        }
+
+        struct passwd *pw = getpwnam(bound_username);
+        if (!pw) {
+            LOGW("google login rejected: bound Linux user missing for '%s' -> '%s'", google_email, bound_username);
+            http_send(fd, 403, "Forbidden", "text/plain", NULL,
+                      "Bound Linux user is unavailable", 32);
+            close(fd);
+            return;
+        }
+
+        LOGI("google login accepted: '%s' -> '%s'", google_email, bound_username);
+        send_login_success(fd, pw->pw_name, req.is_secure);
+        close(fd);
+        return;
+    }
+
     if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/auth/login") == 0) {
         goto handle_login;
     }
@@ -1356,18 +1477,8 @@ handle_login:
     if (strcmp(req.method, "POST") == 0 && strcmp(req.path, "/auth/login") == 0) {
         /* Parse form body for username/password */
         char raw_user[256] = {}, raw_pass[256] = {};
-        const char *p = req.body;
-        while (*p) {
-            char key[64] = {}, val[256] = {};
-            int n = 0;
-            while (*p && *p != '=' && n < 63) key[n++] = *p++;
-            if (*p == '=') p++;
-            n = 0;
-            while (*p && *p != '&' && n < 255) val[n++] = *p++;
-            if (*p == '&') p++;
-            if (strcmp(key, "username") == 0) url_decode(raw_user, val, sizeof(raw_user));
-            else if (strcmp(key, "password") == 0) url_decode(raw_pass, val, sizeof(raw_pass));
-        }
+        form_extract_value(req.body, "username", raw_user, sizeof(raw_user));
+        form_extract_value(req.body, "password", raw_pass, sizeof(raw_pass));
 
         if (!raw_user[0] || !raw_pass[0]) {
             serve_login_page(fd);
@@ -1431,29 +1542,7 @@ static void drain_auth_completions(void) {
             rate_limit_clear(local.peer_ip);
             consec_fail_clear(local.peer_ip);
             LOGI("auth complete: PAM success for '%s', signing JWT", local.username);
-            char payload[512];
-            time_t exp_time = time(NULL) + JWT_EXP_SECONDS;
-            snprintf(payload, sizeof(payload),
-                     "{\"sub\":\"%s\",\"exp\":%ld}", local.username, (long)exp_time);
-            char token[1024];
-            jwt_sign(payload, token, sizeof(token));
-
-            /* Set cookie via client-side JS instead of Set-Cookie header.
-               This bypasses reverse proxies that strip response headers
-               (e.g. nginx with unconditional Connection: upgrade). */
-            char js_body[2048];
-            snprintf(js_body, sizeof(js_body),
-                "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
-                "</head><body><script>"
-                "document.cookie='oc_jwt=%s; Path=/; Max-Age=%d';"
-                "window.location.replace('/');"
-                "</script></body></html>",
-                token, JWT_EXP_SECONDS);
-            http_send(local.client_fd, 200, "OK", "text/html; charset=utf-8",
-                      "Cache-Control: no-store\r\n",
-                      js_body, strlen(js_body));
-            LOGI("auth 200+js-cookie sent: is_secure=%d token_len=%zu",
-                 local.is_secure, strlen(token));
+            send_login_success(local.client_fd, local.username, local.is_secure);
         } else {
             /* PAM failure */
             rate_limit_record_failure(local.peer_ip);
