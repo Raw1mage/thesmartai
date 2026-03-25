@@ -932,7 +932,7 @@ export default function Page() {
       step: derived.step,
       href: childSessionHref(sdk.directory, child.sessionID),
       sessionID: child.sessionID,
-      startedAt: childSession?.time.created,
+      startedAt: child.dispatchedAt ?? childSession?.time.created,
     }
   })
 
@@ -1839,11 +1839,7 @@ export default function Page() {
             }}
             setPromptDockRef={(el: HTMLDivElement) => (promptDock = el)}
             activeChild={activeChildDock()}
-            onOpenChildSession={() => {
-              const child = activeChildDock()
-              if (!child) return
-              navigate(child.href)
-            }}
+            onOpenChildSession={(href) => navigate(href)}
           />
 
           <Show when={desktopFilePaneOpen()}>

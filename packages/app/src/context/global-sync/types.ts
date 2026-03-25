@@ -78,6 +78,7 @@ export type State = {
       title: string
       agent: string
       status: "running" | "handoff"
+      dispatchedAt?: number
       todo?: {
         id: string
         content: string

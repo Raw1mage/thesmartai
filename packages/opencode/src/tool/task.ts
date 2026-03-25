@@ -191,6 +191,7 @@ const SessionActiveChildPayloadSchema = z.object({
       title: z.string(),
       agent: z.string(),
       status: z.enum(["running", "handoff"]),
+      dispatchedAt: z.number().optional(),
       todo: TaskActiveChildTodoSchema.optional(),
     })
     .nullable(),
@@ -1253,7 +1254,10 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         const session = await iife(async () => {
           if (params.session_id) {
             const found = await Session.get(params.session_id).catch(() => {})
-            if (found) return found
+            // Only allow session reuse if the session was interrupted mid-execution
+            // (workflow state = "running"). A completed/idle session must not be
+            // reused for a new task — enforce new session creation unconditionally.
+            if (found?.workflow?.state === "running") return found
           }
 
           const narrowedPermissions: PermissionNext.Ruleset = toolWhitelist
@@ -1613,6 +1617,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
                   title: params.description,
                   agent: agent.name,
                   status: "running",
+                  dispatchedAt: Date.now(),
                   todo: activeChildTodo,
                 })
               }

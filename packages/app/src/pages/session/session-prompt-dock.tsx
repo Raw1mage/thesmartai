@@ -29,7 +29,7 @@ export function SessionPromptDock(props: {
     href: string
     startedAt?: number
   }
-  onOpenChildSession: () => void
+  onOpenChildSession: (href: string) => void
 }) {
   const [tick, setTick] = createSignal(0)
 
@@ -83,7 +83,7 @@ export function SessionPromptDock(props: {
                     }
                     event.preventDefault()
                     event.stopPropagation()
-                    props.onOpenChildSession()
+                    props.onOpenChildSession(child().href)
                   }}
                 >
                   <Icon name="square-arrow-top-right" size="small" />
