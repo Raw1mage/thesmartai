@@ -478,10 +478,13 @@ static int b64url_decode(const char *in, uint8_t *out, size_t outcap, size_t *ou
 
 static int json_extract_string(const char *json, const char *key, char *out, size_t outlen) {
     char pattern[64];
-    snprintf(pattern, sizeof(pattern), "\"%s\":\"", key);
+    snprintf(pattern, sizeof(pattern), "\"%s\":", key);
     char *start = strstr(json, pattern);
     if (!start) return 0;
     start += strlen(pattern);
+    while (*start == ' ' || *start == '\t' || *start == '\n' || *start == '\r') start++;
+    if (*start != '"') return 0;
+    start++;
     char *end = strchr(start, '"');
     if (!end) return 0;
     size_t len = (size_t)(end - start);
@@ -497,6 +500,7 @@ static int json_extract_long(const char *json, const char *key, long *out) {
     char *start = strstr(json, pattern);
     if (!start) return 0;
     start += strlen(pattern);
+    while (*start == ' ' || *start == '\t' || *start == '\n' || *start == '\r') start++;
     char *endptr = NULL;
     errno = 0;
     long value = strtol(start, &endptr, 10);
