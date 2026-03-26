@@ -3,11 +3,15 @@ import { useNavigate, useParams } from "@solidjs/router"
 import { Icon } from "@opencode-ai/ui/icon"
 import { ProviderIcon } from "@opencode-ai/ui/provider-icon"
 import { Button } from "@opencode-ai/ui/button"
+import { Select } from "@opencode-ai/ui/select"
+import { SessionTurn } from "@opencode-ai/ui/session-turn"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
+import { useSync } from "@/context/sync"
+import { useSettings } from "@/context/settings"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { DialogSelectModel, type ModelSelectResult } from "@/components/dialog-select-model"
-import { createCronApi, type CronJob } from "./api"
+import { createCronApi, type CronJob, type CronRunLogEntry } from "./api"
 import { describeCronExpr, formatRelativeTime, CRON_PRESETS } from "./cron-utils"
 import { RunHistoryPanel } from "./run-history"
 
@@ -31,7 +35,7 @@ export function TaskDetail() {
   const [name, setName] = createSignal("")
   const [prompt, setPrompt] = createSignal("")
   const [cronExpr, setCronExpr] = createSignal("*/30 * * * *")
-  const [timezone, setTimezone] = createSignal("")
+  const [timezone, setTimezone] = createSignal(DEFAULT_TIMEZONE)
   const [modelSelection, setModelSelection] = createSignal<ModelSelectResult | undefined>()
   const [dirty, setDirty] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
@@ -39,17 +43,13 @@ export function TaskDetail() {
 
   // test / output
   const [testing, setTesting] = createSignal(false)
-  const [outputLines, setOutputLines] = createSignal<OutputLine[]>([])
+  const [activeSessionId, setActiveSessionId] = createSignal<string>()
+  const [outputError, setOutputError] = createSignal<string>()
   const [runHistoryKey, setRunHistoryKey] = createSignal(0)
+  const [execLogOpen, setExecLogOpen] = createSignal(false)
 
   const isNew = () => params.jobId === "new"
   const hasJob = () => !!params.jobId && !isNew()
-
-  type OutputLine = { ts: number; text: string; kind: "info" | "ok" | "error" }
-
-  function addOutput(text: string, kind: OutputLine["kind"] = "info") {
-    setOutputLines((prev) => [...prev, { ts: Date.now(), text, kind }])
-  }
 
   // --- load job when route changes ---
   async function loadJob() {
@@ -59,10 +59,11 @@ export function TaskDetail() {
       setName("")
       setPrompt("")
       setCronExpr("*/30 * * * *")
-      setTimezone("")
+      setTimezone(DEFAULT_TIMEZONE)
       setModelSelection(undefined)
       setDirty(false)
-      setOutputLines([])
+      setActiveSessionId(undefined)
+      setOutputError(undefined)
       setLoading(false)
       return
     }
@@ -71,6 +72,11 @@ export function TaskDetail() {
       const data = await api().getJob(id)
       setJob(data)
       populateForm(data)
+      // Load latest run's session for output display
+      const runs = await api().getRuns(id, 1).catch(() => [] as CronRunLogEntry[])
+      if (runs[0]?.sessionId) {
+        setActiveSessionId(runs[0].sessionId)
+      }
     } catch {
       setJob(undefined)
     } finally {
@@ -91,7 +97,7 @@ export function TaskDetail() {
     }
     if (j.schedule.kind === "cron") {
       setCronExpr(j.schedule.expr)
-      setTimezone(j.schedule.tz ?? "")
+      setTimezone(j.schedule.tz || DEFAULT_TIMEZONE)
     }
     setDirty(false)
   }
@@ -101,6 +107,28 @@ export function TaskDetail() {
   // --- mark dirty on any field change ---
   function fieldChange<T>(setter: (v: T) => void) {
     return (v: T) => { setter(v); setDirty(true); setError(undefined) }
+  }
+
+  // --- resolve model identity for save ---
+  // Prefer current UI selection; fall back to the persisted job payload
+  // so that edits to name/prompt/schedule don't accidentally erase model.
+  function resolveModelForSave(): { model?: string; accountId?: string } {
+    const sel = modelSelection()
+    if (sel) {
+      return {
+        model: `${sel.providerID}/${sel.modelID}`,
+        accountId: sel.accountID,
+      }
+    }
+    // No explicit selection — preserve whatever was on the stored job
+    const existing = job()
+    if (existing?.payload.kind === "agentTurn" && existing.payload.model) {
+      return {
+        model: existing.payload.model,
+        accountId: existing.payload.accountId,
+      }
+    }
+    return {}
   }
 
   // --- save (create or update) ---
@@ -115,9 +143,7 @@ export function TaskDetail() {
     setSaving(true)
     setError(undefined)
     try {
-      const sel = modelSelection()
-      const modelStr = sel ? `${sel.providerID}/${sel.modelID}` : undefined
-      const accountId = sel?.accountID
+      const { model: modelStr, accountId } = resolveModelForSave()
 
       if (isNew()) {
         const created = await api().createJob({
@@ -128,7 +154,7 @@ export function TaskDetail() {
           sessionTarget: "isolated",
           wakeMode: "now",
         })
-        addOutput(`Task "${created.name}" created`, "ok")
+
         navigate(`/system/tasks/${created.id}`)
       } else {
         const j = job()
@@ -138,7 +164,7 @@ export function TaskDetail() {
           schedule: { kind: "cron", expr: c, tz: timezone().trim() || undefined },
           payload: { kind: "agentTurn", message: p, lightContext: true, model: modelStr, accountId },
         })
-        addOutput("Changes saved", "ok")
+
         await loadJob()
       }
       setDirty(false)
@@ -154,33 +180,47 @@ export function TaskDetail() {
     const j = job()
     if (!j) return
     setTesting(true)
-    addOutput(`Running test for "${j.name}"...`)
+    setActiveSessionId(undefined)
+    setOutputError(undefined)
     try {
+      // Snapshot existing run IDs so we can detect the new one
+      const existingRuns = await api().getRuns(j.id, 5).catch(() => [] as CronRunLogEntry[])
+      const knownRunIds = new Set(existingRuns.map((r) => r.runId))
+
       await api().triggerJob(j.id)
-      addOutput("Test triggered — waiting for result...", "ok")
-      // Poll for the latest run result after a delay
-      setTimeout(async () => {
-        try {
-          const runs = await api().getRuns(j.id, 1)
-          if (runs.length > 0) {
-            const run = runs[0]
-            if (run.status === "error") {
-              addOutput(`Error: ${run.error ?? "unknown"}`, "error")
-            } else if (run.summary) {
-              addOutput(run.summary, "ok")
-            } else {
-              addOutput("Run completed (no output)", "info")
-            }
-          }
-          setRunHistoryKey((k) => k + 1)
-          void loadJob()
-        } catch {
-          // ignore
+
+      // Poll until a NEW run appears — set sessionId as soon as found
+      const MAX_POLLS = 120
+      const POLL_MS = 3000
+      let run: CronRunLogEntry | undefined
+      for (let i = 0; i < MAX_POLLS; i++) {
+        await new Promise((r) => setTimeout(r, POLL_MS))
+        const runs = await api().getRuns(j.id, 5)
+        const fresh = runs.find((r) => !knownRunIds.has(r.runId))
+
+        // Show session output as soon as sessionId is available (even while running)
+        if (fresh?.sessionId && !activeSessionId()) {
+          setActiveSessionId(fresh.sessionId)
         }
-        setTesting(false)
-      }, 3000)
+
+        if (fresh?.status) {
+          run = fresh
+          break
+        }
+      }
+
+      if (!run) {
+        setOutputError("Timed out waiting for run to complete")
+      } else if (run.status === "error") {
+        setOutputError(run.error ?? "Unknown error")
+      }
+
+      setRunHistoryKey((k) => k + 1)
+      setExecLogOpen(true)
+      void loadJob()
     } catch (e) {
-      addOutput(`Test failed: ${e instanceof Error ? e.message : String(e)}`, "error")
+      setOutputError(e instanceof Error ? e.message : String(e))
+    } finally {
       setTesting(false)
     }
   }
@@ -190,7 +230,7 @@ export function TaskDetail() {
     const j = job()
     if (!j) return
     await api().updateJob(j.id, { enabled: !j.enabled })
-    addOutput(j.enabled ? "Task disabled" : "Task enabled", "ok")
+    // visual feedback via loadJob() refresh
     await loadJob()
   }
 
@@ -222,7 +262,8 @@ export function TaskDetail() {
         <div class="flex-1 flex items-center justify-center h-full text-13-medium text-color-dimmed">Task not found</div>
       }>
         <div class="flex flex-col h-full overflow-hidden">
-          {/* ─── Toolbar ─── */}
+
+          {/* ═══ Header ═══ */}
           <div class="shrink-0 flex items-center justify-between px-4 py-2 border-b border-border-base bg-background-base">
             <div class="flex items-center gap-2">
               <Show when={hasJob()}>
@@ -249,7 +290,7 @@ export function TaskDetail() {
             <div class="flex items-center gap-1.5">
               <Show when={hasJob()}>
                 <Button size="small" variant="ghost" onClick={handleTest} disabled={testing()}>
-                  <Icon name="play" size="small" />
+                  <Icon name="arrow-right" size="small" />
                   <span class="ml-1">{testing() ? "Running..." : "Test"}</span>
                 </Button>
               </Show>
@@ -268,81 +309,53 @@ export function TaskDetail() {
             </div>
           </div>
 
-          {/* ─── Main scrollable body ─── */}
-          <div class="flex-1 overflow-y-auto">
-            {/* Form fields */}
-            <div class="px-4 py-3 space-y-4 border-b border-border-weak-base">
-              {/* Name */}
-              <div>
-                <label class="block text-11-semibold text-color-dimmed uppercase tracking-wider mb-1">Name</label>
+          {/* ═══ Scrollable cards ═══ */}
+          <div class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+
+            {/* ── Prompt card ── */}
+            <div class="rounded-lg border border-border-base bg-background-base">
+              <div class="flex items-center gap-2 px-3 py-2 border-b border-border-weak-base">
+                <label class="text-11-semibold text-color-dimmed uppercase tracking-wider">Name</label>
                 <input
-                  class="w-full bg-background-input rounded border border-border-base px-3 py-2 text-13-medium text-color-primary focus:outline-none focus:border-accent-base"
+                  class="flex-1 bg-transparent text-13-medium text-color-primary focus:outline-none"
                   placeholder="e.g. Check stock alerts"
                   value={name()}
                   onInput={(e) => fieldChange(setName)(e.currentTarget.value)}
                 />
               </div>
+              <textarea
+                class="w-full min-h-[100px] max-h-[300px] resize-y bg-transparent px-3 py-2 text-13-medium text-color-primary placeholder:text-color-dimmed focus:outline-none"
+                placeholder="What should the AI do on each run?"
+                value={prompt()}
+                onInput={(e) => fieldChange(setPrompt)(e.currentTarget.value)}
+              />
+            </div>
 
-              {/* Prompt */}
-              <div>
-                <label class="block text-11-semibold text-color-dimmed uppercase tracking-wider mb-1">Prompt</label>
-                <textarea
-                  class="w-full min-h-[100px] max-h-[250px] resize-y bg-background-input rounded border border-border-base px-3 py-2 text-13-medium text-color-primary placeholder:text-color-dimmed focus:outline-none focus:border-accent-base"
-                  placeholder="What should the AI do on each run?"
-                  value={prompt()}
-                  onInput={(e) => fieldChange(setPrompt)(e.currentTarget.value)}
+            {/* ── Schedule card ── */}
+            <div class="rounded-lg border border-border-base bg-background-base px-3 py-2 space-y-2">
+              <div class="flex items-center gap-2">
+                <label class="shrink-0 text-11-semibold text-color-dimmed uppercase tracking-wider">Schedule</label>
+                <input
+                  class="w-40 bg-background-input rounded border border-border-base px-2 py-1.5 text-13-medium text-color-primary font-mono focus:outline-none focus:border-accent-base"
+                  placeholder="*/30 * * * *"
+                  value={cronExpr()}
+                  onInput={(e) => fieldChange(setCronExpr)(e.currentTarget.value)}
                 />
-              </div>
-
-              {/* Schedule */}
-              <div>
-                <label class="block text-11-semibold text-color-dimmed uppercase tracking-wider mb-1">Schedule</label>
-                <div class="flex gap-2">
-                  <input
-                    class="flex-1 bg-background-input rounded border border-border-base px-3 py-2 text-13-medium text-color-primary font-mono focus:outline-none focus:border-accent-base"
-                    placeholder="*/30 * * * *"
-                    value={cronExpr()}
-                    onInput={(e) => fieldChange(setCronExpr)(e.currentTarget.value)}
-                  />
-                  <input
-                    class="w-28 bg-background-input rounded border border-border-base px-2 py-2 text-12-medium text-color-secondary focus:outline-none focus:border-accent-base"
-                    placeholder="Timezone"
-                    value={timezone()}
-                    onInput={(e) => fieldChange(setTimezone)(e.currentTarget.value)}
-                  />
-                </div>
-                <p class="text-11-medium text-color-dimmed mt-1">{describeCronExpr(cronExpr())}</p>
+                <Select
+                  options={TIMEZONE_OPTIONS}
+                  current={TIMEZONE_OPTIONS.find((tz) => tz.value === timezone())}
+                  value={(tz) => tz.value}
+                  label={(tz) => tz.label}
+                  onSelect={(tz) => { if (tz) fieldChange(setTimezone)(tz.value) }}
+                  variant="ghost"
+                  class="max-w-[200px]"
+                  valueClass="truncate"
+                />
+                <span class="text-11-medium text-color-dimmed">{describeCronExpr(cronExpr())}</span>
                 <Show when={hasJob() && job()?.state.nextRunAtMs}>
-                  <p class="text-11-medium text-color-dimmed mt-0.5">
-                    Next: {formatRelativeTime(job()!.state.nextRunAtMs!)}
-                  </p>
+                  <span class="text-11-medium text-color-dimmed">· Next: {formatRelativeTime(job()!.state.nextRunAtMs!)}</span>
                 </Show>
               </div>
-
-              {/* Model */}
-              <div>
-                <label class="block text-11-semibold text-color-dimmed uppercase tracking-wider mb-1">Model</label>
-                <TaskModelButton
-                  selection={modelSelection()}
-                  providers={globalSync.data.provider.all ?? []}
-                  accountFamilies={globalSync.data.account_families}
-                  onOpen={() => {
-                    const sel = modelSelection()
-                    dialog.show(() => (
-                      <DialogSelectModel
-                        initialProviderId={sel?.providerID}
-                        initialAccountId={sel?.accountID}
-                        onModelSelect={(key) => {
-                          setModelSelection(key)
-                          setDirty(true)
-                        }}
-                      />
-                    ))
-                  }}
-                />
-              </div>
-
-              {/* Schedule Presets */}
               <div class="flex flex-wrap gap-1.5">
                 <For each={CRON_PRESETS}>
                   {(preset) => (
@@ -359,110 +372,163 @@ export function TaskDetail() {
                   )}
                 </For>
               </div>
-
-              <Show when={error()}>
-                <div class="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-12-medium text-red-400">
-                  {error()}
-                </div>
-              </Show>
             </div>
 
-            {/* ─── Output Console ─── */}
-            <div class="px-4 py-3 border-b border-border-weak-base">
-              <div class="flex items-center justify-between mb-2">
+            {/* ── Error banner ── */}
+            <Show when={error()}>
+              <div class="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-12-medium text-red-400">
+                {error()}
+              </div>
+            </Show>
+
+            {/* ── Output card (session conversation via SessionTurn) ── */}
+            <div class="rounded-lg border border-border-base bg-background-base overflow-hidden">
+              <div class="flex items-center justify-between px-3 py-2 border-b border-border-weak-base">
                 <span class="text-11-semibold text-color-dimmed uppercase tracking-wider">Output</span>
-                <Show when={outputLines().length > 0}>
+                <Show when={activeSessionId() || outputError()}>
                   <button
                     class="text-11-medium text-color-dimmed hover:text-color-secondary cursor-pointer"
-                    onClick={() => setOutputLines([])}
+                    onClick={() => { setActiveSessionId(undefined); setOutputError(undefined) }}
                   >
                     Clear
                   </button>
                 </Show>
               </div>
-              <div class="bg-background-input rounded border border-border-base min-h-[80px] max-h-[250px] overflow-y-auto font-mono text-12-medium">
-                <Show when={outputLines().length === 0}>
-                  <div class="px-3 py-4 text-color-dimmed text-center italic">
-                    {hasJob() ? "Click Test to run this task and see output here" : "Create the task first, then test it"}
+              <div
+                class="overflow-y-auto resize-y"
+                style={{ "min-height": "80px", height: "240px", "max-height": "600px" }}
+              >
+                <Show when={testing() && !activeSessionId()}>
+                  <div class="px-3 py-4 text-color-dimmed text-center italic text-12-medium">
+                    Starting test run...
                   </div>
                 </Show>
-                <Show when={outputLines().length > 0}>
-                  <div class="px-3 py-2 space-y-0.5">
-                    <For each={outputLines()}>
-                      {(line) => (
-                        <div classList={{
-                          "whitespace-pre-wrap break-words py-0.5": true,
-                          "text-color-secondary": line.kind === "info",
-                          "text-green-400": line.kind === "ok",
-                          "text-red-400": line.kind === "error",
-                        }}>
-                          <span class="text-color-dimmed text-11-medium mr-2 select-none">
-                            {new Date(line.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                          </span>
-                          {line.text}
-                        </div>
-                      )}
-                    </For>
+                <Show when={!testing() && !activeSessionId() && !outputError()}>
+                  <div class="px-3 py-4 text-color-dimmed text-center italic text-12-medium">
+                    {hasJob() ? "Click Test to run this task" : "Create the task first, then test it"}
                   </div>
+                </Show>
+                <Show when={outputError()}>
+                  <div class="px-3 py-2 text-red-400 text-12-medium whitespace-pre-wrap">{outputError()}</div>
+                </Show>
+                <Show when={activeSessionId()}>
+                  {(sid) => <TaskSessionOutput sessionId={sid()} />}
                 </Show>
               </div>
             </div>
 
-            {/* ─── Execution History (existing jobs only) ─── */}
+            {/* ── Execution Log card (collapsed by default) ── */}
             <Show when={hasJob() && job()}>
               {(j) => (
-                <div class="px-4 py-3">
-                  <div class="flex items-center justify-between mb-2">
+                <div class="rounded-lg border border-border-base bg-background-base overflow-hidden">
+                  <div
+                    class="w-full flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-background-input/50 transition-colors"
+                    onClick={() => setExecLogOpen((v) => !v)}
+                  >
                     <span class="text-11-semibold text-color-dimmed uppercase tracking-wider">Execution Log</span>
-                    <button
-                      class="text-11-medium text-color-dimmed hover:text-color-secondary cursor-pointer"
-                      onClick={() => setRunHistoryKey((k) => k + 1)}
+                    <div class="flex items-center gap-2">
+                      <button
+                        class="text-11-medium text-color-dimmed hover:text-color-secondary cursor-pointer"
+                        onClick={(e) => { e.stopPropagation(); setRunHistoryKey((k) => k + 1) }}
+                      >
+                        Refresh
+                      </button>
+                      <Icon
+                        name="chevron-down"
+                        size="small"
+                        class="text-color-dimmed transition-transform"
+                        style={{ transform: execLogOpen() ? "rotate(180deg)" : "rotate(0deg)" }}
+                      />
+                    </div>
+                  </div>
+                  <Show when={execLogOpen()}>
+                    <div
+                      class="border-t border-border-weak-base px-3 py-2 overflow-y-auto resize-y"
+                      style={{ "min-height": "60px", height: "160px", "max-height": "500px" }}
+                      data-key={runHistoryKey()}
                     >
-                      Refresh
-                    </button>
-                  </div>
-                  <div data-key={runHistoryKey()}>
-                    <RunHistoryPanel jobId={j().id} api={api()} />
-                  </div>
+                      <RunHistoryPanel jobId={j().id} api={api()} />
+                    </div>
+                  </Show>
                 </div>
               )}
             </Show>
           </div>
 
-          {/* ─── Job metadata footer (existing jobs only) ─── */}
-          <Show when={hasJob() && job()}>
-            {(j) => (
-              <div class="shrink-0 flex items-center gap-4 px-4 py-1.5 border-t border-border-weak-base text-11-medium text-color-dimmed">
-                <Show when={modelSelection()}>
-                  {(sel) => {
-                    const p = () => (globalSync.data.provider.all ?? []).find((p: any) => p.id === sel().providerID)
-                    const mName = () => {
-                      const m = p()?.models[sel().modelID]
-                      return m ? m.name.replace("(latest)", "").trim() : sel().modelID
-                    }
-                    const aName = () => {
-                      const aid = sel().accountID
-                      if (!aid) return undefined
-                      const family = globalSync.data.account_families?.[sel().providerID]
-                      const acc = family?.accounts?.[aid] as Record<string, unknown> | undefined
-                      return (typeof acc?.name === "string" && acc.name) || (typeof acc?.email === "string" && acc.email) || aid
-                    }
-                    return <span>{PROVIDER_LABELS[sel().providerID] ?? p()?.name ?? sel().providerID} · {mName()}{aName() ? ` · ${aName()}` : ""}</span>
-                  }}
-                </Show>
-                <span>Target: {j().sessionTarget}</span>
-                <Show when={j().state.consecutiveErrors && j().state.consecutiveErrors! > 0}>
-                  <span class="text-red-400">{j().state.consecutiveErrors} error(s)</span>
-                </Show>
-              </div>
-            )}
-          </Show>
+          {/* ═══ Footer ═══ */}
+          <div class="shrink-0 flex items-center gap-2 px-4 py-1.5 border-t border-border-weak-base">
+            <TaskModelButton
+              selection={modelSelection()}
+              providers={globalSync.data.provider.all ?? []}
+              accountFamilies={globalSync.data.account_families}
+              onOpen={() => {
+                const sel = modelSelection()
+                dialog.show(() => (
+                  <DialogSelectModel
+                    initialProviderId={sel?.providerID}
+                    initialAccountId={sel?.accountID}
+                    onModelSelect={(key) => {
+                      setModelSelection(key)
+                      const j = job()
+                      if (j) {
+                        const modelStr = `${key.providerID}/${key.modelID}`
+                        const existing = j.payload.kind === "agentTurn" ? j.payload : undefined
+                        api().updateJob(j.id, {
+                          payload: {
+                            kind: "agentTurn",
+                            message: existing?.message ?? "",
+                            lightContext: existing?.lightContext,
+                            model: modelStr,
+                            accountId: key.accountID,
+                          },
+                        }).then(() => {
+                          void loadJob()
+                        }).catch(() => {
+                          // model save failed — will show stale selection on next load
+                        })
+                      } else {
+                        setDirty(true)
+                      }
+                    }}
+                  />
+                ))
+              }}
+            />
+            <Show when={hasJob() && job()}>
+              {(j) => (
+                <>
+                  <span class="text-11-medium text-color-dimmed">Target: {j().sessionTarget}</span>
+                  <Show when={j().state.consecutiveErrors && j().state.consecutiveErrors! > 0}>
+                    <span class="text-11-medium text-red-400">{j().state.consecutiveErrors} error(s)</span>
+                  </Show>
+                </>
+              )}
+            </Show>
+          </div>
         </div>
       </Show>
     </Show>
     </Show>
   )
 }
+
+const TIMEZONE_OPTIONS = [
+  { value: "Asia/Taipei", label: "UTC+8 CST (Taipei)" },
+  { value: "Asia/Tokyo", label: "UTC+9 JST (Tokyo)" },
+  { value: "Asia/Shanghai", label: "UTC+8 CST (Shanghai)" },
+  { value: "Asia/Hong_Kong", label: "UTC+8 HKT (Hong Kong)" },
+  { value: "Asia/Singapore", label: "UTC+8 SGT (Singapore)" },
+  { value: "Asia/Seoul", label: "UTC+9 KST (Seoul)" },
+  { value: "America/New_York", label: "UTC-5 EST (New York)" },
+  { value: "America/Los_Angeles", label: "UTC-8 PST (Los Angeles)" },
+  { value: "America/Chicago", label: "UTC-6 CST (Chicago)" },
+  { value: "Europe/London", label: "UTC+0 GMT (London)" },
+  { value: "Europe/Berlin", label: "UTC+1 CET (Berlin)" },
+  { value: "Australia/Sydney", label: "UTC+11 AEDT (Sydney)" },
+  { value: "UTC", label: "UTC" },
+]
+
+const DEFAULT_TIMEZONE = "Asia/Taipei"
 
 const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
@@ -520,7 +586,7 @@ function TaskModelButton(props: {
   return (
     <button
       onClick={props.onOpen}
-      class="w-full flex items-center gap-2 rounded border border-border-base px-3 py-2 hover:border-accent-base transition-colors cursor-pointer bg-background-input"
+      class="inline-flex items-center gap-2 rounded border border-border-base px-3 py-2 hover:border-accent-base transition-colors cursor-pointer bg-background-input"
     >
       <Show when={props.selection} fallback={
         <span class="text-13-medium text-color-dimmed flex-1 text-left">Default (system rotation)</span>
@@ -554,5 +620,60 @@ function TaskModelButton(props: {
         </Show>
       </Show>
     </button>
+  )
+}
+
+/**
+ * Renders the full session conversation (CoT, tool calls, text) using SessionTurn,
+ * exactly like a regular session dialog.
+ */
+function TaskSessionOutput(props: { sessionId: string }) {
+  const sync = useSync()
+  const settings = useSettings()
+
+  // Sync session data when sessionId changes
+  createEffect(() => {
+    void sync.session.sync(props.sessionId)
+  })
+
+  // Get user messages — SessionTurn renders one turn per user message
+  const userMessages = createMemo(() => {
+    const msgs = sync.data.message[props.sessionId]
+    if (!msgs) return []
+    return msgs.filter((m) => m.role === "user")
+  })
+
+  const lastUserMessageId = createMemo(() => {
+    const msgs = userMessages()
+    return msgs.length > 0 ? msgs[msgs.length - 1].id : undefined
+  })
+
+  return (
+    <Show
+      when={userMessages().length > 0}
+      fallback={
+        <div class="px-3 py-4 text-color-dimmed text-center italic text-12-medium">
+          Loading session...
+        </div>
+      }
+    >
+      <For each={userMessages()}>
+        {(msg) => (
+          <SessionTurn
+            sessionID={props.sessionId}
+            messageID={msg.id}
+            lastUserMessageID={lastUserMessageId()}
+            shellToolDefaultOpen={settings.general.shellToolPartsExpanded()}
+            editToolDefaultOpen={settings.general.editToolPartsExpanded()}
+            showReasoningSummaries={settings.general.showReasoningSummaries()}
+            classes={{
+              root: "min-w-0 w-full",
+              content: "flex flex-col",
+              container: "w-full px-3",
+            }}
+          />
+        )}
+      </For>
+    </Show>
   )
 }

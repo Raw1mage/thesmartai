@@ -1,48 +1,20 @@
-import path from "path"
 import { ManagedAppRegistry } from "@/mcp/app-registry"
-import { Global } from "@/global"
+import { resolveGoogleAccessToken, readGAuthTokens } from "../gauth"
 import { GoogleCalendarClient } from "./client"
 import { Log } from "@/util/log"
 
 const log = Log.create({ service: "google-calendar-app" })
 
-interface GAuthTokens {
-  access_token: string
-  refresh_token: string
-  expires_at: number
-  token_type: string
-  updated_at: number
-}
-
 export namespace GoogleCalendarApp {
   const APP_ID = "google-calendar"
 
-  export async function readGAuthTokens(): Promise<GAuthTokens | null> {
-    try {
-      const gauthPath = path.join(Global.Path.config, "gauth.json")
-      const file = Bun.file(gauthPath)
-      if (!(await file.exists())) return null
-      return (await file.json()) as GAuthTokens
-    } catch {
-      return null
-    }
+  /** Exposed for status checks */
+  export function getGAuthTokens() {
+    return readGAuthTokens()
   }
 
   async function resolveAccessToken(): Promise<string> {
-    await ManagedAppRegistry.requireReady(APP_ID)
-
-    const tokens = await readGAuthTokens()
-    if (!tokens || !tokens.access_token) {
-      throw new ManagedAppRegistry.UsageStateError({
-        appId: APP_ID,
-        status: "pending_auth",
-        reason: "unauthenticated",
-        code: "MANAGED_APP_AUTH_REQUIRED",
-        message: "Google Calendar OAuth tokens not found in gauth.json",
-      })
-    }
-
-    return tokens.access_token
+    return resolveGoogleAccessToken(APP_ID)
   }
 
   function formatCalendarList(calendars: GoogleCalendarClient.CalendarListEntry[]): string {

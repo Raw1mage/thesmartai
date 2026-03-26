@@ -190,6 +190,9 @@ export const CronRoutes = lazy(() =>
 
         log.info("manual trigger via REST", { id, name: job.name })
 
+        // Force nextRunAtMs to now so the schedule gate in evaluateJob is bypassed
+        await CronStore.updateState(id, { nextRunAtMs: Date.now() - 1 })
+
         // Trigger by evaluating the job immediately via heartbeat
         // Wrap in Instance.provide() so sessions are scoped to the virtual tasks project
         try {
