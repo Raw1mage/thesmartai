@@ -1,6 +1,6 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { BasicTool } from "./basic-tool"
-import { ToolRegistry, type ToolProps } from "./message-part"
+import { ToolRegistry, type ToolProps } from "./tool-registry"
 import { Markdown } from "./markdown"
 
 interface DiagramArtifact {

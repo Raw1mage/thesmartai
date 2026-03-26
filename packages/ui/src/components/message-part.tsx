@@ -35,6 +35,7 @@ import { useDialog } from "../context/dialog"
 import { useI18n } from "../context/i18n"
 import { BasicTool } from "./basic-tool"
 import { GenericTool } from "./basic-tool"
+import { ToolRegistry, getTool, registerTool, type ToolProps, type ToolComponent } from "./tool-registry"
 import "./diagram-tool" // side-effect: registers drawmiat tool renderers
 import { Button } from "./button"
 import { Card } from "./card"
@@ -807,41 +808,7 @@ export function Part(props: MessagePartProps) {
   )
 }
 
-export interface ToolProps {
-  input: Record<string, any>
-  metadata: Record<string, any>
-  tool: string
-  output?: string
-  status?: string
-  hideDetails?: boolean
-  defaultOpen?: boolean
-  forceOpen?: boolean
-  locked?: boolean
-}
-
-export type ToolComponent = Component<ToolProps>
-
-const state: Record<
-  string,
-  {
-    name: string
-    render?: ToolComponent
-  }
-> = {}
-
-export function registerTool(input: { name: string; render?: ToolComponent }) {
-  state[input.name] = input
-  return input
-}
-
-export function getTool(name: string) {
-  return state[name]?.render
-}
-
-export const ToolRegistry = {
-  register: registerTool,
-  render: getTool,
-}
+export { ToolRegistry, getTool, registerTool, type ToolProps, type ToolComponent } from "./tool-registry"
 
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
