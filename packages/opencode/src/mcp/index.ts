@@ -696,6 +696,10 @@ export namespace MCP {
       description: "System administration tools — process management, environment inspection, and runtime control.",
       icon: "⚙️",
     },
+    drawmiat: {
+      description: "IDEF0 / Grafcet (IEC 60848) diagram renderer — generates SVG from structured JSON.",
+      icon: "📐",
+    },
   }
 
   export interface ServerApp {

@@ -128,6 +128,11 @@
       "type": "local",
       "command": ["bun", "packages/mcp/branch-cicd/src/index.ts"],
       "enabled": false
+    },
+    "drawmiat": {
+      "type": "local",
+      "command": ["/home/pkcs12/projects/drawmiat/.venv/bin/python", "-u", "/home/pkcs12/projects/drawmiat/mcp_server.py"],
+      "enabled": false
     }
   }
 }

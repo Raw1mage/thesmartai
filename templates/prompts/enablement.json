@@ -152,6 +152,21 @@
         "name": "system-manager",
         "enabled": true,
         "capability": "OpenCode runtime control, model/account switching, MCP toggling"
+      },
+      {
+        "name": "drawmiat",
+        "enabled": false,
+        "capability": "IDEF0 / Grafcet (IEC 60848) diagram renderer — generates SVG from structured JSON",
+        "tools": [
+          {
+            "name": "generate_diagram",
+            "description": "Generate SVG diagram(s) from IDEF0 or Grafcet JSON. Accepts diagram_type (grafcet|idef0), json_payload (string), and optional output_dir. Returns inline SVG + saved paths + diagnostics."
+          },
+          {
+            "name": "validate_diagram",
+            "description": "Validate IDEF0 or Grafcet JSON structure without generating SVG. Returns validation logs, warnings, and errors."
+          }
+        ]
       }
     ],
     "discovery": "Source status from global opencode.json and system-manager_get_system_status before deciding toggles."
@@ -163,6 +178,17 @@
         "keywords": ["git", "commit", "diff", "branch", "rebase", "merge"],
         "prefer": ["bash", "system-manager_execute_command"],
         "fallback": ["bash"]
+      },
+      {
+        "intent": "diagram generation (IDEF0/Grafcet)",
+        "keywords": ["idef0", "grafcet", "diagram", "svg", "draw", "render", "architecture diagram", "functional model", "sequential control"],
+        "requires_mcp": ["drawmiat"],
+        "prefer": ["drawmiat_generate_diagram", "drawmiat_validate_diagram"],
+        "fallback": ["miatdiagram skill for JSON generation, then drawmiat MCP for SVG rendering"],
+        "notes": [
+          "Use miatdiagram skill for text-to-JSON conversion, then drawmiat MCP for JSON-to-SVG rendering.",
+          "drawmiat supports hierarchical IDEF0 decomposition (multiple SVGs) and Grafcet sub-grafcets."
+        ]
       },
       {
         "intent": "repo/worktree beta loop orchestration",

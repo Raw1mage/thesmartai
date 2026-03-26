@@ -35,6 +35,7 @@ import { useDialog } from "../context/dialog"
 import { useI18n } from "../context/i18n"
 import { BasicTool } from "./basic-tool"
 import { GenericTool } from "./basic-tool"
+import "./diagram-tool" // side-effect: registers drawmiat tool renderers
 import { Button } from "./button"
 import { Card } from "./card"
 import { Icon } from "./icon"
