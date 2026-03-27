@@ -1,0 +1,97 @@
+[
+  {
+    "diagram_title": "Consolidate And Validate Durable Scheduler",
+    "scenario": "Planner and builder reconcile existing cron durability fixes, then verify that the real daemon path produces operator-visible execution evidence.",
+    "moduleRef": "A2",
+    "participants": [
+      {
+        "id": "P1",
+        "name": "Planner",
+        "type": "actor",
+        "componentRef": "C1"
+      },
+      {
+        "id": "P2",
+        "name": "Heartbeat Supervisor",
+        "type": "component",
+        "componentRef": "C2"
+      },
+      {
+        "id": "P3",
+        "name": "Cron Job Store",
+        "type": "component",
+        "componentRef": "C3"
+      },
+      {
+        "id": "P4",
+        "name": "Unix Socket Server Lifecycle",
+        "type": "component",
+        "componentRef": "C4"
+      },
+      {
+        "id": "P5",
+        "name": "Documentation Sync Surface",
+        "type": "component",
+        "componentRef": "C5"
+      }
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "P1",
+        "to": "P4",
+        "label": "start real daemon runtime",
+        "type": "sync",
+        "order": 1
+      },
+      {
+        "id": "MSG2",
+        "from": "P4",
+        "to": "P2",
+        "label": "RuntimeDaemon.start()",
+        "type": "sync",
+        "order": 2
+      },
+      {
+        "id": "MSG3",
+        "from": "P2",
+        "to": "P3",
+        "label": "listEnabled() / recoverSchedules()",
+        "type": "sync",
+        "order": 3
+      },
+      {
+        "id": "MSG4",
+        "from": "P3",
+        "to": "P2",
+        "label": "persist nextRunAtMs / run state",
+        "type": "return",
+        "order": 4
+      },
+      {
+        "id": "MSG5",
+        "from": "P2",
+        "to": "P5",
+        "label": "emit validation evidence for run log and execution history",
+        "type": "sync",
+        "order": 5
+      },
+      {
+        "id": "MSG6",
+        "from": "P5",
+        "to": "P1",
+        "label": "record event + architecture sync result",
+        "type": "return",
+        "order": 6
+      }
+    ],
+    "fragments": [
+      {
+        "id": "FRAG1",
+        "type": "alt",
+        "label": "If runtime evidence is missing, stop and re-enter planning",
+        "messageRefs": ["MSG5", "MSG6"]
+      }
+    ]
+  }
+]

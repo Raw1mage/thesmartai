@@ -1,0 +1,89 @@
+{
+  "diagram_title": "Durable Cron Scheduler Consolidation",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Consolidate Scheduler Baseline",
+      "description": "Normalize current cron durability truth from specs, architecture, and runtime event evidence.",
+      "decomposition": null
+    },
+    {
+      "id": "A2",
+      "title": "Harden Runtime Evidence",
+      "description": "Define and execute regression plus live validation around daemon lifecycle and heartbeat execution proof.",
+      "decomposition": null
+    },
+    {
+      "id": "A3",
+      "title": "Sync Durable Scheduler Documentation",
+      "description": "Write event and architecture verification so future work inherits an accurate scheduler baseline.",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    {
+      "id": "AR1",
+      "source": "EXTERNAL",
+      "target": "A1:input",
+      "label": "Plan Intent",
+      "type": "input"
+    },
+    {
+      "id": "AR2",
+      "source": "EXTERNAL",
+      "target": "A1:control",
+      "label": "Architecture And Event Evidence",
+      "type": "control"
+    },
+    {
+      "id": "AR3",
+      "source": "A1:output",
+      "target": "A2:input",
+      "label": "Consolidated Baseline",
+      "type": "output"
+    },
+    {
+      "id": "AR4",
+      "source": "EXTERNAL",
+      "target": "A2:control",
+      "label": "Fail-Fast Validation Policy",
+      "type": "control"
+    },
+    {
+      "id": "AR5",
+      "source": "A2:output",
+      "target": "A3:input",
+      "label": "Validated Runtime Evidence",
+      "type": "output"
+    },
+    {
+      "id": "AR6",
+      "source": "A3:output",
+      "target": "EXTERNAL",
+      "label": "Execution-Ready Plan Package",
+      "type": "output"
+    },
+    {
+      "id": "AR7",
+      "source": "EXTERNAL",
+      "target": "A1:mechanism",
+      "label": "Planner Artifacts And Cron Modules",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR8",
+      "source": "EXTERNAL",
+      "target": "A2:mechanism",
+      "label": "Cron Tests And Web Runtime",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR9",
+      "source": "EXTERNAL",
+      "target": "A3:mechanism",
+      "label": "Event Log And Architecture SSOT",
+      "type": "mechanism"
+    }
+  ]
+}

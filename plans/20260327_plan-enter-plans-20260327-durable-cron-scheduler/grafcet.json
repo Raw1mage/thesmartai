@@ -1,0 +1,62 @@
+[
+  {
+    "StepNumber": 0,
+    "ModuleRef": "A1",
+    "StepType": "initial",
+    "StepAction": "Load Scheduler Evidence",
+    "LinkInputType": [],
+    "LinkInputNumber": [],
+    "LinkOutputNumber": [1],
+    "LinkOutputType": "track",
+    "Condition": ["planning_started"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 1,
+    "ModuleRef": "A1",
+    "StepType": "normal",
+    "StepAction": "Consolidate Current Baseline",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [0],
+    "LinkOutputNumber": [2, 4],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["baseline_aligned", "scope_conflict_detected"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 2,
+    "ModuleRef": "A2",
+    "StepType": "normal",
+    "StepAction": "Run Hardening Validation",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [3, 4],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["runtime_evidence_present", "runtime_evidence_missing"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 3,
+    "ModuleRef": "A3",
+    "StepType": "normal",
+    "StepAction": "Sync Planner And Event Docs",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [2],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["docs_synced"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 4,
+    "ModuleRef": "A2",
+    "StepType": "normal",
+    "StepAction": "Stop For Replanning",
+    "LinkInputType": ["convergence_or"],
+    "LinkInputNumber": [1, 2],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["user_decision_needed_or_runtime_failure"],
+    "SubGrafcet": []
+  }
+]
