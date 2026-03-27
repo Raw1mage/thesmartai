@@ -386,6 +386,14 @@ Space {
 - `packages/opencode/src/session/usage-cache-reuse.test.ts` verifies by-token cached usage is preserved as `tokens.cache.read` for telemetry/accounting.
 - `packages/opencode/src/session/usage-by-request.test.ts` verifies by-request provider models with zero token rates remain cost-insensitive in local accounting even with very large input token counts.
 
+**Production Telemetry (2026-03-27, 15 V2 child sessions, OpenAI gpt-5.4)**:
+
+- Forward path confirmed: child first-round input avg 102K tokens (12.4x vs V1's 8.2K), avg 109.8 parent messages prepended.
+- R2+ cache hit rate: **92.0%** overall; short-task children (3-5 rounds) reach 98-99%.
+- Return path confirmed: `<child_session_output>` synthetic user messages contain child's last 3 assistant outputs (avg 1.5K chars), parent correctly integrates into orchestration flow.
+- Cache stability: only 2 isolated misses across all 15 sessions (OpenAI eviction timing), all other rounds show stable prefix hit.
+- By-request (Copilot) validation deferred — no child dispatches observed in window.
+
 **Config** (`config.compaction`):
 
 - `sharedContext: boolean` (default true) — disable entirely

@@ -16,13 +16,13 @@
 
 - [x] 3.1 SharedContext injection 相關 code 標記為 compaction-only
 - [x] 3.2 評估 child skip AGENTS.md 邏輯 — 保留現狀，等待驗證證據
-- [ ] 3.3 驗證 child compaction 不進入 oscillation（對應 T9）
-- [ ] 3.4 驗證 child 第一輪 LLM call 包含完整 parent history + separator（對應 T10）
-- [ ] 3.5 驗證 by-token provider cache reuse（對應 T11）
-- [ ] 3.6 驗證 by-request provider 成本不受 full prefix 影響（對應 T12）
+- [ ] 3.3 驗證 child compaction 不進入 oscillation — 待長 session 觀察，目前無異常
+- [x] 3.4 驗證 child 第一輪 LLM call 包含完整 parent history + separator — **confirmed**: 12.4x input increase, avg 109.8 parent msgs prepended
+- [x] 3.5 驗證 by-token provider cache reuse — **confirmed**: 92% R2+ cache hit rate across 15 V2 child sessions (OpenAI gpt-5.4)
+- [~] 3.6 驗證 by-request provider 成本不受 full prefix 影響 — no Copilot child dispatches in observation window, deferred
 
 ## 4. Documentation Sync
 
 - [x] 4.1 建立 / 對齊 event log (`docs/events/event_20260327_context_sharing_v2.md`)
-- [ ] 4.2 同步 `specs/architecture.md` 為 V2 真相（對應 T14）
-- [ ] 4.3 回填驗證證據與決策結論到 event / architecture
+- [x] 4.2 同步 `specs/architecture.md` 為 V2 真相 — production telemetry evidence appended
+- [x] 4.3 回填驗證證據與決策結論到 event / architecture — done

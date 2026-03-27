@@ -75,9 +75,27 @@
   - 證據：repo 對 by-request provider 採 `cost=0` posture，本地 accounting 對大 input token 仍維持 `usage.cost === 0`
   - 限制：僅證明本地 accounting / compaction posture，不等於外部供應商帳單實測
 
+## Production Telemetry (2026-03-27)
+
+15 V2 child sessions observed (all OpenAI gpt-5.4):
+
+| Metric | V1 (legacy) | V2 (active) |
+|---|---|---|
+| Child first-round input tokens | 8,208 avg | 102,101 avg (**12.4x**) |
+| Parent messages in child prefix | 1 | 109.8 avg |
+| R2+ cache hit rate | N/A | **92.0%** |
+| Short-task (3-5 rounds) cache | N/A | 98-99% |
+| Return path content | ~200 chars diff | ~1.5K chars (last 3 outputs) |
+
+- Forward path: all 15 children received complete parent history as stable prefix.
+- Cache stability: 2 isolated misses across all sessions (OpenAI eviction timing).
+- Return path: `<child_session_output>` synthetic user messages confirmed in parent storage; parent correctly integrates into orchestration flow.
+- By-request (Copilot): no child dispatches in observation window, deferred.
+
 ## Architecture Sync
 Architecture Sync: Completed
 
 Basis:
 - `specs/architecture.md` 已改寫 Shared Context 章節：V2 以 parent message forwarding 為主橋接、移除 dispatch-time snapshot injection authority、保留 SharedContext 作 compaction / observability 與 merge target。
-- 文件亦回填 2026-03-27 的驗證測試檔與證據邊界。 
+- 文件亦回填 2026-03-27 的驗證測試檔與證據邊界。
+- Production telemetry evidence appended (2026-03-27).
