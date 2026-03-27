@@ -67,6 +67,22 @@ export function resolveBetaAdmissionAuthority(mission: Session.Info["mission"]):
   }
 }
 
+/**
+ * Parse beta admission answers from AI response text.
+ * Expects lines like "- mainRepo: /some/path" or "mainRepo: /some/path".
+ */
+export function parseAdmissionAnswersFromText(text: string): Partial<Record<BetaAdmissionField, string>> {
+  const answers: Partial<Record<BetaAdmissionField, string>> = {}
+  for (const field of BETA_ADMISSION_FIELDS) {
+    const regex = new RegExp(`(?:^|\\n)\\s*-?\\s*${field}\\s*:\\s*(.+?)\\s*(?:\\n|$)`, "i")
+    const match = text.match(regex)
+    if (match) {
+      answers[field] = match[1].trim()
+    }
+  }
+  return answers
+}
+
 export function evaluateBetaAdmissionAnswers(input: {
   authority: BetaAdmissionAuthority
   answers: Partial<Record<BetaAdmissionField, string>>

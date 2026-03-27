@@ -12,8 +12,6 @@ import { Instance } from "../project/instance"
 import { Todo } from "../session/todo"
 import { plannerArtifacts } from "../session/planner-layout"
 import { extractChecklistItems } from "../session/tasks-checklist"
-import { BETA_ADMISSION_FIELDS, resolveBetaAdmissionAuthority } from "../session/mission-consumption"
-import { recordBetaAdmissionResult } from "../session/workflow-runner"
 import EXIT_DESCRIPTION from "./plan-exit.txt"
 import ENTER_DESCRIPTION from "./plan-enter.txt"
 
@@ -1036,30 +1034,8 @@ function materializePlanTodos(input: { implementationSpec: string; tasks: string
   return todos
 }
 
-async function askBetaAdmissionQuiz(input: {
-  sessionID: string
-  tool?: { messageID: string; callID: string }
-  mission: Session.MissionContract
-  reflection: boolean
-}) {
-  const authority = resolveBetaAdmissionAuthority(input.mission)
-  const promptPrefix = input.reflection
-    ? "Beta admission mismatch detected. Reflect and answer again exactly from authoritative metadata."
-    : "Before beta-enabled build entry, answer the admission quiz exactly from authoritative metadata."
-  const answers = await Question.ask({
-    sessionID: input.sessionID,
-    questions: BETA_ADMISSION_FIELDS.map((field) => ({
-      question: `${promptPrefix}\n${field}?`,
-      header: "Beta Admission",
-      custom: true,
-      options: [{ label: authority[field], description: `Authoritative ${field}` }],
-    })),
-    tool: input.tool,
-  })
-  return Object.fromEntries(BETA_ADMISSION_FIELDS.map((field, index) => [field, answers[index]?.[0] ?? ""])) as Partial<
-    Record<(typeof BETA_ADMISSION_FIELDS)[number], string>
-  >
-}
+// Beta admission quiz is now handled as AI self-verification in the continuation flow.
+// See workflow-runner.ts validatePendingBetaAdmission().
 
 function buildDefaultBetaMission(session: Session.Info): NonNullable<Session.MissionContract["beta"]> {
   return {
@@ -1305,54 +1281,9 @@ export const PlanExitTool = Tool.define("plan_exit", {
       mission,
     })
 
-    if (mission.beta) {
-      let firstAnswers: Partial<Record<(typeof BETA_ADMISSION_FIELDS)[number], string>>
-      try {
-        firstAnswers = await askBetaAdmissionQuiz({
-          sessionID: ctx.sessionID,
-          tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
-          mission,
-          reflection: false,
-        })
-      } catch (error) {
-        if (error instanceof Question.RejectedError) {
-          throw new Error("product_decision_needed: beta admission quiz was dismissed before confirmation")
-        }
-        throw error
-      }
-      const firstResult = await recordBetaAdmissionResult({ sessionID: ctx.sessionID, answers: firstAnswers })
-      if (!firstResult.ok) {
-        await Session.update(
-          ctx.sessionID,
-          (draft) => {
-            draft.mission?.admission?.betaQuiz && (draft.mission.admission.betaQuiz.reflectionUsed = true)
-          },
-          { touch: false },
-        )
-        let retryAnswers: Partial<Record<(typeof BETA_ADMISSION_FIELDS)[number], string>>
-        try {
-          retryAnswers = await askBetaAdmissionQuiz({
-            sessionID: ctx.sessionID,
-            tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
-            mission,
-            reflection: true,
-          })
-        } catch (error) {
-          if (error instanceof Question.RejectedError) {
-            throw new Error("product_decision_needed: beta admission retry was dismissed before confirmation")
-          }
-          throw error
-        }
-        const retryResult = await recordBetaAdmissionResult({ sessionID: ctx.sessionID, answers: retryAnswers })
-        if (!retryResult.ok) {
-          throw new Error(
-            `product_decision_needed: beta admission mismatches after retry: ${retryResult.mismatches
-              .map((item) => `${item.field} expected=${item.expected} actual=${item.actual}`)
-              .join("; ")}`,
-          )
-        }
-      }
-    }
+    // Beta admission quiz is deferred to the continuation flow:
+    // betaQuiz.status = "pending" → applyBetaWorkflowContract() injects quiz prompt →
+    // AI responds with answers → validatePendingBetaAdmission() validates on next tick.
 
     const userMsg: MessageV2.User = {
       id: Identifier.ascending("message"),

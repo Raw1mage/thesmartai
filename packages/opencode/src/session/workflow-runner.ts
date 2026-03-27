@@ -17,6 +17,7 @@ import {
   BETA_ADMISSION_FIELDS,
   consumeMissionArtifacts,
   evaluateBetaAdmissionAnswers,
+  parseAdmissionAnswersFromText,
   resolveBetaAdmissionAuthority,
 } from "./mission-consumption"
 import { debugCheckpoint } from "@/util/debug"
@@ -47,12 +48,15 @@ function applyRunnerContract(text: string) {
   return `${RUNNER_CONTRACT.trim()}\n\n${text}`
 }
 
-function buildBetaAdmissionPrompt(session: Pick<Session.Info, "mission">) {
+function buildBetaAdmissionPrompt(session: Pick<Session.Info, "mission">, reflection?: boolean) {
   const authority = resolveBetaAdmissionAuthority(session.mission)
+  const prefix = reflection
+    ? "Beta admission mismatch detected. Reflect on your previous answers and restate the authoritative execution metadata exactly."
+    : "Beta build admission quiz: restate the authoritative execution metadata exactly before continuing."
   return applyRunnerContract(
     [
-      "Beta build admission quiz: restate the authoritative execution metadata exactly before continuing.",
-      "Answer these fields exactly and machine-checkably:",
+      prefix,
+      "Answer these fields exactly and machine-checkably (use the format '- fieldName: value'):",
       ...BETA_ADMISSION_FIELDS.map((field) => `- ${field}: ${authority[field]}`),
     ].join("\n"),
   )
@@ -61,7 +65,10 @@ function buildBetaAdmissionPrompt(session: Pick<Session.Info, "mission">) {
 function applyBetaWorkflowContract(input: { text: string; session: Pick<Session.Info, "mission"> }) {
   const mission = input.session.mission as (Session.Info["mission"] & { beta?: unknown }) | undefined
   if (!mission?.beta) return applyRunnerContract(input.text)
-  if (mission.admission?.betaQuiz?.status !== "passed") return buildBetaAdmissionPrompt(input.session)
+  if (mission.admission?.betaQuiz?.status !== "passed") {
+    const reflection = mission.admission?.betaQuiz?.reflectionUsed === true
+    return buildBetaAdmissionPrompt(input.session, reflection)
+  }
   return applyRunnerContract(
     [
       'FIRST: Load skill "beta-workflow" before continuing beta-enabled build execution.',
@@ -155,6 +162,68 @@ export async function recordBetaAdmissionResult(input: {
     { touch: false },
   )
   return result
+}
+
+/**
+ * AI self-verification gate: extract admission answers from the last assistant
+ * message and validate them against authoritative metadata.
+ *
+ * Returns undefined if betaQuiz is not pending (no action needed).
+ * Returns { ok, needsRetry } when validation was attempted.
+ */
+export async function validatePendingBetaAdmission(
+  sessionID: string,
+): Promise<{ ok: boolean; needsRetry: boolean } | undefined> {
+  const session = await Session.get(sessionID)
+  const quiz = session.mission?.admission?.betaQuiz
+  if (!quiz || quiz.status !== "pending") return undefined
+  if (!session.mission?.beta) return undefined
+
+  // Find the last assistant message and extract text
+  const messages = await Session.messages({ sessionID })
+  const lastAssistant = messages.findLast((m) => m.info.role === "assistant")
+  if (!lastAssistant) return undefined
+
+  const textParts = lastAssistant.parts.filter((p) => p.type === "text").map((p) => (p as MessageV2.TextPart).text)
+  const fullText = textParts.join("\n")
+  if (!fullText.trim()) return undefined
+
+  const answers = parseAdmissionAnswersFromText(fullText)
+  const answeredCount = Object.keys(answers).length
+  if (answeredCount === 0) return undefined // AI hasn't answered yet
+
+  const result = await recordBetaAdmissionResult({ sessionID, answers })
+
+  if (result.ok) {
+    return { ok: true, needsRetry: false }
+  }
+
+  // First failure: allow one reflection retry
+  if (!quiz.reflectionUsed) {
+    await Session.update(
+      sessionID,
+      (draft) => {
+        if (draft.mission?.admission?.betaQuiz) {
+          draft.mission.admission.betaQuiz.reflectionUsed = true
+          // Reset to pending so the next tick injects reflection prompt
+          draft.mission.admission.betaQuiz.status = "pending"
+        }
+      },
+      { touch: false },
+    )
+    log.info("beta admission first attempt failed, allowing reflection retry", {
+      sessionID,
+      mismatches: result.mismatches.length,
+    })
+    return { ok: false, needsRetry: true }
+  }
+
+  // Second failure after reflection: hard block
+  log.warn("beta admission failed after reflection", {
+    sessionID,
+    mismatches: result.mismatches.map((m) => `${m.field}: expected=${m.expected} actual=${m.actual}`),
+  })
+  return { ok: false, needsRetry: false }
 }
 
 export type ContinuationDecisionReason =
@@ -930,6 +999,30 @@ export function shouldInterruptAutonomousRun(input: {
 }
 
 export async function decideAutonomousContinuation(input: { sessionID: string; roundCount: number }) {
+  // AI self-verification gate: validate pending beta admission before evaluating continuation
+  const quizResult = await validatePendingBetaAdmission(input.sessionID)
+  if (quizResult) {
+    if (quizResult.ok) {
+      // Passed — continue to normal evaluation (betaQuiz.status is now "passed")
+      log.info("beta admission passed via AI self-verification", { sessionID: input.sessionID })
+    } else if (quizResult.needsRetry) {
+      // First failure — re-fetch session with reflectionUsed=true, build reflection prompt
+      const freshSession = await Session.get(input.sessionID)
+      const reflectionText = buildBetaAdmissionPrompt(freshSession, true)
+      const todos = await Todo.get(input.sessionID)
+      const todo = todos.find((t) => t.status === "pending" || t.status === "in_progress")
+      return {
+        continue: true as const,
+        reason: "todo_pending" as const,
+        text: reflectionText,
+        todo: todo ?? { id: "beta_admission_retry", content: "Beta admission reflection retry", status: "pending" as const, priority: "high" as const },
+      }
+    } else {
+      // Hard block after reflection
+      return { continue: false as const, reason: "product_decision_needed" as const }
+    }
+  }
+
   const session = await Session.get(input.sessionID)
   const todos = await Todo.get(input.sessionID)
   const activeSubtasks = await countActiveSubtasks(input.sessionID)
