@@ -1,5 +1,7 @@
 # Proposal: Scheduler Persistence + Daemon Rewrite
 
+> Canonical Root Notice: `scheduler-channels/` is the canonical root for scheduler durability and channel-oriented runtime scheduling. Related promoted implementation slices now live under `scheduler-channels/slices/`.
+
 ## Why
 
 OpenCode 的 cron 子系統（D.1-D.3）已交付完整的 job session、heartbeat、daemon lifecycle。但兩個核心缺口阻擋了 daemon mode 進入實用階段：
@@ -22,9 +24,10 @@ OpenCode 的 cron 子系統（D.1-D.3）已交付完整的 job session、heartbe
 1. Daemon restart 後，所有 enabled cron jobs 的排程狀態必須自動恢復（nextRunAtMs, consecutiveErrors, lastRunAtMs）
 2. 長時間 downtime 後的 stale schedule 必須有明確的 catchup/skip 策略
 3. SystemEvents queue 在 restart 後要能重建或安全清空（acceptable loss）
-4. Daemon mode 支援多個 channel（獨立 agent 對話），每個 channel 有獨立的 session scope
-5. Channel 之間有 lane isolation — 一個 channel 的 agent turn 不會擠壓另一個 channel 的 concurrency
-6. Kill-switch 可以按 channel scope 或 global scope 觸發
+4. Durable scheduler baseline is now implemented and must be treated as current-state behavior, not future design only.
+5. Daemon mode 支援多個 channel（獨立 agent 對話），每個 channel 有獨立的 session scope
+6. Channel 之間有 lane isolation — 一個 channel 的 agent turn 不會擠壓另一個 channel 的 concurrency
+7. Kill-switch 可以按 channel scope 或 global scope 觸發
 
 ## Scope
 

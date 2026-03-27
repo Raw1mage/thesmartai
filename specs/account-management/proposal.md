@@ -1,5 +1,9 @@
 # Proposal
 
+> Canonical Root Notice: `account-management/` is the canonical root for account/provider management. Related promoted implementation slices now live under `account-management/slices/`.
+>
+> Current-State Drift Note (2026-03-28): This root proposal describes the intended 3-tier account-management architecture, but current repo reality is more mixed. `Auth` already owns substantial identity/deduplication behavior, `Account` still retains provider-universe and compatibility logic, and the promoted slice `slices/20260327_provider-llmgateway-bug/` extends this root into provider-registry / provider-SSOT territory. Treat this root as the canonical target architecture and management domain, not as an exact statement that implementation boundaries are already perfectly pure.
+
 ## Why
 Currently, account addition and deletion lack a unified framework:
 1. Webapp/TUI uses `Auth.set`, while CLI and Admin tools bypass it and call the low-level `Account.add` directly, missing deduplication checks.

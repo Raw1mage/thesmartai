@@ -1,5 +1,9 @@
 # Proposal
 
+> Canonical Root Notice: `google-auth-integration/` is the canonical root for Linux↔Google identity integration. Related promoted implementation slices now live under `google-auth-integration/slices/`.
+>
+> Current-State Drift Note (2026-03-28): This root proposal still reads like a boundary/policy spec with `OUT = 實際 code 改動`, but current repo reality already contains implemented integration surfaces beyond pure policy: shared Google OAuth token handling in `packages/opencode/src/server/routes/mcp.ts`, managed-app OAuth scope merging for Gmail/Calendar, and best-effort `GoogleBinding.bind(...)` piggyback during MCP OAuth callback. Treat this root as the canonical identity-boundary policy, and treat `slices/20260325_linux-pam-per-user-daemon/` plus current MCP route code as the implementation truth.
+
 ## Why
 - 現有 per-user daemon 已以 Linux PAM 作為主要入口，但使用者在 Google API / Gmail / Calendar 場景下已形成 Linux account ↔ Google account 的實際關聯。
 - 希望 gateway 在登入階段能理解這種關聯，提供相容的 Google 登入路徑，但不得破壞 Linux user 為主體的既有安全邊界。

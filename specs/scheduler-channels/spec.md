@@ -1,5 +1,7 @@
 # Spec: Scheduler Persistence + Daemon Channels
 
+> Current-State Drift Note (2026-03-28): This root spec still describes both durable scheduler recovery and future channel-oriented runtime scheduling in one package. Current repo reality has already implemented the durable scheduler baseline (persisted job state, boot recovery, skip-to-next stale handling, minute cadence, and `listenUnix()` lifecycle wiring hardening), while channel isolation / channel-scoped kill-switch remain broader runtime-control-plane work rather than completed scheduler baseline behavior. Treat channel sections here as planned architecture, not current implementation truth; use `slices/20260327_plan-enter-plans-20260327-durable-cron-scheduler/`, `specs/architecture.md`, `packages/opencode/src/cron/heartbeat.ts`, and `packages/opencode/src/server/server.ts` for current durable scheduler truth.
+
 ## Purpose
 
 確保 daemon restart 後 cron 排程自動恢復，並為多對話場景提供 channel 隔離機制。

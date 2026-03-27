@@ -25,11 +25,11 @@
 
 ## Effective Requirement Description
 
-1. Builder/build-mode must gate beta-sensitive execution behind a structured quiz guard.
-2. The quiz must use deterministic answer checking against mission metadata.
-3. Wrong answers must trigger a bounded reflection retry; repeated failure must stop build admission and ask the user.
+1. Builder/build-mode must gate beta-sensitive execution behind a structured beta admission flow rooted in `mission.beta` authority.
+2. `plan_exit` is responsible for mission compilation, beta authority persistence, and pre-admission branch correction/collection when metadata is missing or stale.
+3. The actual quiz evaluation must run in continuation flow via workflow-runner, using deterministic answer checking against mission metadata and one bounded reflection retry.
 4. Prompt/skill/MCP surfaces are supportive only and must not remain the primary enforcement layer.
-5. Broad hard-guard rule systems are deferred unless later evidence proves quiz guard insufficient.
+5. Broad hard-guard rule systems are deferred unless later evidence proves the admission + continuation model insufficient.
 
 ## Scope
 
@@ -62,23 +62,24 @@
 
 ## What Changes
 
-- A structured builder admission quiz will be inserted at `plan_exit` / build entry and possibly first beta continuation.
-- On initial failure, the model may reflect and retry once; if it still fails, admission stops and asks the user.
-- Quiz answers will be compared against `mission.beta` and mainline authority metadata.
-- Existing workflow wording will be downgraded to advisory/minimal narration after quiz guard coverage is established.
-- Hard-guard expansion is intentionally deferred unless quiz validation exposes concrete residual failures.
+- `plan_exit` will no longer finish quiz admission synchronously; instead it compiles the approved mission, persists `mission.beta`, sets `mission.admission.betaQuiz.status = pending`, and hands control to build mode.
+- If `implementationBranch` is missing or stale, `plan_exit` must run a real correction/collection prompt before build handoff.
+- Workflow-runner will inject the beta admission prompt, parse the assistant's structured answers, and compare them against `mission.beta` authority.
+- On initial failure, runtime allows one reflection retry; if it still fails, admission stops with `product_decision_needed`.
+- Existing workflow wording stays advisory/minimal after admission control is in place, and hard-guard expansion remains intentionally deferred unless validation exposes concrete residual failures.
 
 ## Capabilities
 
 ### New Capabilities
 
-- Admission-time self-calibration with deterministic pass/fail behavior.
-- Explicit rejection when the LLM cannot restate authoritative execution boundaries.
-- Higher-confidence builder admission before beta-sensitive coding begins.
+- Admission-time self-calibration with deterministic pass/fail behavior split across `plan_exit` mission setup and workflow-runner evaluation.
+- Explicit rejection when the LLM cannot restate authoritative execution boundaries after the allowed reflection retry.
+- Higher-confidence builder admission before beta-sensitive coding begins, without relying on synchronous `plan_exit` quiz dialogs.
 
 ### Modified Capabilities
 
-- Build-mode entry: now requires quiz guard success for beta-sensitive execution.
+- Build-mode entry: now requires pending beta admission to be resolved through workflow-runner before beta-sensitive execution can proceed.
+- `plan_exit`: reduced from synchronous quiz executor to mission compiler + beta authority collector/corrector.
 - Prompt/skill guidance: demoted from pseudo-enforcement to advisory support.
 - Hard guards: treated as optional future follow-up, not the primary current investment.
 

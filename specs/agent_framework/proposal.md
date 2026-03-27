@@ -1,5 +1,7 @@
 # Proposal: agent_framework
 
+> Canonical Root Notice: `agent_framework/` is the canonical root for agent runtime semantics. Related implementation slices now live under `agent_framework/slices/`.
+
 ## Why
 
 - Agent-related authority was fragmented across autorunner, continuous orchestration, subagent visibility, and the OpenClaw reproduction workstream.

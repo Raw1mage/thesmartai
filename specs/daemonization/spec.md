@@ -1,5 +1,7 @@
 # Daemonization Spec — C Root Gateway Splice Proxy
 
+> Current-State Drift Note (2026-03-28): This file preserves the legacy C gateway splice-proxy baseline, but it is no longer the full daemonization SSOT by itself. Current repo reality also includes daemonization-v2 behavior implemented in TypeScript: TUI always-attach via `Daemon.spawnOrAdopt()`, per-user daemon discovery/adopt semantics, and `Server.listenUnix()` lifecycle start/cleanup. Treat this document as the privileged gateway baseline only; use `specs/daemonization/slices/`, `specs/architecture.md`, `packages/opencode/src/server/daemon.ts`, `packages/opencode/src/cli/cmd/tui/thread.ts`, and `packages/opencode/src/server/server.ts` for current daemonization truth.
+
 ## Purpose
 
 將 C root gateway splice proxy 從 prototype 收斂為結構健全、經 runtime 驗證、可在 reverse proxy 後正確運作的 production gateway。涵蓋 event loop 架構、HTTP 協議處理、connection lifecycle、splice proxy、安全強化、環境適配、reverse proxy 相容性與 systemd 整合。

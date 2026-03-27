@@ -1,5 +1,7 @@
 # Spec
 
+> Current-State Drift Note (2026-03-28): This spec captures the desired strict 3-tier account-management contract. Current implementation is only partially aligned: `Auth` is the practical smart entry point for many flows, but `Account` still contains provider compatibility/registry-adjacent behavior and not every boundary is as pure as this spec states. Use this file as the target contract, and read `proposal.md`, `slices/20260327_provider-llmgateway-bug/`, `packages/opencode/src/auth/index.ts`, and `packages/opencode/src/account/index.ts` for current-state reconciliation.
+
 ## Purpose
 - Implement a true 3-Tier Architecture for account management to prevent leaky abstractions.
 - Centralize all identity deduplication and collision resolution in a strict Service Layer.
