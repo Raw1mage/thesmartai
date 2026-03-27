@@ -695,6 +695,16 @@ export namespace ACP {
       if (message.info.role !== "assistant" && message.info.role !== "user") return
       const sessionId = message.info.sessionID
 
+      if (message.info.role === "user") {
+        const nextModeId = message.info.agent
+        if (nextModeId) {
+          const availableModes = await this.loadAvailableModes(this.sessionManager.get(sessionId).cwd)
+          if (availableModes.some((mode) => mode.id === nextModeId)) {
+            this.sessionManager.setMode(sessionId, nextModeId)
+          }
+        }
+      }
+
       for (const part of message.parts) {
         if (part.type === "tool") {
           switch (part.state.status) {

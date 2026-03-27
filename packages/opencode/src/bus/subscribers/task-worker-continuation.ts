@@ -9,7 +9,6 @@ import { enqueuePendingContinuation, resumePendingContinuations } from "@/sessio
 import { Instance } from "@/project/instance"
 import { SharedContext } from "@/session/shared-context"
 import { Log } from "@/util/log"
-import type { SessionActiveChildState } from "@/tool/task"
 import z from "zod"
 
 const log = Log.create({ service: "task-worker-continuation" })
@@ -23,39 +22,6 @@ async function enqueueParentContinuation(input: {
   ok: boolean
   error?: string
 }) {
-  const markActiveChildHandoff = async () => {
-    const parentAssistant = await MessageV2.get({
-      sessionID: input.parentSessionID,
-      messageID: input.parentMessageID,
-    }).catch(() => undefined)
-    const taskPart = parentAssistant?.parts.find(
-      (part): part is MessageV2.ToolPart =>
-        part.type === "tool" && part.callID === input.toolCallID && part.tool === "task",
-    )
-    const metadata = taskPart?.metadata as
-      | {
-          sessionId?: string
-          todo?: SessionActiveChildState["todo"]
-          agent?: string
-        }
-      | undefined
-    const todo = metadata?.todo as SessionActiveChildState["todo"] | undefined
-    const title =
-      taskPart?.state.status === "running"
-        ? (taskPart.state.title ?? taskPart.state.input?.description ?? "task")
-        : "task"
-    await SessionActiveChild.set(input.parentSessionID, {
-      sessionID: input.childSessionID,
-      parentMessageID: input.parentMessageID,
-      toolCallID: input.toolCallID,
-      workerID: "handoff",
-      title: taskPart?.state.input?.description ?? title ?? todo?.content ?? "Subtask",
-      agent: metadata?.agent ?? "task",
-      status: "handoff",
-      todo,
-    })
-  }
-
   const clearActiveChild = async () => {
     await SessionActiveChild.set(input.parentSessionID, null)
   }
@@ -91,6 +57,8 @@ async function enqueueParentContinuation(input: {
     clearLogicalTask()
     throw new Error(`task_completion_tool_part_missing:${input.toolCallID}`)
   }
+
+  await clearActiveChild().catch(() => undefined)
 
   // Fix: update tool part state from "running" to "completed"/"error" so sidebar monitor clears
   const partNow = Date.now()
@@ -129,11 +97,6 @@ async function enqueueParentContinuation(input: {
   )
 
   try {
-    await markActiveChildHandoff().catch(() => undefined)
-    // Clear the active-child state immediately after the completion signal is
-    // consumed so the parent stops waiting before any follow-up persistence or
-    // resume work runs.
-    await clearActiveChild().catch(() => undefined)
     if (input.linkedTodoID) {
       await Todo.reconcileProgress({
         sessionID: input.parentSessionID,

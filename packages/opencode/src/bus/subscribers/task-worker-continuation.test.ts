@@ -8,7 +8,7 @@ import { Identifier } from "@/id/id"
 import { Todo } from "@/session/todo"
 import { ProcessSupervisor } from "@/process/supervisor"
 import { Bus } from "@/bus"
-import { TaskWorkerEvent } from "@/tool/task"
+import { SessionActiveChild, TaskWorkerEvent } from "@/tool/task"
 import { getPendingContinuation } from "@/session/workflow-runner"
 
 beforeAll(() => {
@@ -129,6 +129,15 @@ describe("task worker continuation subscriber", () => {
           sessionID: parent.id,
           parentSessionID: parent.id,
         })
+        await SessionActiveChild.set(parent.id, {
+          sessionID: child.id,
+          parentMessageID,
+          toolCallID,
+          workerID: "worker-1",
+          title: "delegate API audit",
+          agent: "coding",
+          status: "running",
+        })
 
         await Bus.publish(TaskWorkerEvent.Done, {
           workerID: "worker-1",
@@ -142,6 +151,7 @@ describe("task worker continuation subscriber", () => {
         await Bun.sleep(25)
 
         expect(ProcessSupervisor.snapshot().some((entry) => entry.id === toolCallID)).toBe(false)
+        expect(SessionActiveChild.get(parent.id)).toBeUndefined()
         const pending = await getPendingContinuation(parent.id)
         expect(pending).toMatchObject({
           sessionID: parent.id,

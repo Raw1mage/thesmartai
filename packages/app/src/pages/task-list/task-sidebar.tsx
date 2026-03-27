@@ -30,7 +30,14 @@ export function TaskSidebar() {
     }
   }
 
-  createEffect(on(() => globalSDK.url, () => { void refresh() }))
+  createEffect(
+    on(
+      () => globalSDK.url,
+      () => {
+        void refresh()
+      },
+    ),
+  )
 
   async function handleDuplicate(job: CronJob) {
     try {
@@ -45,7 +52,7 @@ export function TaskSidebar() {
       })
       await refresh()
       navigate(`/system/tasks/${created.id}`)
-      layout.sidebar.close()
+      layout.mobileSidebar.hide()
     } catch {
       // ignore
     }
@@ -82,7 +89,13 @@ export function TaskSidebar() {
               {editMode() ? "Done" : "Edit"}
             </button>
           </Show>
-          <Button size="small" onClick={() => { navigate("/system/tasks/new"); layout.sidebar.close() }}>
+          <Button
+            size="small"
+            onClick={() => {
+              navigate("/system/tasks/new")
+              layout.mobileSidebar.hide()
+            }}
+          >
             <Icon name="plus" size="small" />
           </Button>
         </div>
@@ -109,7 +122,10 @@ export function TaskSidebar() {
                   job={job}
                   active={params.jobId === job.id}
                   editMode={editMode()}
-                  onClick={() => { navigate(`/system/tasks/${job.id}`); if (!layout.sidebar.opened()) layout.sidebar.close() }}
+                  onClick={() => {
+                    navigate(`/system/tasks/${job.id}`)
+                    layout.mobileSidebar.hide()
+                  }}
                   onDuplicate={() => void handleDuplicate(job)}
                   onDelete={() => void handleDelete(job)}
                 />
@@ -166,9 +182,7 @@ function TaskSidebarItem(props: {
       {/* Edit mode actions */}
       <Show when={props.editMode}>
         <DropdownMenu placement="bottom-end">
-          <DropdownMenu.Trigger
-            class="shrink-0 flex items-center justify-center size-6 rounded-md text-icon-base bg-surface-raised-base hover:bg-surface-raised-base-hover border border-border-weak-base shadow-xs cursor-pointer"
-          >
+          <DropdownMenu.Trigger class="shrink-0 flex items-center justify-center size-6 rounded-md text-icon-base bg-surface-raised-base hover:bg-surface-raised-base-hover border border-border-weak-base shadow-xs cursor-pointer">
             <Icon name="dot-grid" size="small" />
           </DropdownMenu.Trigger>
           <DropdownMenu.Content>

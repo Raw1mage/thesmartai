@@ -3,6 +3,7 @@ import { Bus } from "@/bus"
 import { Instance } from "@/project/instance"
 import { ProcessSupervisor } from "@/process/supervisor"
 import { TelemetryProjector } from "@/system/runtime-event-service"
+import { SessionActiveChild } from "@/tool/task"
 import { Session } from "./index"
 import { MessageV2 } from "./message-v2"
 import { SessionStatus } from "./status"
@@ -315,6 +316,10 @@ export namespace SessionMonitor {
     let compactionCount = 0
     const projectorTelemetry = await TelemetryProjector.project(session.id).catch(() => undefined)
     const telemetry = () => buildTelemetry(projectorTelemetry)
+    const processState = ProcessSupervisor.sessionState(session.id)
+    const processActive = processState === "running" || processState === "stalled"
+    const parentActiveChild = session.parentID ? SessionActiveChild.get(session.parentID) : undefined
+    const authoritativeChildActive = !session.parentID || parentActiveChild?.sessionID === session.id
 
     const agents = new Map<
       string,
@@ -396,8 +401,8 @@ export namespace SessionMonitor {
       for (const part of message.parts) {
         if (part.type !== "tool") continue
         if (part.state.status !== "pending" && part.state.status !== "running") continue
-        const processState = ProcessSupervisor.sessionState(session.id)
-        const isProcessActive = processState === "running" || processState === "stalled"
+        const isProcessActive = processActive
+        if (session.parentID && !authoritativeChildActive && !isProcessActive) continue
         const startedAt = part.state.status === "running" ? part.state.time.start : message.info.time.created
         if (!isProcessActive && Date.now() - startedAt > TOOL_ACTIVE_WINDOW_MS) continue
 
@@ -457,9 +462,11 @@ export namespace SessionMonitor {
     const status = session.time.compacting
       ? ({ type: "compacting" } as Status)
       : statusFrom(SessionStatus.get(session.id), session.id, latest.value)
+    const projectedStatus =
+      session.parentID && !authoritativeChildActive && !processActive ? ({ type: "idle" } as Status) : status
     const level: Level = session.parentID ? "sub-session" : "session"
 
-    if (model.value && activeStatuses.has(status.type)) {
+    if (model.value && activeStatuses.has(projectedStatus.type)) {
       result.push({
         id: `${level}:${session.id}`,
         level,
@@ -467,7 +474,7 @@ export namespace SessionMonitor {
         title: tool.title || session.title,
         parentID: session.parentID,
         agent: agent.value,
-        status,
+        status: projectedStatus,
         model: model.value,
         requests: sums.requests,
         tokens: sums.tokens,
@@ -480,7 +487,10 @@ export namespace SessionMonitor {
     }
 
     for (const [name, info] of agents) {
-      const status = statusFrom({ type: "idle" }, session.id, info.latest)
+      const status =
+        session.parentID && !authoritativeChildActive && !processActive
+          ? ({ type: "idle" } as Status)
+          : statusFrom({ type: "idle" }, session.id, info.latest)
       const level: Level = session.parentID ? "sub-agent" : "agent"
       if (!info.model || !activeStatuses.has(status.type)) continue
       result.push({

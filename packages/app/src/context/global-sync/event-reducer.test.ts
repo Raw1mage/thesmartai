@@ -638,4 +638,40 @@ describe("applyDirectoryEvent", () => {
 
     expect(store.workspace?.lifecycleState).toBe("resetting")
   })
+
+  test("removes active child projection when runtime clears it", () => {
+    const [store, setStore] = createStore(
+      baseState({
+        active_child: {
+          ses_parent: {
+            sessionID: "ses_child",
+            parentMessageID: "msg_1",
+            toolCallID: "call_1",
+            workerID: "worker-1",
+            title: "delegate API audit",
+            agent: "coding",
+            status: "running",
+          },
+        },
+      }),
+    )
+
+    applyDirectoryEvent({
+      event: {
+        type: "session.active-child.updated",
+        properties: {
+          parentSessionID: "ses_parent",
+          activeChild: null,
+        },
+      },
+      store,
+      setStore,
+      push() {},
+      directory: "/tmp",
+      loadLsp() {},
+      loadMcp() {},
+    })
+
+    expect(store.active_child.ses_parent).toBeUndefined()
+  })
 })
