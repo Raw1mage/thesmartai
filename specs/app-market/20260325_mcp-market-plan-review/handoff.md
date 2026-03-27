@@ -19,7 +19,7 @@
 - Return to planning if a new implementation slice is not represented in planner artifacts
 
 ## Execution-Ready Checklist
-- [ ] Implementation spec is complete
-- [ ] Companion artifacts are aligned
-- [ ] Validation plan is explicit
-- [ ] Runtime todo seed is present in tasks.md
+- [x] Implementation spec is complete
+- [x] Companion artifacts are aligned
+- [x] Validation plan is explicit
+- [x] Runtime todo seed is present in tasks.md

@@ -1,42 +1,57 @@
 # Proposal
 
 ## Why
-- <why this work exists>
-- <problem / opportunity / pressure>
+- The app market dialog had become hard to use on narrow/mobile layouts: cards overflowed, the grid was cramped, and close/escape affordances were not obvious enough from the visible UI.
+- App market had already become a first-class product surface for managed MCP apps and standard MCP servers, so the dialog needed production-grade responsive behavior rather than desktop-only polish.
 
 ## Original Requirement Wording (Baseline)
-- "<record the user's original requirement wording as faithfully as practical>"
+- "Fix the app market dialog so managed-app cards adapt on mobile and the dialog is easier to close from the UI."
 
 ## Requirement Revision History
-- <date or stage>: <what changed and why>
+- 2026-03-25: initial promoted slice focused on mobile card layout and close affordance improvement.
+- 2026-03-26 to 2026-03-27: follow-up app-market commits refined card layout, unified MCP market behavior, and mobile dialog polish.
 
 ## Effective Requirement Description
-1. <effective requirement>
-2. <effective requirement>
+1. App market must behave as a real product surface for both managed apps and standard MCP servers.
+2. The dialog must remain readable and operable on mobile/narrow viewports without breaking desktop usability.
 
 ## Scope
 ### IN
-- <in scope>
+- Responsive dialog sizing for app market
+- Mobile-friendly card grid behavior
+- Visible action/close affordances in the dialog shell
+- Managed-app and MCP-server unified market presentation
 
 ### OUT
-- <out of scope>
+- MCP backend protocol redesign
+- OAuth/token storage redesign beyond the already landed shared-token flow
+- Non-app-market dialog system rewrites
 
 ## Non-Goals
-- <explicitly not being solved>
+- Rebuilding the entire settings or sidebar architecture
+- Redesigning the managed app registry data model
 
 ## Constraints
-- <technical / product / policy constraint>
+- Preserve existing app-market routing and dialog entry point
+- Do not regress desktop usability while fixing mobile layout
+- Reuse existing dialog shell and managed app actions where possible
 
 ## What Changes
-- <what will change>
-- <what behavior / modules / flows are affected>
+- Refined app-market dialog layout, sizing, and card grid behavior for mobile and desktop
+- Unified the market surface so standard MCP servers and managed apps share one product view
+- Improved visible affordances for search, actions, and dialog interaction
 
 ## Capabilities
 ### New Capabilities
-- <capability>: <brief description>
+- Mobile-usable app market dialog with responsive card layout
+- Unified MCP market surface covering managed apps and standard servers
 
 ### Modified Capabilities
-- <existing capability>: <behavior delta>
+- App market presentation: moved from rough dialog layout to product-grade responsive behavior
+- Managed app UX: easier install/connect/repair flow visibility inside the same market surface
 
 ## Impact
-- <affected code, APIs, systems, operators, or docs>
+- `packages/app/src/components/dialog-app-market.tsx`
+- `packages/app/src/components/dialog-app-market.css`
+- `packages/app/src/pages/layout.tsx`
+- related app-market/mobile UX commits and event history

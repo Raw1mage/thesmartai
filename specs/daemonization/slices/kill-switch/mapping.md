@@ -10,7 +10,7 @@ This file maps kill-switch spec items to concrete code locations and owners in t
 - RBAC/capability hooks: `specs/20260316_kill-switch/rbac-hooks.md`
   - Implementation: `packages/opencode/src/server/routes/killswitch.ts`
 
-- Persistent state / audit / snapshot placeholder:
+- Persistent state / audit / snapshot substrate:
   - Implementation: `packages/opencode/src/server/killswitch/service.ts`
   - Backend substrate: `packages/opencode/src/storage/storage.ts`
 
