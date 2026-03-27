@@ -942,9 +942,10 @@ export default function Page() {
   })
   const visibleChildDock = createMemo(() => {
     const dock = activeChildDock()
-    const currentSessionID = params.id
-    if (!dock || !currentSessionID) return undefined
-    return dock.sessionID === currentSessionID ? dock : undefined
+    if (!dock) return undefined
+    // Show dock when viewing the parent session (no parentID) or the active child session
+    const isParentView = !info()?.parentID
+    return isParentView || dock.sessionID === params.id ? dock : undefined
   })
 
   createEffect(() => {
@@ -1853,7 +1854,7 @@ export default function Page() {
             activeChild={visibleChildDock()}
             onOpenChildSession={(href) => navigate(href)}
             onAbortActiveChild={async () => {
-              const parentSessionID = info()?.parentID
+              const parentSessionID = info()?.parentID ?? params.id
               if (!parentSessionID) return
               await sdk.client.session.abort({ sessionID: parentSessionID })
             }}
