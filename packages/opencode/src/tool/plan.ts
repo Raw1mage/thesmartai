@@ -1061,7 +1061,7 @@ async function askBetaAdmissionQuiz(input: {
   >
 }
 
-function buildForcedBetaMission(session: Session.Info): NonNullable<Session.MissionContract["beta"]> {
+function buildDefaultBetaMission(session: Session.Info): NonNullable<Session.MissionContract["beta"]> {
   return {
     branchName: `feature/${session.slug}-beta`,
     baseBranch: "cms",
@@ -1069,6 +1069,93 @@ function buildForcedBetaMission(session: Session.Info): NonNullable<Session.Miss
     mainWorktreePath: Instance.worktree,
     betaPath: `${Instance.worktree}-beta`,
     runtimePolicy: "manual",
+  }
+}
+
+export function buildSuggestedBetaBranchName(session: Pick<Session.Info, "slug">) {
+  return `feature/${session.slug}-beta`
+}
+
+export function resolvePlanExitBetaMission(input: {
+  session: Pick<Session.Info, "slug">
+  existing?: Session.MissionContract["beta"]
+  defaults: NonNullable<Session.MissionContract["beta"]>
+}): NonNullable<Session.MissionContract["beta"]> {
+  const existing = input.existing
+  const defaults = input.defaults
+  return {
+    branchName: existing?.branchName?.trim() || defaults.branchName,
+    baseBranch: existing?.baseBranch?.trim() || defaults.baseBranch,
+    repoPath: existing?.repoPath?.trim() || defaults.repoPath,
+    mainWorktreePath: existing?.mainWorktreePath?.trim() || existing?.repoPath?.trim() || defaults.mainWorktreePath,
+    betaPath: existing?.betaPath?.trim() || defaults.betaPath,
+    runtimePolicy: existing?.runtimePolicy?.trim() || defaults.runtimePolicy,
+  }
+}
+
+export function shouldCollectBetaMissionFields(input: {
+  session: Pick<Session.Info, "slug">
+  mission: NonNullable<Session.MissionContract["beta"]>
+  admission?: Session.MissionContract["admission"]
+}) {
+  const branchName = input.mission.branchName?.trim()
+  if (!branchName) return true
+
+  const suggested = buildSuggestedBetaBranchName(input.session)
+  if (branchName !== suggested) return false
+
+  const betaQuiz = input.admission?.betaQuiz
+  if (betaQuiz?.status !== "failed") return false
+  return (betaQuiz.lastMismatches ?? []).some((item) => item.field === "implementationBranch")
+}
+
+export async function collectMissingBetaMissionFields(input: {
+  sessionID: string
+  tool?: { messageID: string; callID: string }
+  mission: NonNullable<Session.MissionContract["beta"]>
+  session: Pick<Session.Info, "slug">
+}) {
+  const questions: Question.Info[] = []
+  if (!input.mission.branchName?.trim()) {
+    questions.push({
+      header: "Beta Config",
+      question: "Choose the implementation branch name for beta build execution.",
+      custom: true,
+      options: [
+        {
+          label: buildSuggestedBetaBranchName(input.session),
+          description: "Suggested beta branch pattern",
+        },
+      ],
+    })
+  } else {
+    const options = [
+      {
+        label: input.mission.branchName,
+        description: "Keep current implementation branch",
+      },
+    ]
+    const suggested = buildSuggestedBetaBranchName(input.session)
+    if (suggested !== input.mission.branchName) {
+      options.push({
+        label: suggested,
+        description: "Use suggested beta branch pattern",
+      })
+    }
+    questions.push({
+      header: "Beta Config",
+      question: "Confirm or replace the implementation branch name for beta build execution.",
+      custom: true,
+      options,
+    })
+  }
+  if (questions.length === 0) return input.mission
+  const answers = await Question.ask({ sessionID: input.sessionID, questions, tool: input.tool })
+  const branchName = answers[0]?.[0]?.trim()
+  if (!branchName) throw new Error("product_decision_needed: implementationBranch is required for beta admission")
+  return {
+    ...input.mission,
+    branchName,
   }
 }
 
@@ -1157,6 +1244,34 @@ export const PlanExitTool = Tool.define("plan_exit", {
     }
     const planTodos = materializePlanTodos({ implementationSpec: planMarkdown, tasks: artifacts.tasks })
     await Todo.update({ sessionID: ctx.sessionID, todos: planTodos, mode: "plan_materialization" })
+    const defaultBetaMission = buildDefaultBetaMission(session)
+    let betaMission = resolvePlanExitBetaMission({
+      session,
+      existing: session.mission?.beta,
+      defaults: defaultBetaMission,
+    })
+    if (
+      shouldCollectBetaMissionFields({
+        session,
+        mission: betaMission,
+        admission: session.mission?.admission,
+      })
+    ) {
+      try {
+        betaMission = await collectMissingBetaMissionFields({
+          sessionID: ctx.sessionID,
+          tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+          mission: betaMission,
+          session,
+        })
+      } catch (error) {
+        if (error instanceof Question.RejectedError) {
+          throw new Error("product_decision_needed: beta implementationBranch was dismissed before admission")
+        }
+        throw error
+      }
+    }
+
     const mission: Session.MissionContract = {
       source: "openspec_compiled_plan",
       contract: "implementation_spec",
@@ -1181,7 +1296,7 @@ export const PlanExitTool = Tool.define("plan_exit", {
         tasks: digest(artifacts.tasks),
         handoff: digest(artifacts.handoff),
       },
-      beta: buildForcedBetaMission(session),
+      beta: betaMission,
       admission: { betaQuiz: { status: "pending", reflectionUsed: false, mismatchCount: 0, lastMismatches: [] } },
     }
 
@@ -1191,12 +1306,20 @@ export const PlanExitTool = Tool.define("plan_exit", {
     })
 
     if (mission.beta) {
-      const firstAnswers = await askBetaAdmissionQuiz({
-        sessionID: ctx.sessionID,
-        tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
-        mission,
-        reflection: false,
-      })
+      let firstAnswers: Partial<Record<(typeof BETA_ADMISSION_FIELDS)[number], string>>
+      try {
+        firstAnswers = await askBetaAdmissionQuiz({
+          sessionID: ctx.sessionID,
+          tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+          mission,
+          reflection: false,
+        })
+      } catch (error) {
+        if (error instanceof Question.RejectedError) {
+          throw new Error("product_decision_needed: beta admission quiz was dismissed before confirmation")
+        }
+        throw error
+      }
       const firstResult = await recordBetaAdmissionResult({ sessionID: ctx.sessionID, answers: firstAnswers })
       if (!firstResult.ok) {
         await Session.update(
@@ -1206,12 +1329,20 @@ export const PlanExitTool = Tool.define("plan_exit", {
           },
           { touch: false },
         )
-        const retryAnswers = await askBetaAdmissionQuiz({
-          sessionID: ctx.sessionID,
-          tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
-          mission,
-          reflection: true,
-        })
+        let retryAnswers: Partial<Record<(typeof BETA_ADMISSION_FIELDS)[number], string>>
+        try {
+          retryAnswers = await askBetaAdmissionQuiz({
+            sessionID: ctx.sessionID,
+            tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+            mission,
+            reflection: true,
+          })
+        } catch (error) {
+          if (error instanceof Question.RejectedError) {
+            throw new Error("product_decision_needed: beta admission retry was dismissed before confirmation")
+          }
+          throw error
+        }
         const retryResult = await recordBetaAdmissionResult({ sessionID: ctx.sessionID, answers: retryAnswers })
         if (!retryResult.ok) {
           throw new Error(
