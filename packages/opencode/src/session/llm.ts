@@ -859,6 +859,7 @@ export namespace LLM {
     error?: unknown,
     currentAccountIdInput?: string,
     sessionIdentity?: { providerId: string; accountId?: string },
+    options?: { silent?: boolean },
   ): Promise<{ model: Provider.Model; accountId?: string } | null> {
     const { Account } = await import("@/account")
 
@@ -1035,15 +1036,17 @@ export namespace LLM {
     // If same model but different account, keep the model object and return a
     // session-local account override instead of mutating global active account.
     if (isSameModel && !isSameAccount && isSameProvider) {
-      // Notify user of account rotation (debounced)
-      const now1 = Date.now()
-      if (now1 - lastRotationToastAt >= TOAST_DEBOUNCE_MS) {
-        lastRotationToastAt = now1
-        Bus.publish(TuiEvent.ToastShow, {
-          message: toastMsg,
-          variant: "info",
-          duration: 8000,
-        }).catch(() => {})
+      // Notify user of account rotation (debounced; suppressed for background sessions)
+      if (!options?.silent) {
+        const now1 = Date.now()
+        if (now1 - lastRotationToastAt >= TOAST_DEBOUNCE_MS) {
+          lastRotationToastAt = now1
+          Bus.publish(TuiEvent.ToastShow, {
+            message: toastMsg,
+            variant: "info",
+            duration: 8000,
+          }).catch(() => {})
+        }
       }
 
       // Return currentModel here, as the rotation only changed the account.
@@ -1059,18 +1062,20 @@ export namespace LLM {
       })
       // If fallback model info can't be found, add it to tried and search again
       triedVectors.add(fallbackKey)
-      return handleRateLimitFallback(currentModel, strategy, triedVectors, error, currentAccountId)
+      return handleRateLimitFallback(currentModel, strategy, triedVectors, error, currentAccountId, sessionIdentity, options)
     }
 
-    // Notify user of model/provider rotation (debounced)
-    const now2 = Date.now()
-    if (now2 - lastRotationToastAt >= TOAST_DEBOUNCE_MS) {
-      lastRotationToastAt = now2
-      Bus.publish(TuiEvent.ToastShow, {
-        message: toastMsg,
-        variant: "info",
-        duration: 8000,
-      }).catch(() => {})
+    // Notify user of model/provider rotation (debounced; suppressed for background sessions)
+    if (!options?.silent) {
+      const now2 = Date.now()
+      if (now2 - lastRotationToastAt >= TOAST_DEBOUNCE_MS) {
+        lastRotationToastAt = now2
+        Bus.publish(TuiEvent.ToastShow, {
+          message: toastMsg,
+          variant: "info",
+          duration: 8000,
+        }).catch(() => {})
+      }
     }
 
     return { model: fallbackModel, accountId: fallback.accountId }

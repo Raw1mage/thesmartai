@@ -72,6 +72,10 @@ export const CronJobStateSchema = z.object({
   scheduleErrorCount: z.number().int().nonnegative().optional(),
   lastDeliveryStatus: CronDeliveryStatusSchema.optional(),
   lastDeliveryError: z.string().optional(),
+  /** Model identity from last successful execution (persisted across isolated sessions). */
+  lastModel: z.string().optional(),
+  /** Account identity from last successful execution. */
+  lastAccountId: z.string().optional(),
 })
 export type CronJobState = z.infer<typeof CronJobStateSchema>
 

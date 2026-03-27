@@ -11,6 +11,7 @@ import { RetryPolicy } from "./retry"
 import { RunLog } from "./run-log"
 import { CronDeliveryRouter } from "./delivery"
 import { getCronPreloadedContext } from "./light-context"
+import { Session } from "../session"
 import { SessionPrompt } from "../session/prompt"
 import { TASKS_VIRTUAL_DIR } from "./virtual-project"
 import type { CronJob, CronRunLogEntry, CronRunOutcome } from "./types"
@@ -435,17 +436,15 @@ export namespace Heartbeat {
           ? getCronPreloadedContext({ jobName: job.name, jobId: job.id, runId })
           : undefined
 
-        // Parse model identity from payload: "providerId/modelID" format
+        // Parse model identity — prefer last successful rotation over payload config
         const modelSpec = (() => {
-          if (!job.payload.model) return undefined
-          const [providerId, ...rest] = job.payload.model.split("/")
+          const modelStr = job.state.lastModel ?? job.payload.model
+          const accountId = job.state.lastAccountId ?? job.payload.accountId
+          if (!modelStr) return undefined
+          const [providerId, ...rest] = modelStr.split("/")
           const modelID = rest.join("/")
           if (!providerId || !modelID) return undefined
-          return {
-            providerId,
-            modelID,
-            accountId: job.payload.accountId,
-          }
+          return { providerId, modelID, accountId }
         })()
 
         const result = await SessionPrompt.prompt({
@@ -466,6 +465,31 @@ export namespace Heartbeat {
           }
         }
         const summary = responseText.trim().slice(0, 4000) || `Agent turn completed (no text output)`
+
+        // Persist execution identity so next run uses the rotated model
+        try {
+          const session = await Session.get(sessionId)
+          if (session?.execution) {
+            const rotatedModel = `${session.execution.providerId}/${session.execution.modelID}`
+            const changed =
+              rotatedModel !== (job.state.lastModel ?? job.payload.model) ||
+              session.execution.accountId !== (job.state.lastAccountId ?? job.payload.accountId)
+            if (changed) {
+              await CronStore.updateState(job.id, {
+                lastModel: rotatedModel,
+                lastAccountId: session.execution.accountId,
+              })
+              log.info("cron model selection persisted", {
+                jobId: job.id,
+                from: job.state.lastModel ?? job.payload.model,
+                to: rotatedModel,
+                accountId: session.execution.accountId,
+              })
+            }
+          }
+        } catch (e) {
+          log.warn("failed to persist cron execution identity", { jobId: job.id, error: e })
+        }
 
         log.info("cron agent turn completed", { jobId: job.id, runId, sessionId })
         return {

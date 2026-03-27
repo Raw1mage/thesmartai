@@ -464,6 +464,7 @@ export namespace SessionProcessor {
                   )
                   fallbackAttempts++
                   if (fallbackAttempts <= MAX_FALLBACK_ATTEMPTS) {
+                    const silentRotation = streamInput.agent.name === "cron"
                     const fallback = await LLM.handleRateLimitFallback(
                       streamInput.model,
                       "account-first",
@@ -471,6 +472,7 @@ export namespace SessionProcessor {
                       undefined,
                       accountId,
                       sessionIdentity,
+                      { silent: silentRotation },
                     )
                     if (fallback) {
                       log.info("Pre-flight: switched to fallback model", {
@@ -1211,6 +1213,7 @@ export namespace SessionProcessor {
                     input.assistantMessage.accountId ??
                     streamInput.user.model.accountId,
                   sessionIdentity,
+                  { silent: streamInput.agent.name === "cron" },
                 )
                 if (fallback) {
                   consecutiveNullFallbacks = 0
@@ -1321,6 +1324,7 @@ export namespace SessionProcessor {
                     input.assistantMessage.accountId ??
                     streamInput.user.model.accountId,
                   sessionIdentity,
+                  { silent: streamInput.agent.name === "cron" },
                 )
                 if (fallback) {
                   consecutiveNullFallbacks = 0
@@ -1431,6 +1435,7 @@ export namespace SessionProcessor {
                     input.assistantMessage.accountId ??
                     streamInput.user.model.accountId,
                   sessionIdentity,
+                  { silent: streamInput.agent.name === "cron" },
                 )
                 if (fallback) {
                   consecutiveNullFallbacks = 0

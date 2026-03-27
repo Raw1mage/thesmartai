@@ -134,6 +134,30 @@ describe("CronStore", () => {
     expect(removed).toBe(false)
   })
 
+  it("persists model selection in job state", async () => {
+    const job = await CronStore.create({
+      name: "model-persist-test",
+      enabled: true,
+      schedule: { kind: "every", everyMs: 60000 },
+      sessionTarget: "isolated",
+      wakeMode: "now",
+      payload: { kind: "agentTurn", message: "hello", model: "github-copilot/gpt-5.4-mini", accountId: "acct-1" },
+    })
+
+    // Simulate rotation: persist a different model to state
+    const updated = await CronStore.updateState(job.id, {
+      lastModel: "openai/gpt-5.4",
+      lastAccountId: "acct-2",
+    })
+    expect(updated!.state.lastModel).toBe("openai/gpt-5.4")
+    expect(updated!.state.lastAccountId).toBe("acct-2")
+
+    // Verify persistence across read
+    const retrieved = await CronStore.get(job.id)
+    expect(retrieved!.state.lastModel).toBe("openai/gpt-5.4")
+    expect(retrieved!.state.lastAccountId).toBe("acct-2")
+  })
+
   it("lists only enabled jobs", async () => {
     await CronStore.create({
       name: "enabled-job",
