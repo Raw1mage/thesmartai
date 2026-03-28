@@ -636,11 +636,19 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
 }
 
 /**
- * CodexNativeAuthPlugin — OAuth auth for the independent "codex" provider.
- *
- * Reuses the same OAuth PKCE / device code flows as CodexAuthPlugin,
- * but targets provider: "codex" instead of "openai".
- * The loader passes auth tokens to CodexLanguageModel (C transport handles HTTP).
+ * Per-provider turn state for sticky routing and cache optimization.
+ * Captured from response headers, replayed in follow-up requests.
+ * All features are silent/automatic — no user configuration needed.
+ */
+const codexTurnState = {
+  /** Opaque routing token from x-codex-turn-state response header */
+  turnState: undefined as string | undefined,
+  /** Last response_id for future incremental delta (Phase 3) */
+  responseId: undefined as string | undefined,
+}
+
+/**
+ * CodexNativeAuthPlugin — OAuth auth + efficiency optimizations for "codex" provider.
  */
 export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> {
   return {
@@ -713,6 +721,11 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
               headers.set("ChatGPT-Account-Id", authWithAccount.accountId)
             }
 
+            // Sticky routing: replay captured turn state from previous response
+            if (codexTurnState.turnState) {
+              headers.set("x-codex-turn-state", codexTurnState.turnState)
+            }
+
             const parsed =
               requestInput instanceof URL
                 ? requestInput
@@ -738,6 +751,13 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
                   body.instructions = systemMsg ? systemMsg.content : "You are a helpful assistant."
                   delete body.max_output_tokens
                   delete body.max_tokens
+
+                  // Prompt cache: inject session-stable cache key for server-side prefix caching
+                  if (!body.prompt_cache_key) {
+                    const requestId = headers.get("x-client-request-id")
+                    body.prompt_cache_key = requestId || `codex-${authWithAccount.accountId || "default"}`
+                  }
+
                   if (!init) init = {}
                   init.body = JSON.stringify(body)
                   if (!init.method && requestInput instanceof Request) init.method = requestInput.method
@@ -745,7 +765,13 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
               }
             }
 
-            return fetch(url, { ...init, headers })
+            // Execute fetch and capture turn state from response
+            const response = await fetch(url, { ...init, headers })
+            const newTurnState = response.headers.get("x-codex-turn-state")
+            if (newTurnState) {
+              codexTurnState.turnState = newTurnState
+            }
+            return response
           },
         }
       },
@@ -864,6 +890,12 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
           },
         },
       ],
+    },
+    // Reset turn state on new user message (fresh routing for new turn)
+    "chat.message": async (input) => {
+      if (input.model?.providerId === "codex") {
+        codexTurnState.turnState = undefined
+      }
     },
   }
 }
