@@ -244,7 +244,9 @@ function ensureOpenAIQuotaRefresh(id: string, info: Account.Info) {
  */
 export async function getOpenAIQuotas(): Promise<Record<string, OpenAIQuota | null>> {
   try {
-    const accounts = await Account.list("openai")
+    const openaiAccounts = await Account.list("openai")
+    const codexAccounts = await Account.list("codex").catch(() => ({}))
+    const accounts = { ...openaiAccounts, ...codexAccounts }
     const results: Record<string, OpenAIQuota | null> = {}
     const now = Date.now()
 
@@ -283,7 +285,9 @@ export async function getOpenAIQuota(
   const current = quotas[accountId]
   if (current !== null || !options?.waitFresh) return current
 
-  const accounts = await Account.list("openai")
+  const openaiAcct = await Account.list("openai")
+  const codexAcct = await Account.list("codex").catch(() => ({}))
+  const accounts = { ...openaiAcct, ...codexAcct }
   const info = accounts[accountId]
   if (!info || info.type !== "subscription") return null
 
@@ -319,8 +323,9 @@ export async function getOpenAIQuotaForDisplay(accountId: string): Promise<OpenA
 
     const isStale = now - cached.timestamp >= CACHE_TTL_MS
     if (isStale) {
-      const accounts = await Account.list("openai")
-      const info = accounts[accountId]
+      const oa = await Account.list("openai")
+      const ca = await Account.list("codex").catch(() => ({}))
+      const info = { ...oa, ...ca }[accountId]
       if (info?.type === "subscription") ensureOpenAIQuotaRefresh(accountId, info)
     }
     return cached.quota

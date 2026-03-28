@@ -9,6 +9,7 @@ export const SUPPORTED_PROVIDER_LABELS = {
   vercel: "Vercel",
   gitlab: "GitLab",
   opencode: "OpenCode",
+  codex: "Codex",
 } as const
 
 export type SupportedProviderKey = keyof typeof SUPPORTED_PROVIDER_LABELS

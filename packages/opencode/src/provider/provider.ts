@@ -327,6 +327,20 @@ export namespace Provider {
         options: hasKey ? {} : { apiKey: "public" },
       }
     },
+    codex: async () => {
+      // Use standard AI SDK openai provider with Responses API.
+      // Auth plugin (CodexNativeAuthPlugin) injects custom fetch that handles:
+      //   - Bearer token + ChatGPT-Account-Id headers
+      //   - URL rewrite to chatgpt.com/backend-api/codex/responses
+      //   - Body transform (instructions, strip params)
+      return {
+        autoload: true,
+        async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
+          return sdk.responses(modelID)
+        },
+        options: {},
+      }
+    },
     openai: async () => {
       return {
         autoload: false,
@@ -1220,6 +1234,53 @@ export namespace Provider {
         variants: {},
         headers: {},
         release_date: "2025-01-01",
+      }
+    }
+
+    // Initialize Codex Provider (native C transport)
+    // @event_2026-03-28:codex_native_provider
+    const codexModels = [
+      { id: "gpt-5.4", name: "GPT-5.4", reasoning: true },
+      { id: "gpt-5.4-mini", name: "GPT-5.4 Mini", reasoning: false },
+      { id: "gpt-5.3-codex", name: "GPT-5.3 Codex", reasoning: true },
+      { id: "gpt-5.2-codex", name: "GPT-5.2 Codex", reasoning: true },
+      { id: "gpt-5.2", name: "GPT-5.2", reasoning: true },
+      { id: "gpt-5.1-codex-max", name: "GPT-5.1 Codex Max", reasoning: true },
+      { id: "gpt-5.1-codex-mini", name: "GPT-5.1 Codex Mini", reasoning: false },
+    ]
+
+    database["codex"] = {
+      id: "codex",
+      name: "Codex",
+      source: "custom",
+      env: ["OPENAI_API_KEY"],
+      options: {},
+      models: {},
+    }
+
+    for (const m of codexModels) {
+      database["codex"].models[m.id] = {
+        id: m.id,
+        name: m.name,
+        providerId: "codex",
+        family: "openai",
+        api: { id: m.id, url: "https://chatgpt.com/backend-api/codex", npm: "@ai-sdk/openai" },
+        status: "active",
+        capabilities: {
+          temperature: false,
+          reasoning: m.reasoning,
+          attachment: false,
+          interleaved: false,
+          input: { text: true, image: true, audio: false, video: false, pdf: false },
+          output: { text: true, audio: false, image: false, video: false, pdf: false },
+          toolcall: true,
+        },
+        cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+        limit: { context: 400000, output: 128000 },
+        options: {},
+        variants: {},
+        headers: {},
+        release_date: "2026-03-01",
       }
     }
 
