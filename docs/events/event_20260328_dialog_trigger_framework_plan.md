@@ -62,6 +62,12 @@
 - plan 已明確排除 background AI governor 與 in-flight hot reload
 - plan 已明確把 `plan_enter` naming fix 寫成第一批 build slice
 
+## Scope Correction
+
+- 後續對話一度把 beta workflow build-entry contract 混入這份 `dialog_trigger_framework` plan。
+- 這是錯位：beta workflow 屬 `plan.ts` / planner contract 本身要處理的事；`dialog_trigger_framework` 只是 planner 可能管理的其中一個項目。
+- 因此 active `/plans/...` 已修回正確邊界：本 plan 只保留 `dialog_trigger_framework` 自身的 trigger taxonomy、replan、approval、routing 與 planner naming slice；不再把 beta workflow 當本 plan 的主題。
+
 ## Architecture Sync
 
 Architecture Sync: Updated

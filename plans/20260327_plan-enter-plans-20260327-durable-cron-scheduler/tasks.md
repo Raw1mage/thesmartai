@@ -9,7 +9,9 @@
 
 - [ ] 2.1 Define first-version trigger taxonomy for plan enter, replan, and approval
 - [ ] 2.2 Define centralized detector, policy, and action boundaries for the first version
-- [ ] 2.3 Document why first version uses dirty-flag plus next-round rebuild instead of in-flight hot reload
+- [ ] 2.3 Define the v1 replan threshold: active execution context plus material direction change only
+- [ ] 2.4 Define the v1 approval boundary: centralized detection/routing only, deeper runtime stop orchestration deferred
+- [ ] 2.5 Document why first version uses dirty-flag plus next-round rebuild instead of in-flight hot reload
 
 ## 3. Slice Future Build Work
 

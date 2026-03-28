@@ -34,7 +34,8 @@
 ## Build Entry Recommendation
 
 - Start by auditing `packages/opencode/src/tool/plan.ts` planner-root derivation and naming inputs.
-- Then define a centralized trigger registry/policy surface that can feed `prompt.ts` and `resolve-tools.ts` at round boundaries.
+- Then define the v1 `replan` threshold and `approval` boundary so the framework scope stays aligned with current runtime semantics.
+- Finally, define a centralized trigger registry/policy surface that can feed `prompt.ts` and `resolve-tools.ts` at round boundaries.
 
 ## Execution-Ready Checklist
 

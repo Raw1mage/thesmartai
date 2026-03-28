@@ -62,6 +62,8 @@
 ### New Capabilities
 
 - `dialog_trigger_framework`: 以明確 detector/policy/action 合約判定下一輪是否進 plan、replan、approval gate、beta gate、tool menu。
+- `replan` v1 boundary: 只在 active execution context 下，面對明確需求變更/改方向訊號時成立。
+- `approval` v1 boundary: 先集中處理 detection/routing，不宣稱一口氣完成更深的 runtime stop-state orchestration。
 - `surface dirty + next-round rebuild`: 對 tool surface / runtime capabilities 變化採可觀測的 deterministic rebuild 契約。
 
 ### Modified Capabilities

@@ -36,6 +36,32 @@ The system SHALL derive a planner root name that matches the actual task topic a
 - **WHEN** `plan_enter` 建立 active `/plans/` root
 - **THEN** 產生的 root slug 必須反映 `dialog_trigger_framework` 主題，而不是殘留錯誤或無關的名稱
 
+### Requirement: Replan Trigger Applies Only To Material Direction Change During Active Execution
+
+The system SHALL route to replan only when a user message indicates material scope/direction change while an active execution context already exists.
+
+#### Scenario: Replan request during active execution context
+
+- **GIVEN** session 已有 active mission / execution-ready context，且使用者明確表示需求變更、方向改變、或要求重新規劃
+- **WHEN** 系統評估 `replan` trigger
+- **THEN** 系統將該訊息視為 `replan` 候選，並把後續 routing 收斂到 plan agent，而不是把它當成一般 status reply
+
+#### Scenario: General discussion without active execution context
+
+- **GIVEN** session 尚未進入 active execution context，或使用者只是一般討論/詢問狀態
+- **WHEN** 系統評估 `replan` trigger
+- **THEN** 不得僅因出現模糊字詞就誤判成 `replan`
+
+### Requirement: Approval Trigger In V1 Is Limited To Centralized Detection And Routing
+
+The system SHALL centralize approval detection in v1, but SHALL NOT claim full runtime stop-state orchestration beyond existing workflow behavior.
+
+#### Scenario: Approval reply while session is waiting on approval
+
+- **GIVEN** workflow stop reason 已是 `approval_needed`
+- **WHEN** 使用者送出明確 approval reply
+- **THEN** 系統辨識為 approval trigger，並保持 deterministic routing，而不是誤導回 plan mode
+
 ### Requirement: No Silent Fallback On Trigger Contracts
 
 The system SHALL stop for approval, product decision, or architecture review when a trigger outcome would cross a protected boundary.
@@ -52,3 +78,5 @@ The system SHALL stop for approval, product decision, or architecture review whe
 - 規格明確要求 surface 變更走 dirty flag + next-round rebuild。
 - 規格明確要求 `plan_enter` 命名與任務主題對齊。
 - 規格明確要求 protected boundary 一律 fail fast，不靠 silent fallback。
+- 規格明確要求 `replan` 僅在 active execution context + material direction change 下成立。
+- 規格明確要求 `approval` 在 v1 只先做到 centralized detection/routing，不誇大成完整 runtime orchestration。

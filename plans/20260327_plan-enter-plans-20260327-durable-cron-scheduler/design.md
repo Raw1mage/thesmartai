@@ -33,6 +33,8 @@
 ## Data / State / Control Flow
 
 - 使用者訊息進入 `prompt.ts` 後，系統可先經 rule-based detector 判定是否需要切 plan mode、要求 question、或標記事後 dirty rebuild。
+- `replan` 在 v1 只應於已有 active execution context 時生效，避免把一般討論或狀態詢問誤升格為 planning interrupt。
+- `approval` 在 v1 只先集中處理 detector/policy/routing，較深的 stop-state orchestration 仍沿用既有 workflow/runtime contract。
 - 每輪 `resolveTools(...)` 依 session/agent/model/messages 決定當前 tool surface；若 policy 或 MCP 狀態改變，framework 只需標記 surface dirty，於下一輪重算。
 - `processor.ts` 負責 round-level tool invocation 與 finish/stop 狀態；framework 不直接侵入 tool execution substrate，只在 round boundary 提供 trigger decisions。
 - `plan.ts` 負責 planner root、artifact validation、plan_exit handoff，因此 `plan_enter` naming fix 屬 planner layer；framework 應將其視為 planning trigger contract，而非 UI cosmetic bug。
@@ -43,6 +45,7 @@
 - next-round rebuild 比 hot reload 慢一輪 -> 但能保留 deterministic、易驗證、低風險的 runtime contract。
 - 將 `plan_enter` naming fix 納入同一份 plan 會增加 scope -> 但可避免 framework 與 planner lifecycle 再次脫節。
 - 集中式 registry 需要先抽出共用 trigger contract -> 但可降低後續 drift 與重複規則。
+- 若文件把 `approval`/`replan` 描述得比目前 runtime 能力更強，會造成 framework scope 漂移 -> 因此 v1 必須明確標示 centralized detection/routing 與 deeper orchestration 的邊界。
 
 ## Critical Files
 

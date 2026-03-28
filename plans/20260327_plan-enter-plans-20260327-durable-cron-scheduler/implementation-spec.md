@@ -2,7 +2,7 @@
 
 ## Goal
 
-- 建立 `dialog_trigger_framework` 的第一版規劃與落地路線，讓對話中的 plan/replan/tool-menu/beta/approval/docs 觸發改為 rule-first、next-round rebuild，並順手修正 `plan_enter` 會亂命名 active plan root 的問題。
+- 建立 `dialog_trigger_framework` 的第一版規劃與落地路線，讓對話中的 plan/replan/tool-menu/approval/docs 觸發改為 rule-first、next-round rebuild，並順手修正 `plan_enter` 會亂命名 active plan root 的問題。
 
 ## Scope
 
@@ -12,7 +12,7 @@
 - 明確把 `plan_enter` root naming 修正納入同一份 implementation plan。
 - 規劃如何重用既有 per-session tool surface 注入鏈：`resolve-tools.ts`、`prompt.ts`、`prompt-runtime.ts`、`processor.ts`、`mcp/index.ts`。
 - 定義第一版以 rule-based detector、surface dirty flag、next-round rebuild 為核心，不做 in-flight hot reload。
-- 定義 plan/beta/approval/tool-menu/docs sync 等 trigger 的 stop gates 與驗證方式。
+- 定義 plan/replan/approval/tool-menu/docs sync 等 trigger 的 stop gates 與驗證方式。
 
 ### OUT
 
