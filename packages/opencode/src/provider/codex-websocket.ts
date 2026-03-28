@@ -42,8 +42,44 @@ export interface CodexWsRequest {
 interface WsEventHandler {
   onPart: (part: LanguageModelV2StreamPart) => void
   onMeta: (meta: { turnState?: string; responseId?: string; reasoningIncluded?: boolean }) => void
+  onItem: (item: unknown) => void
   onDone: () => void
   onError: (err: Error) => void
+}
+
+/**
+ * Non-input fields of a request, used for delta comparison.
+ * Matches codex-rs: clone request, clear input, compare equality.
+ */
+interface RequestSignature {
+  model: string
+  instructions: string
+  tools: unknown[]
+  tool_choice: string
+  parallel_tool_calls: boolean
+  include: string[]
+}
+
+function extractSignature(req: CodexWsRequest): RequestSignature {
+  return {
+    model: req.model,
+    instructions: req.instructions,
+    tools: req.tools,
+    tool_choice: req.tool_choice,
+    parallel_tool_calls: req.parallel_tool_calls,
+    include: req.include,
+  }
+}
+
+function signaturesEqual(a: RequestSignature, b: RequestSignature): boolean {
+  return (
+    a.model === b.model &&
+    a.instructions === b.instructions &&
+    a.tool_choice === b.tool_choice &&
+    a.parallel_tool_calls === b.parallel_tool_calls &&
+    JSON.stringify(a.tools) === JSON.stringify(b.tools) &&
+    JSON.stringify(a.include) === JSON.stringify(b.include)
+  )
 }
 
 /**
@@ -58,6 +94,10 @@ export class CodexWebSocket {
   private lastResponseId: string | undefined
   private disabled = false
 
+  // Delta detection state (mirrors codex-rs websocket_session)
+  private lastRequest: CodexWsRequest | null = null
+  private lastResponseItems: unknown[] = []
+
   constructor(
     private auth: CodexWsAuth,
     private originator?: string,
@@ -66,15 +106,24 @@ export class CodexWebSocket {
 
   get isDisabled() { return this.disabled }
 
+  /** Update auth tokens (call before each request to handle token refresh) */
+  updateAuth(auth: CodexWsAuth) {
+    this.auth = auth
+  }
+
   /**
    * Connect to WebSocket endpoint.
+   * Reconnects with fresh auth if previous connection closed.
    * Returns true if connected, false if should fallback to HTTP.
    */
   async connect(): Promise<boolean> {
     if (this.disabled) return false
     if (this.ws && this.connected && !this.isExpired()) return true
 
+    // Reconnecting — clear delta state (codex-rs: needs_new clears last_request/last_response_rx)
     this.close()
+    this.lastRequest = null
+    this.lastResponseItems = []
 
     return new Promise<boolean>((resolve) => {
       const timeout = setTimeout(() => {
@@ -140,15 +189,18 @@ export class CodexWebSocket {
 
   /**
    * Send a request and stream events.
+   * Automatically applies incremental delta when possible.
    * Returns a ReadableStream of LanguageModelV2StreamPart.
    */
   async stream(request: CodexWsRequest): Promise<ReadableStream<LanguageModelV2StreamPart> | null> {
     if (!this.ws || !this.connected) return null
 
-    // Check if we can do incremental delta
-    if (this.lastResponseId && request.previous_response_id === undefined) {
-      request.previous_response_id = this.lastResponseId
-    }
+    // Prepare the actual wire request (may be delta)
+    const wireRequest = this.prepareWireRequest(request)
+
+    // Track this request for next delta computation
+    this.lastRequest = { ...request }
+    this.lastResponseItems = []
 
     return new ReadableStream<LanguageModelV2StreamPart>({
       start: (controller) => {
@@ -157,6 +209,10 @@ export class CodexWebSocket {
           onMeta: (meta) => {
             if (meta.turnState) this.turnState = meta.turnState
             if (meta.responseId) this.lastResponseId = meta.responseId
+          },
+          onItem: (item) => {
+            // Collect server-returned items for delta baseline
+            this.lastResponseItems.push(item)
           },
           onDone: () => {
             this.handler = null
@@ -170,7 +226,7 @@ export class CodexWebSocket {
 
         // Send request as text frame
         try {
-          this.ws!.send(JSON.stringify(request))
+          this.ws!.send(JSON.stringify(wireRequest))
         } catch (err) {
           this.handler.onError(err instanceof Error ? err : new Error(String(err)))
         }
@@ -184,10 +240,14 @@ export class CodexWebSocket {
 
   /**
    * Prewarm: send request with generate=false to warm server cache.
-   * Does not consume output tokens.
+   * Does not consume output tokens. Stores request for delta baseline.
    */
   async prewarm(request: Omit<CodexWsRequest, "generate">): Promise<boolean> {
     if (!this.ws || !this.connected) return false
+
+    // Store as last request for delta computation (prewarm is the baseline)
+    this.lastRequest = { ...request, generate: false } as CodexWsRequest
+    this.lastResponseItems = []
 
     return new Promise<boolean>((resolve) => {
       const timeout = setTimeout(() => {
@@ -200,6 +260,9 @@ export class CodexWebSocket {
         onMeta: (meta) => {
           if (meta.turnState) this.turnState = meta.turnState
           if (meta.responseId) this.lastResponseId = meta.responseId
+        },
+        onItem: (item) => {
+          this.lastResponseItems.push(item)
         },
         onDone: () => {
           clearTimeout(timeout)
@@ -225,20 +288,53 @@ export class CodexWebSocket {
   }
 
   /**
-   * Compute incremental delta input.
-   * If only input items were appended (no instruction/tool changes),
-   * return only the new items. Otherwise return null (send full request).
+   * Prepare wire request with incremental delta when possible.
+   * Mirrors codex-rs get_incremental_items() + prepare_websocket_request():
+   *   1. Compare non-input fields (instructions, tools, model, etc.)
+   *   2. Build baseline = previous input + server-returned items
+   *   3. Check current input is strict extension of baseline
+   *   4. Send only new items with previous_response_id
    */
-  computeDelta(
-    currentInput: unknown[],
-    previousInputLength: number,
-  ): unknown[] | null {
-    if (!this.lastResponseId) return null
-    if (previousInputLength <= 0) return null
-    if (currentInput.length <= previousInputLength) return null
+  private prepareWireRequest(request: CodexWsRequest): CodexWsRequest {
+    if (!this.lastRequest || !this.lastResponseId) return request
 
-    // Only delta if new items were appended at the end
-    return currentInput.slice(previousInputLength)
+    // Step 1: non-input field comparison
+    const prevSig = extractSignature(this.lastRequest)
+    const currSig = extractSignature(request)
+    if (!signaturesEqual(prevSig, currSig)) {
+      log.info("codex ws delta rejected: non-input fields changed")
+      return request
+    }
+
+    // Step 2: build baseline (previous input + server-returned items)
+    const baseline = [...this.lastRequest.input, ...this.lastResponseItems]
+    const baselineLen = baseline.length
+
+    // Step 3: check current input is strict extension
+    if (request.input.length <= baselineLen) return request
+
+    // Verify prefix match (items must be identical)
+    const baselineJson = JSON.stringify(baseline)
+    const prefixJson = JSON.stringify(request.input.slice(0, baselineLen))
+    if (baselineJson !== prefixJson) {
+      log.info("codex ws delta rejected: input prefix mismatch")
+      return request
+    }
+
+    // Step 4: send only delta items
+    const deltaItems = request.input.slice(baselineLen)
+    log.info("codex ws incremental delta", {
+      baselineItems: baselineLen,
+      deltaItems: deltaItems.length,
+      totalItems: request.input.length,
+      previousResponseId: this.lastResponseId,
+    })
+
+    return {
+      ...request,
+      input: deltaItems,
+      previous_response_id: this.lastResponseId,
+    }
   }
 
   get responseId() { return this.lastResponseId }
@@ -300,7 +396,12 @@ export class CodexWebSocket {
 
       case "response.output_item.done": {
         const item = event.item
-        if (item?.type === "function_call") {
+        if (!item) break
+
+        // Track server-returned items for delta baseline
+        this.handler.onItem(item)
+
+        if (item.type === "function_call") {
           this.handler.onPart({
             type: "tool-call",
             toolCallType: "function",

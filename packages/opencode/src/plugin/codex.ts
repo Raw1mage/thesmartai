@@ -892,9 +892,20 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
       ],
     },
     // Reset turn state on new user message (fresh routing for new turn)
+    // + opportunistic WebSocket preconnect (TCP+TLS overlap with prompt construction)
     "chat.message": async (input) => {
       if (input.model?.providerId === "codex") {
         codexTurnState.turnState = undefined
+
+        // Fire-and-forget preconnect: overlap WS handshake with prompt build
+        import("../provider/codex-language-model").then(async ({ codexPreconnectWebSocket }) => {
+          try {
+            const { Provider } = await import("../provider/provider")
+            const model = await Provider.getModel(input.model!.providerId, input.model!.modelID)
+            const language = await Provider.getLanguage(model)
+            codexPreconnectWebSocket(language)
+          } catch {}
+        })
       }
     },
   }

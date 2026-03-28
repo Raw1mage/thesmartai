@@ -320,8 +320,6 @@ export class CodexLanguageModel implements LanguageModelV2 {
   private turnState: string | undefined
   /** WebSocket connection (reused across requests in same session) */
   private wsClient: CodexWebSocket | null = null
-  /** Track previous input length for incremental delta */
-  private prevInputLength = 0
 
   constructor(modelId: string, auth?: { accessToken?: string; accountId?: string }) {
     this.modelId = modelId
@@ -381,7 +379,6 @@ export class CodexLanguageModel implements LanguageModelV2 {
     })
 
     if (result) {
-      this.prevInputLength = (body.input as unknown[]).length
       log.info("codex prewarm succeeded", { responseId: this.wsClient.responseId })
     }
 
@@ -450,6 +447,7 @@ export class CodexLanguageModel implements LanguageModelV2 {
 
   /**
    * Try WebSocket transport. Returns null if unavailable or disabled.
+   * Passes fresh auth on every call (handles token refresh/reconnect).
    */
   private async tryWebSocket(
     body: Record<string, unknown>,
@@ -469,10 +467,17 @@ export class CodexLanguageModel implements LanguageModelV2 {
 
     if (this.wsClient.isDisabled) return null
 
+    // Always update auth before connect (tokens expire and rotate)
+    this.wsClient.updateAuth({
+      accessToken: auth.accessToken,
+      accountId: auth.accountId,
+    })
+
     const connected = await this.wsClient.connect()
     if (!connected) return null
 
     // Build WebSocket request (strip host-only fields consumed by C binary)
+    // Delta detection is handled inside CodexWebSocket.stream() → prepareWireRequest()
     const wsRequest: CodexWsRequest = {
       type: "response.create",
       model: body.model as string,
@@ -486,29 +491,12 @@ export class CodexLanguageModel implements LanguageModelV2 {
       prompt_cache_key: (body.prompt_cache_key as string) || undefined,
     }
 
-    // Incremental delta: only send new input items if possible
-    const currentInput = wsRequest.input
-    const delta = this.wsClient.computeDelta(currentInput, this.prevInputLength)
-    if (delta) {
-      wsRequest.input = delta
-      wsRequest.previous_response_id = this.wsClient.responseId
-      log.info("codex ws incremental delta", {
-        fullItems: currentInput.length,
-        deltaItems: delta.length,
-        previousResponseId: this.wsClient.responseId,
-      })
-    }
-
     const wsStream = await this.wsClient.stream(wsRequest)
     if (!wsStream) return null
-
-    // Track input length for next delta computation
-    this.prevInputLength = currentInput.length
 
     log.info("codex ws stream started", {
       model: wsRequest.model,
       inputItems: wsRequest.input.length,
-      isDelta: !!delta,
     })
 
     return { stream: wsStream, request: { body: wsRequest } }
@@ -634,4 +622,41 @@ export class CodexLanguageModel implements LanguageModelV2 {
  */
 export function isCodexNativeAvailable(): boolean {
   return getBinaryPath() !== null
+}
+
+/**
+ * Opportunistically preconnect WebSocket for a CodexLanguageModel.
+ * Call from chat.message hook to overlap TCP+TLS handshake with prompt construction.
+ * Mirrors codex-rs preconnect_websocket() — connection only, no prompt payload.
+ *
+ * Pass the LanguageModelV2 obtained from Provider.getLanguage(); if it's a
+ * CodexLanguageModel the WebSocket handshake fires in the background.
+ */
+export async function codexPreconnectWebSocket(languageModel: unknown): Promise<void> {
+  if (!(languageModel instanceof CodexLanguageModel)) return
+  const model = languageModel as CodexLanguageModel
+
+  try {
+    const liveAuth = await Auth.get("codex")
+    const auth = {
+      accessToken: (liveAuth as any)?.access ?? "",
+      accountId: (liveAuth as any)?.accountId ?? "",
+    }
+    if (!auth.accessToken) return
+
+    if (!model["wsClient"]) {
+      model["wsClient"] = new CodexWebSocket(
+        { accessToken: auth.accessToken, accountId: auth.accountId },
+      )
+    } else {
+      model["wsClient"].updateAuth(auth)
+    }
+
+    if (model["wsClient"].isDisabled) return
+
+    await model["wsClient"].connect()
+    log.info("codex ws preconnected")
+  } catch (err) {
+    log.warn("codex ws preconnect failed", { error: String(err) })
+  }
 }
