@@ -95,10 +95,16 @@ target_include_directories(codex-provider
     PRIVATE ${CJSON_INCLUDE_DIRS}
 )
 
+find_library(ZSTD_LIBRARY NAMES zstd)
+if(ZSTD_LIBRARY)
+    message(STATUS "  zstd: ${ZSTD_LIBRARY}")
+endif()
+
 target_link_libraries(codex-provider
     PRIVATE
         CURL::libcurl
         ${CJSON_LIBRARIES}
+        ${ZSTD_LIBRARY}
 )
 
 # --------------------------------------------------------------------------

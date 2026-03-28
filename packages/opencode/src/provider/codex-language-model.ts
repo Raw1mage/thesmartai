@@ -76,7 +76,7 @@ function promptToRequestBody(
   modelId: string,
   options: LanguageModelV2CallOptions,
   auth: { accessToken?: string; accountId?: string },
-  extra?: { conversationId?: string; turnState?: string; betaFeatures?: string },
+  extra?: { conversationId?: string; turnState?: string; betaFeatures?: string; promptCacheKey?: string },
 ): Record<string, unknown> {
   let instructions = ""
   const input: unknown[] = []
@@ -110,9 +110,13 @@ function promptToRequestBody(
         if (part.type === "text") {
           contentItems.push({ type: "output_text", text: part.text })
         } else if (part.type === "reasoning") {
+          // Preserve encrypted_content for server-side reasoning reuse
+          const enc = (part as any).providerMetadata?.openai?.reasoningEncryptedContent
+            ?? (part as any).providerOptions?.openai?.reasoningEncryptedContent
           input.push({
             type: "reasoning",
             summary: [{ type: "summary_text", text: part.text }],
+            ...(enc ? { encrypted_content: enc } : {}),
           })
         } else if (part.type === "tool-call") {
           input.push({
@@ -165,6 +169,9 @@ function promptToRequestBody(
     parallel_tool_calls: true,
     stream: true,
     include: ["reasoning.encrypted_content"],
+
+    // Prompt cache key for server-side prefix caching
+    prompt_cache_key: extra?.promptCacheKey ?? "",
 
     // Host fields — consumed by C process, stripped before API call
     access_token: auth.accessToken ?? "",
@@ -306,6 +313,10 @@ export class CodexLanguageModel implements LanguageModelV2 {
   readonly supportedUrls: Record<string, RegExp[]> = {}
 
   private auth: { accessToken?: string; accountId?: string }
+  /** Session-stable cache key for server-side prompt prefix caching */
+  private sessionCacheKey = `codex-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  /** Sticky routing token captured from last response */
+  private turnState: string | undefined
 
   constructor(modelId: string, auth?: { accessToken?: string; accountId?: string }) {
     this.modelId = modelId
@@ -314,6 +325,11 @@ export class CodexLanguageModel implements LanguageModelV2 {
 
   setAuth(auth: { accessToken?: string; accountId?: string }) {
     this.auth = auth
+  }
+
+  /** Reset turn state on new user turn (fresh routing) */
+  resetTurnState() {
+    this.turnState = undefined
   }
 
   async doGenerate(options: LanguageModelV2CallOptions) {
@@ -365,7 +381,10 @@ export class CodexLanguageModel implements LanguageModelV2 {
       accountId: (liveAuth as any)?.accountId ?? this.auth.accountId ?? "",
     }
 
-    const body = promptToRequestBody(this.modelId, options, auth)
+    const body = promptToRequestBody(this.modelId, options, auth, {
+      promptCacheKey: this.sessionCacheKey,
+      turnState: this.turnState,
+    })
     const bodyJson = JSON.stringify(body)
 
     log.info("codex-provider spawn", {
@@ -406,6 +425,22 @@ export class CodexLanguageModel implements LanguageModelV2 {
     const reader = stdout.getReader()
     const decoder = new TextDecoder()
     let lineBuf = ""
+    const self = this
+
+    const processLine = (line: string, controller: ReadableStreamDefaultController<LanguageModelV2StreamPart>) => {
+      // Intercept response_metadata — not a stream part, captures turn state
+      try {
+        const parsed = JSON.parse(line)
+        if (parsed.type === "response_metadata") {
+          if (parsed.turn_state) self.turnState = parsed.turn_state
+          return
+        }
+      } catch {}
+
+      for (const part of parseJsonlEvent(line)) {
+        controller.enqueue(part)
+      }
+    }
 
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       async pull(controller) {
@@ -414,29 +449,18 @@ export class CodexLanguageModel implements LanguageModelV2 {
             const { done, value } = await reader.read()
 
             if (done) {
-              // Flush remaining buffer
-              if (lineBuf.trim()) {
-                for (const part of parseJsonlEvent(lineBuf.trim())) {
-                  controller.enqueue(part)
-                }
-              }
+              if (lineBuf.trim()) processLine(lineBuf.trim(), controller)
               controller.close()
               return
             }
 
             lineBuf += decoder.decode(value, { stream: true })
 
-            // Emit complete lines
             let idx: number
             while ((idx = lineBuf.indexOf("\n")) !== -1) {
               const line = lineBuf.slice(0, idx).trim()
               lineBuf = lineBuf.slice(idx + 1)
-
-              if (line) {
-                for (const part of parseJsonlEvent(line)) {
-                  controller.enqueue(part)
-                }
-              }
+              if (line) processLine(line, controller)
             }
           }
         } catch (err) {

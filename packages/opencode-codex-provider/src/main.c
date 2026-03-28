@@ -47,6 +47,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zstd.h>
 
 /* --------------------------------------------------------------------------
  * Forward declarations from library modules
@@ -231,6 +232,38 @@ typedef struct {
     sse_parser_t *parser;
 } stream_ctx_t;
 
+/* --------------------------------------------------------------------------
+ * Capture response headers for sticky routing + reasoning reuse
+ * ----------------------------------------------------------------------- */
+
+static char g_turn_state[4096] = {0};
+static char g_server_model[256] = {0};
+static int  g_reasoning_included = 0;
+
+static size_t header_cb(char *buf, size_t size, size_t n, void *ud)
+{
+    (void)ud;
+    size_t total = size * n;
+
+    /* x-codex-turn-state */
+    if (total > 22 && strncasecmp(buf, "x-codex-turn-state: ", 20) == 0) {
+        size_t vl = total - 20;
+        while (vl > 0 && (buf[20+vl-1]=='\r' || buf[20+vl-1]=='\n')) vl--;
+        if (vl < sizeof(g_turn_state)) { memcpy(g_turn_state, buf+20, vl); g_turn_state[vl]='\0'; }
+    }
+    /* x-reasoning-included */
+    if (total > 23 && strncasecmp(buf, "x-reasoning-included: ", 22) == 0) {
+        if (buf[22]=='t' || buf[22]=='T') g_reasoning_included = 1;
+    }
+    /* openai-model */
+    if (total > 15 && strncasecmp(buf, "openai-model: ", 14) == 0) {
+        size_t vl = total - 14;
+        while (vl > 0 && (buf[14+vl-1]=='\r' || buf[14+vl-1]=='\n')) vl--;
+        if (vl < sizeof(g_server_model)) { memcpy(g_server_model, buf+14, vl); g_server_model[vl]='\0'; }
+    }
+    return total;
+}
+
 static size_t curl_stream_cb(void *ptr, size_t size, size_t nmemb, void *userdata)
 {
     stream_ctx_t *ctx = (stream_ctx_t *)userdata;
@@ -411,6 +444,24 @@ int main(void)
         return 1;
     }
 
+    /* Zstd compression (bodies > 1KB) */
+    char *send_body = body;
+    size_t send_len = strlen(body);
+    int compressed = 0;
+    if (send_len > 1024) {
+        size_t bound = ZSTD_compressBound(send_len);
+        char *cb = malloc(bound);
+        if (cb) {
+            size_t cs = ZSTD_compress(cb, bound, body, send_len, 3);
+            if (!ZSTD_isError(cs) && cs < send_len) {
+                send_body = cb; send_len = cs; compressed = 1;
+                headers = curl_slist_append(headers, "Content-Encoding: zstd");
+                fprintf(stderr, "codex-provider: zstd %zu->%zu (%.1fx)\n",
+                        strlen(body), cs, (double)strlen(body)/(double)cs);
+            } else { free(cb); }
+        }
+    }
+
     /* Create SSE parser with stdout callback */
     sse_parser_t *parser = codex_sse_parser_create(event_to_jsonl, NULL);
     if (!parser) {
@@ -434,10 +485,12 @@ int main(void)
     }
 
     curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, send_body);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)send_len);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_stream_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &sctx);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);
     curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 300L); /* 5 min idle */
@@ -458,6 +511,21 @@ int main(void)
 
     /* Flush any pending SSE event */
     codex_sse_parser_flush(parser);
+
+    /* Output captured response metadata for TS layer */
+    if (g_turn_state[0] || g_server_model[0] || g_reasoning_included) {
+        cJSON *meta = cJSON_CreateObject();
+        cJSON_AddStringToObject(meta, "type", "response_metadata");
+        if (g_turn_state[0])
+            cJSON_AddStringToObject(meta, "turn_state", g_turn_state);
+        if (g_server_model[0])
+            cJSON_AddStringToObject(meta, "server_model", g_server_model);
+        if (g_reasoning_included)
+            cJSON_AddBoolToObject(meta, "reasoning_included", 1);
+        char *line = cJSON_PrintUnformatted(meta);
+        cJSON_Delete(meta);
+        if (line) { write_event(line); free(line); }
+    }
 
     /* Report transport-level errors as JSONL events */
     if (crc != CURLE_OK) {
@@ -487,6 +555,7 @@ int main(void)
     /* Cleanup */
     curl_easy_cleanup(curl);
     curl_global_cleanup();
+    if (compressed) free(send_body);
     codex_sse_parser_destroy(parser);
     curl_slist_free_all(headers);
     free(body);
