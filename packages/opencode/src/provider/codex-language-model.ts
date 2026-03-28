@@ -26,6 +26,7 @@ import type {
   LanguageModelV2FunctionTool,
 } from "@ai-sdk/provider"
 import { Log } from "../util/log"
+import { Auth } from "../auth"
 import path from "path"
 import fs from "fs"
 
@@ -357,13 +358,21 @@ export class CodexLanguageModel implements LanguageModelV2 {
       )
     }
 
-    const body = promptToRequestBody(this.modelId, options, this.auth)
+    // Get fresh auth tokens on every request (tokens expire and rotate)
+    const liveAuth = await Auth.get("codex")
+    const auth = {
+      accessToken: (liveAuth as any)?.access ?? this.auth.accessToken ?? "",
+      accountId: (liveAuth as any)?.accountId ?? this.auth.accountId ?? "",
+    }
+
+    const body = promptToRequestBody(this.modelId, options, auth)
     const bodyJson = JSON.stringify(body)
 
     log.info("codex-provider spawn", {
       model: this.modelId,
       bodyBytes: bodyJson.length,
-      hasAuth: !!(this.auth.accessToken),
+      hasAuth: !!auth.accessToken,
+      authType: liveAuth?.type ?? "none",
     })
 
     // Spawn C process: stdin JSON → stdout JSONL
