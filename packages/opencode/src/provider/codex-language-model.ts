@@ -27,6 +27,7 @@ import type {
 } from "@ai-sdk/provider"
 import { Log } from "../util/log"
 import { Auth } from "../auth"
+import { CodexWebSocket, type CodexWsRequest } from "./codex-websocket"
 import path from "path"
 import fs from "fs"
 
@@ -317,6 +318,10 @@ export class CodexLanguageModel implements LanguageModelV2 {
   private sessionCacheKey = `codex-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   /** Sticky routing token captured from last response */
   private turnState: string | undefined
+  /** WebSocket connection (reused across requests in same session) */
+  private wsClient: CodexWebSocket | null = null
+  /** Track previous input length for incremental delta */
+  private prevInputLength = 0
 
   constructor(modelId: string, auth?: { accessToken?: string; accountId?: string }) {
     this.modelId = modelId
@@ -330,6 +335,63 @@ export class CodexLanguageModel implements LanguageModelV2 {
   /** Reset turn state on new user turn (fresh routing) */
   resetTurnState() {
     this.turnState = undefined
+  }
+
+  /**
+   * Prewarm: establish WebSocket and send generate=false to warm server cache.
+   * Should be called at session start or after idle period.
+   * Returns true if prewarm succeeded.
+   */
+  async prewarm(options: LanguageModelV2CallOptions): Promise<boolean> {
+    const liveAuth = await Auth.get("codex")
+    const auth = {
+      accessToken: (liveAuth as any)?.access ?? this.auth.accessToken ?? "",
+      accountId: (liveAuth as any)?.accountId ?? this.auth.accountId ?? "",
+    }
+
+    if (!this.wsClient) {
+      this.wsClient = new CodexWebSocket(
+        { accessToken: auth.accessToken, accountId: auth.accountId },
+        undefined,
+        this.turnState,
+      )
+    }
+
+    if (this.wsClient.isDisabled) return false
+
+    const connected = await this.wsClient.connect()
+    if (!connected) return false
+
+    const body = promptToRequestBody(this.modelId, options, auth, {
+      promptCacheKey: this.sessionCacheKey,
+      turnState: this.turnState,
+    })
+
+    const result = await this.wsClient.prewarm({
+      type: "response.create",
+      model: body.model as string,
+      instructions: body.instructions as string,
+      input: body.input as unknown[],
+      tools: body.tools as unknown[],
+      tool_choice: body.tool_choice as string,
+      parallel_tool_calls: body.parallel_tool_calls as boolean,
+      stream: true,
+      include: body.include as string[],
+      prompt_cache_key: (body.prompt_cache_key as string) || undefined,
+    })
+
+    if (result) {
+      this.prevInputLength = (body.input as unknown[]).length
+      log.info("codex prewarm succeeded", { responseId: this.wsClient.responseId })
+    }
+
+    return result
+  }
+
+  /** Close WebSocket connection (cleanup) */
+  closeWebSocket() {
+    this.wsClient?.close()
+    this.wsClient = null
   }
 
   async doGenerate(options: LanguageModelV2CallOptions) {
@@ -366,14 +428,6 @@ export class CodexLanguageModel implements LanguageModelV2 {
     request?: { body?: unknown }
     response?: { headers?: Record<string, string> }
   }> {
-    const binaryPath = getBinaryPath()
-    if (!binaryPath) {
-      throw new Error(
-        "codex-provider binary not found. Build with: " +
-        "cd packages/opencode-codex-provider/build && cmake .. && cmake --build ."
-      )
-    }
-
     // Get fresh auth tokens on every request (tokens expire and rotate)
     const liveAuth = await Auth.get("codex")
     const auth = {
@@ -385,6 +439,100 @@ export class CodexLanguageModel implements LanguageModelV2 {
       promptCacheKey: this.sessionCacheKey,
       turnState: this.turnState,
     })
+
+    // --- WebSocket transport (preferred) ---
+    const wsResult = await this.tryWebSocket(body, auth)
+    if (wsResult) return wsResult
+
+    // --- C binary transport (fallback) ---
+    return this.doCBinaryStream(body, auth, liveAuth)
+  }
+
+  /**
+   * Try WebSocket transport. Returns null if unavailable or disabled.
+   */
+  private async tryWebSocket(
+    body: Record<string, unknown>,
+    auth: { accessToken: string; accountId: string },
+  ): Promise<{
+    stream: ReadableStream<LanguageModelV2StreamPart>
+    request?: { body?: unknown }
+  } | null> {
+    // Lazily create WebSocket client per session
+    if (!this.wsClient) {
+      this.wsClient = new CodexWebSocket(
+        { accessToken: auth.accessToken, accountId: auth.accountId },
+        undefined,
+        this.turnState,
+      )
+    }
+
+    if (this.wsClient.isDisabled) return null
+
+    const connected = await this.wsClient.connect()
+    if (!connected) return null
+
+    // Build WebSocket request (strip host-only fields consumed by C binary)
+    const wsRequest: CodexWsRequest = {
+      type: "response.create",
+      model: body.model as string,
+      instructions: body.instructions as string,
+      input: body.input as unknown[],
+      tools: body.tools as unknown[],
+      tool_choice: body.tool_choice as string,
+      parallel_tool_calls: body.parallel_tool_calls as boolean,
+      stream: true,
+      include: body.include as string[],
+      prompt_cache_key: (body.prompt_cache_key as string) || undefined,
+    }
+
+    // Incremental delta: only send new input items if possible
+    const currentInput = wsRequest.input
+    const delta = this.wsClient.computeDelta(currentInput, this.prevInputLength)
+    if (delta) {
+      wsRequest.input = delta
+      wsRequest.previous_response_id = this.wsClient.responseId
+      log.info("codex ws incremental delta", {
+        fullItems: currentInput.length,
+        deltaItems: delta.length,
+        previousResponseId: this.wsClient.responseId,
+      })
+    }
+
+    const wsStream = await this.wsClient.stream(wsRequest)
+    if (!wsStream) return null
+
+    // Track input length for next delta computation
+    this.prevInputLength = currentInput.length
+
+    log.info("codex ws stream started", {
+      model: wsRequest.model,
+      inputItems: wsRequest.input.length,
+      isDelta: !!delta,
+    })
+
+    return { stream: wsStream, request: { body: wsRequest } }
+  }
+
+  /**
+   * Fallback: spawn C binary for HTTP SSE transport.
+   */
+  private async doCBinaryStream(
+    body: Record<string, unknown>,
+    auth: { accessToken: string; accountId: string },
+    liveAuth: any,
+  ): Promise<{
+    stream: ReadableStream<LanguageModelV2StreamPart>
+    request?: { body?: unknown }
+  }> {
+    const binaryPath = getBinaryPath()
+    if (!binaryPath) {
+      throw new Error(
+        "codex-provider binary not found. Build with: " +
+        "cd packages/opencode-codex-provider/build && cmake .. && cmake --build ."
+      )
+    }
+
     const bodyJson = JSON.stringify(body)
 
     log.info("codex-provider spawn", {

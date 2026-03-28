@@ -16,6 +16,7 @@ import { Config } from "@/config/config"
 import { ProviderTransform } from "@/provider/transform"
 import { SessionPrompt } from "./prompt"
 import { SharedContext } from "./shared-context"
+import { codexServerCompact } from "../provider/codex-compaction"
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -207,6 +208,14 @@ export namespace SessionCompaction {
     auto: boolean
   }) {
     const userMessage = input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User
+
+    // --- Server-side compaction for codex provider (Phase 4) ---
+    if (userMessage.model.providerId === "codex") {
+      const serverResult = await tryServerCompaction(input, userMessage)
+      if (serverResult) return serverResult
+      log.info("codex server compaction unavailable, falling back to LLM agent")
+    }
+
     const agent = await Agent.get("compaction")
     const model = agent.model
       ? await Provider.getModel(agent.model.providerId, agent.model.modelID)
@@ -477,6 +486,103 @@ When constructing the summary, try to stick to this template:
     if (!last) return undefined
     const info = last.info as MessageV2.Assistant
     return info.tokens
+  }
+
+  /**
+   * Try server-side compaction via Codex /responses/compact endpoint.
+   * Returns "continue" on success, null if server compaction is unavailable.
+   */
+  async function tryServerCompaction(
+    input: {
+      parentID: string
+      messages: MessageV2.WithParts[]
+      sessionID: string
+      abort: AbortSignal
+      auto: boolean
+    },
+    userMessage: MessageV2.User,
+  ): Promise<"continue" | "stop" | null> {
+    try {
+      // Build Responses API input from conversation messages
+      const conversationInput: unknown[] = []
+      for (const msg of input.messages) {
+        if (msg.info.role === "user") {
+          const textParts = msg.parts.filter((p) => p.type === "text")
+          if (textParts.length > 0) {
+            conversationInput.push({
+              type: "message",
+              role: "user",
+              content: textParts.map((p) => ({
+                type: "input_text",
+                text: (p as any).text ?? "",
+              })),
+            })
+          }
+        } else if (msg.info.role === "assistant") {
+          const textParts = msg.parts.filter((p) => p.type === "text")
+          if (textParts.length > 0) {
+            conversationInput.push({
+              type: "message",
+              role: "assistant",
+              content: textParts.map((p) => ({
+                type: "output_text",
+                text: (p as any).text ?? "",
+              })),
+            })
+          }
+          // Include tool calls
+          for (const p of msg.parts) {
+            if (p.type === "tool" && p.state.status === "completed") {
+              conversationInput.push({
+                type: "function_call",
+                call_id: (p as any).toolCallId ?? p.id,
+                name: p.tool,
+                arguments: typeof (p as any).input === "string" ? (p as any).input : JSON.stringify((p as any).input ?? {}),
+              })
+              conversationInput.push({
+                type: "function_call_output",
+                call_id: (p as any).toolCallId ?? p.id,
+                output: typeof p.state.output === "string" ? p.state.output : JSON.stringify(p.state.output ?? ""),
+              })
+            }
+          }
+        }
+      }
+
+      if (conversationInput.length === 0) return null
+
+      const result = await codexServerCompact({
+        model: userMessage.model.modelID,
+        input: conversationInput,
+      })
+
+      if (!result.success || !result.input) return null
+
+      // Server compaction succeeded — create a synthetic summary from compacted input
+      const summaryText = result.input
+        .filter((item: any) => item.type === "message" && item.role === "assistant")
+        .flatMap((item: any) => (item.content ?? []).map((c: any) => c.text ?? ""))
+        .join("\n")
+        || "[Server-compacted conversation history]"
+
+      await compactWithSharedContext({
+        sessionID: input.sessionID,
+        snapshot: summaryText,
+        model: await Provider.getModel(userMessage.model.providerId, userMessage.model.modelID),
+        auto: input.auto,
+      })
+
+      log.info("codex server compaction complete", {
+        sessionID: input.sessionID,
+        tokensBefore: result.tokensBefore,
+        tokensAfter: result.tokensAfter,
+      })
+
+      return "continue"
+    } catch (err) {
+      log.warn("codex server compaction failed", { error: String(err) })
+      return null
+    }
   }
 
   export const create = fn(
