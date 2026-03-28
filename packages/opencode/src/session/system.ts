@@ -159,9 +159,60 @@ export namespace SystemPrompt {
     return loadPrompt(`agents/${name}.txt`, internal)
   }
 
+  // Cache for codex official base_instructions from refs/codex
+  const codexInstructionsCache = new Map<string, string>()
+  let codexModelsLoaded = false
+  let codexModelsData: any[] = []
+
+  async function loadCodexModelsJson() {
+    if (codexModelsLoaded) return
+    codexModelsLoaded = true
+    try {
+      // Try repo-relative path first, then absolute
+      const candidates = [
+        path.join(Instance.worktree, "refs/codex/codex-rs/core/models.json"),
+        path.join(Instance.directory, "refs/codex/codex-rs/core/models.json"),
+      ]
+      for (const p of candidates) {
+        if (existsSync(p)) {
+          const raw = await fs.readFile(p, "utf-8")
+          const data = JSON.parse(raw)
+          codexModelsData = data.models ?? []
+          for (const m of codexModelsData) {
+            if (m.slug && m.base_instructions) {
+              codexInstructionsCache.set(m.slug, m.base_instructions)
+            }
+          }
+          break
+        }
+      }
+    } catch {}
+  }
+
+  function getCodexBaseInstructions(modelId: string): string | undefined {
+    // Try exact match first
+    if (codexInstructionsCache.has(modelId)) return codexInstructionsCache.get(modelId)
+    // Try without version suffix variations
+    for (const [slug, instructions] of codexInstructionsCache) {
+      if (modelId.startsWith(slug) || slug.startsWith(modelId)) return instructions
+    }
+    return undefined
+  }
+
   export async function provider(model: Provider.Model): Promise<string[]> {
     // Proactively seed on first provider call to ensure visibility
     await seedAll()
+
+    // Codex provider: use official base_instructions from refs/codex
+    if (model.providerId === "codex") {
+      await loadCodexModelsJson()
+      const official = getCodexBaseInstructions(model.api.id)
+      if (official) {
+        return [official]
+      }
+      // Fallback to codex driver if models.json not found
+      return [await loadPrompt("drivers/codex.txt", PROMPT_CODEX)]
+    }
 
     let internal = PROMPT_QWEN
     let name = "qwen"
