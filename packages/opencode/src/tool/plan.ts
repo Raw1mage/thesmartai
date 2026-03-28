@@ -1055,6 +1055,35 @@ function buildDefaultBetaMission(session: Session.Info): NonNullable<Session.Mis
   }
 }
 
+async function assertBetaExecutionSurfaceEstablished(mission: NonNullable<Session.MissionContract["beta"]>) {
+  const repoPath = mission.repoPath?.trim()
+  const mainWorktreePath = mission.mainWorktreePath?.trim()
+  const betaPath = mission.betaPath?.trim()
+  const baseBranch = mission.baseBranch?.trim()
+  const branchName = mission.branchName?.trim()
+
+  if (!repoPath || !mainWorktreePath || !betaPath) {
+    throw new Error("product_decision_needed: explicit beta execution surface is required before build entry")
+  }
+
+  const normalizedRepo = path.resolve(repoPath)
+  const normalizedMainWorktree = path.resolve(mainWorktreePath)
+  const normalizedBeta = path.resolve(betaPath)
+
+  if (normalizedBeta === normalizedRepo || normalizedBeta === normalizedMainWorktree) {
+    throw new Error("product_decision_needed: beta implementation surface must differ from main repo/main worktree")
+  }
+
+  if (branchName && baseBranch && branchName === baseBranch) {
+    throw new Error("product_decision_needed: beta implementationBranch must differ from baseBranch")
+  }
+
+  const betaStat = await fs.stat(normalizedBeta).catch(() => undefined)
+  if (!betaStat?.isDirectory()) {
+    throw new Error("product_decision_needed: beta implementation surface must be established before build entry")
+  }
+}
+
 export function buildSuggestedBetaBranchName(session: Pick<Session.Info, "slug">) {
   return `feature/${session.slug}-beta`
 }
@@ -1067,11 +1096,11 @@ export function resolvePlanExitBetaMission(input: {
   const existing = input.existing
   const defaults = input.defaults
   return {
-    branchName: defaults.branchName,
-    baseBranch: defaults.baseBranch,
-    repoPath: defaults.repoPath,
-    mainWorktreePath: defaults.mainWorktreePath,
-    betaPath: defaults.betaPath,
+    branchName: existing?.branchName?.trim() || defaults.branchName,
+    baseBranch: existing?.baseBranch?.trim() || defaults.baseBranch,
+    repoPath: existing?.repoPath?.trim() || defaults.repoPath,
+    mainWorktreePath: existing?.mainWorktreePath?.trim() || existing?.repoPath?.trim() || defaults.mainWorktreePath,
+    betaPath: existing?.betaPath?.trim() || defaults.betaPath,
     runtimePolicy: existing?.runtimePolicy?.trim() || defaults.runtimePolicy,
   }
 }
@@ -1140,93 +1169,6 @@ export async function collectMissingBetaMissionFields(input: {
     ...input.mission,
     branchName,
   }
-}
-
-async function runBetaAdmissionQuiz(input: {
-  sessionID: string
-  tool?: { messageID: string; callID: string }
-  mission: Session.MissionContract
-}) {
-  const authority = resolveBetaAdmissionAuthority(input.mission)
-
-  const askQuiz = async (reflection: boolean) => {
-    const prompt = reflection
-      ? "Beta admission mismatch detected. Reflect and restate the exact beta execution authority before build mode may continue."
-      : "Beta build admission quiz: restate the exact beta execution authority before build mode may continue."
-
-    const answers = await Question.ask({
-      sessionID: input.sessionID,
-      questions: BETA_ADMISSION_FIELDS.map((field, index) => ({
-        header: reflection ? "Beta Admission Reflection" : "Beta Admission",
-        question: index === 0 ? `${prompt}\n\n${field}: ${authority[field]}` : `${field}: ${authority[field]}`,
-        custom: true,
-        options: [
-          {
-            label: authority[field],
-            description: `${field}`,
-          },
-        ],
-      })),
-      tool: input.tool,
-    })
-
-    const normalized = Object.fromEntries(
-      BETA_ADMISSION_FIELDS.map((field, index) => [field, answers[index]?.[0]?.trim() ?? ""]),
-    ) as Record<(typeof BETA_ADMISSION_FIELDS)[number], string>
-
-    return evaluateBetaAdmissionAnswers({ authority, answers: normalized })
-  }
-
-  const first = await askQuiz(false).catch((error) => {
-    if (error instanceof Question.RejectedError) {
-      throw new Error("product_decision_needed: beta admission was dismissed before build entry")
-    }
-    throw error
-  })
-
-  if (first.ok) {
-    return {
-      status: "passed" as const,
-      reflectionUsed: false,
-      mismatchCount: 0,
-      lastMismatches: [],
-      passedAt: Date.now(),
-    }
-  }
-
-  const second = await askQuiz(true).catch((error) => {
-    if (error instanceof Question.RejectedError) {
-      throw new Error("product_decision_needed: beta admission reflection was dismissed before build entry")
-    }
-    throw error
-  })
-
-  if (second.ok) {
-    return {
-      status: "passed" as const,
-      reflectionUsed: true,
-      mismatchCount: 0,
-      lastMismatches: [],
-      passedAt: Date.now(),
-    }
-  }
-
-  await Session.update(
-    input.sessionID,
-    (draft) => {
-      if (!draft.mission) return
-      draft.mission.admission ??= {}
-      draft.mission.admission.betaQuiz = {
-        status: "failed",
-        reflectionUsed: true,
-        mismatchCount: second.mismatches.length,
-        lastMismatches: second.mismatches,
-      }
-    },
-    { touch: false },
-  )
-
-  throw new Error("product_decision_needed: beta admission mismatches after retry")
 }
 
 export const PlanExitTool = Tool.define("plan_exit", {
@@ -1352,6 +1294,8 @@ export const PlanExitTool = Tool.define("plan_exit", {
       }
     }
 
+    await assertBetaExecutionSurfaceEstablished(betaMission)
+
     const mission: Session.MissionContract = {
       source: "openspec_compiled_plan",
       contract: "implementation_spec",
@@ -1379,12 +1323,6 @@ export const PlanExitTool = Tool.define("plan_exit", {
       beta: betaMission,
       admission: { betaQuiz: { status: "pending", reflectionUsed: false, mismatchCount: 0, lastMismatches: [] } },
     }
-
-    mission.admission!.betaQuiz = await runBetaAdmissionQuiz({
-      sessionID: ctx.sessionID,
-      tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
-      mission,
-    })
 
     await Session.setMission({
       sessionID: ctx.sessionID,

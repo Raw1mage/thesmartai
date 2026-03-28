@@ -71,7 +71,7 @@ import {
   shouldInterruptAutonomousRun,
 } from "./workflow-runner"
 import { consumeMissionArtifacts, deriveDelegatedExecutionRole } from "./mission-consumption"
-import { resolveDialogTrigger } from "./dialog-trigger"
+import { type PlannerIntent, resolveDialogTrigger } from "./dialog-trigger"
 
 globalThis.AI_SDK_LOG_WARNINGS = false
 
@@ -428,9 +428,10 @@ export namespace SessionPrompt {
         narration,
       }
     }
+    const todo = input.decision.todo!
     const delegation = missionConsumption?.ok
       ? deriveDelegatedExecutionRole({
-          todo: input.decision.todo,
+          todo,
           mission: missionConsumption.trace,
         })
       : undefined
@@ -438,7 +439,7 @@ export namespace SessionPrompt {
       type: "continue",
       reason: input.decision.reason,
       text: input.decision.text,
-      todo: input.decision.todo,
+      todo,
     })
     const emitNarration = input.emitNarration ?? emitAutonomousNarration
     const enqueueContinue = input.enqueueContinue ?? enqueueAutonomousContinue
@@ -459,7 +460,7 @@ export namespace SessionPrompt {
       roundCount: nextRoundCount,
       text:
         delegation && delegation.role !== "generic"
-          ? `Continue with the next planned ${delegation.role} step: ${input.decision.todo.content}`
+          ? `Continue with the next planned ${delegation.role} step: ${todo.content}`
           : input.decision.text,
       delegation,
     })
@@ -1206,11 +1207,13 @@ export namespace SessionPrompt {
   export const loop = fn(Identifier.schema("session"), async (sessionID) => runLoop(sessionID))
 
   async function createUserMessage(input: PromptInput, session: Session.Info) {
+    const committedPlannerIntent = await getCommittedPlannerIntent(input.sessionID)
     const triggerDecision = resolveDialogTrigger({
       agent: input.agent,
       client: Flag.OPENCODE_CLIENT,
       parts: input.parts,
       session,
+      committedPlannerIntent,
     })
     const effectiveAgent = triggerDecision.routeAgent ?? input.agent
     const { agent, partsInput, info } = await prepareUserMessageContext({
@@ -1249,6 +1252,21 @@ export namespace SessionPrompt {
       info,
       parts,
     }
+  }
+
+  async function getCommittedPlannerIntent(sessionID: string): Promise<PlannerIntent | undefined> {
+    for await (const message of MessageV2.stream(sessionID)) {
+      if (message.info.role !== "assistant") continue
+      if (!isNarrationAssistantMessage(message.info, message.parts)) continue
+      const text = message.parts
+        .filter((part): part is MessageV2.TextPart => part.type === "text")
+        .map((part) => part.text.toLowerCase())
+        .join("\n")
+      if (/\bplan_exit\b|switch to build mode|build mode/.test(text)) return "plan_exit"
+      if (/\bplan_enter\b|enter plan mode|plan mode/.test(text)) return "plan_enter"
+      return undefined
+    }
+    return undefined
   }
 
   export const ShellInput = z.object({

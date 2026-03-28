@@ -104,8 +104,9 @@
 
 - 已完成第一優先修復：強化 agent/tool selection discipline，對明確的 `plan_exit` 指令不得先觸發 `plan_enter` 或其他相反方向工具。
 - 已完成第二優先修復：在 `plan_exit` 的 build-mode確認問答外層 catch `Question.RejectedError`，轉成明確 workflow-level stop reason，而不是 raw error。
-- 已確認目前 `plan_exit` 進一步具有 beta admission quiz：會以 authority fields（如 mainRepo/mainWorktree/baseBranch/implementationRepo/implementationWorktree/implementationBranch/docsWriteRepo）挑戰 AI 的 beta execution 認知，首次失敗可反思一次，第二次仍不符則以 `product_decision_needed: beta admission mismatches after retry` 失敗。
-- 後續可再評估：若已有未完成或剛被 dismiss 的 blocking question，是否加入更明確的 session-level guard。 
+- 已確認目前 `plan_exit` 進一步具有 beta admission contract：build-mode 確認題仍是 user-facing，但 beta admission 本身已改為 AI self-verification。`plan_exit` 只 seed `mission.admission.betaQuiz = pending`，後續由 runtime/continuation 以 authority fields（如 mainRepo/mainWorktree/baseBranch/implementationRepo/implementationWorktree/implementationBranch/docsWriteRepo）挑戰 AI 的 beta execution 認知；首次失敗可反思一次，第二次仍不符則以 `product_decision_needed: beta admission mismatches after retry` 失敗。
+- 已完成第三項控制面修復：加入最小的 committed planner intent guard。當最近的 assistant narration 已明確承諾 `plan_exit` 時，`createUserMessage()` 後續不得再反向 auto-route 成 `plan_enter`。
+- 目前 committed intent 仍是從最近的 assistant narration 推導，而不是獨立持久化欄位；若未來需要更強契約，可再提升為 session/runtime metadata。 
 
 ## Architecture Sync
 

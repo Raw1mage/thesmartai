@@ -39,6 +39,24 @@ describe("dialog trigger registry", () => {
     expect(result.routeAgent).toBeUndefined()
   })
 
+  it("honors committed plan_exit intent over later plan-enter heuristics", () => {
+    const result = resolveDialogTrigger({
+      client: "app",
+      committedPlannerIntent: "plan_exit",
+      parts: [
+        {
+          type: "text",
+          text: "We need a multi-step architecture plan with validation, constraints, handoff, and phased execution for this workflow.",
+        },
+      ] as any,
+      session: sessionFixture(),
+    })
+
+    expect(result.trigger).toBe("none")
+    expect(result.routeAgent).toBe("build")
+    expect(result.suppressAutoEnterPlan).toBe(true)
+  })
+
   it("routes replan requests into the plan agent when execution context exists", () => {
     const result = resolveDialogTrigger({
       client: "app",

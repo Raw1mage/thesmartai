@@ -10,6 +10,8 @@ export type DialogTriggerDecision = {
   stopReason?: "approval_needed" | "product_decision_needed"
 }
 
+export type PlannerIntent = "plan_enter" | "plan_exit"
+
 const SUPPORTED_CLIENTS = ["app", "cli", "desktop"] as const
 
 const PLAN_ENTER_HARD_NEGATIVE_PATTERNS = [
@@ -157,8 +159,9 @@ function detectApproval(text: string, session: Pick<Session.Info, "workflow" | "
 export function resolveDialogTrigger(input: {
   agent?: string
   client: string
-  parts: MessageV2.Part[]
+  parts: Array<{ type: string; text?: string }>
   session: Pick<Session.Info, "mission" | "workflow" | "time">
+  committedPlannerIntent?: PlannerIntent
 }): DialogTriggerDecision {
   if (input.agent) {
     return {
@@ -170,6 +173,14 @@ export function resolveDialogTrigger(input: {
   if (!SUPPORTED_CLIENTS.includes(input.client as (typeof SUPPORTED_CLIENTS)[number])) {
     return {
       trigger: "none",
+      suppressAutoEnterPlan: true,
+    }
+  }
+
+  if (input.committedPlannerIntent === "plan_exit") {
+    return {
+      trigger: "none",
+      routeAgent: "build",
       suppressAutoEnterPlan: true,
     }
   }

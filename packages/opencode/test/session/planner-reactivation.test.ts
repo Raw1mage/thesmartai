@@ -5,9 +5,12 @@ import { SessionPrompt } from "../../src/session/prompt"
 import { plannerArtifacts } from "../../src/session/planner-layout"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Question } from "../../src/question"
+import { emitSessionNarration } from "../../src/session/narration"
 import { Todo } from "../../src/session/todo"
 import { tmpdir } from "../fixture/fixture"
 import path from "path"
+import { mkdir } from "node:fs/promises"
+import { Identifier } from "../../src/id/id"
 
 describe("planner root naming", () => {
   test("uses explicit topic title instead of session id fallback", async () => {
@@ -117,6 +120,47 @@ async function answerNextQuestion(sessionID: string, answers: string[]) {
   const pending = await waitForPendingQuestion(sessionID)
   expect(pending.length).toBe(1)
   await Question.reply({ requestID: pending[0].id, answers: answers.map((answer) => [answer]) })
+}
+
+async function writeAssistantBetaAdmissionAnswer(sessionID: string, answers: Record<string, string>) {
+  const user = {
+    id: Identifier.ascending("message"),
+    sessionID,
+    role: "user",
+    agent: "build",
+    model: { providerId: "openai", modelID: "gpt-5.4" },
+    time: { created: Date.now() - 1 },
+  } as any
+  await Session.updateMessage(user)
+  const assistant = {
+    id: Identifier.ascending("message"),
+    sessionID,
+    parentID: user.id,
+    role: "assistant",
+    agent: "build",
+    time: { created: Date.now() },
+    modelID: "gpt-5.4",
+    providerId: "openai",
+    mode: "chat",
+    path: { cwd: Instance.worktree, root: Instance.worktree },
+    cost: 0,
+    tokens: {
+      input: 0,
+      output: 0,
+      reasoning: 0,
+      cache: { read: 0, write: 0 },
+    },
+  } as any
+  await Session.updateMessage(assistant)
+  await Session.updatePart({
+    id: Identifier.ascending("part"),
+    messageID: assistant.id,
+    sessionID,
+    type: "text",
+    text: Object.entries(answers)
+      .map(([key, value]) => `- ${key}: ${value}`)
+      .join("\n"),
+  } as any)
 }
 
 async function writePlannerJsonArtifacts(planPath: string) {
@@ -678,6 +722,54 @@ describe("planner reactivation", () => {
             sessionID: session.id,
             noReply: true,
             parts: [{ type: "text", text: "Switch to build mode and start executing the plan." }],
+          })
+          if (message.info.role !== "user") throw new Error("expected user message")
+          expect(message.info.agent).toBe("build")
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      if (originalClient === undefined) delete process.env.OPENCODE_CLIENT
+      else process.env.OPENCODE_CLIENT = originalClient
+    }
+  })
+
+  test("committed plan_exit narration blocks opposite-direction plan_enter auto-route", async () => {
+    const originalClient = process.env.OPENCODE_CLIENT
+    process.env.OPENCODE_CLIENT = "app"
+
+    try {
+      await using tmp = await tmpdir({ git: true })
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const session = await Session.create({})
+          const fallbackModel = { providerId: "openai", modelID: "gpt-5.4" }
+
+          const seed = await SessionPrompt.prompt({
+            sessionID: session.id,
+            noReply: true,
+            parts: [{ type: "text", text: "What did we do so far?" }],
+          })
+
+          await emitSessionNarration({
+            sessionID: session.id,
+            parentID: seed.info.id,
+            agent: "build",
+            model: fallbackModel,
+            text: "Now directly executing plan_exit.",
+            kind: "continue",
+          })
+
+          const message = await SessionPrompt.prompt({
+            sessionID: session.id,
+            noReply: true,
+            parts: [
+              {
+                type: "text",
+                text: "請幫我規劃並實作一個 autonomous runner daemon 架構，包含 planner、workflow、subagent 與驗證流程。",
+              },
+            ],
           })
           if (message.info.role !== "user") throw new Error("expected user message")
           expect(message.info.agent).toBe("build")
@@ -1374,7 +1466,7 @@ describe("planner reactivation", () => {
     }
   })
 
-  test("plan_exit passes beta admission quiz and persists success", async () => {
+  test("plan_exit seeds pending beta admission for AI self-verification instead of user quiz", async () => {
     const originalClient = process.env.OPENCODE_CLIENT
     process.env.OPENCODE_CLIENT = "app"
     try {
@@ -1393,14 +1485,16 @@ describe("planner reactivation", () => {
               executionReady: false,
               artifactPaths: plannerArtifacts(session),
               beta: {
-                branchName: "feature/test-beta",
+                branchName: `feature/${session.slug}-beta`,
                 baseBranch: "cms",
                 repoPath: "/repo",
                 mainWorktreePath: "/repo",
-                betaPath: "/repo-beta",
+                betaPath: path.join(tmp.path, "beta-worktree"),
               },
             } as any,
           })
+          await mkdir(path.join(tmp.path, "beta-worktree"), { recursive: true })
+          await Bun.write(path.join(tmp.path, "beta-worktree", ".keep"), "")
           const planPath = Session.plan(session)
           await Bun.write(
             planPath,
@@ -1430,15 +1524,6 @@ describe("planner reactivation", () => {
 
           const { PlanExitTool } = await import("../../src/tool/plan")
           const tool = await PlanExitTool.init()
-          const expectedBetaAnswers = [
-            tmp.path,
-            tmp.path,
-            "cms",
-            `${tmp.path}-beta`,
-            `${tmp.path}-beta`,
-            `feature/${session.slug}-beta`,
-            tmp.path,
-          ]
           const execution = tool.execute({}, {
             sessionID: session.id,
             abort: new AbortController().signal,
@@ -1451,8 +1536,98 @@ describe("planner reactivation", () => {
             extra: {},
           } as any)
           await answerNextQuestion(session.id, ["Yes"])
-          await answerNextQuestion(session.id, expectedBetaAnswers)
           await execution
+
+          const updated = await Session.get(session.id)
+          expect(updated.mission?.admission?.betaQuiz).toMatchObject({ status: "pending", reflectionUsed: false })
+          expect((await Question.list()).filter((item) => item.sessionID === session.id)).toHaveLength(0)
+        },
+      })
+    } finally {
+      if (originalClient === undefined) delete process.env.OPENCODE_CLIENT
+      else process.env.OPENCODE_CLIENT = originalClient
+    }
+  })
+
+  test("workflow runner validates pending beta admission from assistant response", async () => {
+    const originalClient = process.env.OPENCODE_CLIENT
+    process.env.OPENCODE_CLIENT = "app"
+    try {
+      await using tmp = await tmpdir({ git: true })
+      await Instance.provide({
+        directory: tmp.path,
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.setMission({
+            sessionID: session.id,
+            mission: {
+              source: "openspec_compiled_plan",
+              contract: "implementation_spec",
+              approvedAt: 1,
+              planPath: "plans/seed/implementation-spec.md",
+              executionReady: false,
+              artifactPaths: plannerArtifacts(session),
+              beta: {
+                branchName: `feature/${session.slug}-beta`,
+                baseBranch: "cms",
+                repoPath: "/repo",
+                mainWorktreePath: "/repo",
+                betaPath: path.join(tmp.path, "beta-worktree"),
+              },
+            } as any,
+          })
+          await mkdir(path.join(tmp.path, "beta-worktree"), { recursive: true })
+          await Bun.write(path.join(tmp.path, "beta-worktree", ".keep"), "")
+          const planPath = Session.plan(session)
+          await Bun.write(
+            planPath,
+            "# Plan\n\n## Goal\nTest planner handoff\n\n## Scope\n### IN\n- planner runtime\n\n### OUT\n- daemon rewrite\n\n## Assumptions\n- runtime state is available\n\n## Stop Gates\n- pause if approval is needed\n\n## Critical Files\n- packages/opencode/src/tool/plan.ts\n\n## Structured Execution Phases\n- Read the approved spec\n\n## Validation\n- Run targeted tests\n\n## Handoff\n- Build should execute from this spec\n",
+          )
+          await Bun.write(
+            planPath.replace("implementation-spec.md", "tasks.md"),
+            "# Tasks\n\n## 1. Workstream\n- [ ] 1.1 Task A\n",
+          )
+          await Bun.write(
+            planPath.replace("implementation-spec.md", "proposal.md"),
+            "# Proposal\n\n## Why\n- Need planning reliability\n\n## What Changes\n- Strengthen planner handoff contract\n\n## Capabilities\n### New Capabilities\n- planner-handoff: structured build handoff\n\n### Modified Capabilities\n- planner-runtime: stronger plan_exit checks\n\n## Impact\n- Affects plan/build workflow and runtime handoff metadata\n",
+          )
+          await Bun.write(
+            planPath.replace("implementation-spec.md", "spec.md"),
+            "# Spec\n\n## Purpose\n- Define planner handoff behavior\n\n## Requirements\n\n### Requirement: Planner SHALL provide execution-ready handoff\nThe system SHALL produce build-consumable handoff metadata from planner artifacts.\n\n#### Scenario: plan_exit after complete artifacts\n- **GIVEN** complete planner artifacts\n- **WHEN** plan_exit is invoked\n- **THEN** build handoff metadata is emitted\n\n## Acceptance Checks\n- Handoff metadata includes artifact paths and materialized todos\n",
+          )
+          await Bun.write(
+            planPath.replace("implementation-spec.md", "design.md"),
+            "# Design\n\n## Context\n- Planner artifacts are consumed by build mode\n\n## Goals / Non-Goals\n**Goals:**\n- Produce deterministic handoff contract\n\n**Non-Goals:**\n- Implement daemon runtime in this slice\n\n## Decisions\n- Use plan_exit gate and metadata envelope\n\n## Risks / Trade-offs\n- Stricter gates increase planning rigor but add upfront requirements\n\n## Critical Files\n- packages/opencode/src/tool/plan.ts\n",
+          )
+          await Bun.write(
+            planPath.replace("implementation-spec.md", "handoff.md"),
+            "# Handoff\n\n## Execution Contract\n- Build agent reads implementation-spec.md first\n\n## Required Reads\n- implementation-spec.md\n- design.md\n- tasks.md\n\n## Stop Gates In Force\n- Preserve approval and decision gates\n\n## Execution-Ready Checklist\n- [ ] Implementation spec complete\n",
+          )
+          await writePlannerJsonArtifacts(planPath)
+
+          const { PlanExitTool } = await import("../../src/tool/plan")
+          const tool = await PlanExitTool.init()
+          const execution = tool.execute({}, {
+            sessionID: session.id,
+            abort: new AbortController().signal,
+            messageID: "msg_test",
+            callID: "call_test",
+            agent: "plan",
+            messages: [],
+            metadata: async () => {},
+            ask: async () => [["Yes"]],
+            extra: {},
+          } as any)
+          await answerNextQuestion(session.id, ["Yes"])
+          await execution
+
+          const { resolveBetaAdmissionAuthority } = await import("../../src/session/mission-consumption")
+          const authority = resolveBetaAdmissionAuthority((await Session.get(session.id)).mission)
+          await writeAssistantBetaAdmissionAnswer(session.id, authority)
+
+          const { validatePendingBetaAdmission } = await import("../../src/session/workflow-runner")
+          const result = await validatePendingBetaAdmission(session.id)
+          expect(result).toMatchObject({ ok: true, needsRetry: false })
 
           const updated = await Session.get(session.id)
           expect(updated.mission?.admission?.betaQuiz).toMatchObject({ status: "passed", reflectionUsed: false })
@@ -1464,7 +1639,7 @@ describe("planner reactivation", () => {
     }
   })
 
-  test("plan_exit allows one beta admission retry and then passes", async () => {
+  test("workflow runner rejects wrong beta admission answers after reflection", async () => {
     const originalClient = process.env.OPENCODE_CLIENT
     process.env.OPENCODE_CLIENT = "app"
     try {
@@ -1487,10 +1662,12 @@ describe("planner reactivation", () => {
                 baseBranch: "cms",
                 repoPath: "/repo",
                 mainWorktreePath: "/repo",
-                betaPath: "/repo-beta",
+                betaPath: path.join(tmp.path, "beta-worktree"),
               },
             } as any,
           })
+          await mkdir(path.join(tmp.path, "beta-worktree"), { recursive: true })
+          await Bun.write(path.join(tmp.path, "beta-worktree", ".keep"), "")
           const planPath = Session.plan(session)
           await Bun.write(
             planPath,
@@ -1520,15 +1697,6 @@ describe("planner reactivation", () => {
 
           const { PlanExitTool } = await import("../../src/tool/plan")
           const tool = await PlanExitTool.init()
-          const expectedBetaAnswers = [
-            tmp.path,
-            tmp.path,
-            "cms",
-            `${tmp.path}-beta`,
-            `${tmp.path}-beta`,
-            `feature/${session.slug}-beta`,
-            tmp.path,
-          ]
           const execution = tool.execute({}, {
             sessionID: session.id,
             abort: new AbortController().signal,
@@ -1541,20 +1709,38 @@ describe("planner reactivation", () => {
             extra: {},
           } as any)
           await answerNextQuestion(session.id, ["Yes"])
-          await answerNextQuestion(session.id, [
-            "/wrong",
-            tmp.path,
-            "cms",
-            `${tmp.path}-beta`,
-            `${tmp.path}-beta`,
-            `feature/${session.slug}-beta`,
-            tmp.path,
-          ])
-          await answerNextQuestion(session.id, expectedBetaAnswers)
           await execution
 
+          await writeAssistantBetaAdmissionAnswer(session.id, {
+            mainRepo: "/wrong",
+            mainWorktree: tmp.path,
+            baseBranch: "wrong",
+            implementationRepo: path.join(tmp.path, "beta-worktree"),
+            implementationWorktree: path.join(tmp.path, "beta-worktree"),
+            implementationBranch: "wrong",
+            docsWriteRepo: "/wrong",
+          })
+
+          const { validatePendingBetaAdmission } = await import("../../src/session/workflow-runner")
+          const first = await validatePendingBetaAdmission(session.id)
+          expect(first).toMatchObject({ ok: false, needsRetry: true })
+
+          await writeAssistantBetaAdmissionAnswer(session.id, {
+            mainRepo: "/wrong",
+            mainWorktree: tmp.path,
+            baseBranch: "wrong",
+            implementationRepo: path.join(tmp.path, "beta-worktree"),
+            implementationWorktree: path.join(tmp.path, "beta-worktree"),
+            implementationBranch: "wrong",
+            docsWriteRepo: "/wrong",
+          })
+
+          const second = await validatePendingBetaAdmission(session.id)
+          expect(second).toMatchObject({ ok: false, needsRetry: false })
+
           const updated = await Session.get(session.id)
-          expect(updated.mission?.admission?.betaQuiz).toMatchObject({ status: "passed", reflectionUsed: true })
+          expect(updated.mission?.admission?.betaQuiz).toMatchObject({ status: "failed", reflectionUsed: true })
+          expect(updated.mission?.admission?.betaQuiz?.lastMismatches?.length).toBeGreaterThan(0)
         },
       })
     } finally {
@@ -1563,7 +1749,7 @@ describe("planner reactivation", () => {
     }
   })
 
-  test("plan_exit stops after second beta admission mismatch", async () => {
+  test("plan_exit rejects beta admission when implementation surface matches main repo", async () => {
     const originalClient = process.env.OPENCODE_CLIENT
     process.env.OPENCODE_CLIENT = "app"
     try {
@@ -1584,9 +1770,9 @@ describe("planner reactivation", () => {
               beta: {
                 branchName: "feature/test-beta",
                 baseBranch: "cms",
-                repoPath: "/repo",
-                mainWorktreePath: "/repo",
-                betaPath: "/repo-beta",
+                repoPath: tmp.path,
+                mainWorktreePath: tmp.path,
+                betaPath: tmp.path,
               },
             } as any,
           })
@@ -1631,29 +1817,9 @@ describe("planner reactivation", () => {
             extra: {},
           } as any)
           await answerNextQuestion(session.id, ["Yes"])
-          await answerNextQuestion(session.id, [
-            "/wrong",
-            tmp.path,
-            "wrong",
-            `${tmp.path}-beta`,
-            `${tmp.path}-beta`,
-            "wrong",
-            "/wrong",
-          ])
-          await answerNextQuestion(session.id, [
-            "/wrong",
-            tmp.path,
-            "wrong",
-            `${tmp.path}-beta`,
-            `${tmp.path}-beta`,
-            "wrong",
-            "/wrong",
-          ])
-          await expect(execution).rejects.toThrow("product_decision_needed: beta admission mismatches after retry")
-
-          const updated = await Session.get(session.id)
-          expect(updated.mission?.admission?.betaQuiz).toMatchObject({ status: "failed", reflectionUsed: true })
-          expect(updated.mission?.admission?.betaQuiz?.lastMismatches?.length).toBeGreaterThan(0)
+          await expect(execution).rejects.toThrow(
+            "product_decision_needed: beta implementation surface must differ from main repo/main worktree",
+          )
         },
       })
     } finally {
