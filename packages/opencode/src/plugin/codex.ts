@@ -719,7 +719,7 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
                 : new URL(typeof requestInput === "string" ? requestInput : requestInput.url)
 
             const isCodexEndpoint =
-              parsed.pathname.includes("/v1/responses") || parsed.pathname.includes("/chat/completions")
+              parsed.pathname.includes("/v1/responses") || parsed.pathname.includes("/chat/completions") || parsed.pathname.includes("/codex/responses")
             const url = isCodexEndpoint ? new URL(CODEX_API_ENDPOINT) : parsed
 
             if (isCodexEndpoint) {
