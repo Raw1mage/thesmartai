@@ -459,13 +459,19 @@ CODEX_EXPORT int codex_login_browser(codex_auth_cb cb, void *ctx)
 
     /* Open browser */
 #ifdef __APPLE__
-    char cmd[CODEX_MAX_URL_LEN + 16];
-    snprintf(cmd, sizeof(cmd), "open '%s'", auth_url);
-    system(cmd);
+    {
+        char cmd[CODEX_MAX_URL_LEN + 16];
+        snprintf(cmd, sizeof(cmd), "open '%s'", auth_url);
+        int ignored = system(cmd);
+        (void)ignored;
+    }
 #elif !defined(_WIN32)
-    char cmd[CODEX_MAX_URL_LEN + 32];
-    snprintf(cmd, sizeof(cmd), "xdg-open '%s' >/dev/null 2>&1 &", auth_url);
-    system(cmd);
+    {
+        char cmd[CODEX_MAX_URL_LEN + 32];
+        snprintf(cmd, sizeof(cmd), "xdg-open '%s' >/dev/null 2>&1 &", auth_url);
+        int ignored = system(cmd);
+        (void)ignored;
+    }
 #endif
 
     /* Accept callback connection */
@@ -498,7 +504,7 @@ CODEX_EXPORT int codex_login_browser(codex_auth_cb cb, void *ctx)
         "Connection: close\r\n\r\n"
         "<html><body><h1>Authentication successful</h1>"
         "<p>You may close this tab.</p></body></html>\r\n";
-    write(client_fd, http_resp, strlen(http_resp));
+    { ssize_t ignored = write(client_fd, http_resp, strlen(http_resp)); (void)ignored; }
     close(client_fd);
 
     /* Parse query string from GET /auth/callback?code=...&state=... */
