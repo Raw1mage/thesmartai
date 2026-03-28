@@ -21,7 +21,7 @@ export async function getQuotaHint(input: {
     }
   }
 
-  if (family === "openai") {
+  if (family === "openai" || family === "codex") {
     const quota = input.fresh
       ? await getOpenAIQuota(input.accountId, { waitFresh: true })
       : await getOpenAIQuotaForDisplay(input.accountId)

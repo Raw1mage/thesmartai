@@ -376,71 +376,18 @@ export function DialogConnectProvider(props: { provider: string; onBack?: () => 
       await submitCode(code)
     }
 
-    // Auto-detect: open popup, monitor URL for callback code
-    onMount(() => {
-      const authUrl = store.authorization?.url
-      if (!authUrl) return
-
-      const popup = window.open(authUrl, "codex_oauth", "width=600,height=700")
-      if (!popup) {
-        // Popup blocked — fall back to manual paste
-        setFormStore("autoDetecting", false)
-        return
-      }
-
-      const timer = setInterval(() => {
-        try {
-          if (popup.closed) {
-            clearInterval(timer)
-            setFormStore("autoDetecting", false)
-            return
-          }
-          // Try to read popup URL — works when popup navigates to localhost
-          // (ERR_CONNECTION_REFUSED page is same-origin-accessible in most browsers)
-          const href = popup.location.href
-          if (href && href.includes("/auth/callback") && href.includes("code=")) {
-            clearInterval(timer)
-            popup.close()
-            // Extract code from URL
-            try {
-              const url = new URL(href)
-              const code = url.searchParams.get("code")
-              if (code) {
-                setFormStore("autoDetecting", false)
-                submitCode(code)
-                return
-              }
-            } catch {}
-            setFormStore("autoDetecting", false)
-          }
-        } catch {
-          // Cross-origin (still on auth.openai.com) — expected, keep polling
-        }
-      }, 500)
-
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        clearInterval(timer)
-        if (!popup.closed) popup.close()
-        setFormStore("autoDetecting", false)
-      }, 5 * 60 * 1000)
-
-      onCleanup(() => {
-        clearInterval(timer)
-        if (!popup.closed) popup.close()
-      })
-    })
-
     return (
       <div class="flex flex-col gap-6">
-        <Show when={formStore.autoDetecting}>
-          <div class="text-14-regular text-text-base flex items-center gap-4">
-            <Spinner />
-            <span>{language.t("provider.connect.status.waiting")}</span>
-          </div>
-        </Show>
+        <div class="text-14-regular text-text-base">
+          Open this link in any browser to login:
+        </div>
+        <TextField
+          readOnly
+          copyable
+          value={store.authorization?.url ?? ""}
+        />
         <div class="text-14-regular text-text-dimmed">
-          Login complete? Paste the callback URL from the popup's address bar:
+          After login, paste the callback URL from the browser's address bar:
         </div>
         <form onSubmit={handleSubmit} class="flex flex-col items-start gap-4">
           <TextField

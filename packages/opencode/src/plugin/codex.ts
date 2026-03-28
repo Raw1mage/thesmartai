@@ -754,33 +754,42 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
           label: "ChatGPT Pro/Plus (browser)",
           type: "oauth",
           authorize: async () => {
-            const { redirectUri } = await startOAuthServer()
             const pkce = await generatePKCE()
             const state = generateState()
+            const redirectUri = `http://localhost:${OAUTH_PORT}/auth/callback`
             const authUrl = buildAuthorizeUrl(redirectUri, pkce, state)
-            const callbackPromise = waitForOAuthCallback(pkce, state)
 
             return {
               url: authUrl,
-              instructions: "Complete authorization in your browser. This window will close automatically.",
-              method: "auto" as const,
-              callback: async () => {
-                const tokens = await callbackPromise
-                stopOAuthServer()
-                const accountId = extractAccountId(tokens)
-                return {
-                  type: "success" as const,
-                  refresh: tokens.refresh_token,
-                  access: tokens.access_token,
-                  expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
-                  accountId,
+              instructions: "Open the link above in any browser, login, then paste the callback URL here",
+              method: "code" as const,
+              async callback(pastedUrl: string) {
+                try {
+                  let code = pastedUrl.trim()
+                  try {
+                    const parsed = new URL(code)
+                    code = parsed.searchParams.get("code") ?? code
+                  } catch {}
+
+                  const tokens = await exchangeCodeForTokens(code, redirectUri, pkce)
+                  const accountId = extractAccountId(tokens)
+                  return {
+                    type: "success" as const,
+                    refresh: tokens.refresh_token,
+                    access: tokens.access_token,
+                    expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
+                    accountId,
+                  }
+                } catch (e) {
+                  log.error("codex paste-URL token exchange failed", { error: String(e) })
+                  return { type: "failed" as const }
                 }
               },
             }
           },
         },
         {
-          label: "ChatGPT Pro/Plus (headless)",
+          label: "ChatGPT Pro/Plus (device code)",
           type: "oauth",
           authorize: async () => {
             const deviceResponse = await fetch(`${ISSUER}/api/accounts/deviceauth/usercode`, {
@@ -853,49 +862,6 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
               },
             }
           },
-        },
-        {
-          label: "ChatGPT Pro/Plus (paste callback URL)",
-          type: "oauth",
-          authorize: async () => {
-            const pkce = await generatePKCE()
-            const state = generateState()
-            const redirectUri = `http://localhost:${OAUTH_PORT}/auth/callback`
-            const authUrl = buildAuthorizeUrl(redirectUri, pkce, state)
-
-            return {
-              url: authUrl,
-              instructions: "Login, then paste the full callback URL from your browser address bar",
-              method: "code" as const,
-              async callback(pastedUrl: string) {
-                try {
-                  // Extract code from pasted URL or raw code
-                  let code = pastedUrl.trim()
-                  try {
-                    const parsed = new URL(code)
-                    code = parsed.searchParams.get("code") ?? code
-                  } catch {}
-
-                  const tokens = await exchangeCodeForTokens(code, redirectUri, pkce)
-                  const accountId = extractAccountId(tokens)
-                  return {
-                    type: "success" as const,
-                    refresh: tokens.refresh_token,
-                    access: tokens.access_token,
-                    expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
-                    accountId,
-                  }
-                } catch (e) {
-                  log.error("codex paste-URL token exchange failed", { error: String(e) })
-                  return { type: "failed" as const }
-                }
-              },
-            }
-          },
-        },
-        {
-          label: "Manually enter API Key",
-          type: "api",
         },
       ],
     },
