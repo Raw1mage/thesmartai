@@ -381,6 +381,8 @@ export class CodexLanguageModel implements LanguageModelV2 {
   private wsClient: CodexWebSocket | null = null
   /** Inline compaction threshold (tokens). When set, server auto-compacts. */
   private compactThreshold: number | undefined
+  /** Execution account ID for auth resolution. Set by session layer before each request. */
+  private executionAccountId: string | undefined
   /**
    * Opaque compacted output from /responses/compact.
    * When set, these items replace conversation history as the input prefix
@@ -417,6 +419,14 @@ export class CodexLanguageModel implements LanguageModelV2 {
   }
 
   /**
+   * Set the execution account ID for auth resolution.
+   * Must be called before each doStream() to ensure correct account auth.
+   */
+  setExecutionAccountId(accountId: string) {
+    this.executionAccountId = accountId
+  }
+
+  /**
    * Store opaque compacted output from /responses/compact.
    * These items will replace conversation history as the input prefix
    * on the next doStream() call, then be cleared.
@@ -431,8 +441,7 @@ export class CodexLanguageModel implements LanguageModelV2 {
    * Returns true if prewarm succeeded.
    */
   async prewarm(options: LanguageModelV2CallOptions): Promise<boolean> {
-    const executionAccountId = (options.headers as Record<string, string>)?.["x-opencode-account-id"] ?? ""
-    const liveAuth = await Auth.get(executionAccountId || "codex")
+    const liveAuth = await Auth.get(this.executionAccountId || "codex")
     const auth = {
       accessToken: (liveAuth as any)?.access ?? this.auth.accessToken ?? "",
       accountId: (liveAuth as any)?.accountId ?? this.auth.accountId ?? "",
@@ -558,19 +567,18 @@ export class CodexLanguageModel implements LanguageModelV2 {
     request?: { body?: unknown }
     response?: { headers?: Record<string, string> }
   }> {
-    // Get fresh auth tokens using the session's execution account ID.
-    // llm.ts passes the resolved accountId via x-opencode-account-id header.
-    // We must use this — NOT Auth.get("codex") which resolves to global active
-    // and may pick the wrong account (e.g. free plan instead of subscription).
-    const executionAccountId = (options.headers as Record<string, string>)?.["x-opencode-account-id"] ?? ""
-    const authProviderId = executionAccountId || "codex"
+    // Get fresh auth using the session's execution account ID.
+    // setExecutionAccountId() is called by getLanguage() post-creation hook.
+    // We must NOT use Auth.get("codex") — that resolves to global active
+    // which may be a different account (e.g. free plan instead of subscription).
+    const authProviderId = this.executionAccountId || "codex"
     const liveAuth = await Auth.get(authProviderId)
+    if (!liveAuth) {
+      log.warn("codex auth not found", { authProviderId, executionAccountId: this.executionAccountId })
+    }
     const auth = {
       accessToken: (liveAuth as any)?.access ?? this.auth.accessToken ?? "",
       accountId: (liveAuth as any)?.accountId ?? this.auth.accountId ?? "",
-    }
-    if (!liveAuth) {
-      log.warn("codex auth not found", { authProviderId, executionAccountId })
     }
 
     // Consume compacted output (one-shot: cleared after use)
