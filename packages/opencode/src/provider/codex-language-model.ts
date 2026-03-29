@@ -77,10 +77,43 @@ function promptToRequestBody(
   modelId: string,
   options: LanguageModelV2CallOptions,
   auth: { accessToken?: string; accountId?: string },
-  extra?: { conversationId?: string; turnState?: string; betaFeatures?: string; promptCacheKey?: string; compactThreshold?: number },
+  extra?: { conversationId?: string; turnState?: string; betaFeatures?: string; promptCacheKey?: string; compactThreshold?: number; compactedOutput?: unknown[] },
 ): Record<string, unknown> {
   let instructions = ""
   const input: unknown[] = []
+
+  // If compacted output exists, use it as the input prefix.
+  // Per API spec: "Do not prune /responses/compact output. The returned
+  // window is the canonical next context window."
+  // We still extract instructions from system messages, but the compacted
+  // items replace all prior conversation history. Only the last user
+  // message (the new turn) is appended after the compacted items.
+  if (extra?.compactedOutput?.length) {
+    input.push(...extra.compactedOutput)
+    // Extract instructions from system messages, append only the last user message
+    for (const msg of options.prompt) {
+      if (msg.role === "system") {
+        if (instructions) instructions += "\n"
+        instructions += msg.content
+      }
+    }
+    // Find the last user message and append it (the new input after compaction)
+    for (let i = options.prompt.length - 1; i >= 0; i--) {
+      const msg = options.prompt[i]
+      if (msg.role === "user") {
+        const contentItems: unknown[] = []
+        for (const part of msg.content) {
+          if (part.type === "text") {
+            contentItems.push({ type: "input_text", text: part.text })
+          }
+        }
+        if (contentItems.length > 0) {
+          input.push({ type: "message", role: "user", content: contentItems })
+        }
+        break
+      }
+    }
+  } else {
 
   for (const msg of options.prompt) {
     if (msg.role === "system") {
@@ -147,6 +180,7 @@ function promptToRequestBody(
       continue
     }
   }
+  } // end else (no compactedOutput)
 
   const tools = (options.tools ?? [])
     .filter((t): t is LanguageModelV2FunctionTool => t.type === "function")
@@ -347,10 +381,21 @@ export class CodexLanguageModel implements LanguageModelV2 {
   private wsClient: CodexWebSocket | null = null
   /** Inline compaction threshold (tokens). When set, server auto-compacts. */
   private compactThreshold: number | undefined
+  /**
+   * Opaque compacted output from /responses/compact.
+   * When set, these items replace conversation history as the input prefix
+   * on the next request. Consumed once (cleared after first use).
+   * Per API spec: "Do not prune /responses/compact output."
+   */
+  private compactedOutput: unknown[] | undefined
 
-  constructor(modelId: string, auth?: { accessToken?: string; accountId?: string }) {
+  constructor(modelId: string, auth?: { accessToken?: string; accountId?: string }, contextLimit?: number) {
     this.modelId = modelId
     this.auth = auth ?? {}
+    // Auto-set inline compaction threshold at ~80% of context window
+    if (contextLimit && contextLimit > 0) {
+      this.compactThreshold = Math.floor(contextLimit * 0.8)
+    }
   }
 
   setAuth(auth: { accessToken?: string; accountId?: string }) {
@@ -369,6 +414,15 @@ export class CodexLanguageModel implements LanguageModelV2 {
    */
   setCompactThreshold(tokens: number | undefined) {
     this.compactThreshold = tokens
+  }
+
+  /**
+   * Store opaque compacted output from /responses/compact.
+   * These items will replace conversation history as the input prefix
+   * on the next doStream() call, then be cleared.
+   */
+  setCompactedOutput(items: unknown[]) {
+    this.compactedOutput = items
   }
 
   /**
@@ -510,10 +564,15 @@ export class CodexLanguageModel implements LanguageModelV2 {
       accountId: (liveAuth as any)?.accountId ?? this.auth.accountId ?? "",
     }
 
+    // Consume compacted output (one-shot: cleared after use)
+    const compactedOutput = this.compactedOutput
+    this.compactedOutput = undefined
+
     const body = promptToRequestBody(this.modelId, options, auth, {
       promptCacheKey: this.sessionCacheKey,
       compactThreshold: this.compactThreshold,
       turnState: this.turnState,
+      compactedOutput,
     })
 
     // --- WebSocket transport (preferred) ---

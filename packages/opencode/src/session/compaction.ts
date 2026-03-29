@@ -573,16 +573,24 @@ When constructing the summary, try to stick to this template:
       if (!result.success || !result.output) return null
 
       // Server compaction succeeded.
-      // The output is opaque compaction items — we store them as a synthetic
-      // summary. For the next turn, ideally these items would be passed back
-      // as-is to the Responses API input. For now, we extract readable text
-      // to create a SharedContext-style summary that the existing compaction
-      // flow can consume.
+      // Per API spec: "Do not prune /responses/compact output. The returned
+      // window is the canonical next context window."
+      //
+      // Two-pronged storage:
+      // 1. Store opaque items on CodexLanguageModel for next request's input[]
+      // 2. Create a lightweight summary message for opencode's compaction flow
+      //    (UI display, session history marker)
+      const language = await Provider.getLanguage(model)
+      if (typeof (language as any).setCompactedOutput === "function") {
+        (language as any).setCompactedOutput(result.output)
+      }
+
+      // Extract readable text for the summary marker (best-effort, not authoritative)
       const summaryText = result.output
         .filter((item: any) => item.type === "message")
         .flatMap((item: any) => (item.content ?? []).map((c: any) => c.text ?? ""))
         .join("\n")
-        || "[Server-compacted conversation — opaque compaction items preserved]"
+        || "[Server-compacted conversation history]"
 
       await compactWithSharedContext({
         sessionID: input.sessionID,
