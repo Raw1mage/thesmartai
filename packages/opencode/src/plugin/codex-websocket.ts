@@ -239,16 +239,17 @@ export function wsRequest(input: {
         // Phase 2A: Error-first parsing (check WrappedWebsocketErrorEvent BEFORE ResponsesStreamEvent)
         const errorEvent = parseWrappedWebsocketErrorEvent(data)
         if (errorEvent) {
+          // Always surface error events — even without status code.
+          // codex-rs ignores no-status errors when followed by normal frames,
+          // but in practice the error is often the ONLY frame (rate limit),
+          // and ignoring it causes AI SDK to see an empty/broken stream.
           const mapped = mapWrappedWebsocketErrorEvent(errorEvent, data)
-          if (mapped) {
-            log.warn("ws error event", { sessionId, error: mapped.message })
-            // Phase 3: Evict cache on error
-            state.lastResponseId = undefined
-            state.lastInputLength = undefined
-            endWithError(mapped)
-            return
-          }
-          // No-status error → ignored per codex-rs behavior, but still forward as SSE data
+          const errorMsg = mapped?.message || errorEvent.error?.message || errorEvent.error?.type || "Unknown WS error"
+          log.warn("ws error event", { sessionId, error: errorMsg, hasStatus: !!errorEvent.status })
+          state.lastResponseId = undefined
+          state.lastInputLength = undefined
+          endWithError(mapped || new Error(`Codex WS: ${errorMsg}`))
+          return
         }
 
         // Forward as SSE data line for AI SDK consumption
@@ -394,12 +395,6 @@ export async function tryWsTransport(input: {
   wsUrl: string
 }): Promise<Response | null> {
   const { sessionId, accessToken, accountId, body, wsUrl } = input
-
-  // WS DISABLED — pending stability investigation.
-  // Direct WS test works but opencode integration has unresolved issues:
-  // console.error traces not reaching daemon log, frames not received in production.
-  // HTTP path is stable. Re-enable after root-causing the integration gap.
-  return null
 
   const state = getWsSession(sessionId)
 
