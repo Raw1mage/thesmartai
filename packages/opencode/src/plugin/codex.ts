@@ -897,20 +897,13 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
               }
             }
 
-            // Transport decision: WebSocket (if available) or HTTP
-            if (isCodexEndpoint && sessionId) {
-              const wsState = await getOrConnectWs(sessionId, currentAuth.access, authWithAccount.accountId, turnState?.turnState)
-              if (wsState.status === "open" && init?.body) {
-                try {
-                  const bodyJson = JSON.parse(typeof init.body === "string" ? init.body : "")
-                  log.info("codex ws request", { sessionId, inputItems: bodyJson.input?.length ?? 0 })
-                  return wsRequest(wsState, bodyJson)
-                } catch (e) {
-                  log.warn("codex ws request failed, falling back to HTTP", { sessionId, error: String(e) })
-                  // Fall through to HTTP
-                }
-              }
-            }
+            // WebSocket transport DISABLED — auth identity mismatch causes
+            // silent usage_limit_reached errors when rotation switches accounts
+            // but WS connection still carries the old account's token.
+            // TODO: rewrite WS handler per codex-rs reference (refs/codex/codex-rs/
+            // codex-api/src/endpoint/responses_websocket.rs) with proper error
+            // parsing, account-aware reconnection, idle timeout, and permessage-deflate.
+            // Until then, HTTP path is correct and verified working.
 
             // HTTP path (default or WS fallback)
             const response = await fetch(url, { ...init, headers })
