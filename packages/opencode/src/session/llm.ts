@@ -298,12 +298,6 @@ export namespace LLM {
       Auth.get(executionModel.providerId),
     ])
 
-    // Codex: set execution account ID on the language model instance before each request.
-    // CodexLanguageModel is cached per model, but accountId varies per session.
-    if (typeof (language as any).setExecutionAccountId === "function") {
-      (language as any).setExecutionAccountId(executionModel.providerId)
-    }
-
     debugCheckpoint("llm", "Provider and auth loaded", {
       providerId: input.model.providerId,
       executionProviderId: executionModel.providerId,

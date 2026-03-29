@@ -26,8 +26,8 @@ import type {
   LanguageModelV2FunctionTool,
 } from "@ai-sdk/provider"
 import { Log } from "../util/log"
-import { Auth } from "../auth"
 import { CodexWebSocket, type CodexWsRequest } from "./codex-websocket"
+import { codexResolvedAuth } from "../plugin/codex"
 import path from "path"
 import fs from "fs"
 
@@ -381,8 +381,6 @@ export class CodexLanguageModel implements LanguageModelV2 {
   private wsClient: CodexWebSocket | null = null
   /** Inline compaction threshold (tokens). When set, server auto-compacts. */
   private compactThreshold: number | undefined
-  /** Execution account ID for auth resolution. Set by session layer before each request. */
-  private executionAccountId: string | undefined
   /**
    * Opaque compacted output from /responses/compact.
    * When set, these items replace conversation history as the input prefix
@@ -418,13 +416,6 @@ export class CodexLanguageModel implements LanguageModelV2 {
     this.compactThreshold = tokens
   }
 
-  /**
-   * Set the execution account ID for auth resolution.
-   * Must be called before each doStream() to ensure correct account auth.
-   */
-  setExecutionAccountId(accountId: string) {
-    this.executionAccountId = accountId
-  }
 
   /**
    * Store opaque compacted output from /responses/compact.
@@ -441,10 +432,9 @@ export class CodexLanguageModel implements LanguageModelV2 {
    * Returns true if prewarm succeeded.
    */
   async prewarm(options: LanguageModelV2CallOptions): Promise<boolean> {
-    const liveAuth = await Auth.get(this.executionAccountId || "codex")
     const auth = {
-      accessToken: (liveAuth as any)?.access ?? this.auth.accessToken ?? "",
-      accountId: (liveAuth as any)?.accountId ?? this.auth.accountId ?? "",
+      accessToken: codexResolvedAuth.accessToken ?? this.auth.accessToken ?? "",
+      accountId: codexResolvedAuth.accountId ?? this.auth.accountId ?? "",
     }
 
     if (!this.wsClient) {
@@ -567,18 +557,15 @@ export class CodexLanguageModel implements LanguageModelV2 {
     request?: { body?: unknown }
     response?: { headers?: Record<string, string> }
   }> {
-    // Get fresh auth using the session's execution account ID.
-    // setExecutionAccountId() is called by getLanguage() post-creation hook.
-    // We must NOT use Auth.get("codex") — that resolves to global active
-    // which may be a different account (e.g. free plan instead of subscription).
-    const authProviderId = this.executionAccountId || "codex"
-    const liveAuth = await Auth.get(authProviderId)
-    if (!liveAuth) {
-      log.warn("codex auth not found", { authProviderId, executionAccountId: this.executionAccountId })
-    }
+    // Auth comes from plugin fetch interceptor's shared state.
+    // Plugin resolves the correct account (per-session pinned) and writes
+    // to codexResolvedAuth. We read from there — never call Auth.get() directly.
     const auth = {
-      accessToken: (liveAuth as any)?.access ?? this.auth.accessToken ?? "",
-      accountId: (liveAuth as any)?.accountId ?? this.auth.accountId ?? "",
+      accessToken: codexResolvedAuth.accessToken ?? this.auth.accessToken ?? "",
+      accountId: codexResolvedAuth.accountId ?? this.auth.accountId ?? "",
+    }
+    if (!auth.accessToken) {
+      log.warn("codex auth: no access token available from plugin resolved auth")
     }
 
     // Consume compacted output (one-shot: cleared after use)
@@ -597,7 +584,7 @@ export class CodexLanguageModel implements LanguageModelV2 {
     if (wsResult) return wsResult
 
     // --- C binary transport (fallback) ---
-    return this.doCBinaryStream(body, auth, liveAuth)
+    return this.doCBinaryStream(body, auth)
   }
 
   /**
@@ -663,7 +650,6 @@ export class CodexLanguageModel implements LanguageModelV2 {
   private async doCBinaryStream(
     body: Record<string, unknown>,
     auth: { accessToken: string; accountId: string },
-    liveAuth: any,
   ): Promise<{
     stream: ReadableStream<LanguageModelV2StreamPart>
     request?: { body?: unknown }
@@ -682,7 +668,7 @@ export class CodexLanguageModel implements LanguageModelV2 {
       model: this.modelId,
       bodyBytes: bodyJson.length,
       hasAuth: !!auth.accessToken,
-      authType: liveAuth?.type ?? "none",
+      authType: auth.accessToken ? "oauth" : "none",
     })
 
     // Spawn C process: stdin JSON → stdout JSONL
@@ -792,10 +778,9 @@ export async function codexPreconnectWebSocket(languageModel: unknown): Promise<
   const model = languageModel as CodexLanguageModel
 
   try {
-    const liveAuth = await Auth.get("codex")
     const auth = {
-      accessToken: (liveAuth as any)?.access ?? "",
-      accountId: (liveAuth as any)?.accountId ?? "",
+      accessToken: codexResolvedAuth.accessToken ?? "",
+      accountId: codexResolvedAuth.accountId ?? "",
     }
     if (!auth.accessToken) return
 

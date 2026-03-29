@@ -648,6 +648,17 @@ const codexTurnState = {
 }
 
 /**
+ * Shared auth state — written by plugin fetch interceptor after auth resolution,
+ * read by CodexLanguageModel for WebSocket/C-binary transport.
+ * This is the single source of truth for codex auth in the current process.
+ * CodexLanguageModel must NOT call Auth.get() directly.
+ */
+export const codexResolvedAuth = {
+  accessToken: undefined as string | undefined,
+  accountId: undefined as string | undefined,
+}
+
+/**
  * CodexNativeAuthPlugin — OAuth auth + efficiency optimizations for "codex" provider.
  */
 export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> {
@@ -720,6 +731,10 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
             if (authWithAccount.accountId) {
               headers.set("ChatGPT-Account-Id", authWithAccount.accountId)
             }
+
+            // Publish resolved auth for CodexLanguageModel (WS/C-binary transport)
+            codexResolvedAuth.accessToken = currentAuth.access
+            codexResolvedAuth.accountId = authWithAccount.accountId
 
             // Sticky routing: replay captured turn state from previous response
             if (codexTurnState.turnState) {
@@ -904,10 +919,22 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
       if (input.model?.providerId === "codex") {
         codexTurnState.turnState = undefined
 
+        // Resolve auth for the session's execution account and publish
+        // to codexResolvedAuth. CodexLanguageModel reads from this shared
+        // state — it never calls Auth.get() directly.
+        const accountId = (input.model as any).accountId
+        if (accountId) {
+          try {
+            const { Auth } = await import("../auth")
+            const auth = await Auth.get(accountId)
+            if (auth?.type === "oauth" && auth.access) {
+              codexResolvedAuth.accessToken = auth.access
+              codexResolvedAuth.accountId = (auth as any).accountId
+            }
+          } catch {}
+        }
+
         // Fire-and-forget preconnect: overlap WS handshake with prompt build.
-        // Only preconnect if the CodexLanguageModel is already cached —
-        // calling getLanguage() on a miss would create a second instance,
-        // defeating the purpose. Use peekCachedLanguage() instead.
         import("../provider/codex-language-model").then(async ({ codexPreconnectWebSocket }) => {
           try {
             const { Provider } = await import("../provider/provider")
