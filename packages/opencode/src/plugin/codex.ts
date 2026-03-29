@@ -890,6 +890,19 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
 
             // HTTP path (default or WS fallback)
             const response = await fetch(url, { ...init, headers })
+
+            // Guard: Codex returns JSON error bodies (e.g. usage_limit_reached)
+            // instead of SSE streams. Detect and throw so AI SDK sees a real error
+            // rather than silently producing finishReason=unknown with 0 tokens.
+            if (!response.ok) {
+              const ct = response.headers.get("content-type") ?? ""
+              if (ct.includes("application/json") || !ct.includes("text/event-stream")) {
+                const body = await response.text()
+                log.warn("codex HTTP error", { status: response.status, body: body.slice(0, 300) })
+                throw new Error(`Codex API error (${response.status}): ${body.slice(0, 200)}`)
+              }
+            }
+
             const newTurnState = response.headers.get("x-codex-turn-state")
             if (newTurnState && sessionId) {
               codexTurnStates.set(sessionId, { ...turnState, turnState: newTurnState })
