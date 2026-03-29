@@ -149,6 +149,63 @@ export namespace SessionCompaction {
     return true
   }
 
+  // Cache-aware compaction: when cache hit rate is poor and context is large
+  // enough to matter, compact proactively to reduce billable input tokens.
+  // This catches the case where context keeps growing (but hasn't overflowed)
+  // while cache is mostly missing — wasting tokens re-sending stale history.
+  const CACHE_AWARE_MIN_UTILIZATION = 0.4 // context must be >= 40% full
+  const CACHE_AWARE_MAX_HIT_RATE = 0.4 // cache hit rate must be below 40%
+  const CACHE_AWARE_MIN_INPUT = 40_000 // skip when input is trivially small
+
+  export async function shouldCacheAwareCompact(input: {
+    tokens: MessageV2.Assistant["tokens"]
+    model: Provider.Model
+    sessionID?: string
+    currentRound?: number
+  }): Promise<boolean> {
+    const budget = await inspectBudget(input)
+    if (!budget.auto || !budget.byToken) return false
+
+    // Only meaningful when there's substantial context
+    const utilization = budget.usable > 0 ? budget.count / budget.usable : 0
+    if (utilization < CACHE_AWARE_MIN_UTILIZATION) return false
+
+    const { input: inputTokens, cache } = input.tokens
+    const totalInput = inputTokens + cache.read
+    if (totalInput < CACHE_AWARE_MIN_INPUT) return false
+
+    const cacheHitRate = totalInput > 0 ? cache.read / totalInput : 1
+    if (cacheHitRate >= CACHE_AWARE_MAX_HIT_RATE) return false
+
+    // Respect cooldown
+    if (input.sessionID && input.currentRound !== undefined) {
+      const state = cooldownState.get(input.sessionID)
+      if (state) {
+        const roundsSince = input.currentRound - state.lastCompactionRound
+        if (roundsSince < budget.cooldownRounds) {
+          log.info("cache-aware compaction skipped (cooldown)", {
+            sessionID: input.sessionID,
+            cacheHitRate: (cacheHitRate * 100).toFixed(0) + "%",
+            utilization: (utilization * 100).toFixed(0) + "%",
+            roundsSince,
+          })
+          return false
+        }
+      }
+    }
+
+    log.warn("cache-aware compaction triggered", {
+      sessionID: input.sessionID,
+      cacheHitRate: (cacheHitRate * 100).toFixed(0) + "%",
+      utilization: (utilization * 100).toFixed(0) + "%",
+      inputTokens,
+      cacheRead: cache.read,
+      count: budget.count,
+      usable: budget.usable,
+    })
+    return true
+  }
+
   export const PRUNE_MINIMUM = 20_000
   export const PRUNE_PROTECT = 40_000
 

@@ -788,11 +788,12 @@ export namespace SessionPrompt {
         continue
       }
 
-      // context overflow, needs compaction
+      // context overflow OR cache-aware compaction
       if (
         lastFinished &&
         lastFinished.summary !== true &&
-        (await SessionCompaction.isOverflow({ tokens: lastFinished.tokens, model, sessionID, currentRound: step }))
+        ((await SessionCompaction.isOverflow({ tokens: lastFinished.tokens, model, sessionID, currentRound: step })) ||
+          (await SessionCompaction.shouldCacheAwareCompact({ tokens: lastFinished.tokens, model, sessionID, currentRound: step })))
       ) {
         SessionCompaction.recordCompaction(sessionID, step)
         // Priority path: use shared context snapshot as summary (no LLM call)
