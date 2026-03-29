@@ -721,7 +721,7 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
             }
 
             // Transport decision: WebSocket (if available) or HTTP
-            // WS is a transport adapter per specs/codex_provider_runtime/ DD-4
+            // WS is a transport adapter per specs/codex/provider_runtime/ DD-4
             log.info("ws transport check", { sessionId, isCodexEndpoint })
             if (isCodexEndpoint && sessionId) {
               try {
@@ -734,15 +734,18 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
                   body: init?.body ? JSON.parse(typeof init.body === "string" ? init.body : "") : {},
                   wsUrl,
                 })
-                if (wsResponse) return wsResponse
-                // null = WS unavailable or failed → fall through to HTTP
+                if (wsResponse) {
+                  console.error(`[WS-TRANSPORT] using WS session=${sessionId}`)
+                  return wsResponse
+                }
+                console.error(`[WS-TRANSPORT] WS returned null, falling back to HTTP session=${sessionId}`)
               } catch (e) {
-                log.warn("ws transport error, falling back to HTTP", { sessionId, error: String(e) })
+                console.error(`[WS-TRANSPORT] WS error, falling back to HTTP session=${sessionId} error=${String(e).slice(0, 100)}`)
               }
             }
 
             // HTTP path (default or WS fallback)
-            log.info("ws fallback to HTTP", { sessionId })
+            console.error(`[WS-TRANSPORT] using HTTP session=${sessionId ?? "null"}`)
             const response = await fetch(url, { ...init, headers })
 
             // Guard: Codex returns JSON error bodies (e.g. usage_limit_reached)

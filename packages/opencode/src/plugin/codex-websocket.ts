@@ -228,6 +228,14 @@ export function wsRequest(input: {
         frameCount++
         resetIdleTimer()
 
+        // Trace every frame for debugging
+        try {
+          const t = JSON.parse(data).type
+          console.error(`[WS-FRAME] #${frameCount} type=${t} session=${sessionId} len=${data.length}`)
+        } catch {
+          console.error(`[WS-FRAME] #${frameCount} raw session=${sessionId} len=${data.length}`)
+        }
+
         // Phase 2A: Error-first parsing (check WrappedWebsocketErrorEvent BEFORE ResponsesStreamEvent)
         const errorEvent = parseWrappedWebsocketErrorEvent(data)
         if (errorEvent) {
@@ -308,6 +316,7 @@ export function wsRequest(input: {
       resetIdleTimer()
 
       const payload = JSON.stringify({ type: "response.create", ...wsBody })
+      console.error(`[WS-SEND] session=${sessionId} payloadLen=${payload.length}`)
       log.info("ws request sent", { sessionId, deltaMode, inputItems: Array.isArray(wsBody.input) ? wsBody.input.length : 0, fullItems: fullInputLength })
       ws.send(payload)
     },
@@ -385,6 +394,13 @@ export async function tryWsTransport(input: {
   wsUrl: string
 }): Promise<Response | null> {
   const { sessionId, accessToken, accountId, body, wsUrl } = input
+
+  // WS DISABLED — pending stability investigation.
+  // Direct WS test works but opencode integration has unresolved issues:
+  // console.error traces not reaching daemon log, frames not received in production.
+  // HTTP path is stable. Re-enable after root-causing the integration gap.
+  return null
+
   const state = getWsSession(sessionId)
 
   // Sticky fallback: once disabled, stay disabled for session lifetime
