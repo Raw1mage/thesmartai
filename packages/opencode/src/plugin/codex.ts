@@ -377,132 +377,35 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
         return {
           apiKey: OAUTH_DUMMY_KEY,
           async fetch(requestInput: RequestInfo | URL, init?: RequestInit) {
-            // Remove dummy API key authorization header
-            if (init?.headers) {
-              if (init.headers instanceof Headers) {
-                init.headers.delete("authorization")
-                init.headers.delete("Authorization")
-              } else if (Array.isArray(init.headers)) {
-                init.headers = init.headers.filter(([key]) => key.toLowerCase() !== "authorization")
-              } else {
-                delete init.headers["authorization"]
-                delete init.headers["Authorization"]
-              }
-            }
-
+            stripDummyAuthHeader(init)
             const currentAuth = await getAuth()
             if (currentAuth.type !== "oauth") return fetch(requestInput, init)
-
-            // Cast to include accountId field
             const authWithAccount = currentAuth as typeof currentAuth & { accountId?: string }
+            await refreshIfNeeded(currentAuth, authWithAccount, "openai", input.client)
 
-            // Check if token needs refresh
-            if (!currentAuth.access || currentAuth.expires < Date.now()) {
-              log.info("refreshing codex access token")
-              const tokens = await refreshAccessToken(currentAuth.refresh)
-              const newAccountId = extractAccountId(tokens) || authWithAccount.accountId
-              await input.client.auth.set({
-                path: { id: "openai" },
-                body: {
-                  type: "oauth",
-                  refresh: tokens.refresh_token,
-                  access: tokens.access_token,
-                  expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
-                  ...(newAccountId && { accountId: newAccountId }),
-                },
-              })
-              currentAuth.access = tokens.access_token
-              authWithAccount.accountId = newAccountId
-            }
-
-            // Build headers
-            const headers = new Headers()
-            if (init?.headers) {
-              if (init.headers instanceof Headers) {
-                init.headers.forEach((value, key) => headers.set(key, value))
-              } else if (Array.isArray(init.headers)) {
-                for (const [key, value] of init.headers) {
-                  if (value !== undefined) headers.set(key, String(value))
-                }
-              } else {
-                for (const [key, value] of Object.entries(init.headers)) {
-                  if (value !== undefined) headers.set(key, String(value))
-                }
-              }
-            }
-
-            // Set authorization header with access token
-            headers.set("authorization", `Bearer ${currentAuth.access}`)
-
-            // Set ChatGPT-Account-Id header for organization subscriptions
-            if (authWithAccount.accountId) {
-              headers.set("ChatGPT-Account-Id", authWithAccount.accountId)
-            }
-
-            // Normalize URL
-            const parsed =
-              requestInput instanceof URL
-                ? requestInput
-                : new URL(typeof requestInput === "string" ? requestInput : requestInput.url)
-
+            const headers = buildCodexHeaders(init, currentAuth.access, authWithAccount.accountId)
+            const parsed = parseCodexUrl(requestInput)
             const isCodexEndpoint =
               parsed.pathname.includes("/v1/responses") || parsed.pathname.includes("/chat/completions")
             const url = isCodexEndpoint ? new URL(CODEX_API_ENDPOINT) : parsed
 
-            // Process body if it's the Codex endpoint
             if (isCodexEndpoint) {
               let bodyString: string | undefined
-
-              // Extract body from init or requestInput
               if (init?.body) {
                 bodyString = typeof init.body === "string" ? init.body : undefined
               } else if (requestInput instanceof Request) {
-                // We must clone because reading the body consumes it
-                try {
-                  bodyString = await requestInput.clone().text()
-                } catch (e) {
-                  // Fallback or ignore
-                }
+                try { bodyString = await requestInput.clone().text() } catch {}
               }
-
               if (bodyString) {
                 try {
-                  const body = JSON.parse(bodyString)
-                  const messages = body.messages || []
-                  const systemMsg = messages.find((m: any) => m.role === "system" || m.role === "developer")
-
-                  // Codex endpoint requires instructions
-                  if (systemMsg) {
-                    body.instructions = systemMsg.content
-                  } else {
-                    body.instructions = "You are a helpful assistant."
-                  }
-
-                  // Remove unsupported parameters
-                  if (body.max_output_tokens) {
-                    // body.max_tokens = body.max_output_tokens // DO NOT MAP to max_tokens if that is also unsupported
-                    delete body.max_output_tokens
-                  }
-                  if (body.max_tokens) {
-                    delete body.max_tokens
-                  }
-
-                  // Ensure init is valid and update body
                   if (!init) init = {}
-                  init.body = JSON.stringify(body)
-
-                  // If we pulled body from Request, we might need to carry over other Request properties if not in init
+                  init.body = transformCodexBody(bodyString)
                   if (!init.method && requestInput instanceof Request) init.method = requestInput.method
-                } catch (e) {
-                  // Ignore JSON parse errors
-                }
+                } catch {}
               }
             }
 
-            return fetch(url, {
-              ...init,
-              headers,
-            })
+            return fetch(url, { ...init, headers })
           },
         }
       },
@@ -635,16 +538,83 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
   }
 }
 
-/**
- * Per-provider turn state for sticky routing and cache optimization.
- * Captured from response headers, replayed in follow-up requests.
- * All features are silent/automatic — no user configuration needed.
- */
-const codexTurnState = {
-  /** Opaque routing token from x-codex-turn-state response header */
-  turnState: undefined as string | undefined,
-  /** Last response_id for future incremental delta (Phase 3) */
-  responseId: undefined as string | undefined,
+/** Per-session turn state for sticky routing. Keyed by sessionID. */
+const codexTurnStates = new Map<string, { turnState?: string }>()
+
+// ── Shared helpers for CodexAuthPlugin / CodexNativeAuthPlugin ──
+
+function stripDummyAuthHeader(init?: RequestInit) {
+  if (!init?.headers) return
+  if (init.headers instanceof Headers) {
+    init.headers.delete("authorization")
+    init.headers.delete("Authorization")
+  } else if (Array.isArray(init.headers)) {
+    init.headers = init.headers.filter(([key]) => key.toLowerCase() !== "authorization")
+  } else {
+    delete init.headers["authorization"]
+    delete init.headers["Authorization"]
+  }
+}
+
+function buildCodexHeaders(init: RequestInit | undefined, accessToken: string, accountId?: string): Headers {
+  const headers = new Headers()
+  if (init?.headers) {
+    if (init.headers instanceof Headers) {
+      init.headers.forEach((value, key) => headers.set(key, value))
+    } else if (Array.isArray(init.headers)) {
+      for (const [key, value] of init.headers) {
+        if (value !== undefined) headers.set(key, String(value))
+      }
+    } else {
+      for (const [key, value] of Object.entries(init.headers)) {
+        if (value !== undefined) headers.set(key, String(value))
+      }
+    }
+  }
+  headers.set("authorization", `Bearer ${accessToken}`)
+  if (accountId) headers.set("ChatGPT-Account-Id", accountId)
+  return headers
+}
+
+function transformCodexBody(bodyString: string): string {
+  const body = JSON.parse(bodyString)
+  // Codex endpoint requires top-level instructions
+  const messages = body.messages || []
+  const systemMsg = messages.find((m: any) => m.role === "system" || m.role === "developer")
+  body.instructions = systemMsg ? systemMsg.content : "You are a helpful assistant."
+  delete body.max_output_tokens
+  delete body.max_tokens
+  return JSON.stringify(body)
+}
+
+function parseCodexUrl(requestInput: RequestInfo | URL): URL {
+  return requestInput instanceof URL
+    ? requestInput
+    : new URL(typeof requestInput === "string" ? requestInput : requestInput.url)
+}
+
+async function refreshIfNeeded(
+  currentAuth: any,
+  authWithAccount: any,
+  providerId: string,
+  client: PluginInput["client"],
+) {
+  if (currentAuth.access && currentAuth.expires >= Date.now()) return
+  log.info("refreshing codex access token", { provider: providerId })
+  const tokens = await refreshAccessToken(currentAuth.refresh)
+  const newAccountId = extractAccountId(tokens) || authWithAccount.accountId
+  await client.auth.set({
+    path: { id: providerId },
+    body: {
+      type: "oauth",
+      refresh: tokens.refresh_token,
+      access: tokens.access_token,
+      expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
+      ...(newAccountId && { accountId: newAccountId }),
+    },
+  })
+  currentAuth.access = tokens.access_token
+  authWithAccount.accountId = newAccountId
 }
 
 
@@ -667,71 +637,22 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
         return {
           apiKey: OAUTH_DUMMY_KEY,
           async fetch(requestInput: RequestInfo | URL, init?: RequestInit) {
-            if (init?.headers) {
-              if (init.headers instanceof Headers) {
-                init.headers.delete("authorization")
-                init.headers.delete("Authorization")
-              } else if (Array.isArray(init.headers)) {
-                init.headers = init.headers.filter(([key]) => key.toLowerCase() !== "authorization")
-              } else {
-                delete init.headers["authorization"]
-                delete init.headers["Authorization"]
-              }
-            }
-
+            stripDummyAuthHeader(init)
             const currentAuth = await getAuth()
             if (currentAuth.type !== "oauth") return fetch(requestInput, init)
-
             const authWithAccount = currentAuth as typeof currentAuth & { accountId?: string }
+            await refreshIfNeeded(currentAuth, authWithAccount, "codex", input.client)
 
-            if (!currentAuth.access || currentAuth.expires < Date.now()) {
-              log.info("refreshing codex access token")
-              const tokens = await refreshAccessToken(currentAuth.refresh)
-              const newAccountId = extractAccountId(tokens) || authWithAccount.accountId
-              await input.client.auth.set({
-                path: { id: "codex" },
-                body: {
-                  type: "oauth",
-                  refresh: tokens.refresh_token,
-                  access: tokens.access_token,
-                  expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
-                  ...(newAccountId && { accountId: newAccountId }),
-                },
-              })
-              currentAuth.access = tokens.access_token
-              authWithAccount.accountId = newAccountId
+            const headers = buildCodexHeaders(init, currentAuth.access, authWithAccount.accountId)
+
+            // Sticky routing: replay per-session turn state
+            const sessionId = headers.get("session_id") || ""
+            const turnState = codexTurnStates.get(sessionId)
+            if (turnState?.turnState) {
+              headers.set("x-codex-turn-state", turnState.turnState)
             }
 
-            const headers = new Headers()
-            if (init?.headers) {
-              if (init.headers instanceof Headers) {
-                init.headers.forEach((value, key) => headers.set(key, value))
-              } else if (Array.isArray(init.headers)) {
-                for (const [key, value] of init.headers) {
-                  if (value !== undefined) headers.set(key, String(value))
-                }
-              } else {
-                for (const [key, value] of Object.entries(init.headers)) {
-                  if (value !== undefined) headers.set(key, String(value))
-                }
-              }
-            }
-
-            headers.set("authorization", `Bearer ${currentAuth.access}`)
-            if (authWithAccount.accountId) {
-              headers.set("ChatGPT-Account-Id", authWithAccount.accountId)
-            }
-
-            // Sticky routing: replay captured turn state from previous response
-            if (codexTurnState.turnState) {
-              headers.set("x-codex-turn-state", codexTurnState.turnState)
-            }
-
-            const parsed =
-              requestInput instanceof URL
-                ? requestInput
-                : new URL(typeof requestInput === "string" ? requestInput : requestInput.url)
-
+            const parsed = parseCodexUrl(requestInput)
             const isCodexEndpoint =
               parsed.pathname.includes("/v1/responses") || parsed.pathname.includes("/chat/completions") || parsed.pathname.includes("/codex/responses")
             const url = isCodexEndpoint ? new URL(CODEX_API_ENDPOINT) : parsed
@@ -743,25 +664,24 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
               } else if (requestInput instanceof Request) {
                 try { bodyString = await requestInput.clone().text() } catch {}
               }
-
               if (bodyString) {
                 try {
-                  const body = JSON.parse(bodyString)
-                  const messages = body.messages || []
-                  const systemMsg = messages.find((m: any) => m.role === "system" || m.role === "developer")
-                  body.instructions = systemMsg ? systemMsg.content : "You are a helpful assistant."
-                  delete body.max_output_tokens
-                  delete body.max_tokens
+                  const body = JSON.parse(transformCodexBody(bodyString))
 
-                  // Prompt cache: inject session-stable cache key for server-side prefix caching
+                  // Prompt cache fallback: inject if AI SDK adapter didn't set it
                   if (!body.prompt_cache_key) {
-                    const requestId = headers.get("x-client-request-id")
-                    body.prompt_cache_key = requestId || `codex-${authWithAccount.accountId || "default"}`
+                    body.prompt_cache_key = `codex-${authWithAccount.accountId || "default"}`
+                  }
+
+                  // Server-side inline compaction (context_management)
+                  if (!body.context_management) {
+                    body.context_management = [{ type: "compaction", compact_threshold: 100000 }]
                   }
 
                   log.info("codex fetch body transform", {
                     hasCacheKey: !!body.prompt_cache_key,
-                    hasTurnState: !!codexTurnState.turnState,
+                    hasTurnState: !!turnState?.turnState,
+                    hasContextMgmt: !!body.context_management,
                     inputItems: Array.isArray(body.input) ? body.input.length : 0,
                   })
 
@@ -775,9 +695,9 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
             // Execute fetch and capture turn state from response
             const response = await fetch(url, { ...init, headers })
             const newTurnState = response.headers.get("x-codex-turn-state")
-            if (newTurnState) {
-              codexTurnState.turnState = newTurnState
-              log.info("codex turn state captured", { turnState: newTurnState.slice(0, 20) + "..." })
+            if (newTurnState && sessionId) {
+              codexTurnStates.set(sessionId, { ...turnState, turnState: newTurnState })
+              log.info("codex turn state captured", { sessionId, turnState: newTurnState.slice(0, 20) + "..." })
             }
             return response
           },
@@ -902,7 +822,7 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
     // Reset turn state on new user message (fresh routing for new turn)
     "chat.message": async (input) => {
       if (input.model?.providerId === "codex") {
-        codexTurnState.turnState = undefined
+        codexTurnStates.delete(input.sessionID)
       }
     },
   }
