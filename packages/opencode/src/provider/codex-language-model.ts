@@ -77,7 +77,7 @@ function promptToRequestBody(
   modelId: string,
   options: LanguageModelV2CallOptions,
   auth: { accessToken?: string; accountId?: string },
-  extra?: { conversationId?: string; turnState?: string; betaFeatures?: string; promptCacheKey?: string },
+  extra?: { conversationId?: string; turnState?: string; betaFeatures?: string; promptCacheKey?: string; compactThreshold?: number },
 ): Record<string, unknown> {
   let instructions = ""
   const input: unknown[] = []
@@ -189,6 +189,10 @@ function promptToRequestBody(
     ...(reasoning ? { reasoning } : {}),
     // Service tier (priority, default, etc.)
     ...(po["serviceTier"] ? { service_tier: po["serviceTier"] } : {}),
+    // Inline compaction: server auto-compacts when token count crosses threshold
+    ...(extra?.compactThreshold
+      ? { context_management: [{ type: "compaction", compact_threshold: extra.compactThreshold }] }
+      : {}),
 
     // Prompt cache key for server-side prefix caching
     prompt_cache_key: extra?.promptCacheKey ?? "",
@@ -341,6 +345,8 @@ export class CodexLanguageModel implements LanguageModelV2 {
   private turnState: string | undefined
   /** WebSocket connection (reused across requests in same session) */
   private wsClient: CodexWebSocket | null = null
+  /** Inline compaction threshold (tokens). When set, server auto-compacts. */
+  private compactThreshold: number | undefined
 
   constructor(modelId: string, auth?: { accessToken?: string; accountId?: string }) {
     this.modelId = modelId
@@ -354,6 +360,15 @@ export class CodexLanguageModel implements LanguageModelV2 {
   /** Reset turn state on new user turn (fresh routing) */
   resetTurnState() {
     this.turnState = undefined
+  }
+
+  /**
+   * Set inline compaction threshold. When set, every request includes
+   * context_management=[{type:"compaction", compact_threshold: N}].
+   * Server auto-compacts when rendered token count crosses the threshold.
+   */
+  setCompactThreshold(tokens: number | undefined) {
+    this.compactThreshold = tokens
   }
 
   /**
@@ -497,6 +512,7 @@ export class CodexLanguageModel implements LanguageModelV2 {
 
     const body = promptToRequestBody(this.modelId, options, auth, {
       promptCacheKey: this.sessionCacheKey,
+      compactThreshold: this.compactThreshold,
       turnState: this.turnState,
     })
 

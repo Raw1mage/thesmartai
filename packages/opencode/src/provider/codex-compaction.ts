@@ -1,8 +1,21 @@
 /**
  * codex-compaction.ts — Server-side compaction via Codex Responses API
  *
- * Sends conversation history to /responses/compact endpoint for server-side
- * summarization. Falls back to client-side compaction on failure.
+ * Two compaction modes per OpenAI public API:
+ *
+ * 1. Inline (context_management): add compact_threshold to regular /responses
+ *    calls; server auto-compacts when token count crosses threshold. The
+ *    compaction item appears in response output and must be kept for next turn.
+ *
+ * 2. Standalone (/responses/compact): POST full context window to a dedicated
+ *    endpoint; receive compacted output to replace conversation history.
+ *    Request body mirrors codex-rs CompactionInput:
+ *      { model, input, instructions, tools, parallel_tool_calls }
+ *    Response body: { output: ResponseItem[] }
+ *
+ * Both modes return opaque compaction items that are not human-interpretable.
+ * The caller must NOT prune /responses/compact output — it is the canonical
+ * next context window.
  */
 
 import { Auth } from "../auth"
@@ -13,22 +26,31 @@ const log = Log.create({ service: "codex-compaction" })
 const CODEX_COMPACT_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses/compact"
 const COMPACT_TIMEOUT_MS = 60000
 
+// ---------------------------------------------------------------------------
+// Standalone compaction: POST /responses/compact
+// ---------------------------------------------------------------------------
+
+/**
+ * Request body for /responses/compact.
+ * Matches codex-rs CompactionInput struct.
+ */
 export interface CompactRequest {
   model: string
   input: unknown[]
-  instructions?: string
+  instructions: string
+  tools: unknown[]
+  parallel_tool_calls: boolean
 }
 
 export interface CompactResult {
   success: boolean
-  input?: unknown[]
-  tokensBefore?: number
-  tokensAfter?: number
+  /** Compacted output items — the canonical next context window */
+  output?: unknown[]
 }
 
 /**
- * Call the server-side /responses/compact endpoint.
- * Returns compacted input items on success, null on failure.
+ * Call the standalone /responses/compact endpoint.
+ * The returned output array is opaque and must not be pruned.
  */
 export async function codexServerCompact(request: CompactRequest): Promise<CompactResult> {
   try {
@@ -51,12 +73,15 @@ export async function codexServerCompact(request: CompactRequest): Promise<Compa
     const body = JSON.stringify({
       model: request.model,
       input: request.input,
-      ...(request.instructions ? { instructions: request.instructions } : {}),
+      instructions: request.instructions,
+      tools: request.tools,
+      parallel_tool_calls: request.parallel_tool_calls,
     })
 
     log.info("codex compact request", {
       model: request.model,
       inputItems: request.input.length,
+      toolCount: request.tools.length,
       bodyBytes: body.length,
     })
 
@@ -82,29 +107,19 @@ export async function codexServerCompact(request: CompactRequest): Promise<Compa
 
     const result = await response.json() as any
 
-    // Server returns compacted input items
-    const compactedInput = result.input ?? result.items ?? result.messages
-    if (!compactedInput || !Array.isArray(compactedInput)) {
+    // Response: { output: ResponseItem[] }
+    const output = result.output
+    if (!output || !Array.isArray(output)) {
       log.warn("codex compact: unexpected response shape", { keys: Object.keys(result) })
       return { success: false }
     }
 
-    const tokensBefore = result.usage?.input_tokens_before ?? request.input.length
-    const tokensAfter = result.usage?.input_tokens_after ?? compactedInput.length
-
     log.info("codex compact success", {
       inputItemsBefore: request.input.length,
-      inputItemsAfter: compactedInput.length,
-      tokensBefore,
-      tokensAfter,
+      outputItems: output.length,
     })
 
-    return {
-      success: true,
-      input: compactedInput,
-      tokensBefore,
-      tokensAfter,
-    }
+    return { success: true, output }
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
       log.warn("codex compact timeout")
@@ -113,4 +128,20 @@ export async function codexServerCompact(request: CompactRequest): Promise<Compa
     }
     return { success: false }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Inline compaction: context_management parameter
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the context_management parameter for inline compaction.
+ * Add this to the Responses API request body when you want the server to
+ * auto-compact when the rendered token count crosses compact_threshold.
+ *
+ * The compaction item will appear in response.output and must be preserved
+ * in conversation history for the next turn.
+ */
+export function buildContextManagement(compactThreshold: number): unknown[] {
+  return [{ type: "compaction", compact_threshold: compactThreshold }]
 }

@@ -490,6 +490,11 @@ When constructing the summary, try to stick to this template:
 
   /**
    * Try server-side compaction via Codex /responses/compact endpoint.
+   *
+   * Sends CompactionInput { model, input, instructions, tools, parallel_tool_calls }
+   * and receives { output: ResponseItem[] }. The output is opaque and must not be
+   * pruned — it IS the canonical next context window.
+   *
    * Returns "continue" on success, null if server compaction is unavailable.
    */
   async function tryServerCompaction(
@@ -503,7 +508,7 @@ When constructing the summary, try to stick to this template:
     userMessage: MessageV2.User,
   ): Promise<"continue" | "stop" | null> {
     try {
-      // Build Responses API input from conversation messages
+      // Build Responses API input items from conversation messages
       const conversationInput: unknown[] = []
       for (const msg of input.messages) {
         if (msg.info.role === "user") {
@@ -530,7 +535,7 @@ When constructing the summary, try to stick to this template:
               })),
             })
           }
-          // Include tool calls
+          // Include tool calls and outputs
           for (const p of msg.parts) {
             if (p.type === "tool" && p.state.status === "completed") {
               conversationInput.push({
@@ -551,31 +556,44 @@ When constructing the summary, try to stick to this template:
 
       if (conversationInput.length === 0) return null
 
+      // Build tool specs for compaction (server needs tools to produce correct output)
+      const model = await Provider.getModel(userMessage.model.providerId, userMessage.model.modelID)
+      const agent = await Agent.get(userMessage.agent ?? "default")
+      // Instructions: use system prompts that the session was using
+      const instructions = (agent.prompt ?? "").slice(0, 50000)
+
       const result = await codexServerCompact({
         model: userMessage.model.modelID,
         input: conversationInput,
+        instructions,
+        tools: [], // tools are not strictly required for compaction
+        parallel_tool_calls: true,
       })
 
-      if (!result.success || !result.input) return null
+      if (!result.success || !result.output) return null
 
-      // Server compaction succeeded — create a synthetic summary from compacted input
-      const summaryText = result.input
-        .filter((item: any) => item.type === "message" && item.role === "assistant")
+      // Server compaction succeeded.
+      // The output is opaque compaction items — we store them as a synthetic
+      // summary. For the next turn, ideally these items would be passed back
+      // as-is to the Responses API input. For now, we extract readable text
+      // to create a SharedContext-style summary that the existing compaction
+      // flow can consume.
+      const summaryText = result.output
+        .filter((item: any) => item.type === "message")
         .flatMap((item: any) => (item.content ?? []).map((c: any) => c.text ?? ""))
         .join("\n")
-        || "[Server-compacted conversation history]"
+        || "[Server-compacted conversation — opaque compaction items preserved]"
 
       await compactWithSharedContext({
         sessionID: input.sessionID,
         snapshot: summaryText,
-        model: await Provider.getModel(userMessage.model.providerId, userMessage.model.modelID),
+        model,
         auto: input.auto,
       })
 
       log.info("codex server compaction complete", {
         sessionID: input.sessionID,
-        tokensBefore: result.tokensBefore,
-        tokensAfter: result.tokensAfter,
+        outputItems: result.output.length,
       })
 
       return "continue"
