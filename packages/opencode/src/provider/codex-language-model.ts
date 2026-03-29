@@ -128,10 +128,15 @@ function promptToRequestBody(
         if (part.type === "text") {
           contentItems.push({ type: "input_text", text: part.text })
         } else if (part.type === "file" && part.mediaType?.startsWith("image/")) {
-          contentItems.push({
-            type: "input_image",
-            image_url: typeof part.data === "string" ? part.data : undefined,
-          })
+          const data = typeof part.data === "string" ? part.data : undefined
+          if (data) {
+            // Responses API requires a valid URL for image_url.
+            // base64 data must be wrapped as data: URL.
+            const imageUrl = data.startsWith("http") || data.startsWith("data:")
+              ? data
+              : `data:${part.mediaType};base64,${data}`
+            contentItems.push({ type: "input_image", image_url: imageUrl })
+          }
         }
       }
       input.push({ type: "message", role: "user", content: contentItems })
