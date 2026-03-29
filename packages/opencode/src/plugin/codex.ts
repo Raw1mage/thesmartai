@@ -626,7 +626,8 @@ async function refreshIfNeeded(
 // Transparent WS transport: AI SDK calls fetch() → we return a synthetic SSE Response backed by WS.
 
 const CODEX_WS_ENDPOINT = "wss://chatgpt.com/backend-api/codex/responses"
-const WS_BETA_HEADER = "responses_websockets=2026-02-06"
+// WebSocket mode is GA since 2026-02-23 — no beta header required.
+// See: https://developers.openai.com/api/docs/guides/websocket-mode
 const WS_CONNECT_TIMEOUT_MS = 15000
 
 type WsStatus = "idle" | "connecting" | "open" | "streaming" | "failed"
@@ -659,7 +660,6 @@ async function getOrConnectWs(sessionId: string, accessToken: string, accountId?
       const ws = new WebSocket(CODEX_WS_ENDPOINT, {
         headers: {
           "Authorization": `Bearer ${accessToken}`,
-          "OpenAI-Beta": WS_BETA_HEADER,
           "originator": "opencode",
           ...(accountId ? { "chatgpt-account-id": accountId } : {}),
           ...(turnState ? { "x-codex-turn-state": turnState } : {}),
@@ -731,7 +731,7 @@ function wsRequest(wsState: CodexWsState, bodyJson: any): Response {
         // Detect stream end
         try {
           const parsed = JSON.parse(data)
-          if (parsed.type === "response.completed" || parsed.type === "response.failed" || parsed.type === "error") {
+          if (parsed.type === "response.completed" || parsed.type === "response.done" || parsed.type === "response.failed" || parsed.type === "error") {
             controller.enqueue(encoder.encode("data: [DONE]\n\n"))
             controller.close()
             wsState.status = "open" // ready for next request
@@ -752,8 +752,10 @@ function wsRequest(wsState: CodexWsState, bodyJson: any): Response {
         }
       }
 
-      // Send the request
-      ws.send(JSON.stringify({ type: "response.create", ...bodyJson }))
+      // Send the request — strip transport-specific fields not valid in WS mode
+      // See: https://developers.openai.com/api/docs/guides/websocket-mode
+      const { stream: _s, background: _b, ...wsBody } = bodyJson
+      ws.send(JSON.stringify({ type: "response.create", ...wsBody }))
     },
   })
 

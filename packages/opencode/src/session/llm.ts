@@ -570,9 +570,13 @@ export namespace LLM {
     if (input.model.providerId === "codex") {
       const prev = codexSessionState.get(input.sessionID)
       const currentHash = JSON.stringify({ system: systemMessages.map(m => typeof m === "string" ? m : ""), tools: Object.keys(tools).sort() })
-      if (prev?.responseId && prev.optionsHash === currentHash) {
+      const hashMatch = prev?.optionsHash === currentHash
+      if (prev?.responseId && hashMatch) {
         const key = Object.keys(requestProviderOptions)[0]
         if (key) (requestProviderOptions as any)[key].previousResponseId = prev.responseId
+        l.info("codex delta: injecting previousResponseId", { sessionID: input.sessionID, responseId: prev.responseId.slice(0, 16) + "..." })
+      } else if (prev?.responseId && !hashMatch) {
+        l.info("codex delta: hash mismatch, skipping previousResponseId", { sessionID: input.sessionID, hasResponseId: true })
       }
       // Update hash for next comparison (responseId captured in onFinish)
       codexSessionState.set(input.sessionID, { ...prev, optionsHash: currentHash })
@@ -628,6 +632,9 @@ export namespace LLM {
           if (responseId) {
             const prev = codexSessionState.get(input.sessionID)
             codexSessionState.set(input.sessionID, { ...prev, responseId })
+            l.info("codex delta: captured responseId", { sessionID: input.sessionID, responseId: responseId.slice(0, 16) + "..." })
+          } else {
+            l.info("codex delta: no responseId in providerMetadata", { sessionID: input.sessionID, hasMetadata: !!event.providerMetadata })
           }
         }
       },
