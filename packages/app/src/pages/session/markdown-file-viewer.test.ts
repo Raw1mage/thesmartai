@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   collectMarkdownAssetRefs,
+  extractMermaidBlocks,
   hasMermaidSyntax,
   isMarkdownPath,
   replaceMarkdownAssetRefs,
@@ -38,5 +39,19 @@ describe("markdown-file-viewer helpers", () => {
     expect(hasMermaidSyntax("::: mermaid\ngraph TD\n:::")).toBe(true)
     expect(hasMermaidSyntax('<pre class="mermaid">graph TD</pre>')).toBe(true)
     expect(hasMermaidSyntax("```ts\nconst x = 1\n```")).toBe(false)
+  })
+
+  test("extracts fenced mermaid blocks into placeholders", () => {
+    const result = extractMermaidBlocks("before\n```mermaid\ngraph TD\nA-->B\n```\nafter")
+    expect(result.blocks).toHaveLength(1)
+    expect(result.blocks[0]?.source).toContain("graph TD")
+    expect(result.markdown).toContain('data-mermaid-block="mermaid-0"')
+  })
+
+  test("extracts directive and pre mermaid variants", () => {
+    const directive = extractMermaidBlocks("::: mermaid\ngraph TD\nA-->B\n:::")
+    const pre = extractMermaidBlocks('<pre class="mermaid">graph TD\nA-->B</pre>')
+    expect(directive.blocks).toHaveLength(1)
+    expect(pre.blocks).toHaveLength(1)
   })
 })

@@ -57,3 +57,49 @@ export function replaceMarkdownAssetRefs(markdown: string, mapping: Record<strin
 export function hasMermaidSyntax(markdown: string) {
   return /```\s*mermaid\b|:::\s*mermaid\b|<pre\b[^>]*class=["'][^"']*mermaid/i.test(markdown)
 }
+
+export type MermaidBlock = {
+  id: string
+  source: string
+}
+
+const mermaidFencePattern = /```\s*mermaid\s*\n([\s\S]*?)```/gi
+const mermaidDirectivePattern = /:::\s*mermaid\s*\n([\s\S]*?):::/gi
+const mermaidPrePattern = /<pre\b[^>]*class=["'][^"']*mermaid[^"']*["'][^>]*>([\s\S]*?)<\/pre>/gi
+
+function decodeHtmlEntities(text: string) {
+  return text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+}
+
+function normalizeMermaidSource(source: string) {
+  return decodeHtmlEntities(source).trim()
+}
+
+export function extractMermaidBlocks(markdown: string) {
+  const blocks: MermaidBlock[] = []
+  let index = 0
+
+  const replace = (input: string, pattern: RegExp) =>
+    input.replace(pattern, (_, source: string) => {
+      const normalized = normalizeMermaidSource(source)
+      if (!normalized) return _
+      const id = `mermaid-${index++}`
+      blocks.push({ id, source: normalized })
+      return `<div data-mermaid-block="${id}"></div>`
+    })
+
+  let next = markdown
+  next = replace(next, mermaidFencePattern)
+  next = replace(next, mermaidDirectivePattern)
+  next = replace(next, mermaidPrePattern)
+
+  return {
+    markdown: next,
+    blocks,
+  }
+}
