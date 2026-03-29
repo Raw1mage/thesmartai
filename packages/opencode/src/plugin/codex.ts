@@ -636,6 +636,7 @@ interface CodexWsState {
   ws: WebSocket | null
   status: WsStatus
   sessionId: string
+  accountId?: string // track which account opened this connection
 }
 
 /** Per-session WebSocket connections. */
@@ -643,10 +644,18 @@ const codexWsConnections = new Map<string, CodexWsState>()
 
 async function getOrConnectWs(sessionId: string, accessToken: string, accountId?: string, turnState?: string): Promise<CodexWsState> {
   let state = codexWsConnections.get(sessionId)
-  if (state && state.status === "open") return state
+  // Reuse existing connection only if account matches — rotation may have switched accounts
+  if (state && state.status === "open" && state.accountId === accountId) return state
+  if (state && state.status === "open" && state.accountId !== accountId) {
+    log.info("codex ws: closing stale connection (account changed)", {
+      sessionId, oldAccount: state.accountId, newAccount: accountId,
+    })
+    try { state.ws?.close() } catch {}
+    codexWsConnections.delete(sessionId)
+  }
   if (state && state.status === "failed") return state
 
-  state = { ws: null, status: "connecting", sessionId }
+  state = { ws: null, status: "connecting", sessionId, accountId }
   codexWsConnections.set(sessionId, state)
 
   return new Promise<CodexWsState>((resolve) => {
@@ -722,16 +731,29 @@ function wsRequest(wsState: CodexWsState, bodyJson: any): Response {
   const encoder = new TextEncoder()
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      let wsFrameCount = 0
       ws.onmessage = (event) => {
         const data = typeof event.data === "string" ? event.data : ""
         if (!data) return
+        wsFrameCount++
         // Each WS frame is a single JSON event from the Responses API
         controller.enqueue(encoder.encode(`data: ${data}\n\n`))
 
-        // Detect stream end
+        // Detect stream end (includes response.incomplete for truncated responses)
         try {
           const parsed = JSON.parse(data)
-          if (parsed.type === "response.completed" || parsed.type === "response.done" || parsed.type === "response.failed" || parsed.type === "error") {
+          const isEnd = parsed.type === "response.completed" || parsed.type === "response.incomplete" || parsed.type === "response.done" || parsed.type === "response.failed" || parsed.type === "error"
+          if (isEnd) {
+            // API errors (usage_limit, auth, etc.) must surface as real errors
+            if (parsed.type === "error" || parsed.type === "response.failed") {
+              const errMsg = parsed.message || parsed.error?.message || parsed.response?.error?.message || "Unknown Codex error"
+              const errType = parsed.error?.type || parsed.type
+              log.warn("codex ws stream error", { sessionId: wsState.sessionId, type: errType, message: errMsg })
+              controller.error(new Error(`Codex: ${errMsg} (${errType})`))
+              wsState.status = "failed"
+              installIdleHandlers()
+              return
+            }
             controller.enqueue(encoder.encode("data: [DONE]\n\n"))
             controller.close()
             wsState.status = "open" // ready for next request
@@ -745,9 +767,10 @@ function wsRequest(wsState: CodexWsState, bodyJson: any): Response {
         controller.error(new Error("WebSocket error during streaming"))
       }
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         if (wsState.status === "streaming") {
           wsState.status = "failed"
+          process.stderr.write(`[DIAG:ws-closed-during-stream] session=${wsState.sessionId} frames=${wsFrameCount} code=${(event as any)?.code ?? "?"} reason=${JSON.stringify((event as any)?.reason ?? "")}\n`)
           try { controller.close() } catch {}
         }
       }
@@ -858,10 +881,11 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
                     inputItems: Array.isArray(body.input) ? body.input.length : 0,
                     fullInputItems: fullInputLength,
                   })
-                  // Diagnostic: dump request shape to stderr for empty-response debugging
+                  // Diagnostic: dump request to /tmp for empty-response debugging
                   if (sessionId?.includes("Q0J5P1")) {
                     const inputSummary = Array.isArray(body.input) ? body.input.map((item: any) => ({ type: item.type, role: item.role, len: JSON.stringify(item).length })) : "not-array"
                     process.stderr.write(`[DIAG:codex-request] session=${sessionId} model=${body.model} deltaMode=${deltaMode} prevResponseId=${body.previous_response_id ?? "null"} inputItems=${fullInputLength} trimmedItems=${Array.isArray(body.input) ? body.input.length : "?"} contextMgmt=${JSON.stringify(body.context_management)} tools=${body.tools?.length ?? 0} inputSummary=${JSON.stringify(inputSummary).slice(0, 500)}\n`)
+                    try { require("fs").writeFileSync("/tmp/codex-debug-request.json", JSON.stringify(body, null, 2)) } catch {}
                   }
 
                   if (!init) init = {}
