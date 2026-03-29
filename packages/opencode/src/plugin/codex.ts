@@ -1,5 +1,6 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
 import { Log } from "../util/log"
+import { tryWsTransport } from "./codex-websocket"
 import { Installation } from "../installation"
 import { Auth, OAUTH_DUMMY_KEY } from "../auth"
 import { applyProviderModelCorrections } from "../provider/model-curation"
@@ -622,179 +623,7 @@ async function refreshIfNeeded(
 }
 
 
-// ── WebSocket Transport Adapter ──
-// Transparent WS transport: AI SDK calls fetch() → we return a synthetic SSE Response backed by WS.
-
-const CODEX_WS_ENDPOINT = "wss://chatgpt.com/backend-api/codex/responses"
-// WebSocket mode is GA since 2026-02-23 — no beta header required.
-// See: https://developers.openai.com/api/docs/guides/websocket-mode
-const WS_CONNECT_TIMEOUT_MS = 15000
-
-type WsStatus = "idle" | "connecting" | "open" | "streaming" | "failed"
-
-interface CodexWsState {
-  ws: WebSocket | null
-  status: WsStatus
-  sessionId: string
-  accountId?: string // track which account opened this connection
-}
-
-/** Per-session WebSocket connections. */
-const codexWsConnections = new Map<string, CodexWsState>()
-
-async function getOrConnectWs(sessionId: string, accessToken: string, accountId?: string, turnState?: string): Promise<CodexWsState> {
-  let state = codexWsConnections.get(sessionId)
-  // Reuse existing connection only if account matches — rotation may have switched accounts
-  if (state && state.status === "open" && state.accountId === accountId) return state
-  if (state && state.status === "open" && state.accountId !== accountId) {
-    log.info("codex ws: closing stale connection (account changed)", {
-      sessionId, oldAccount: state.accountId, newAccount: accountId,
-    })
-    try { state.ws?.close() } catch {}
-    codexWsConnections.delete(sessionId)
-  }
-  if (state && state.status === "failed") return state
-
-  state = { ws: null, status: "connecting", sessionId, accountId }
-  codexWsConnections.set(sessionId, state)
-
-  return new Promise<CodexWsState>((resolve) => {
-    const timeout = setTimeout(() => {
-      log.warn("codex ws connect timeout", { sessionId })
-      state!.status = "failed"
-      resolve(state!)
-    }, WS_CONNECT_TIMEOUT_MS)
-
-    try {
-      const ws = new WebSocket(CODEX_WS_ENDPOINT, {
-        headers: {
-          "Authorization": `Bearer ${accessToken}`,
-          "originator": "opencode",
-          ...(accountId ? { "chatgpt-account-id": accountId } : {}),
-          ...(turnState ? { "x-codex-turn-state": turnState } : {}),
-        },
-      } as any)
-
-      ws.onopen = () => {
-        clearTimeout(timeout)
-        state!.ws = ws
-        state!.status = "open"
-        log.info("codex ws connected", { sessionId })
-        resolve(state!)
-      }
-
-      ws.onerror = (event) => {
-        clearTimeout(timeout)
-        log.warn("codex ws error", { sessionId, error: String(event) })
-        state!.status = "failed"
-        resolve(state!)
-      }
-
-      ws.onclose = () => {
-        if (state!.status !== "failed") {
-          state!.status = "failed"
-          log.info("codex ws closed", { sessionId })
-        }
-      }
-    } catch (e) {
-      clearTimeout(timeout)
-      log.warn("codex ws constructor failed", { sessionId, error: String(e) })
-      state!.status = "failed"
-      resolve(state!)
-    }
-  })
-}
-
-/**
- * Send a request over WebSocket and return a synthetic SSE Response.
- * AI SDK's EventSourceParserStream consumes `data: {json}\n\n` lines.
- */
-function wsRequest(wsState: CodexWsState, bodyJson: any): Response {
-  const ws = wsState.ws!
-  wsState.status = "streaming"
-
-  /** Restore idle-state handlers so disconnects after streaming are detected. */
-  function installIdleHandlers() {
-    ws.onmessage = null
-    ws.onerror = () => {
-      wsState.status = "failed"
-      log.warn("codex ws error (idle)", { sessionId: wsState.sessionId })
-    }
-    ws.onclose = () => {
-      if (wsState.status !== "failed") {
-        wsState.status = "failed"
-        log.info("codex ws closed (idle)", { sessionId: wsState.sessionId })
-      }
-    }
-  }
-
-  const encoder = new TextEncoder()
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      let wsFrameCount = 0
-      ws.onmessage = (event) => {
-        const data = typeof event.data === "string" ? event.data : ""
-        if (!data) return
-        wsFrameCount++
-        // Each WS frame is a single JSON event from the Responses API
-        controller.enqueue(encoder.encode(`data: ${data}\n\n`))
-
-        // Detect stream end (includes response.incomplete for truncated responses)
-        try {
-          const parsed = JSON.parse(data)
-          const isEnd = parsed.type === "response.completed" || parsed.type === "response.incomplete" || parsed.type === "response.done" || parsed.type === "response.failed" || parsed.type === "error"
-          if (isEnd) {
-            // API errors (usage_limit, auth, etc.) must surface as real errors
-            if (parsed.type === "error" || parsed.type === "response.failed") {
-              const errMsg = parsed.message || parsed.error?.message || parsed.response?.error?.message || "Unknown Codex error"
-              const errType = parsed.error?.type || parsed.type
-              log.warn("codex ws stream error", { sessionId: wsState.sessionId, type: errType, message: errMsg })
-              controller.error(new Error(`Codex: ${errMsg} (${errType})`))
-              wsState.status = "failed"
-              installIdleHandlers()
-              return
-            }
-            controller.enqueue(encoder.encode("data: [DONE]\n\n"))
-            controller.close()
-            wsState.status = "open" // ready for next request
-            installIdleHandlers()
-          }
-        } catch {}
-      }
-
-      ws.onerror = () => {
-        wsState.status = "failed"
-        controller.error(new Error("WebSocket error during streaming"))
-      }
-
-      ws.onclose = (event) => {
-        if (wsState.status === "streaming") {
-          wsState.status = "failed"
-          process.stderr.write(`[DIAG:ws-closed-during-stream] session=${wsState.sessionId} frames=${wsFrameCount} code=${(event as any)?.code ?? "?"} reason=${JSON.stringify((event as any)?.reason ?? "")}\n`)
-          try { controller.close() } catch {}
-        }
-      }
-
-      // Send the request — strip transport-specific fields not valid in WS mode
-      // See: https://developers.openai.com/api/docs/guides/websocket-mode
-      const { stream: _s, background: _b, ...wsBody } = bodyJson
-      ws.send(JSON.stringify({ type: "response.create", ...wsBody }))
-    },
-  })
-
-  return new Response(stream, {
-    status: 200,
-    headers: { "content-type": "text/event-stream; charset=utf-8" },
-  })
-}
-
-function closeWs(sessionId: string) {
-  const state = codexWsConnections.get(sessionId)
-  if (state?.ws) {
-    try { state.ws.close() } catch {}
-  }
-  codexWsConnections.delete(sessionId)
-}
+// Old WS implementation removed — replaced by codex-websocket.ts transport adapter
 
 /**
  * CodexNativeAuthPlugin — OAuth auth + efficiency optimizations for "codex" provider.
@@ -881,12 +710,6 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
                     inputItems: Array.isArray(body.input) ? body.input.length : 0,
                     fullInputItems: fullInputLength,
                   })
-                  // Diagnostic: dump request to /tmp for empty-response debugging
-                  if (sessionId?.includes("Q0J5P1")) {
-                    const inputSummary = Array.isArray(body.input) ? body.input.map((item: any) => ({ type: item.type, role: item.role, len: JSON.stringify(item).length })) : "not-array"
-                    process.stderr.write(`[DIAG:codex-request] session=${sessionId} model=${body.model} deltaMode=${deltaMode} prevResponseId=${body.previous_response_id ?? "null"} inputItems=${fullInputLength} trimmedItems=${Array.isArray(body.input) ? body.input.length : "?"} contextMgmt=${JSON.stringify(body.context_management)} tools=${body.tools?.length ?? 0} inputSummary=${JSON.stringify(inputSummary).slice(0, 500)}\n`)
-                    try { require("fs").writeFileSync("/tmp/codex-debug-request.json", JSON.stringify(body, null, 2)) } catch {}
-                  }
 
                   if (!init) init = {}
                   init.body = JSON.stringify(body)
@@ -897,11 +720,25 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
               }
             }
 
-            // WebSocket transport DISABLED — current implementation cannot connect
-            // to chatgpt.com WS endpoint (missing protocol details vs codex-rs).
-            // Needs full rewrite based on refs/codex/codex-rs/codex-api/src/endpoint/
-            // responses_websocket.rs (permessage-deflate, structured error parsing,
-            // idle timeout, proper handshake). HTTP path works correctly.
+            // Transport decision: WebSocket (if available) or HTTP
+            // WS is a transport adapter per specs/codex_provider_runtime/ DD-4
+            if (isCodexEndpoint && sessionId) {
+              try {
+                const wsUrl = CODEX_API_ENDPOINT.replace("https://", "wss://")
+                const wsResponse = await tryWsTransport({
+                  sessionId,
+                  accessToken: currentAuth.access,
+                  accountId: authWithAccount.accountId,
+                  turnState: turnState?.turnState,
+                  body: init?.body ? JSON.parse(typeof init.body === "string" ? init.body : "") : {},
+                  wsUrl,
+                })
+                if (wsResponse) return wsResponse
+                // null = WS unavailable or failed → fall through to HTTP
+              } catch (e) {
+                log.warn("ws transport error, falling back to HTTP", { sessionId, error: String(e) })
+              }
+            }
 
             // HTTP path (default or WS fallback)
             const response = await fetch(url, { ...init, headers })
