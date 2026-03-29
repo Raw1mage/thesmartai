@@ -17,6 +17,12 @@ import { cmp, normalizeProviderList } from "./utils"
 import type { State, VcsCache } from "./types"
 import { formatServerError } from "@/utils/server-errors"
 
+const SILENT_SENTINEL = "__OPENCODE_SILENT_UNAUTHORIZED__"
+
+function isSilentAuthError(err: unknown): boolean {
+  return err instanceof Error && err.message === SILENT_SENTINEL
+}
+
 export type WorkspaceSnapshot = {
   workspaceId: string
   projectId: string
@@ -125,7 +131,10 @@ export async function refreshGlobalSlices(input: {
   const tasks = globalRefreshTasks(input)
   const selected = [...new Set(input.slices)]
   const results = await Promise.allSettled(selected.map((slice) => tasks[slice]()))
-  const errors = results.filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => r.reason)
+  const errors = results
+    .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+    .map((r) => r.reason)
+    .filter((e) => !isSilentAuthError(e))
   if (errors.length) {
     const message = formatServerError(errors[0])
     const more = errors.length > 1 ? ` (+${errors.length - 1} more)` : ""
@@ -174,7 +183,10 @@ export async function bootstrapGlobal(input: {
     return
   }
 
-  const errors = results.filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => r.reason)
+  const errors = results
+    .filter((r): r is PromiseRejectedResult => r.status === "rejected")
+    .map((r) => r.reason)
+    .filter((e) => !isSilentAuthError(e))
   if (errors.length) {
     const message = formatServerError(errors[0])
     const more = errors.length > 1 ? ` (+${errors.length - 1} more)` : ""

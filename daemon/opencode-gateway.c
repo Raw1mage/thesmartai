@@ -59,7 +59,7 @@
 #define MAX_EVENTS            256
 #define PIPE_BUF_SIZE         65536
 #define JWT_SECRET_LEN        32
-#define JWT_EXP_SECONDS       (8 * 3600)   /* 8 hours */
+#define JWT_EXP_SECONDS       (7 * 24 * 3600)   /* 7 days */
 #define DAEMON_WAIT_MS        15000         /* max wait for per-user daemon socket */
 #define MAX_USERS             64
 #define MAX_CONNS             1024
@@ -96,6 +96,7 @@
 typedef struct Connection Connection;
 typedef struct PendingRequest PendingRequest;
 static void jwt_sign(const char *payload, char *out_token, size_t toklen);
+static int jwt_verify_ex(const char *token, char *out_username, uid_t *out_uid, long *out_exp);
 static void http_send(int fd, int status, const char *statusmsg,
                       const char *ctype, const char *headers,
                       const char *body, size_t bodylen);
@@ -686,6 +687,11 @@ static void jwt_sign(const char *payload, char *out_token, size_t toklen) {
 }
 
 static int jwt_verify(const char *token, char *out_username, uid_t *out_uid) {
+    return jwt_verify_ex(token, out_username, out_uid, NULL);
+}
+
+/* Extended verify: optionally returns the exp timestamp for sliding renewal. */
+static int jwt_verify_ex(const char *token, char *out_username, uid_t *out_uid, long *out_exp) {
     char buf[1024], msg[1024], payload_json[512];
     uint8_t payload_raw[512], sig[32];
     unsigned int siglen = 32;
@@ -724,6 +730,7 @@ static int jwt_verify(const char *token, char *out_username, uid_t *out_uid) {
     struct passwd *pw = getpwnam(out_username);
     if (!pw) return 0;
     *out_uid = pw->pw_uid;
+    if (out_exp) *out_exp = exp_val;
     return 1;
 }
 
@@ -1870,6 +1877,41 @@ static void route_complete_request(PendingRequest *pr) {
         http_send(fd, 200, "OK", "application/json",
                   "Cache-Control: no-store\r\nSet-Cookie: oc_jwt=; Path=/; Max-Age=0\r\n",
                   body, strlen(body));
+        close(fd);
+        return;
+    }
+
+    /* ── Sliding JWT renewal: GET /auth/renew ──────────────────────── */
+    if (strcmp(req.method, "GET") == 0 &&
+        (strcmp(req.path, "/auth/renew") == 0 ||
+         strcmp(req.path, "/api/v2/auth/renew") == 0)) {
+        char *renew_jwt = strstr(req.cookie, "oc_jwt=");
+        if (renew_jwt) {
+            renew_jwt += 7;
+            char *rend = strchr(renew_jwt, ';');
+            if (rend) *rend = '\0';
+            char renew_user[64] = {};
+            uid_t renew_uid = 0;
+            long renew_exp = 0;
+            if (jwt_verify_ex(renew_jwt, renew_user, &renew_uid, &renew_exp)) {
+                /* Renew if past 50% of lifetime */
+                long issued_at = renew_exp - JWT_EXP_SECONDS;
+                long halfway = issued_at + JWT_EXP_SECONDS / 2;
+                if (time(NULL) >= halfway) {
+                    LOGI("JWT sliding renewal for '%s'", renew_user);
+                    send_login_success_ex(fd, renew_user, req.is_secure, 1);
+                    close(fd);
+                    return;
+                }
+                /* Still fresh — 204 No Content */
+                http_send(fd, 204, "No Content", NULL, NULL, NULL, 0);
+                close(fd);
+                return;
+            }
+        }
+        /* Invalid/missing JWT — 401 */
+        http_send(fd, 401, "Unauthorized", "application/json", NULL,
+                  "{\"error\":\"unauthorized\"}", 23);
         close(fd);
         return;
     }

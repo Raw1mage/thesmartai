@@ -1,5 +1,5 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
-import { createEffect, createMemo, createResource, createSignal } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, onCleanup } from "solid-js"
 import { useServer } from "@/context/server"
 
 type SessionStatus = {
@@ -77,11 +77,11 @@ export const { use: useWebAuth, provider: WebAuthProvider } = createSimpleContex
       const response = await fetch(next)
       if (response.status === 401 || response.status === 403) {
         if (!enabled()) {
-          // Gateway mode: auth is handled by the gateway (PAM), not the SPA.
-          // If we get 401 here, the gateway JWT is still valid (otherwise
-          // gateway itself would have returned a redirect/clear-cookie).
-          // This likely means the daemon is temporarily unavailable.
-          // Do NOT redirect — just propagate the error to the caller.
+          // Gateway mode: the gateway JWT has expired or been invalidated.
+          // Full-page redirect lets the gateway intercept and show the login page.
+          // Clear the expired JWT cookie client-side before redirecting.
+          document.cookie = "oc_jwt=; Path=/; Max-Age=0"
+          window.location.replace("/")
           throw new Error("__OPENCODE_SILENT_UNAUTHORIZED__")
         }
         setForcedUnauthenticated(true)
@@ -134,6 +134,18 @@ export const { use: useWebAuth, provider: WebAuthProvider } = createSimpleContex
     createEffect(() => {
       if (typeof window === "undefined") return
       window.__opencodeCsrfToken = csrfToken() ?? undefined
+    })
+
+    // Gateway mode: sliding JWT renewal every 30 minutes.
+    // The gateway issues fresh cookies when the JWT is past 50% lifetime.
+    const JWT_RENEW_INTERVAL_MS = 30 * 60 * 1000
+    createEffect(() => {
+      if (enabled()) return // SPA auth mode — renewal not needed
+      const url = `${server.url}/auth/renew`
+      const renew = () => fetch(url, { credentials: "include" }).catch(() => {})
+      renew() // initial renewal attempt on load
+      const timer = setInterval(renew, JWT_RENEW_INTERVAL_MS)
+      onCleanup(() => clearInterval(timer))
     })
 
     return {
