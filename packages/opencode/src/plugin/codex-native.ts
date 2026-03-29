@@ -258,7 +258,7 @@ export namespace CodexNative {
     if (!lib) return null
     const p = lib.symbols.codex_get_originator()
     if (!p) return null
-    return new CString(p)
+    return new CString(p).toString()
   }
 
   /**
@@ -283,7 +283,7 @@ export namespace CodexNative {
     const readCString = (offset: number): string | null => {
       const p = view.getBigUint64(offset, true)
       if (p === 0n) return null
-      return new CString(Number(p))
+      return new CString(Number(p) as unknown as ReturnType<typeof ptr>).toString()
     }
 
     return {
@@ -306,7 +306,7 @@ export namespace CodexNative {
     if (!lib) return "library not loaded"
     const p = lib.symbols.codex_strerror(code)
     if (!p) return "unknown error"
-    return new CString(p)
+    return new CString(p).toString()
   }
 
   /**
