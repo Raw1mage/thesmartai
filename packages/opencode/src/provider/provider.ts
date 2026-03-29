@@ -328,26 +328,11 @@ export namespace Provider {
       }
     },
     codex: async () => {
-      const { isCodexNativeAvailable, CodexLanguageModel } = await import("./codex-language-model")
-      const useNative = isCodexNativeAvailable()
-      log.info("codex provider transport", { native: useNative })
+      // CodexLanguageModel (WS/C-binary transport) is disabled pending
+      // AI SDK streamText tool-loop compatibility fix. Using AI SDK path
+      // with custom fetch interceptor (plugin handles auth/URL/body).
+      log.info("codex provider transport", { native: false })
 
-      if (useNative) {
-        // Native C transport: 100% codex-rs wire format via stdio bridge
-        return {
-          autoload: true,
-          async getModel(_sdk: any, modelID: string, options?: Record<string, any>) {
-            const auth = {
-              accessToken: options?.["accessToken"] as string | undefined,
-              accountId: options?.["accountId"] as string | undefined,
-            }
-            return new CodexLanguageModel(modelID, auth) as any
-          },
-          options: {},
-        }
-      }
-
-      // Fallback: AI SDK with custom fetch (auth plugin handles headers/URL/body)
       return {
         autoload: true,
         async getModel(sdk: any, modelID: string, _options?: Record<string, any>) {
