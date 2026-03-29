@@ -404,10 +404,9 @@ export class CodexWebSocket {
         if (item.type === "function_call") {
           this.handler.onPart({
             type: "tool-call",
-            toolCallType: "function",
             toolCallId: item.call_id ?? `tool-${Date.now()}`,
             toolName: item.name ?? "",
-            args: item.arguments ?? "{}",
+            input: item.arguments ?? "{}",
           })
         }
         break
@@ -426,9 +425,12 @@ export class CodexWebSocket {
           if (ts) this.handler.onMeta({ turnState: ts })
         }
 
+        const inp = usage?.input_tokens ?? 0
+        const out = usage?.output_tokens ?? 0
         const u: LanguageModelV2Usage = {
-          inputTokens: usage?.input_tokens ?? 0,
-          outputTokens: usage?.output_tokens ?? 0,
+          inputTokens: inp,
+          outputTokens: out,
+          totalTokens: inp + out,
         }
         this.handler.onPart({
           type: "finish",
@@ -447,7 +449,7 @@ export class CodexWebSocket {
         })
         this.handler.onPart({
           type: "finish",
-          usage: { inputTokens: 0, outputTokens: 0 },
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
           finishReason: "error" as LanguageModelV2FinishReason,
         })
         this.handler.onDone()
@@ -457,7 +459,7 @@ export class CodexWebSocket {
       case "response.incomplete": {
         this.handler.onPart({
           type: "finish",
-          usage: { inputTokens: 0, outputTokens: 0 },
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
           finishReason: "length" as LanguageModelV2FinishReason,
         })
         this.handler.onDone()

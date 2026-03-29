@@ -124,7 +124,7 @@ function promptToRequestBody(
             type: "function_call",
             call_id: part.toolCallId,
             name: part.toolName,
-            arguments: typeof part.args === "string" ? part.args : JSON.stringify(part.args),
+            arguments: typeof part.input === "string" ? part.input : JSON.stringify(part.input),
           })
         }
       }
@@ -140,7 +140,7 @@ function promptToRequestBody(
           input.push({
             type: "function_call_output",
             call_id: part.toolCallId,
-            output: typeof part.result === "string" ? part.result : JSON.stringify(part.result),
+            output: typeof part.output === "string" ? part.output : JSON.stringify(part.output),
           })
         }
       }
@@ -154,7 +154,7 @@ function promptToRequestBody(
       type: "function",
       name: t.name,
       description: t.description ?? "",
-      parameters: t.parameters,
+      parameters: t.inputSchema,
     }))
 
   return {
@@ -224,10 +224,9 @@ function* parseJsonlEvent(line: string): Generator<LanguageModelV2StreamPart> {
       if (item.type === "function_call") {
         yield {
           type: "tool-call",
-          toolCallType: "function" as const,
           toolCallId: item.call_id ?? `tool-${Date.now()}`,
           toolName: item.name ?? "",
-          args: item.arguments ?? "{}",
+          input: item.arguments ?? "{}",
         }
       }
 
@@ -253,9 +252,12 @@ function* parseJsonlEvent(line: string): Generator<LanguageModelV2StreamPart> {
 
     case "completed": {
       const u = event.usage ?? {}
+      const inp = u.input ?? 0
+      const out = u.output ?? 0
       const usage: LanguageModelV2Usage = {
-        inputTokens: u.input ?? 0,
-        outputTokens: u.output ?? 0,
+        inputTokens: inp,
+        outputTokens: out,
+        totalTokens: inp + out,
       }
       if (event.response_id) {
         yield {
@@ -283,7 +285,7 @@ function* parseJsonlEvent(line: string): Generator<LanguageModelV2StreamPart> {
       }
       yield {
         type: "finish",
-        usage: { inputTokens: 0, outputTokens: 0 },
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
         finishReason: "error" as LanguageModelV2FinishReason,
       }
       break
@@ -296,7 +298,7 @@ function* parseJsonlEvent(line: string): Generator<LanguageModelV2StreamPart> {
     case "incomplete":
       yield {
         type: "finish",
-        usage: { inputTokens: 0, outputTokens: 0 },
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
         finishReason: "length" as LanguageModelV2FinishReason,
       }
       break
@@ -397,7 +399,7 @@ export class CodexLanguageModel implements LanguageModelV2 {
 
     const content: LanguageModelV2Content[] = []
     let finishReason: LanguageModelV2FinishReason = "stop"
-    let usage: LanguageModelV2Usage = { inputTokens: 0, outputTokens: 0 }
+    let usage: LanguageModelV2Usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
     let textAccum = ""
 
     while (true) {
