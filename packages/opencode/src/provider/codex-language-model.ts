@@ -568,6 +568,12 @@ export class CodexLanguageModel implements LanguageModelV2 {
       accessToken: this.auth.accessToken ?? "",
       accountId: this.auth.accountId ?? "",
     }
+
+    // Debug: log prompt shape to diagnose input construction issues
+    log.info("codex doStream prompt", {
+      messageCount: options.prompt.length,
+      roles: options.prompt.map(m => m.role).join(","),
+    })
     if (!auth.accessToken) {
       log.warn("codex doStream: no access token — setAuth() not called before request")
     }
