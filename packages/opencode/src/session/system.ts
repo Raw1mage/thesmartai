@@ -12,7 +12,7 @@ import PROMPT_QWEN from "./prompt/qwen.txt"
 import PROMPT_BEAST from "./prompt/beast.txt"
 import PROMPT_GEMINI from "./prompt/gemini.txt"
 import PROMPT_TRINITY from "./prompt/trinity.txt"
-import PROMPT_CODEX from "./prompt/codex_header.txt"
+import PROMPT_CODEX from "./prompt/codex.txt"
 import PROMPT_PLAN from "./prompt/plan.txt"
 import PROMPT_PLAN_REMINDER_ANTHROPIC from "./prompt/plan-reminder-anthropic.txt"
 import PROMPT_MAX_STEPS from "./prompt/max-steps.txt"
@@ -159,46 +159,12 @@ export namespace SystemPrompt {
     return loadPrompt(`agents/${name}.txt`, internal)
   }
 
-  /**
-   * Per-model driver prompt cache.
-   * Codex provider uses model-specific prompts from drivers/codex/{model}.txt
-   * These are official codex-rs base_instructions, extracted from models.json.
-   */
-  const codexDriverCache = new Map<string, string>()
-
-  async function loadCodexDriverPrompt(modelId: string): Promise<string | undefined> {
-    if (codexDriverCache.has(modelId)) return codexDriverCache.get(modelId)
-
-    // Try exact model ID match, then progressively shorter prefixes
-    const candidates = [modelId]
-    // e.g. gpt-5.3-codex → also try gpt-5-codex as fallback
-    const parts = modelId.split("-")
-    if (parts.length > 2) {
-      candidates.push(parts.slice(0, -1).join("-"))
-    }
-
-    for (const candidate of candidates) {
-      const promptPath = path.join(import.meta.dir, "prompt/drivers/codex", `${candidate}.txt`)
-      if (existsSync(promptPath)) {
-        try {
-          const content = await fs.readFile(promptPath, "utf-8")
-          codexDriverCache.set(modelId, content)
-          return content
-        } catch {}
-      }
-    }
-    return undefined
-  }
-
   export async function provider(model: Provider.Model): Promise<string[]> {
     // Proactively seed on first provider call to ensure visibility
     await seedAll()
 
-    // Codex provider: per-model official prompts from drivers/codex/
-    if (model.providerId === "codex") {
-      const official = await loadCodexDriverPrompt(model.api.id)
-      if (official) return [official]
-      // Fallback to generic codex driver
+    // Codex provider: single driver, same level as other providers
+    if (model.providerId === "codex" || model.providerId.startsWith("codex-")) {
       return [await loadPrompt("drivers/codex.txt", PROMPT_CODEX)]
     }
 
