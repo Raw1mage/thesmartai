@@ -42,4 +42,4 @@
 
 - [ ] 8.1 Expand Mermaid syntax coverage and UI/component-level validation.
 - [ ] 8.2 Extend SVG support beyond the current `.svg` reference safety path.
-- [ ] 8.3 Extend chat file-link formats (for example `#L123` and `line:column`).
+- [ ] 8.3 Extend chat file-link formats only for low-ambiguity colon-based variants (for example `line:column`), explicitly excluding `#L...` syntax.

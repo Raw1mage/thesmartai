@@ -130,6 +130,7 @@
 - Use `Preview / Source` for markdown file tabs.
 - Keep SVG rich behavior authoritative in the existing file viewer; support `.svg` references but not inline raw SVG.
 - Keep chat file-link parsing conservative.
+- Exclude `#L...`-style syntax from future file-link expansion because it is too ambiguous and too easy to misclassify in general text.
 - Keep external URLs as normal browser links.
 - Keep Mermaid in a safe explicit fallback state until a safe true-render path is verified.
 - Per user instruction, stop after the current validation evidence and skip any further test work in this pass; prioritize dirty-change convergence instead.
