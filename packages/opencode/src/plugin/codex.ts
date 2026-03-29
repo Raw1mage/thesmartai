@@ -618,6 +618,139 @@ async function refreshIfNeeded(
 }
 
 
+// ── WebSocket Transport Adapter ──
+// Transparent WS transport: AI SDK calls fetch() → we return a synthetic SSE Response backed by WS.
+
+const CODEX_WS_ENDPOINT = "wss://chatgpt.com/backend-api/codex/responses"
+const WS_BETA_HEADER = "responses_websockets=2026-02-06"
+const WS_CONNECT_TIMEOUT_MS = 15000
+
+type WsStatus = "idle" | "connecting" | "open" | "streaming" | "failed"
+
+interface CodexWsState {
+  ws: WebSocket | null
+  status: WsStatus
+  sessionId: string
+}
+
+/** Per-session WebSocket connections. */
+const codexWsConnections = new Map<string, CodexWsState>()
+
+async function getOrConnectWs(sessionId: string, accessToken: string, accountId?: string, turnState?: string): Promise<CodexWsState> {
+  let state = codexWsConnections.get(sessionId)
+  if (state && state.status === "open") return state
+  if (state && state.status === "failed") return state
+
+  state = { ws: null, status: "connecting", sessionId }
+  codexWsConnections.set(sessionId, state)
+
+  return new Promise<CodexWsState>((resolve) => {
+    const timeout = setTimeout(() => {
+      log.warn("codex ws connect timeout", { sessionId })
+      state!.status = "failed"
+      resolve(state!)
+    }, WS_CONNECT_TIMEOUT_MS)
+
+    try {
+      const ws = new WebSocket(CODEX_WS_ENDPOINT, {
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "OpenAI-Beta": WS_BETA_HEADER,
+          "originator": "opencode",
+          ...(accountId ? { "chatgpt-account-id": accountId } : {}),
+          ...(turnState ? { "x-codex-turn-state": turnState } : {}),
+        },
+      } as any)
+
+      ws.onopen = () => {
+        clearTimeout(timeout)
+        state!.ws = ws
+        state!.status = "open"
+        log.info("codex ws connected", { sessionId })
+        resolve(state!)
+      }
+
+      ws.onerror = (event) => {
+        clearTimeout(timeout)
+        log.warn("codex ws error", { sessionId, error: String(event) })
+        state!.status = "failed"
+        resolve(state!)
+      }
+
+      ws.onclose = () => {
+        if (state!.status !== "failed") {
+          state!.status = "failed"
+          log.info("codex ws closed", { sessionId })
+        }
+      }
+    } catch (e) {
+      clearTimeout(timeout)
+      log.warn("codex ws constructor failed", { sessionId, error: String(e) })
+      state!.status = "failed"
+      resolve(state!)
+    }
+  })
+}
+
+/**
+ * Send a request over WebSocket and return a synthetic SSE Response.
+ * AI SDK's EventSourceParserStream consumes `data: {json}\n\n` lines.
+ */
+function wsRequest(wsState: CodexWsState, bodyJson: any): Response {
+  const ws = wsState.ws!
+  wsState.status = "streaming"
+
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      ws.onmessage = (event) => {
+        const data = typeof event.data === "string" ? event.data : ""
+        if (!data) return
+        // Each WS frame is a single JSON event from the Responses API
+        controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+
+        // Detect stream end
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.type === "response.completed" || parsed.type === "response.failed" || parsed.type === "error") {
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"))
+            controller.close()
+            wsState.status = "open" // ready for next request
+          }
+        } catch {}
+      }
+
+      ws.onerror = () => {
+        wsState.status = "failed"
+        controller.error(new Error("WebSocket error during streaming"))
+      }
+
+      ws.onclose = () => {
+        if (wsState.status === "streaming") {
+          wsState.status = "failed"
+          try { controller.close() } catch {}
+        }
+      }
+
+      // Send the request
+      ws.send(JSON.stringify({ type: "response.create", ...bodyJson }))
+    },
+  })
+
+  return new Response(stream, {
+    status: 200,
+    headers: { "content-type": "text/event-stream; charset=utf-8" },
+  })
+}
+
+function closeWs(sessionId: string) {
+  const state = codexWsConnections.get(sessionId)
+  if (state?.ws) {
+    try { state.ws.close() } catch {}
+  }
+  codexWsConnections.delete(sessionId)
+}
+
 /**
  * CodexNativeAuthPlugin — OAuth auth + efficiency optimizations for "codex" provider.
  */
@@ -709,7 +842,22 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
               }
             }
 
-            // Execute fetch and capture turn state from response
+            // Transport decision: WebSocket (if available) or HTTP
+            if (isCodexEndpoint && sessionId) {
+              const wsState = await getOrConnectWs(sessionId, currentAuth.access, authWithAccount.accountId, turnState?.turnState)
+              if (wsState.status === "open" && init?.body) {
+                try {
+                  const bodyJson = JSON.parse(typeof init.body === "string" ? init.body : "")
+                  log.info("codex ws request", { sessionId, inputItems: bodyJson.input?.length ?? 0 })
+                  return wsRequest(wsState, bodyJson)
+                } catch (e) {
+                  log.warn("codex ws request failed, falling back to HTTP", { sessionId, error: String(e) })
+                  // Fall through to HTTP
+                }
+              }
+            }
+
+            // HTTP path (default or WS fallback)
             const response = await fetch(url, { ...init, headers })
             const newTurnState = response.headers.get("x-codex-turn-state")
             if (newTurnState && sessionId) {
