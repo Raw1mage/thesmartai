@@ -2,33 +2,44 @@
 
 ## Requirement
 
-- Plan a `/plans` implementation package for improving chat output rendering in the webapp.
+- Plan and implement a `/plans` package for improving chat output rendering and file display in the webapp.
 - Reuse the existing file view/file tab surface so assistant file references can open files directly from chat.
-- Stage the work: file reference navigation first, markdown/render expansion second, Mermaid/SVG support later.
+- Upgrade markdown file viewing inside file tabs, with safe SVG and Mermaid handling.
 
 ## Requirement Update
 
 - The user clarified that markdown file viewing inside file tabs is a current top priority, especially for `.md` documents with SVG and Mermaid-oriented content.
 - The user selected a dual-track plan: markdown file viewing and chat file-link navigation should both be planned rather than forcing a single-track MVP ordering.
+- The user further selected these concrete decisions for the first delivery:
+  - `.md` file tabs use `Preview / Source`
+  - SVG support is limited to `.svg` references, not inline raw SVG
+  - chat file-link support is limited to `absolute path`, `repo-relative path`, and optional `:line`
+  - Mermaid scope should aim broader than fenced-block-only, but safety and current renderer seams remain the hard limit
 
 ## Scope
 
 ### IN
 
-- Planner artifacts for file-reference navigation, markdown renderer extension, and diagram rendering rollout.
-- Evidence-based mapping of existing message rendering, file context, file tabs, and SVG viewer surfaces.
+- Markdown file-tab rendering and `Preview / Source`
+- Chat file-reference parsing and navigation into existing file tabs
+- Shared rich markdown surface for chat and file-tab preview
+- Safe SVG and Mermaid handling within existing UI boundaries
+- Planner artifacts, implementation evidence, and verification records
 
 ### OUT
 
-- Immediate code implementation.
-- Repo-wide renderer rewrite.
+- Repo-wide renderer rewrite
+- Arbitrary raw HTML embedding
+- Inline raw SVG execution
+- Non-web surfaces unless required by shared renderer constraints
 
 ## Task List
 
-- Read planner skeleton and architecture evidence.
-- Confirm current chat rendering and file-tab ownership surfaces.
-- Write implementation-spec, proposal, spec, design, tasks, and handoff artifacts.
-- Replace placeholder diagram artifacts with feature-specific IDEF0/GRAFCET/C4/Sequence outputs.
+- Read planner artifacts and architecture evidence
+- Implement Markdown File Viewer MVP in beta worktree
+- Implement Chat File-Reference Navigation MVP in beta worktree
+- Unify chat/file-tab rich markdown surface in beta worktree
+- Record verification blockers and sync docs in the main repo
 
 ## Conversation Summary
 
@@ -36,21 +47,23 @@
 - The user pointed out that the product already has a file view tab and suggested connecting assistant output to that surface before adding broader rendering support.
 - Further inspection showed that chat messages already use `Markdown`, while file tabs still render markdown files through generic code output.
 - Planning was therefore revised into a dual-track model: markdown file viewing and chat file-link navigation are parallel tracks, with shared renderer work and Mermaid/SVG following as controlled expansions.
+- The user then approved moving into beta build workflow implementation.
 
 ## Debug Checkpoints
 
 ### Baseline
 
 - Assistant replies already contain markdown-like structure and file references.
-- Current user experience does not let those file references act as navigable UI elements.
-- Existing webapp already provides file tabs and an SVG-aware file viewer.
-- Markdown files in file tabs do not yet receive markdown-aware rendering.
+- Current user experience did not let those file references act as navigable UI elements.
+- Existing webapp already provided file tabs and an SVG-aware file viewer.
+- Markdown files in file tabs did not yet receive markdown-aware rendering.
 
 ### Instrumentation Plan
 
 - Read session message renderer files to identify the current assistant text rendering seam.
 - Read file context and file tab files to confirm file-open and selected-line authority surfaces.
 - Read the rich-content provider to determine whether markdown extension should happen inside existing provider boundaries.
+- Implement in beta worktree only, then validate with the smallest feasible package-level tests.
 
 ### Execution
 
@@ -58,27 +71,53 @@
 - Confirmed `packages/app/src/pages/session/session-rich-content-provider.tsx` already wraps session UI with `MarkedProvider`, `DiffComponentProvider`, and `CodeComponentProvider`.
 - Confirmed `packages/app/src/context/file.tsx` owns path normalization, loading, and selected-line state.
 - Confirmed `packages/app/src/pages/session/file-tabs.tsx` already consumes selected lines and includes dedicated SVG preview behavior.
-- Confirmed `packages/app/src/pages/session/file-tabs.tsx` still routes generic loaded text, including markdown files, through `renderCode(...)` rather than a markdown-aware viewer branch.
+- Confirmed `packages/app/src/pages/session/file-tabs.tsx` previously routed generic loaded text, including markdown files, through `renderCode(...)` rather than a markdown-aware viewer branch.
+- Implemented Markdown File Viewer MVP in beta worktree:
+  - `.md`-specific viewer branch
+  - `Preview / Source` toggle
+  - markdown helper extraction
+  - `.svg` reference rewriting/preload path
+  - Mermaid detection with explicit visible fallback
+- Implemented Chat File-Reference Navigation MVP in beta worktree:
+  - conservative file-reference detection
+  - `absolute path`, `repo-relative path`, optional `:line`
+  - custom `opencode-file://` href encoding/decoding
+  - click opens existing file tab and sets selected line
+  - external URLs remain browser links
+- Implemented shared rich markdown surface in beta worktree:
+  - new `rich-markdown-surface.tsx`
+  - chat and markdown file preview both route through the shared surface
+  - Mermaid fallback notice centralized instead of duplicated
 
 ### Root Cause
 
-- The missing capability is not the absence of a file viewer; it is the lack of binding between assistant message rendering and the existing file-navigation authority.
-- Rich markdown support is partially present already, but it is asymmetrical: chat has a markdown renderer while markdown files in file tabs still lack one.
-- Interactive component mapping for file references and diagrams is not yet wired into a shared renderer surface that both chat and file tabs can use.
+- The missing capability was not the absence of a file viewer; it was the lack of binding between assistant message rendering and the existing file-navigation authority.
+- Rich markdown support was asymmetrical: chat already had a markdown renderer, while markdown files in file tabs did not.
+- The system also lacked a shared rich markdown surface, so chat and file-tab preview had duplicated and inconsistent behavior.
 
 ### Validation
 
-- Planner artifacts were rewritten to align with the confirmed frontend evidence.
-- Diagram artifacts were updated from placeholders to feature-specific planning models.
-- `specs/architecture.md` was read and remains the current structural authority; no architecture state update was required during planning.
+- Beta branch used: `feature/chat-rich-file-rendering`
+- Beta worktree used: `/home/pkcs12/projects/.beta-worktrees/opencode/feature/chat-rich-file-rendering`
+- Minimal validation attempted:
+  - `bun test packages/app/src/pages/session/message-file-links.test.ts`
+  - `bun test packages/app/src/pages/session/markdown-file-viewer.test.ts`
+- Validation is currently blocked by beta dependency-resolution/environment issues, not by the changed feature logic alone:
+  - earlier blocker: missing `@happy-dom/global-registrator`
+  - earlier blocker: missing `tsgo`
+  - current repeated blocker: `Cannot find package 'zod' from packages/opencode/src/util/log.ts`
+- As a result, no reliable passing test/typecheck result has been obtained yet.
 
 ## Decisions
 
 - Treat markdown file viewing and chat file-link navigation as dual-track top-level workstreams.
 - Preserve the current markdown path and extend it rather than replacing it.
 - Add a markdown-aware branch to file tabs instead of leaving `.md` files on the generic code path.
-- Treat Mermaid and SVG as controlled extensions after markdown file viewing and chat-link MVPs are stable.
-- Keep SVG rich behavior authoritative in the existing file viewer, not directly in raw chat DOM.
+- Use `Preview / Source` for markdown file tabs.
+- Keep SVG rich behavior authoritative in the existing file viewer; support `.svg` references but not inline raw SVG.
+- Keep chat file-link parsing conservative.
+- Keep external URLs as normal browser links.
+- Keep Mermaid in a safe explicit fallback state until a safe true-render path is verified.
 
 ## Verification
 
@@ -87,7 +126,8 @@
 - Read `/home/pkcs12/projects/opencode/packages/app/src/context/file.tsx`
 - Read `/home/pkcs12/projects/opencode/packages/app/src/pages/session/file-tabs.tsx`
 - Read `/home/pkcs12/projects/opencode/specs/architecture.md`
+- Checked beta worktree status to confirm modified/new files are within the expected session UI surface
 
 ## Architecture Sync
 
-- Verified no architecture.md changes are required at planning time because this task produced a plan, not a code-path or module-boundary change.
+- Architecture documentation now needs to acknowledge that session rich markdown rendering is shared across chat message content and markdown file preview, and that markdown file tabs now diverge from the generic `renderCode(...)` path.

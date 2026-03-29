@@ -35,6 +35,14 @@ The frontend is built with Solid.js and uses a bottom-up dependency model:
 - Maintain per-workspace child stores to isolate data and reduce unnecessary redraws.
 - Use structured reconciliation for large collections so component identity and scroll position remain stable.
 
+### Frontend File / Rich Content Surfaces
+
+- `packages/app/src/pages/session/components/message-content.tsx` is the assistant text entry point and routes assistant markdown through the session rich-content stack.
+- `packages/app/src/pages/session/file-tabs.tsx` is the file-tab authority surface; binary/image/SVG/markdown/text branches are resolved here before content is displayed.
+- Markdown file preview is no longer conceptually equivalent to generic source rendering: `.md` tabs may render through a preview-oriented rich markdown surface while retaining a source-mode fallback.
+- Shared markdown rendering behavior for chat and markdown file preview is being centralized under session-page rich markdown helpers/components so safety/fallback policy stays consistent.
+- Existing SVG file-viewer behavior remains the authority for rich SVG inspection; markdown/chat flows should route to that safe viewer path rather than injecting arbitrary inline SVG.
+
 ### Frontend Performance Rules
 
 - Large file/message surfaces rely on virtual scrolling.
@@ -45,7 +53,7 @@ The frontend is built with Solid.js and uses a bottom-up dependency model:
 ### Frontend Source Map
 
 - `packages/app/src/context/`: domain state and coordination.
-- `packages/app/src/pages/session/`: session-page controller/hooks/components.
+- `packages/app/src/pages/session/`: session-page controller/hooks/components. This surface now also owns the emerging shared rich-markdown rendering path used by assistant message content and markdown file preview in file tabs.
 - `packages/app/src/hooks/`: reusable frontend logic.
 
 ## Planner / Spec Repository Lifecycle
