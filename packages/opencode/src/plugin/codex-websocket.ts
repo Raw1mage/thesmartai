@@ -8,6 +8,9 @@
  */
 
 import { Log } from "../util/log"
+import { Global } from "../global"
+import path from "path"
+import { existsSync, readFileSync, writeFileSync } from "fs"
 
 const log = Log.create({ service: "codex-websocket" })
 
@@ -44,17 +47,86 @@ interface WrappedWebsocketErrorEvent {
   headers?: Record<string, unknown>
 }
 
-// ── Session State ──
+// ── Session State (with file-backed continuation persistence) ──
 
 const sessions = new Map<string, WsSessionState>()
+
+// Persisted continuation state survives daemon restarts.
+// Only lastResponseId and lastInputLength are persisted — WS connection
+// and transient flags (status, disableWebsockets) reset on restart.
+interface PersistedContinuation {
+  [sessionId: string]: { lastResponseId?: string; lastInputLength?: number; accountId?: string }
+}
+
+const CONTINUATION_FILE = path.join(Global.Path.state, "ws-continuation.json")
+let _continuationCache: PersistedContinuation | null = null
+let _continuationDirty = false
+let _continuationFlushTimer: ReturnType<typeof setTimeout> | null = null
+
+function loadContinuation(): PersistedContinuation {
+  if (_continuationCache) return _continuationCache
+  try {
+    if (existsSync(CONTINUATION_FILE)) {
+      _continuationCache = JSON.parse(readFileSync(CONTINUATION_FILE, "utf-8"))
+      return _continuationCache!
+    }
+  } catch {
+    log.warn("failed to load ws-continuation.json, starting fresh")
+  }
+  _continuationCache = {}
+  return _continuationCache
+}
+
+function saveContinuation() {
+  _continuationDirty = true
+  if (_continuationFlushTimer) return
+  // Debounce writes to avoid thrashing disk on every streaming chunk
+  _continuationFlushTimer = setTimeout(() => {
+    _continuationFlushTimer = null
+    if (!_continuationDirty || !_continuationCache) return
+    _continuationDirty = false
+    try {
+      writeFileSync(CONTINUATION_FILE, JSON.stringify(_continuationCache, null, 2))
+    } catch (e) {
+      log.warn("failed to save ws-continuation.json", { error: String(e) })
+    }
+  }, 2000)
+}
 
 export function getWsSession(sessionId: string): WsSessionState {
   let state = sessions.get(sessionId)
   if (!state) {
-    state = { ws: null, status: "idle", disableWebsockets: false }
+    // Restore continuation state from disk
+    const persisted = loadContinuation()[sessionId]
+    state = {
+      ws: null,
+      status: "idle",
+      disableWebsockets: false,
+      lastResponseId: persisted?.lastResponseId,
+      lastInputLength: persisted?.lastInputLength,
+      accountId: persisted?.accountId,
+    }
+    if (persisted?.lastResponseId) {
+      log.info("ws continuation restored from disk", {
+        sessionId,
+        responseId: persisted.lastResponseId.slice(0, 16) + "...",
+        lastInputLength: persisted.lastInputLength,
+      })
+    }
     sessions.set(sessionId, state)
   }
   return state
+}
+
+/** Persist continuation-relevant fields to disk (debounced). */
+export function persistWsSession(sessionId: string, state: WsSessionState) {
+  const cont = loadContinuation()
+  cont[sessionId] = {
+    lastResponseId: state.lastResponseId,
+    lastInputLength: state.lastInputLength,
+    accountId: state.accountId,
+  }
+  saveContinuation()
 }
 
 export function closeWsSession(sessionId: string) {
@@ -253,6 +325,7 @@ export function wsRequest(input: {
           log.warn("ws error event", { sessionId, error: errorMsg, hasStatus: !!errorEvent.status })
           state.lastResponseId = undefined
           state.lastInputLength = undefined
+          persistWsSession(sessionId, state)
           endWithError(mapped || new Error(`Codex WS: ${errorMsg}`))
           return
         }
@@ -271,6 +344,7 @@ export function wsRequest(input: {
             if (responseId) {
               state.lastResponseId = responseId
               log.info("ws captured responseId", { sessionId, responseId: responseId.slice(0, 16) + "..." })
+              persistWsSession(sessionId, state)
             }
             endStream()
             return
