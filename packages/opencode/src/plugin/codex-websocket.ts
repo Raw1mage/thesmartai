@@ -433,7 +433,13 @@ export function wsRequest(input: {
 
       const payload = JSON.stringify({ type: "response.create", ...wsBody })
       const inputItems = Array.isArray(wsBody.input) ? wsBody.input.length : 0
+      // Payload breakdown: measure each top-level field's contribution
+      const breakdown: Record<string, number> = {}
+      for (const [k, v] of Object.entries(wsBody)) {
+        breakdown[k] = JSON.stringify(v).length
+      }
       console.error(`[DELTA-REQ] session=${sessionId} delta=${deltaMode} inputItems=${inputItems} fullItems=${fullInputLength} payloadBytes=${payload.length} hasPrevResp=${!!wsBody.previous_response_id}`)
+      console.error(`[DELTA-BREAKDOWN] ${Object.entries(breakdown).sort((a,b) => b[1]-a[1]).map(([k,v]) => `${k}=${v}`).join(' ')}`)
       log.info("ws request sent", { sessionId, deltaMode, inputItems, fullItems: fullInputLength, payloadBytes: payload.length, hasPrevResp: !!wsBody.previous_response_id })
       ws.send(payload)
     },
