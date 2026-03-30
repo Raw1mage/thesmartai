@@ -99,14 +99,26 @@
 
 - Beta branch used: `feature/chat-rich-file-rendering`
 - Beta worktree used: `/home/pkcs12/projects/.beta-worktrees/opencode/feature/chat-rich-file-rendering`
-- Minimal validation attempted:
-  - `bun test packages/app/src/pages/session/message-file-links.test.ts`
-  - `bun test packages/app/src/pages/session/markdown-file-viewer.test.ts`
-- Validation is currently blocked by beta dependency-resolution/environment issues, not by the changed feature logic alone:
-  - earlier blocker: missing `@happy-dom/global-registrator`
-  - earlier blocker: missing `tsgo`
-  - current repeated blocker: `Cannot find package 'zod' from packages/opencode/src/util/log.ts`
-- As a result, no reliable passing test/typecheck result has been obtained yet.
+- Re-ran the minimal feature tests directly in the beta worktree:
+  - `bun test packages/app/src/pages/session/message-file-links.test.ts packages/app/src/pages/session/markdown-file-viewer.test.ts`
+  - Result: **13 pass / 0 fail**
+- Environment evidence now shows the earlier dependency-resolution blocker is no longer the active issue for the feature slice under test:
+  - beta worktree resolves `node_modules` through the main repo dependency tree
+  - `zod` resolves successfully from the shared dependency tree
+  - `@happy-dom/global-registrator` is still absent, but it is not required by these two target tests
+- Ran a broader `packages/app/src/pages/session`-focused test set for surrounding regression evidence:
+  - Result: **56 pass / 2 skip / 5 fail / 2 errors**
+  - Failing tests currently point to pre-existing or adjacent session test/environment debt rather than a direct regression in the rich-file feature slice:
+    - `packages/app/src/pages/session/file-tab-scroll.test.ts` → `CSS is not defined`
+    - `packages/app/src/pages/session/helpers.test.ts` → stale expectation still asserts `Model auto` instead of `Auto`
+    - `packages/app/src/pages/session/scroll-spy.test.ts` → `document is not defined`
+    - `packages/app/src/pages/session/__tests__/use-session-backfill.test.ts` → `window is not defined`
+    - `packages/app/src/pages/session/__tests__/use-session-hash-scroll.test.ts` → `window is not defined`
+- Current validation conclusion:
+  - helper-level coverage for file-link parsing and markdown-file helper behavior is passing
+  - there is still a coverage gap for direct integration around `packages/app/src/pages/session/file-tabs.tsx` and `packages/app/src/pages/session/components/message-content.tsx`
+  - the feature is therefore partially validated, but not yet proven safe-to-ship at full UI integration depth
+  - the user later explicitly chose to skip further test expansion for now and prioritize dirty-worktree convergence instead
 
 ## Decisions
 
@@ -118,6 +130,7 @@
 - Keep chat file-link parsing conservative.
 - Keep external URLs as normal browser links.
 - Keep Mermaid in a safe explicit fallback state until a safe true-render path is verified.
+- Per user instruction, stop after the current validation evidence and skip any further test work in this pass; prioritize dirty-change convergence instead.
 
 ## Verification
 
@@ -127,7 +140,10 @@
 - Read `/home/pkcs12/projects/opencode/packages/app/src/pages/session/file-tabs.tsx`
 - Read `/home/pkcs12/projects/opencode/specs/architecture.md`
 - Checked beta worktree status to confirm modified/new files are within the expected session UI surface
+- Re-ran beta worktree tests for `message-file-links.test.ts` and `markdown-file-viewer.test.ts`
+- Ran a broader `packages/app/src/pages/session`-focused test slice to separate feature evidence from pre-existing session test debt
+- Confirmed later dirty convergence left the beta worktree clean while main repo retained only documentation-side updates for this task
 
 ## Architecture Sync
 
-- Architecture documentation now needs to acknowledge that session rich markdown rendering is shared across chat message content and markdown file preview, and that markdown file tabs now diverge from the generic `renderCode(...)` path.
+- Verified (No doc changes): `specs/architecture.md` already reflects the shared rich-markdown surface between chat and markdown file preview, and already documents that markdown file tabs diverge from the generic `renderCode(...)` path.
