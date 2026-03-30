@@ -1,4 +1,18 @@
-import { type ValidComponent, createEffect, createMemo, createSignal, For, lazy, Match, on, onCleanup, Show, Suspense, Switch } from "solid-js"
+import {
+  type ValidComponent,
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  lazy,
+  Match,
+  on,
+  onCleanup,
+  Show,
+  Suspense,
+  Switch,
+} from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
 import { sampledChecksum } from "@opencode-ai/util/encode"
@@ -11,6 +25,13 @@ import { useLayout } from "@/context/layout"
 import { useFile, type SelectedLineRange } from "@/context/file"
 import { useComments } from "@/context/comments"
 import { useLanguage } from "@/context/language"
+import {
+  collectMarkdownAssetRefs,
+  isMarkdownPath,
+  replaceMarkdownAssetRefs,
+  resolveMarkdownAssetPath,
+} from "./markdown-file-viewer"
+import { RichMarkdownSurface } from "./rich-markdown-surface"
 
 const formatCommentLabel = (range: SelectedLineRange) => {
   const start = Math.min(range.start, range.end)
@@ -62,17 +83,20 @@ function SvgViewer(props: {
     if (!isDiagramSvg(filename)) return
     const dir = p.substring(0, p.lastIndexOf("/"))
     if (!dir) return
-    props.listDir(dir).then((entries) => {
-      const svgs = entries
-        .filter((e) => e.type === "file" && isDiagramSvg(e.name))
-        .map((e) => e.name)
-        .sort((a, b) => diagramSortKey(a).localeCompare(diagramSortKey(b)))
-      if (svgs.length > 1) {
-        setRelatedDiagrams(svgs.map((name) => (dir ? `${dir}/${name}` : name)))
-      } else {
-        setRelatedDiagrams([])
-      }
-    }).catch(() => setRelatedDiagrams([]))
+    props
+      .listDir(dir)
+      .then((entries) => {
+        const svgs = entries
+          .filter((e) => e.type === "file" && isDiagramSvg(e.name))
+          .map((e) => e.name)
+          .sort((a, b) => diagramSortKey(a).localeCompare(diagramSortKey(b)))
+        if (svgs.length > 1) {
+          setRelatedDiagrams(svgs.map((name) => (dir ? `${dir}/${name}` : name)))
+        } else {
+          setRelatedDiagrams([])
+        }
+      })
+      .catch(() => setRelatedDiagrams([]))
   })
 
   const zoomIn = () => setScale((s) => Math.min(MAX_SCALE, s * 1.25))
@@ -105,10 +129,7 @@ function SvgViewer(props: {
   }
 
   return (
-    <div
-      class="flex flex-col h-full"
-      classList={{ "fixed inset-0 z-50 bg-surface-primary": fullscreen() }}
-    >
+    <div class="flex flex-col h-full" classList={{ "fixed inset-0 z-50 bg-surface-primary": fullscreen() }}>
       {/* Toolbar */}
       <div class="flex items-center gap-1 px-4 py-2 border-b border-border-base bg-surface-secondary shrink-0">
         <button
@@ -208,7 +229,9 @@ function SvgViewer(props: {
         fallback={
           <Show when={props.svgContent()}>
             {(content) => (
-              <Suspense fallback={<div class="flex-1 flex items-center justify-center text-text-dimmed">Loading editor...</div>}>
+              <Suspense
+                fallback={<div class="flex-1 flex items-center justify-center text-text-dimmed">Loading editor...</div>}
+              >
                 <LazySvgEditor
                   svgContent={content()}
                   filename={props.path()?.split("/").pop()}
@@ -229,19 +252,11 @@ function SvgViewer(props: {
         <Show
           when={!showSource()}
           fallback={
-            <div class="flex-1 overflow-auto px-6 py-4 pb-40">
-              {props.renderCode(props.svgContent() ?? "", "")}
-            </div>
+            <div class="flex-1 overflow-auto px-6 py-4 pb-40">{props.renderCode(props.svgContent() ?? "", "")}</div>
           }
         >
-          <div
-            class="flex-1 overflow-auto cursor-grab active:cursor-grabbing"
-            onWheel={handleWheel}
-          >
-            <div
-              class="flex justify-center items-start p-6 min-h-full"
-              style={{ "padding-bottom": "10rem" }}
-            >
+          <div class="flex-1 overflow-auto cursor-grab active:cursor-grabbing" onWheel={handleWheel}>
+            <div class="flex justify-center items-start p-6 min-h-full" style={{ "padding-bottom": "10rem" }}>
               <Show when={props.svgPreviewUrl()}>
                 <img
                   src={props.svgPreviewUrl()}
@@ -254,6 +269,77 @@ function SvgViewer(props: {
             </div>
           </div>
         </Show>
+      </Show>
+    </div>
+  )
+}
+
+function MarkdownFileViewer(props: {
+  path: () => string | undefined
+  contents: () => string
+  file: ReturnType<typeof useFile>
+  renderSource: (source: string, wrapperClass: string) => any
+}) {
+  const [showSource, setShowSource] = createSignal(false)
+
+  const assetRefs = createMemo(() => {
+    const currentPath = props.path()
+    if (!currentPath || !isMarkdownPath(currentPath)) return []
+    return collectMarkdownAssetRefs(props.contents())
+      .map((ref) => ({ ref, resolved: resolveMarkdownAssetPath(currentPath, ref) }))
+      .filter((item): item is { ref: string; resolved: string } => Boolean(item.resolved))
+      .filter((item) => item.resolved.toLowerCase().endsWith(".svg"))
+  })
+
+  createEffect(() => {
+    for (const item of assetRefs()) {
+      void props.file.load(item.resolved)
+    }
+  })
+
+  const assetMap = createMemo(() => {
+    const resolved: Record<string, string> = {}
+    for (const item of assetRefs()) {
+      const state = props.file.get(item.resolved)
+      const content = state?.content
+      if (!content) continue
+      if (content.mimeType !== "image/svg+xml") continue
+      if (content.encoding === "base64") {
+        resolved[item.ref] = `data:image/svg+xml;base64,${content.content}`
+        continue
+      }
+      resolved[item.ref] = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(content.content)}`
+    }
+    return resolved
+  })
+
+  const previewText = createMemo(() => replaceMarkdownAssetRefs(props.contents(), assetMap()))
+
+  return (
+    <div class="flex min-h-full flex-col">
+      <div class="sticky top-0 z-10 flex items-center gap-1 border-b border-border-base bg-surface-secondary px-4 py-2">
+        <button
+          class="px-2 py-1 text-12-medium text-text-dimmed hover:text-text-base hover:bg-surface-tertiary rounded transition-colors"
+          onClick={() => setShowSource(false)}
+        >
+          Preview
+        </button>
+        <button
+          class="px-2 py-1 text-12-medium text-text-dimmed hover:text-text-base hover:bg-surface-tertiary rounded transition-colors"
+          onClick={() => setShowSource(true)}
+        >
+          Source
+        </button>
+      </div>
+      <Show when={!showSource()} fallback={<div class="pb-40">{props.renderSource(props.contents(), "")}</div>}>
+        <div class="px-6 py-4 pb-40">
+          <RichMarkdownSurface
+            text={previewText()}
+            cacheKey={props.path() ?? "markdown-file-preview"}
+            mermaidNotice="inline"
+            proseClass="prose prose-sm max-w-none"
+          />
+        </div>
       </Show>
     </div>
   )
@@ -299,6 +385,7 @@ export function FileTabContent(props: {
     return c?.mimeType === "image/svg+xml"
   })
   const isBinary = createMemo(() => state()?.content?.type === "binary")
+  const isMarkdown = createMemo(() => isMarkdownPath(path()))
   const svgContent = createMemo(() => {
     if (!isSvg()) return
     const c = state()?.content
@@ -764,6 +851,9 @@ export function FileTabContent(props: {
                 <div class="text-14-regular text-text-weak">{props.language.t("session.files.binaryContent")}</div>
               </div>
             </div>
+          </Match>
+          <Match when={state()?.loaded && isMarkdown()}>
+            <MarkdownFileViewer path={path} contents={contents} file={props.file} renderSource={renderCode} />
           </Match>
           <Match when={state()?.loaded}>{renderCode(contents(), "pb-40")}</Match>
           <Match when={state()?.loading}>
