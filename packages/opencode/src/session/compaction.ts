@@ -5,7 +5,10 @@ import { Identifier } from "../id/id"
 import { Instance } from "../project/instance"
 import { Provider } from "../provider/provider"
 import { MessageV2 } from "./message-v2"
+import { Global } from "../global"
 import z from "zod"
+import path from "path"
+import fs from "fs/promises"
 import { Token } from "../util/token"
 import { Log } from "../util/log"
 import { SessionProcessor } from "./processor"
@@ -41,10 +44,14 @@ export namespace SessionCompaction {
     return _pendingRebindCompaction.delete(sessionID)
   }
 
-  // Rebind-budget compaction: keep context small enough that a full-context
-  // rebind (after daemon restart) doesn't send 850KB+ to the server.
-  // Triggered every round when token count exceeds the threshold.
+  // ── Rebind Checkpoint ──
+  // Quietly snapshots compacted context to disk for restart recovery.
+  // Does NOT touch the live message chain — cache stays intact.
+  // On rebind (restart + previous_response_not_found), the checkpoint
+  // is used as the input base instead of rebuilding from all messages.
+
   const REBIND_BUDGET_TOKEN_THRESHOLD = 80_000
+  const _lastCheckpointRound = new Map<string, number>()
 
   export function shouldRebindBudgetCompact(input: {
     tokens: MessageV2.Assistant["tokens"]
@@ -56,19 +63,41 @@ export namespace SessionCompaction {
       input.tokens.input + input.tokens.output + input.tokens.cache.read + input.tokens.cache.write
     if (count < REBIND_BUDGET_TOKEN_THRESHOLD) return false
 
-    // Respect cooldown to avoid compaction oscillation
-    const state = cooldownState.get(input.sessionID)
-    if (state) {
-      const roundsSince = input.currentRound - state.lastCompactionRound
-      if (roundsSince < 4) return false
-    }
+    // Cooldown: don't checkpoint every single round
+    const lastRound = _lastCheckpointRound.get(input.sessionID) ?? 0
+    if (input.currentRound - lastRound < 4) return false
 
-    log.info("rebind-budget compaction triggered", {
-      sessionID: input.sessionID,
-      tokens: count,
-      threshold: REBIND_BUDGET_TOKEN_THRESHOLD,
-    })
     return true
+  }
+
+  export async function saveRebindCheckpoint(sessionID: string) {
+    try {
+      const snap = await SharedContext.snapshot(sessionID)
+      if (!snap) return
+
+      const checkpointPath = path.join(Global.Path.state, `rebind-checkpoint-${sessionID}.json`)
+      const checkpoint = {
+        sessionID,
+        timestamp: Date.now(),
+        snapshot: snap,
+      }
+      await fs.writeFile(checkpointPath, JSON.stringify(checkpoint))
+      log.info("rebind checkpoint saved", { sessionID, bytes: snap.length })
+    } catch (e) {
+      log.warn("rebind checkpoint save failed", { sessionID, error: String(e) })
+    }
+  }
+
+  export async function loadRebindCheckpoint(sessionID: string): Promise<string | null> {
+    try {
+      const checkpointPath = path.join(Global.Path.state, `rebind-checkpoint-${sessionID}.json`)
+      const content = await fs.readFile(checkpointPath, "utf-8")
+      const checkpoint = JSON.parse(content) as { snapshot: string; timestamp: number }
+      log.info("rebind checkpoint loaded", { sessionID, age: Date.now() - checkpoint.timestamp })
+      return checkpoint.snapshot
+    } catch {
+      return null
+    }
   }
 
   export const Event = {

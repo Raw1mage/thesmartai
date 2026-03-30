@@ -815,7 +815,7 @@ export namespace SessionPrompt {
       }
 
       // Continuation rebind compaction: server rejected previous_response_id,
-      // compact now so the full-context re-send is as small as possible.
+      // use pre-built checkpoint to compact instead of resending full history.
       if (
         lastFinished &&
         lastFinished.summary !== true &&
@@ -824,42 +824,32 @@ export namespace SessionPrompt {
         log.info("rebind compaction triggered after continuation invalidation", { sessionID })
         SessionCompaction.recordCompaction(sessionID, step)
         if (!session.parentID) {
-          const rebindConfig = await Config.get()
-          if (rebindConfig.compaction?.sharedContext !== false) {
-            const snap = await SharedContext.snapshot(sessionID)
-            if (snap) {
-              await SessionCompaction.compactWithSharedContext({
-                sessionID,
-                snapshot: snap,
-                model,
-                auto: true,
-              })
-              continue
-            }
+          // Priority: use pre-built checkpoint (saved during normal operation)
+          const checkpoint = await SessionCompaction.loadRebindCheckpoint(sessionID)
+          const snap = checkpoint || await SharedContext.snapshot(sessionID)
+          if (snap) {
+            await SessionCompaction.compactWithSharedContext({
+              sessionID,
+              snapshot: snap,
+              model,
+              auto: true,
+            })
+            continue
           }
         }
       }
 
-      // Rebind-budget compaction: keep context small so daemon restart
-      // doesn't trigger 850KB full-context rebind. Uses SharedContext
-      // snapshot (no LLM cost). Independent of overflow threshold.
+      // Rebind checkpoint: quietly snapshot context for restart recovery.
+      // Does NOT compact the live message chain (that would break cache).
+      // Only produces a checkpoint file that rebind uses if restart happens.
       if (
         lastFinished &&
         lastFinished.summary !== true &&
         !session.parentID &&
         SessionCompaction.shouldRebindBudgetCompact({ tokens: lastFinished.tokens, sessionID, currentRound: step })
       ) {
-        const rebindSnap = await SharedContext.snapshot(sessionID)
-        if (rebindSnap) {
-          SessionCompaction.recordCompaction(sessionID, step)
-          await SessionCompaction.compactWithSharedContext({
-            sessionID,
-            snapshot: rebindSnap,
-            model,
-            auto: true,
-          })
-          continue
-        }
+        // Fire-and-forget: snapshot in background, don't block the conversation
+        SessionCompaction.saveRebindCheckpoint(sessionID).catch(() => {})
       }
 
       // context overflow OR cache-aware compaction
