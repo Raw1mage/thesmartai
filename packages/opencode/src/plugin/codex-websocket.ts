@@ -267,8 +267,10 @@ export function wsRequest(input: {
       function resetIdleTimer() {
         if (idleTimer) clearTimeout(idleTimer)
         idleTimer = setTimeout(() => {
-          log.warn("ws idle timeout", { sessionId, frameCount })
-          controller.error(new Error("Codex WS: idle timeout waiting for response"))
+          const reason = frameCount === 0 ? "first_frame_timeout" : "mid_stream_stall"
+          log.warn(`ws ${reason}`, { sessionId, frameCount })
+          invalidateContinuation(reason as InvalidationReason)
+          controller.error(new Error(`Codex WS: ${reason} (frames=${frameCount})`))
           state.status = "failed"
           cleanup()
         }, WS_IDLE_TIMEOUT_MS)
@@ -294,6 +296,20 @@ export function wsRequest(input: {
         cleanup()
         state.status = "failed"
         try { controller.error(err) } catch {}
+      }
+
+      /** Invalidate continuation state with a typed reason and persist. */
+      type InvalidationReason = "first_frame_timeout" | "mid_stream_stall" | "close_before_completion"
+        | "response_failed" | "ws_error" | "previous_response_not_found"
+
+      function invalidateContinuation(reason: InvalidationReason) {
+        const had = !!state.lastResponseId
+        state.lastResponseId = undefined
+        state.lastInputLength = undefined
+        persistWsSession(sessionId, state)
+        if (had) {
+          console.error(`[CONTINUATION] ${reason} session=${sessionId} (cleared)`)
+        }
       }
 
       // ── Message handler ──
@@ -326,22 +342,15 @@ export function wsRequest(input: {
             errorMsg.includes("Previous response") || errorMsg.includes("not found")
 
           if (isPrevRespNotFound) {
-            // Continuation invalidated: server no longer has the response we're
-            // trying to continue from. Mark for compaction-on-rebind.
             log.warn("ws continuation invalidated: previous_response_not_found", { sessionId })
-            state.lastResponseId = undefined
-            state.lastInputLength = undefined
+            invalidateContinuation("previous_response_not_found")
             state.continuationInvalidated = true
-            persistWsSession(sessionId, state)
-            // Signal with a specific error so codex.ts can retry with full context
             endWithError(new Error("CONTINUATION_INVALIDATED"))
             return
           }
 
           log.warn("ws error event", { sessionId, error: errorMsg, hasStatus: !!errorEvent.status })
-          state.lastResponseId = undefined
-          state.lastInputLength = undefined
-          persistWsSession(sessionId, state)
+          invalidateContinuation("ws_error")
           endWithError(mapped || new Error(`Codex WS: ${errorMsg}`))
           return
         }
@@ -359,25 +368,26 @@ export function wsRequest(input: {
             const responseId = parsed.response?.id
             if (responseId) {
               state.lastResponseId = responseId
-              log.info("ws captured responseId", { sessionId, responseId: responseId.slice(0, 16) + "..." })
               persistWsSession(sessionId, state)
+              console.error(`[CONTINUATION] bound session=${sessionId} responseId=${responseId.slice(0, 20)}...`)
             }
             endStream()
             return
           }
 
-          // response.incomplete is also a terminal event
+          // response.incomplete — turn did not finish; continuation pointer is unreliable
           if (eventType === "response.incomplete") {
             log.warn("ws response incomplete", { sessionId, reason: parsed.response?.incomplete_details?.reason })
+            invalidateContinuation("close_before_completion")
             endStream()
             return
           }
 
-          // response.failed → extract error info and terminate
+          // response.failed → extract error info, invalidate continuation, terminate
           if (eventType === "response.failed") {
             const errMsg = parsed.response?.error?.message || "Response failed"
             log.warn("ws response failed", { sessionId, error: errMsg })
-            state.lastResponseId = undefined
+            invalidateContinuation("response_failed")
             endWithError(new Error(`Codex: ${errMsg}`))
             return
           }
@@ -389,13 +399,14 @@ export function wsRequest(input: {
       // ── Error/Close handlers ──
       ws.onerror = () => {
         log.warn("ws error during stream", { sessionId, frameCount })
-        state.status = "failed"
+        invalidateContinuation("ws_error")
         endWithError(new Error("WebSocket error during streaming"))
       }
 
       ws.onclose = (event: CloseEvent) => {
         if (state.status === "streaming") {
           log.warn("ws closed during stream", { sessionId, frameCount, code: event?.code, reason: event?.reason })
+          invalidateContinuation("close_before_completion")
           state.status = "failed"
           if (frameCount === 0) {
             endWithError(new Error("Codex WS: connection closed before any response"))
@@ -442,6 +453,11 @@ async function probeFirstFrame(response: Response, sessionId: string, state: WsS
   if (result.timeout) {
     log.warn("ws first-frame timeout, falling back to HTTP", { sessionId })
     reader.cancel()
+    // Invalidate continuation — request outcome is ambiguous
+    state.lastResponseId = undefined
+    state.lastInputLength = undefined
+    persistWsSession(sessionId, state)
+    console.error(`[CONTINUATION] first_frame_timeout session=${sessionId} (cleared)`)
     state.disableWebsockets = true
     try { state.ws?.close() } catch {}
     state.ws = null
