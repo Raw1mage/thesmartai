@@ -16,6 +16,13 @@ import { trimSessions } from "./session-trim"
 import { buildSessionTelemetryFromProjector } from "@/pages/session/monitor-helper"
 import type { SessionMonitorInfo } from "@opencode-ai/sdk/v2/client"
 
+// Non-reactive dedup map for delta events.
+// SolidJS batch() defers setStore updates, so within a single flush the reactive
+// store still shows the pre-batch text length. Multiple SSE connections delivering
+// the same delta in the same batch all pass the reactive guard and append twice.
+// This plain Map updates synchronously, surviving batch boundaries.
+const _appliedTextLength = new Map<string, number>()
+
 function pushLlmHistory(draft: State, entry: LlmHistoryEntry) {
   if (!draft.llm_history) draft.llm_history = []
   draft.llm_history.push(entry)
@@ -274,11 +281,16 @@ export function applyDirectoryEvent(input: {
         if (result.found) {
           const existing = parts[result.index]
           if ("text" in existing) {
-            // Guard: if multiple SSE connections deliver the same delta event,
-            // textLength tells us the expected accumulated length. Skip if
-            // we've already reached or passed that length (duplicate apply).
-            if (props.textLength !== undefined && existing.text.length >= props.textLength) {
-              break
+            // Guard: use non-reactive map to detect duplicate delta apply.
+            // SolidJS batch() defers store updates, so the reactive existing.text.length
+            // stays stale within a flush — plain Map tracks the true applied length.
+            const dedupKey = `${part.messageID}:${part.id}`
+            if (props.textLength !== undefined) {
+              const applied = _appliedTextLength.get(dedupKey) ?? existing.text.length
+              if (applied >= props.textLength) {
+                break
+              }
+              _appliedTextLength.set(dedupKey, props.textLength)
             }
             // Fast path: append delta to existing text without replacing the whole part
             const hasText = "text" in part && typeof (part as any).text === "string"

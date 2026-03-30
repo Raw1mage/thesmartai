@@ -53,6 +53,7 @@ export const GlobalDisposedEvent = BusEvent.define("global.disposed", z.object({
 // @event_20260319_daemonization Phase ζ — SSE Event ID + Catch-up ring buffer
 const SSE_BUFFER_MAX = 1000
 let _sseCounter = 0
+let _sseConnectionCount = 0
 const _sseBuffer: Array<{ id: number; event: unknown }> = []
 
 function sseNextId(): number {
@@ -308,6 +309,9 @@ export const GlobalRoutes = lazy(() =>
         },
       }),
       async (c) => {
+        _sseConnectionCount++
+        const connId = _sseConnectionCount
+        console.error(`[SSE-CONN] #${connId} connected (active=${_sseConnectionCount})`)
         log.info("global event connected")
         applyProxyFriendlySSEHeaders(c)
 
@@ -384,6 +388,8 @@ export const GlobalRoutes = lazy(() =>
             stream.onAbort(() => {
               clearInterval(heartbeat)
               GlobalBus.off("event", handler)
+              _sseConnectionCount--
+              console.error(`[SSE-CONN] #${connId} disconnected (active=${_sseConnectionCount})`)
               resolve()
               log.info("global event disconnected")
             })

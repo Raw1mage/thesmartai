@@ -35,6 +35,9 @@ import { TuiEvent } from "../event"
 import { createTimerCoordinator } from "../util/timer-coordinator"
 import { useRoute } from "@tui/context/route"
 
+// Non-reactive dedup map for delta events (see web event-reducer for rationale)
+const _tuiAppliedTextLength = new Map<string, number>()
+
 export type LlmHistoryEntry = {
   providerId: string
   modelId: string
@@ -553,9 +556,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             if (result.found) {
               const existing = parts[result.index]
               if ("text" in existing) {
-                // Guard: skip duplicate delta from multiple SSE connections
-                if (updTextLength !== undefined && existing.text.length >= updTextLength) {
-                  break
+                // Guard: non-reactive dedup (same logic as web event-reducer)
+                const dedupKey = `${updPart.messageID}:${updPart.id}`
+                if (updTextLength !== undefined) {
+                  const applied = _tuiAppliedTextLength.get(dedupKey) ?? existing.text.length
+                  if (applied >= updTextLength) {
+                    break
+                  }
+                  _tuiAppliedTextLength.set(dedupKey, updTextLength)
                 }
                 const hasText = "text" in updPart && typeof (updPart as any).text === "string"
                 const newText = hasText ? (updPart as any).text : existing.text + updDelta

@@ -19,7 +19,8 @@ const log = Log.create({ service: "codex-websocket" })
 const WS_CONNECT_TIMEOUT_MS = 15_000
 const WS_IDLE_TIMEOUT_MS = 30_000
 const WS_FIRST_FRAME_TIMEOUT_MS = 10_000 // must receive first frame within 10s or fallback
-const WS_MAX_CONNECT_RETRIES = 1 // retry once, then HTTP fallback
+// No retry: if WS fails, fall back to HTTP immediately.
+// Previous multi-retry logic caused duplicate LLM requests after daemon restart.
 
 // ── Types ──
 
@@ -335,6 +336,13 @@ export function wsRequest(input: {
             // Consistent with codex-rs (responses_websocket.rs:608-613).
             // If forwarded, it would pass first-frame probe as "content",
             // preventing error events from being caught before commit.
+            //
+            // BUT: count it as a frame so idle timer resets. This proves
+            // the WS is alive even when the LLM is still thinking (60s+).
+            // Without this, first-frame timeout fires at 10s and triggers
+            // a duplicate request while the original is still processing.
+            frameCount++
+            resetIdleTimer()
             console.error(`[WS-RATE-LIMITS] session=${sessionId} ${data}`)
             return
           }
@@ -579,8 +587,9 @@ export async function tryWsTransport(input: {
     return probeFirstFrame(rawResponse, sessionId, state)
   }
 
-  // Reuse existing open connection
-  if (state.ws && state.status === "open") {
+  // Reuse existing open connection — but only if the WebSocket is genuinely alive.
+  // After daemon restart the WS object lingers in state but readyState is CLOSED.
+  if (state.ws && state.status === "open" && state.ws.readyState === WebSocket.OPEN) {
     const reqBody = { ...body }
     if (state.lastResponseId && !reqBody.previous_response_id) {
       reqBody.previous_response_id = state.lastResponseId
@@ -589,91 +598,54 @@ export async function tryWsTransport(input: {
     try {
       const probed = await attemptWs(state.ws, reqBody)
       if (probed) return probed
-      // First-frame timeout or continuation invalidated — check flag
-      if (state.continuationInvalidated && state.ws && state.status === "open") {
-        state.continuationInvalidated = false
-        log.info("continuation invalidated, retrying on same WS without previous_response_id", { sessionId })
-        const retryBody = { ...body }
-        delete retryBody.previous_response_id
-        const retried = await attemptWs(state.ws, retryBody)
-        if (retried) return retried
-      }
     } catch (e) {
-      // Continuation invalidated during streaming — retry on same WS
-      if (String(e).includes("CONTINUATION_INVALIDATED") && state.ws) {
-        state.continuationInvalidated = false
-        state.status = "open"
-        log.info("continuation invalidated, retrying on same WS without previous_response_id", { sessionId })
-        try {
-          const retryBody = { ...body }
-          delete retryBody.previous_response_id
-          const retried = await attemptWs(state.ws, retryBody)
-          if (retried) return retried
-        } catch (retryErr) {
-          log.warn("ws retry after invalidation also failed", { sessionId, error: String(retryErr).slice(0, 100) })
-        }
-      } else {
-        log.warn("ws request failed on cached connection", { sessionId, error: String(e) })
-      }
+      log.warn("ws request failed on cached connection", { sessionId, error: String(e).slice(0, 120) })
+    }
+    // Connection died or continuation invalidated — discard and reconnect fresh
+    state.ws = null
+    state.status = "failed"
+    state.continuationInvalidated = false
+  } else if (state.ws) {
+    // Stale WS (daemon restarted, network lost) — skip straight to reconnect
+    log.info("ws stale, discarding", { sessionId, readyState: state.ws.readyState })
+    state.ws = null
+    state.status = "failed"
+    state.continuationInvalidated = false
+    state.lastResponseId = undefined
+    state.lastInputLength = undefined
+    persistWsSession(sessionId, state)
+  }
+
+  // Single reconnect: build a new WS, send without previous_response_id.
+  // No probe here — connectWs success proves WS is reachable; the LLM may
+  // think for 60s+ before the first content frame. The stream's own idle
+  // timer (WS_IDLE_TIMEOUT_MS, reset by rate_limits frames) handles stalls.
+  const headers = buildWsHeaders({ accessToken, accountId, turnState: input.turnState })
+  const ws = await connectWs(wsUrl, headers)
+  if (ws) {
+    state.ws = ws
+    state.status = "open"
+    state.accountId = accountId
+
+    // After reconnect, continuation is lost — always send full context
+    const reqBody = { ...body }
+    delete reqBody.previous_response_id
+    state.lastResponseId = undefined
+    state.lastInputLength = undefined
+    persistWsSession(sessionId, state)
+    log.info("ws reconnected, sending full context (no continuation)", { sessionId })
+
+    try {
+      return wsRequest({ ws, body: reqBody, sessionId, state })
+    } catch (e) {
+      log.warn("ws request failed on new connection", { sessionId, error: String(e).slice(0, 120) })
     }
     state.ws = null
     state.status = "failed"
   }
 
-  // Connect (with retry)
-  const headers = buildWsHeaders({ accessToken, accountId, turnState: input.turnState })
-
-  for (let attempt = 0; attempt <= WS_MAX_CONNECT_RETRIES; attempt++) {
-    if (attempt > 0) log.info("ws connect retry", { sessionId, attempt })
-
-    const ws = await connectWs(wsUrl, headers)
-    if (ws) {
-      state.ws = ws
-      state.status = "open"
-      state.accountId = accountId
-
-      const reqBody = { ...body }
-      if (state.lastResponseId && !reqBody.previous_response_id) {
-        reqBody.previous_response_id = state.lastResponseId
-      }
-
-      try {
-        const probed = await attemptWs(ws, reqBody)
-        if (probed) return probed
-        // Check invalidation flag — retry without previous_response_id
-        if (state.continuationInvalidated && state.ws && state.status === "open") {
-          state.continuationInvalidated = false
-          log.info("continuation invalidated on new WS, retrying without previous_response_id", { sessionId })
-          const retryBody = { ...body }
-          delete retryBody.previous_response_id
-          const retried = await attemptWs(state.ws, retryBody)
-          if (retried) return retried
-        }
-      } catch (e) {
-        if (String(e).includes("CONTINUATION_INVALIDATED") && ws) {
-          state.continuationInvalidated = false
-          state.status = "open"
-          log.info("continuation invalidated on new WS, retrying without previous_response_id", { sessionId })
-          try {
-            const retryBody = { ...body }
-            delete retryBody.previous_response_id
-            const retried = await attemptWs(ws, retryBody)
-            if (retried) return retried
-          } catch (retryErr) {
-            log.warn("ws retry after invalidation failed on new connection", { sessionId, error: String(retryErr).slice(0, 100) })
-          }
-        } else {
-          log.warn("ws request failed on new connection", { sessionId, error: String(e) })
-        }
-      }
-      state.ws = null
-      state.status = "failed"
-      continue
-    }
-  }
-
   // All attempts failed → activate sticky HTTP fallback
-  log.warn("ws fallback to HTTP", { sessionId, retries: WS_MAX_CONNECT_RETRIES })
+  log.warn("ws fallback to HTTP", { sessionId })
   state.disableWebsockets = true
   state.ws = null
   state.status = "failed"
