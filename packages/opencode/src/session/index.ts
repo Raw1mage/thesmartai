@@ -988,10 +988,24 @@ export namespace Session {
       }
     }
 
-    Bus.publish(MessageV2.Event.PartUpdated, {
-      part,
-      delta,
-    })
+    // Delta-aware transport: when streaming text/reasoning deltas, strip
+    // part.text from the event to avoid O(n²) amplification over Bus → SSE.
+    // Consumers accumulate text from deltas; textLength enables desync detection.
+    // Non-delta updates (tool parts, completion) carry the full part as before.
+    if (delta && "text" in part && typeof part.text === "string") {
+      const textLength = part.text.length
+      const { text: _stripped, ...lightPart } = part as Record<string, unknown>
+      Bus.publish(MessageV2.Event.PartUpdated, {
+        part: lightPart as typeof part,
+        delta,
+        textLength,
+      })
+    } else {
+      Bus.publish(MessageV2.Event.PartUpdated, {
+        part,
+        delta,
+      })
+    }
     return part
   })
 
