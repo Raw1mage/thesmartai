@@ -14,7 +14,7 @@ import { CopilotAuthPlugin } from "./copilot"
 import GitlabAuthPlugin from "@gitlab/opencode-gitlab-auth"
 
 import { GeminiCLIOAuthPlugin } from "./gemini-cli"
-import { AnthropicAuthPlugin } from "./anthropic"
+import { ClaudeNativeAuthPlugin } from "./claude-native"
 
 export namespace Plugin {
   const log = Log.create({ service: "plugin" })
@@ -28,7 +28,7 @@ export namespace Plugin {
       { name: "copilot", plugin: CopilotAuthPlugin },
       { name: "gitlab", plugin: GitlabAuthPlugin },
       { name: "gemini-cli", plugin: GeminiCLIOAuthPlugin as PluginInstance },
-      { name: "claude-cli", plugin: AnthropicAuthPlugin },
+      { name: "claude-cli", plugin: ClaudeNativeAuthPlugin },
     ]
     return internalPlugins
   }
