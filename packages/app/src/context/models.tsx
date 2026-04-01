@@ -5,6 +5,12 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useProviders } from "@/hooks/use-providers"
 import { Persist, persisted } from "@/utils/persist"
 import { useGlobalSDK } from "./global-sdk"
+import {
+  buildUsersFromRemotePreferences,
+  normalizePreferenceModel,
+  preferenceModelKey,
+  sameUserPreferences,
+} from "./model-preferences"
 
 export type ModelKey = { providerID: string; modelID: string }
 
@@ -17,52 +23,6 @@ type Store = {
 }
 
 const RECENT_LIMIT = 5
-
-const KNOWN_PROVIDER_FAMILIES = [
-  "opencode",
-  "claude-cli",
-  "openai",
-  "github-copilot",
-  "gemini-cli",
-  "google-api",
-  "gmicloud",
-  "openrouter",
-  "vercel",
-  "gitlab",
-] as const
-
-const EXCLUDED_PROVIDER_FAMILIES = new Set(["google"])
-
-function normalizeProviderFamily(id: unknown): string {
-  if (typeof id !== "string") return ""
-  const raw = id.trim().toLowerCase()
-  if (!raw) return ""
-  if (raw.includes(":")) return normalizeProviderFamily(raw.split(":")[0]!)
-  if (raw === "anthropic") return "claude-cli"
-  if (EXCLUDED_PROVIDER_FAMILIES.has(raw)) return ""
-
-  for (const provider of KNOWN_PROVIDER_FAMILIES) {
-    if (raw === provider || raw.startsWith(`${provider}-`)) return provider
-  }
-
-  const apiMatch = raw.match(/^(.+)-api-/)
-  if (apiMatch) return apiMatch[1]!
-  const subscriptionMatch = raw.match(/^(.+)-subscription-/)
-  if (subscriptionMatch) return subscriptionMatch[1]!
-  return EXCLUDED_PROVIDER_FAMILIES.has(raw) ? "" : raw
-}
-
-function modelKey(model: ModelKey) {
-  return `${normalizeProviderFamily(model.providerID)}:${model.modelID ?? ""}`
-}
-
-function normalizeModel(model: ModelKey): ModelKey {
-  const providerID = normalizeProviderFamily(model.providerID) || String(model.providerID ?? "")
-  return {
-    providerID,
-    modelID: String(model.modelID ?? ""),
-  }
-}
 
 function normalizeUsers(input: User[]) {
   return input.map((item) => {
@@ -79,54 +39,6 @@ function normalizeUsers(input: User[]) {
     }
     return item
   })
-}
-
-function sameUsers(a: User[], b: User[]) {
-  if (a.length !== b.length) return false
-  return a.every((item, index) => {
-    const other = b[index]
-    return (
-      item?.providerID === other?.providerID &&
-      item?.modelID === other?.modelID &&
-      item?.favorite === other?.favorite &&
-      item?.visibility === other?.visibility
-    )
-  })
-}
-
-function buildUsersFromRemote(prefs: {
-  favorite: Array<{ providerId: string; modelID: string }>
-  hidden: Array<{ providerId: string; modelID: string }>
-}) {
-  const favoriteSet = new Set(
-    prefs.favorite.map((item) => `${normalizeProviderFamily(item.providerId)}:${item.modelID}`),
-  )
-  const hiddenSet = new Set(prefs.hidden.map((item) => `${normalizeProviderFamily(item.providerId)}:${item.modelID}`))
-  const merged = new Map<string, User>()
-
-  for (const key of hiddenSet) {
-    const [providerID, modelID] = key.split(":")
-    if (!providerID || !modelID) continue
-    merged.set(key, {
-      providerID,
-      modelID,
-      visibility: "hide",
-      favorite: false,
-    })
-  }
-
-  for (const key of favoriteSet) {
-    const [providerID, modelID] = key.split(":")
-    if (!providerID || !modelID) continue
-    merged.set(key, {
-      providerID,
-      modelID,
-      visibility: "show",
-      favorite: true,
-    })
-  }
-
-  return normalizeUsers(Array.from(merged.values()))
 }
 
 export const { use: useModels, provider: ModelsProvider } = createSimpleContext({
@@ -176,7 +88,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
 
     const replaceUsers = (next: User[]) => {
       const normalized = normalizeUsers(next)
-      if (sameUsers(store.user, normalized)) return
+      if (sameUserPreferences(store.user, normalized)) return
       setStore("user", normalized)
     }
 
@@ -187,9 +99,9 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
 
     const update = (model: ModelKey, partial: Partial<Omit<User, "providerID" | "modelID">>) => {
       mutateUsers((current) => {
-        const normalized = normalizeModel(model)
-        const key = modelKey(normalized)
-        const index = current.findIndex((x) => modelKey(x) === key)
+        const normalized = normalizePreferenceModel(model)
+        const key = preferenceModelKey(normalized)
+        const index = current.findIndex((x) => preferenceModelKey(x) === key)
         if (index >= 0) {
           const next = current.slice()
           next[index] = { ...next[index], ...partial }
@@ -206,8 +118,8 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     }
 
     const visible = (model: ModelKey) => {
-      const key = modelKey(model)
-      const user = store.user.find((x) => modelKey(x) === key)
+      const key = preferenceModelKey(model)
+      const user = store.user.find((x) => preferenceModelKey(x) === key)
       return user?.favorite ?? false
     }
 
@@ -221,8 +133,8 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     }
 
     const isFavorite = (model: ModelKey) => {
-      const key = modelKey(model)
-      const user = store.user.find((x) => modelKey(x) === key)
+      const key = preferenceModelKey(model)
+      const user = store.user.find((x) => preferenceModelKey(x) === key)
       return user?.favorite ?? false
     }
 
@@ -231,8 +143,8 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     )
 
     const isEnabled = (model: ModelKey) => {
-      const key = modelKey(model)
-      const user = store.user.find((x) => modelKey(x) === key)
+      const key = preferenceModelKey(model)
+      const user = store.user.find((x) => preferenceModelKey(x) === key)
       return user?.visibility === "show"
     }
 
@@ -266,7 +178,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       remoteSync.hiddenProviders = prefs.hiddenProviders
       if (readVersion !== remoteSync.readVersion) return
       if (remoteSync.mutationVersion > readVersion) return
-      replaceUsers(buildUsersFromRemote(prefs))
+      replaceUsers(buildUsersFromRemotePreferences(prefs))
     }
 
     const writeRemotePreferences = async (writeVersion: number, snapshot: User[], hiddenProviders: string[]) => {
@@ -274,7 +186,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       const hidden = new Map<string, { providerId: string; modelID: string }>()
 
       for (const item of snapshot) {
-        const providerId = normalizeProviderFamily(item.providerID)
+        const providerId = normalizePreferenceModel(item).providerID
         const key = `${providerId}:${item.modelID}`
         if (item.favorite) favorite.set(key, { providerId, modelID: item.modelID })
         if (item.visibility === "hide") hidden.set(key, { providerId, modelID: item.modelID })
