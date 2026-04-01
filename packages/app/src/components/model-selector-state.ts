@@ -103,6 +103,30 @@ export function normalizeProviderKey(id: string): string | undefined {
   return undefined
 }
 
+function normalizeDisabledProviderKey(id: string): string | undefined {
+  if (!id) return undefined
+  const raw = id.trim().toLowerCase()
+  if (!raw) return undefined
+
+  if (raw.includes(":")) return normalizeDisabledProviderKey(raw.split(":")[0]!)
+  if (EXCLUDED_PROVIDER_FAMILIES.has(raw)) return undefined
+
+  for (const provider of KNOWN_PROVIDER_FAMILIES) {
+    if (raw === provider || raw.startsWith(`${provider}-`)) return provider
+  }
+
+  const apiMatch = raw.match(/^(.+)-api-/)
+  if (apiMatch) return apiMatch[1]
+
+  const subscriptionMatch = raw.match(/^(.+)-subscription-/)
+  if (subscriptionMatch) return subscriptionMatch[1]
+
+  if (!raw.includes("-")) return EXCLUDED_PROVIDER_FAMILIES.has(raw) ? undefined : raw
+  if (!raw.includes("-api-") && !raw.includes("-subscription-"))
+    return EXCLUDED_PROVIDER_FAMILIES.has(raw) ? undefined : raw
+  return undefined
+}
+
 /** @deprecated Use normalizeProviderKey instead */
 export const normalizeProviderFamily = normalizeProviderKey
 
@@ -143,7 +167,7 @@ export function buildProviderRows(input: {
   }
 
   const disabledFamilies = new Set(
-    (input.disabledProviders ?? []).map((id) => normalizeProviderKey(id)).filter((id): id is string => !!id),
+    (input.disabledProviders ?? []).map((id) => normalizeDisabledProviderKey(id)).filter((id): id is string => !!id),
   )
 
   for (const providerKey of providerUniverse) {

@@ -82,6 +82,8 @@ const cli = yargs(hideBin(process.argv))
       dev: Installation.isLocal(),
       level: (() => {
         if (opts.logLevel) return opts.logLevel as Log.Level
+        const envLevel = process.env.OPENCODE_LOG_LEVEL?.toUpperCase()
+        if (envLevel && Log.Level.safeParse(envLevel).success) return envLevel as Log.Level
         if (Installation.isLocal()) return "INFO"
         return "INFO"
       })(),

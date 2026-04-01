@@ -27,6 +27,15 @@ describe("model selector state", () => {
     expect(rows.find((row) => row.providerKey === "google-api")?.enabled).toBe(false)
   })
 
+  test("legacy anthropic disabled provider does not disable claude-cli row", () => {
+    const rows = buildProviderRows({
+      providers: [{ id: "claude-cli", name: "Claude CLI" }],
+      disabledProviders: ["anthropic"],
+    })
+
+    expect(rows.find((row) => row.providerKey === "claude-cli")?.enabled).toBe(true)
+  })
+
   test("account rows keep stable label ordering and include cooldown reason", () => {
     const now = 1_000
     const rows = buildAccountRows({

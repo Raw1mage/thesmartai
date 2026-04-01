@@ -103,6 +103,7 @@ async function exchange(code: string, verifier: string) {
 
 export async function AnthropicAuthPlugin(input: PluginInput): Promise<Hooks> {
   const { client } = input
+  log.info("CHECKPOINT: AnthropicAuthPlugin initialized — using TypeScript anthropic.ts, NOT C library")
   return {
     // NOTE: session_id header removed - it triggers Anthropic's non-Claude-Code detection
     // for subscription auth. OpenCode session tracking handled internally.
@@ -130,6 +131,7 @@ export async function AnthropicAuthPlugin(input: PluginInput): Promise<Hooks> {
           isClaudeCode: true,
           fetchId, // This gets included in cache key calculation
           fetch: async (reqInput: RequestInfo | URL, init?: RequestInit) => {
+            log.info("CHECKPOINT: anthropic.ts fetch() called — TypeScript implementation is active")
             // DEBUG: Log INCOMING request from SDK (before any modifications)
             const sdkHeaders = new Headers(init?.headers)
             const sdkUrl = toUrlString(reqInput)
@@ -490,6 +492,27 @@ export async function AnthropicAuthPlugin(input: PluginInput): Promise<Hooks> {
                   remainder = text.slice(lastNewline + 1)
                   // Remove mcp_ prefix from tool names in complete lines only
                   const transformed = complete.replace(/"name"\s*:\s*"mcp_([^"]+)"/g, '"name": "$1"')
+
+                  // Extract cache usage from SSE message_start / message_delta events
+                  for (const line of complete.split("\n")) {
+                    if (!line.startsWith("data: ")) continue
+                    const raw = line.slice(6)
+                    if (!raw.includes('"message_start"') && !raw.includes('"message_delta"')) continue
+                    try {
+                      const evt = JSON.parse(raw)
+                      const usage = evt.type === "message_start" ? evt.message?.usage : evt.usage
+                      if (usage) {
+                        log.info("CACHE USAGE", {
+                          type: evt.type,
+                          input_tokens: usage.input_tokens,
+                          output_tokens: usage.output_tokens,
+                          cache_creation_input_tokens: usage.cache_creation_input_tokens,
+                          cache_read_input_tokens: usage.cache_read_input_tokens,
+                        })
+                      }
+                    } catch {}
+                  }
+
                   controller.enqueue(encoder.encode(transformed))
                 },
               })
