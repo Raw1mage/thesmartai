@@ -178,6 +178,7 @@
    - **Session Event Log**：每個 session 結束前（或 commit 前），建立/更新 `docs/events/event_<YYYYMMDD>_<topic>.md`，至少包含 Scope（引用 tasks.md item 編號）、Key Decisions、Issues Found、Verification、Remaining。
    - **Commit Gate**：commit 前必須確認 (1) `/plans/.../tasks.md` checkbox 已同步 (2) event log 已建立/更新 (3) 架構變更已同步 `specs/architecture.md`。禁止在 tasks.md 和 event log 未更新的情況下 commit code changes。
    - **Promotion is manual only**：`/plans/<YYYYMMDD>_<slug>/` → `/specs/<feature>/` 的升格只允許在 execution 完成、必要 commit 完成、必要 merge 完成之後，且僅能於使用者明確要求時手動執行；不得自動搬移、不得預設升格、不得使用模糊或 silent fallback wording 暗示稍後會自動落入 `/specs/`。
+   - **Beta/Test Branch Cleanup Rule**：`beta/*` 與 `test/*` 分支屬一次性執行面。測試完成且 merge/fetch-back 回主線後，必須立即刪除對應 branch 與 disposable worktree；未刪除不得宣告 workflow 完成。禁止長期保留已完成任務的 beta/test 分支，避免後續被誤當 authoritative mainline 而造成 branch pointer drift。
 
 9. **Web Runtime 單一啟動入口（Fail-Fast）**
 
@@ -209,13 +210,13 @@
 
 **必須掌握的既有 Infrastructure（不得重複實作）：**
 
-| Infrastructure | 位置 | 用途 |
-|---|---|---|
-| **Bus** | `packages/opencode/src/bus/` | 跨模組事件主幹，所有非同步協調的標準路徑 |
-| **rotation3d** | `packages/opencode/src/model/` | 多模型輪替、負載平衡、quota 管理 |
-| **SharedContext** | `packages/opencode/src/session/shared-context.ts` | Per-session 知識空間：subagent 注入、child→parent relay |
-| **SessionActiveChild** | `packages/opencode/src/tool/task.ts` | Subagent 生命週期狀態機 |
-| **ProcessSupervisor** | `packages/opencode/src/process/supervisor.ts` | Logical task process lifecycle |
-| **Instance / AsyncLocalStorage** | `packages/opencode/src/project/instance.ts` | Daemon 模式下 per-request context 傳遞 |
+| Infrastructure                   | 位置                                              | 用途                                                    |
+| -------------------------------- | ------------------------------------------------- | ------------------------------------------------------- |
+| **Bus**                          | `packages/opencode/src/bus/`                      | 跨模組事件主幹，所有非同步協調的標準路徑                |
+| **rotation3d**                   | `packages/opencode/src/model/`                    | 多模型輪替、負載平衡、quota 管理                        |
+| **SharedContext**                | `packages/opencode/src/session/shared-context.ts` | Per-session 知識空間：subagent 注入、child→parent relay |
+| **SessionActiveChild**           | `packages/opencode/src/tool/task.ts`              | Subagent 生命週期狀態機                                 |
+| **ProcessSupervisor**            | `packages/opencode/src/process/supervisor.ts`     | Logical task process lifecycle                          |
+| **Instance / AsyncLocalStorage** | `packages/opencode/src/project/instance.ts`       | Daemon 模式下 per-request context 傳遞                  |
 
 Race condition 修復優先順序：**讓讀取方自清（自防禦）> 改寫事件順序 > 引入新旗標**。

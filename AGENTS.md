@@ -79,6 +79,7 @@
 2. **避免僅改 Global**：`~/.config/opencode/*` 屬本機環境，不作為 repo 交付依據。
 3. **變更留痕**：記錄於 `docs/events/`。
 4. **Session 啟動必讀 Architecture**：`specs/architecture.md`。
+5. **Beta/Test 分支用後即刪**：`beta/*`、`test/*` 分支與其 worktree 僅作一次性實作/驗證面。測試完成且 merge/fetch-back 回 `cms` 後，必須立即刪除；禁止長留已完成任務的 beta/test 分支，避免 stale branch 在後續被誤認為主線或被 branch-pointer 操作拉回。
 
 ### Release 前檢查清單
 
@@ -105,15 +106,15 @@
 
 ### 已建立的 Infrastructure
 
-| Infrastructure | 位置 | 用途 |
-|---|---|---|
-| **Bus** | `src/bus/` | 跨模組事件發佈/訂閱 |
-| **rotation3d** | `src/model/` | 多模型輪替、負載平衡、quota |
-| **SharedContext** | `src/session/shared-context.ts` | Per-session 知識空間 |
-| **SessionActiveChild** | `src/tool/task.ts` | Subagent 生命週期狀態機 |
-| **ProcessSupervisor** | `src/process/supervisor.ts` | Logical task process lifecycle |
-| **Instance** | `src/project/instance.ts` | Daemon per-request context |
-| **compaction** | `src/session/compaction.ts` | Context overflow + idle compaction |
+| Infrastructure         | 位置                            | 用途                               |
+| ---------------------- | ------------------------------- | ---------------------------------- |
+| **Bus**                | `src/bus/`                      | 跨模組事件發佈/訂閱                |
+| **rotation3d**         | `src/model/`                    | 多模型輪替、負載平衡、quota        |
+| **SharedContext**      | `src/session/shared-context.ts` | Per-session 知識空間               |
+| **SessionActiveChild** | `src/tool/task.ts`              | Subagent 生命週期狀態機            |
+| **ProcessSupervisor**  | `src/process/supervisor.ts`     | Logical task process lifecycle     |
+| **Instance**           | `src/project/instance.ts`       | Daemon per-request context         |
+| **compaction**         | `src/session/compaction.ts`     | Context overflow + idle compaction |
 
 ### Race Condition 審查義務
 
