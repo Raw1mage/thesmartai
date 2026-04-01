@@ -58,17 +58,17 @@ export const Instance = {
   },
   get project() {
     try {
-      return context.use().project
-    } catch {
-      return {
-        id: "global",
-        name: "Global",
-        worktree: process.cwd(),
-        vcs: undefined,
-        sandboxes: [],
-        time: { created: 0, updated: 0 },
-      } as Project.Info
-    }
+      const project = context.use().project
+      if (project) return project
+    } catch {}
+    return {
+      id: "global",
+      name: "Global",
+      worktree: process.cwd(),
+      vcs: undefined,
+      sandboxes: [],
+      time: { created: 0, updated: 0 },
+    } as Project.Info
   },
   /**
    * Check if a path is within the project boundary.

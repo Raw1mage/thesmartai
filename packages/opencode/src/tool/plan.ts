@@ -226,6 +226,7 @@ const SEQUENCE_TEMPLATE = JSON.stringify(
 async function loadPlannerTemplate(relativePath: string, fallback: string) {
   const candidates = [
     process.env.OPENCODE_PLANNER_TEMPLATE_DIR || "/etc/opencode/plans",
+    path.join(Instance.worktree, "templates", "specs"),
     path.join(Instance.worktree, "templates", "plans"),
   ]
 

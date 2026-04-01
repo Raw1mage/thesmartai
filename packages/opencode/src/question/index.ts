@@ -79,7 +79,7 @@ export namespace Question {
     ),
   }
 
-  const state = Instance.state(async () => {
+  async function createState() {
     const pending: Record<
       string,
       {
@@ -92,7 +92,20 @@ export namespace Question {
     return {
       pending,
     }
-  })
+  }
+
+  let stateGetter: (() => Promise<Awaited<ReturnType<typeof createState>>>) | undefined
+  let fallbackState: Promise<Awaited<ReturnType<typeof createState>>> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export async function ask(input: {
     sessionID: string

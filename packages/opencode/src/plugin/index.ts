@@ -34,7 +34,7 @@ export namespace Plugin {
   }
 
   // Cached state
-  const state = Instance.state(async (): Promise<{ hooks: Hooks[]; input: PluginInput }> => {
+  async function createState(): Promise<{ hooks: Hooks[]; input: PluginInput }> {
     const client = createOpencodeClient({
       baseUrl: "http://localhost:1080",
       fetch: ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -128,7 +128,20 @@ export namespace Plugin {
       hooks,
       input,
     }
-  })
+  }
+
+  let stateGetter: (() => Promise<Awaited<ReturnType<typeof createState>>>) | undefined
+  let fallbackState: Promise<Awaited<ReturnType<typeof createState>>> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export async function trigger<
     Name extends Exclude<keyof Required<Hooks>, "auth" | "event" | "tool">,

@@ -50,37 +50,49 @@ export namespace Permission {
     ),
   }
 
-  const state = Instance.state(
-    () => {
-      const pending: {
-        [sessionID: string]: {
-          [permissionID: string]: {
-            info: Info
-            resolve: () => void
-            reject: (e: any) => void
-          }
-        }
-      } = {}
-
-      const approved: {
-        [sessionID: string]: {
-          [permissionID: string]: boolean
-        }
-      } = {}
-
-      return {
-        pending,
-        approved,
-      }
-    },
-    async (state) => {
-      for (const pending of Object.values(state.pending)) {
-        for (const item of Object.values(pending)) {
-          item.reject(new RejectedError(item.info.sessionID, item.info.id, item.info.callID, item.info.metadata))
+  function createState() {
+    const pending: {
+      [sessionID: string]: {
+        [permissionID: string]: {
+          info: Info
+          resolve: () => void
+          reject: (e: any) => void
         }
       }
-    },
-  )
+    } = {}
+
+    const approved: {
+      [sessionID: string]: {
+        [permissionID: string]: boolean
+      }
+    } = {}
+
+    return {
+      pending,
+      approved,
+    }
+  }
+
+  async function cleanupState(state: ReturnType<typeof createState>) {
+    for (const pending of Object.values(state.pending)) {
+      for (const item of Object.values(pending)) {
+        item.reject(new RejectedError(item.info.sessionID, item.info.id, item.info.callID, item.info.metadata))
+      }
+    }
+  }
+
+  let stateGetter: (() => ReturnType<typeof createState>) | undefined
+  let fallbackState: ReturnType<typeof createState> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState, cleanupState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export function pending() {
     return state().pending

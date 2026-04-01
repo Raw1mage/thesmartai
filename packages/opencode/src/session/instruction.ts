@@ -14,11 +14,24 @@ import { Flag } from "@/flag/flag"
 //          fallback, sub-directory resolve() walk-up auto-injection.
 
 export namespace InstructionPrompt {
-  const state = Instance.state(() => {
+  function createState() {
     return {
       systemCache: new Map<string, { value: string[]; at: number }>(),
     }
-  })
+  }
+
+  let stateGetter: (() => ReturnType<typeof createState>) | undefined
+  let fallbackState: ReturnType<typeof createState> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
   const SYSTEM_CACHE_TTL_MS = 10_000
 
   export async function systemPaths() {

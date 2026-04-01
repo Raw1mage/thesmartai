@@ -69,27 +69,33 @@ export namespace Bus {
   // index.ts → debug-writer → bus/index → Instance → bus/index (TDZ)
   type BusState = { subscriptions: SubscriptionRegistry }
   let _state: ((() => BusState) & { reset: () => void }) | undefined
+  let fallbackState: BusState | undefined
+
+  function createState(): BusState {
+    const subscriptions: SubscriptionRegistry = new Map()
+    return { subscriptions }
+  }
+
   function state(): BusState {
     if (!_state) {
-      _state = Instance.state(
-        () => {
-          const subscriptions: SubscriptionRegistry = new Map()
-          return { subscriptions }
-        },
-        async (_entry) => {
-          // Instance disposal event is published via Bus.publish in Instance.dispose(),
-          // before State.dispose runs. No duplicate dispatch needed here.
-        },
-      )
+      if (typeof Instance.state !== "function") {
+        fallbackState ||= createState()
+        return fallbackState
+      }
+      _state = Instance.state(createState, async (_entry) => {
+        // Instance disposal event is published via Bus.publish in Instance.dispose(),
+        // before State.dispose runs. No duplicate dispatch needed here.
+      })
     }
     return _state()
   }
 
   function resolveContext(overrides?: Partial<BusContext>): BusContext {
+    const projectId = overrides?.projectId ?? Instance.project?.id ?? "global"
     return {
       directory: overrides?.directory ?? Instance.directory,
       worktree: overrides?.worktree ?? Instance.worktree,
-      projectId: overrides?.projectId ?? Instance.project.id,
+      projectId,
       ...(overrides?.sessionId !== undefined ? { sessionId: overrides.sessionId } : {}),
     }
   }

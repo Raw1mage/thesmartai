@@ -28,7 +28,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const res = await sdk.client.account.listAll()
       if (!res.data) return undefined
       // SDK returns { providers, families } — use providers (canonical)
-      return (res.data as { providers?: Record<string, any> }).providers
+      return (res.data as { providers?: Record<string, Account.ProviderData> }).providers
     })
     const accountDisplayNames = createMemo(() => {
       const families = accountFamilies()

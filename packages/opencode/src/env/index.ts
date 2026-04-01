@@ -1,11 +1,24 @@
 import { Instance } from "../project/instance"
 
 export namespace Env {
-  const state = Instance.state(() => {
+  function createEnvState() {
     // Create a shallow copy to isolate environment per instance
     // Prevents parallel tests from interfering with each other's env vars
     return { ...process.env } as Record<string, string | undefined>
-  })
+  }
+
+  let stateGetter: (() => Record<string, string | undefined>) | undefined
+  let fallbackState: Record<string, string | undefined> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createEnvState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createEnvState()
+    return fallbackState
+  }
 
   export function get(key: string) {
     const env = state()

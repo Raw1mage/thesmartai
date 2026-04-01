@@ -8,7 +8,7 @@ import { NamedError } from "@opencode-ai/util/error"
 import { Auth } from "@/auth"
 
 export namespace ProviderAuth {
-  const state = Instance.state(async () => {
+  async function createState() {
     const methods = pipe(
       await Plugin.list(),
       filter((x) => x.auth?.provider !== undefined),
@@ -16,7 +16,20 @@ export namespace ProviderAuth {
       fromEntries(),
     )
     return { methods, pending: {} as Record<string, AuthOuathResult> }
-  })
+  }
+
+  let stateGetter: (() => Promise<Awaited<ReturnType<typeof createState>>>) | undefined
+  let fallbackState: Promise<Awaited<ReturnType<typeof createState>>> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export const Method = z
     .object({

@@ -68,7 +68,7 @@ export namespace Command {
     PLAN: "plan",
   } as const
 
-  const state = Instance.state(async () => {
+  async function createState() {
     const cfg = await Config.get()
 
     const result: Record<string, Info> = {
@@ -164,7 +164,20 @@ export namespace Command {
     }
 
     return result
-  })
+  }
+
+  let stateGetter: (() => Promise<Awaited<ReturnType<typeof createState>>>) | undefined
+  let fallbackState: Promise<Awaited<ReturnType<typeof createState>>> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export async function get(name: string) {
     return state().then((x) => x[name])

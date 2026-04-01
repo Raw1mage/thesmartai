@@ -24,7 +24,7 @@ export namespace Format {
     })
   export type Status = z.infer<typeof Status>
 
-  const state = Instance.state(async () => {
+  async function createState() {
     const enabled: Record<string, boolean> = {}
     const cfg = await Config.get()
 
@@ -62,7 +62,20 @@ export namespace Format {
       enabled,
       formatters,
     }
-  })
+  }
+
+  let stateGetter: (() => Promise<Awaited<ReturnType<typeof createState>>>) | undefined
+  let fallbackState: Promise<Awaited<ReturnType<typeof createState>>> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   async function isEnabled(item: Formatter.Info) {
     const s = await state()

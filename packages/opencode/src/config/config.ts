@@ -223,7 +223,7 @@ export namespace Config {
     }
   }
 
-  export const state = Instance.state(async () => {
+  async function createState() {
     const auth = await Auth.all()
 
     // Load remote/well-known config first as the base layer (lowest precedence)
@@ -269,10 +269,12 @@ export namespace Config {
     // @event_2026-02-21_test_baseline_project_config_gate
     const projectConfigEnabled = process.env.NODE_ENV === "test" && !Flag.OPENCODE_DISABLE_PROJECT_CONFIG
 
+    const projectConfigStop = Instance.project.vcs ? Instance.worktree : undefined
+
     // Project config has highest precedence (overrides global and remote)
     if (projectConfigEnabled) {
       for (const file of ["opencode.jsonc", "opencode.json"]) {
-        const found = await Filesystem.findUp(file, Instance.directory, Instance.worktree)
+        const found = await Filesystem.findUp(file, Instance.directory, projectConfigStop)
         for (const resolved of found.toReversed()) {
           result = mergeConfigConcatArrays(result, await loadFile(resolved))
         }
@@ -289,7 +291,7 @@ export namespace Config {
           Filesystem.up({
             targets: [".opencode"],
             start: Instance.directory,
-            stop: Instance.worktree,
+            stop: projectConfigStop,
           }),
         )
       : []
@@ -381,8 +383,9 @@ export namespace Config {
 
     if (!result.username) result.username = os.userInfo().username
 
-    // @event_20260314: removed autoshare→share migration (E2)
-    // Schema field retained to prevent .strict() rejection of existing configs.
+    if (result.share === undefined && result.autoshare === true) {
+      result.share = "auto"
+    }
 
     if (!result.keybinds) result.keybinds = Info.shape.keybinds.parse({})
 
@@ -415,7 +418,20 @@ export namespace Config {
       directories,
       deps,
     }
-  })
+  }
+
+  let stateGetter: (() => Promise<{ config: Info; directories: string[]; deps: Promise<void>[] }>) | undefined
+  let fallbackState: Promise<{ config: Info; directories: string[]; deps: Promise<void>[] }> | undefined
+
+  export function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export async function waitForDependencies() {
     const deps = await state().then((x) => x.deps)

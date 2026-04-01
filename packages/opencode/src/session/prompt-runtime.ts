@@ -17,17 +17,29 @@ export type RuntimeStart = {
   signal: AbortSignal
 }
 
-const state = Instance.state(
-  () => {
-    const data: Record<string, RuntimeEntry> = {}
-    return data
-  },
-  async (current) => {
-    for (const item of Object.values(current)) {
-      item.abort.abort()
-    }
-  },
-)
+function createState() {
+  const data: Record<string, RuntimeEntry> = {}
+  return data
+}
+
+async function cleanupState(current: ReturnType<typeof createState>) {
+  for (const item of Object.values(current)) {
+    item.abort.abort()
+  }
+}
+
+let stateGetter: (() => ReturnType<typeof createState>) | undefined
+let fallbackState: ReturnType<typeof createState> | undefined
+
+function state() {
+  if (typeof Instance.state === "function") {
+    stateGetter ||= Instance.state(createState, cleanupState)
+    return stateGetter()
+  }
+
+  fallbackState ||= createState()
+  return fallbackState
+}
 
 export function assertNotBusy(sessionID: string) {
   const match = state()[sessionID]

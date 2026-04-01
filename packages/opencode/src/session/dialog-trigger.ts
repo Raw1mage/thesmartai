@@ -1,5 +1,6 @@
 import { Session } from "."
 import type { MessageV2 } from "./message-v2"
+import { plannerArtifacts } from "./planner-layout"
 
 export type DialogTriggerName = "plan_enter" | "replan" | "approval"
 
@@ -129,6 +130,8 @@ const APPROVAL_PATTERNS = [
   /准許/,
 ] as const
 
+const BUILD_START_PATTERNS = [/^開始\s*build\b/, /^start\s+build\b/, /^begin\s+build\b/] as const
+
 function normalizePromptText(parts: MessageV2.Part[] | Array<{ type: string; text?: string }>) {
   return parts
     .filter((part): part is { type: string; text: string } => part.type === "text" && typeof part.text === "string")
@@ -171,6 +174,27 @@ function detectApproval(text: string, session: Pick<Session.Info, "workflow" | "
   const workflow = session.workflow ?? Session.defaultWorkflow(session.time.updated)
   if (workflow.stopReason !== "approval_needed") return false
   return APPROVAL_PATTERNS.some((pattern) => pattern.test(text))
+}
+
+function detectBuildStart(text: string) {
+  if (!text) return false
+  return BUILD_START_PATTERNS.some((pattern) => pattern.test(text))
+}
+
+async function hasPlannerArtifacts(session: Pick<Session.Info, "slug" | "title" | "time">) {
+  const artifacts = plannerArtifacts(session)
+  const required = [
+    artifacts.implementationSpec,
+    artifacts.proposal,
+    artifacts.spec,
+    artifacts.design,
+    artifacts.tasks,
+    artifacts.handoff,
+  ]
+  for (const file of required) {
+    if (!(await Bun.file(file).exists())) return false
+  }
+  return true
 }
 
 export function resolveDialogTrigger(input: {
@@ -246,11 +270,15 @@ export async function resolveDialogTriggerPolicy(input: {
   agent?: string
   client: string
   parts: Array<{ type: string; text?: string }>
-  session: Pick<Session.Info, "mission" | "workflow" | "time">
+  session: Pick<Session.Info, "mission" | "workflow" | "time" | "slug" | "title">
   committedPlannerIntent?: PlannerIntent
 }): Promise<DialogTriggerPolicy> {
+  const decision = resolveDialogTrigger(input)
+  const text = normalizePromptText(input.parts)
+  const autoPlanExitHandoff =
+    decision.trigger === "none" && detectBuildStart(text) && (await hasPlannerArtifacts(input.session))
   return {
-    decision: resolveDialogTrigger(input),
-    autoPlanExitHandoff: false,
+    decision,
+    autoPlanExitHandoff,
   }
 }

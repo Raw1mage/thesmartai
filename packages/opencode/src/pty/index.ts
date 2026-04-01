@@ -167,29 +167,43 @@ export namespace Pty {
     return session.owner === owner
   }
 
-  const state = Instance.state(
-    () => new Map<string, ActiveSession>(),
-    async (sessions) => {
-      for (const session of sessions.values()) {
+  function createState() {
+    return new Map<string, ActiveSession>()
+  }
+
+  async function cleanupState(sessions: ReturnType<typeof createState>) {
+    for (const session of sessions.values()) {
+      try {
+        session.process.kill()
+      } catch (error) {
+        debugCheckpoint("pty", "failed to kill session process during cleanup", {
+          sessionID: session.info.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+      for (const ws of session.subscribers.keys()) {
         try {
-          session.process.kill()
-        } catch (error) {
-          debugCheckpoint("pty", "failed to kill session process during cleanup", {
-            sessionID: session.info.id,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        }
-        for (const ws of session.subscribers.keys()) {
-          try {
-            ws.close()
-          } catch {
-            // ignore
-          }
+          ws.close()
+        } catch {
+          // ignore
         }
       }
-      sessions.clear()
-    },
-  )
+    }
+    sessions.clear()
+  }
+
+  let stateGetter: (() => ReturnType<typeof createState>) | undefined
+  let fallbackState: ReturnType<typeof createState> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState, cleanupState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export function list(owner?: string) {
     return Array.from(state().values())

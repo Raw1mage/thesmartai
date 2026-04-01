@@ -7,7 +7,9 @@ import { Schedule } from "../cron/schedule"
 const CronScheduleParam = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("cron"),
-    expr: z.string().describe("5-field crontab expression (min hour dom mon dow). Example: '*/30 * * * *' for every 30 minutes"),
+    expr: z
+      .string()
+      .describe("5-field crontab expression (min hour dom mon dow). Example: '*/30 * * * *' for every 30 minutes"),
     tz: z.string().optional().describe("IANA timezone, e.g. 'Asia/Taipei'. Defaults to system timezone"),
   }),
   z.object({
@@ -29,7 +31,12 @@ After creating the task, tell the user they can manage it from the Tasks panel i
   parameters: z.object({
     name: z.string().min(1).describe("Short descriptive name for the task, e.g. 'Check stock alerts'"),
     description: z.string().optional().describe("Optional longer description of what this task does"),
-    prompt: z.string().min(1).describe("The prompt that will be sent to the AI on each scheduled run. Be specific about what the AI should do and what tools/MCP servers it should use."),
+    prompt: z
+      .string()
+      .min(1)
+      .describe(
+        "The prompt that will be sent to the AI on each scheduled run. Be specific about what the AI should do and what tools/MCP servers it should use.",
+      ),
     schedule: CronScheduleParam.describe("When to run. Prefer 'cron' kind with 5-field crontab expressions."),
     enabled: z.boolean().default(true).describe("Whether the task starts enabled immediately"),
   }),
@@ -65,7 +72,9 @@ After creating the task, tell the user they can manage it from the Tasks panel i
         `- **Prompt**: ${params.prompt.slice(0, 200)}${params.prompt.length > 200 ? "..." : ""}`,
         ``,
         `The task is now visible in the Scheduled Tasks panel (sidebar checklist icon).`,
-      ].filter(Boolean).join("\n"),
+      ]
+        .filter(Boolean)
+        .join("\n"),
       metadata: { jobId: job.id },
     }
   },
@@ -88,11 +97,22 @@ export const CronListTool = Tool.define("cron_list", {
     }
 
     const lines = jobs.map((job) => {
-      const status = !job.enabled ? "disabled" : job.state.lastRunStatus === "error" ? "error" : job.state.lastRunStatus === "ok" ? "ok" : "pending"
+      const status = !job.enabled
+        ? "disabled"
+        : job.state.lastRunStatus === "error"
+          ? "error"
+          : job.state.lastRunStatus === "ok"
+            ? "ok"
+            : "pending"
       const nextRun = job.state.nextRunAtMs ? new Date(job.state.nextRunAtMs).toLocaleString() : "—"
       const lastRun = job.state.lastRunAtMs ? new Date(job.state.lastRunAtMs).toLocaleString() : "never"
       const errors = job.state.consecutiveErrors ?? 0
-      const prompt = job.payload.kind === "agentTurn" ? job.payload.message : job.payload.kind === "systemEvent" ? job.payload.text : ""
+      const prompt =
+        job.payload.kind === "agentTurn"
+          ? job.payload.message
+          : job.payload.kind === "systemEvent"
+            ? job.payload.text
+            : ""
 
       return [
         `### ${job.name} (${status})`,
@@ -103,7 +123,9 @@ export const CronListTool = Tool.define("cron_list", {
         `- **Last run**: ${lastRun}`,
         errors > 0 ? `- **Consecutive errors**: ${errors}` : null,
         `- **Prompt**: ${prompt.slice(0, 100)}${prompt.length > 100 ? "..." : ""}`,
-      ].filter(Boolean).join("\n")
+      ]
+        .filter(Boolean)
+        .join("\n")
     })
 
     return {
@@ -121,7 +143,7 @@ export const CronDeleteTool = Tool.define("cron_delete", {
   parameters: z.object({
     id: z.string().describe("The task ID to delete (UUID format)"),
   }),
-  async execute(params) {
+  async execute(params): Promise<{ title: string; output: string; metadata: { found: boolean; name?: string } }> {
     const job = await CronStore.get(params.id)
     if (!job) {
       return {

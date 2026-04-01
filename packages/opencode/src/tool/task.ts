@@ -201,10 +201,23 @@ export const SessionActiveChildEvent = BusEvent.define("session.active-child.upd
 
 export type SessionActiveChildState = NonNullable<z.infer<typeof SessionActiveChildPayloadSchema>["activeChild"]>
 
-const activeChildState = Instance.state(() => {
+function createActiveChildState() {
   const data: Record<string, SessionActiveChildState | undefined> = {}
   return data
-})
+}
+
+let activeChildStateGetter: (() => ReturnType<typeof createActiveChildState>) | undefined
+let activeChildFallbackState: ReturnType<typeof createActiveChildState> | undefined
+
+function activeChildState() {
+  if (typeof Instance.state === "function") {
+    activeChildStateGetter ||= Instance.state(createActiveChildState)
+    return activeChildStateGetter()
+  }
+
+  activeChildFallbackState ||= createActiveChildState()
+  return activeChildFallbackState
+}
 
 export namespace SessionActiveChild {
   export function get(parentSessionID: string) {
@@ -554,9 +567,16 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
           for (const leftover of remaining.split("\n")) {
             if (!leftover.startsWith(WORKER_PREFIX)) continue
             let fMsg: any
-            try { fMsg = JSON.parse(leftover.slice(WORKER_PREFIX.length)) } catch { continue }
+            try {
+              fMsg = JSON.parse(leftover.slice(WORKER_PREFIX.length))
+            } catch {
+              continue
+            }
             if (fMsg?.type === "done" && worker.current?.id === fMsg.id) {
-              log.info("worker done recovered from unflushed buffer", { workerID, sessionID: worker.current?.sessionID })
+              log.info("worker done recovered from unflushed buffer", {
+                workerID,
+                sessionID: worker.current?.sessionID,
+              })
               beacon.hit("worker.done")
               worker.lastPhase = "done"
               const req = worker.current
@@ -565,10 +585,43 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
               scheduleIdleReap(worker)
               if (!req) continue
               if (fMsg.ok) {
-                req.resolve({ workerID: worker.id, requestID: req.id, sessionID: req.sessionID, createdAt: req.createdAt, dispatchedAt: req.dispatchedAt, firstEventAt: req.firstEventAt, lastEventAt: req.lastEventAt, eventCount: req.eventCount, doneAt: Date.now() })
-                Bus.publish(TaskWorkerEvent.Done, { workerID: worker.id, sessionID: req.sessionID, parentSessionID: req.parentSessionID, parentMessageID: req.parentMessageID, toolCallID: req.toolCallID, linkedTodoID: req.linkedTodoID }, { directory: capturedDirectory }).catch((err) => log.error("bus publish Done failed (flush)", { workerID, error: String(err) }))
+                req.resolve({
+                  workerID: worker.id,
+                  requestID: req.id,
+                  sessionID: req.sessionID,
+                  createdAt: req.createdAt,
+                  dispatchedAt: req.dispatchedAt,
+                  firstEventAt: req.firstEventAt,
+                  lastEventAt: req.lastEventAt,
+                  eventCount: req.eventCount,
+                  doneAt: Date.now(),
+                })
+                Bus.publish(
+                  TaskWorkerEvent.Done,
+                  {
+                    workerID: worker.id,
+                    sessionID: req.sessionID,
+                    parentSessionID: req.parentSessionID,
+                    parentMessageID: req.parentMessageID,
+                    toolCallID: req.toolCallID,
+                    linkedTodoID: req.linkedTodoID,
+                  },
+                  { directory: capturedDirectory },
+                ).catch((err) => log.error("bus publish Done failed (flush)", { workerID, error: String(err) }))
               } else {
-                Bus.publish(TaskWorkerEvent.Failed, { workerID: worker.id, sessionID: req.sessionID, parentSessionID: req.parentSessionID, parentMessageID: req.parentMessageID, toolCallID: req.toolCallID, linkedTodoID: req.linkedTodoID, error: fMsg.error || "worker run failed" }, { directory: capturedDirectory }).catch((err) => log.error("bus publish Failed failed (flush)", { workerID, error: String(err) }))
+                Bus.publish(
+                  TaskWorkerEvent.Failed,
+                  {
+                    workerID: worker.id,
+                    sessionID: req.sessionID,
+                    parentSessionID: req.parentSessionID,
+                    parentMessageID: req.parentMessageID,
+                    toolCallID: req.toolCallID,
+                    linkedTodoID: req.linkedTodoID,
+                    error: fMsg.error || "worker run failed",
+                  },
+                  { directory: capturedDirectory },
+                ).catch((err) => log.error("bus publish Failed failed (flush)", { workerID, error: String(err) }))
                 req.reject(new Error(fMsg.error || "worker run failed"))
               }
               void ensureStandbyWorker(config)
@@ -656,26 +709,49 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
               eventCount: req.eventCount,
               doneAt: Date.now(),
             })
-            log.info("publishing TaskWorkerEvent.Done", { workerID: worker.id, sessionID: req.sessionID, parentSessionID: req.parentSessionID, toolCallID: req.toolCallID })
-            Bus.publish(TaskWorkerEvent.Done, {
+            log.info("publishing TaskWorkerEvent.Done", {
               workerID: worker.id,
               sessionID: req.sessionID,
               parentSessionID: req.parentSessionID,
-              parentMessageID: req.parentMessageID,
               toolCallID: req.toolCallID,
-              linkedTodoID: req.linkedTodoID,
-            }, { directory: capturedDirectory }).catch((err) => log.error("bus publish TaskWorkerEvent.Done failed", { workerID: worker.id, error: String(err) }))
+            })
+            Bus.publish(
+              TaskWorkerEvent.Done,
+              {
+                workerID: worker.id,
+                sessionID: req.sessionID,
+                parentSessionID: req.parentSessionID,
+                parentMessageID: req.parentMessageID,
+                toolCallID: req.toolCallID,
+                linkedTodoID: req.linkedTodoID,
+              },
+              { directory: capturedDirectory },
+            ).catch((err) =>
+              log.error("bus publish TaskWorkerEvent.Done failed", { workerID: worker.id, error: String(err) }),
+            )
           } else {
-            log.info("publishing TaskWorkerEvent.Failed", { workerID: worker.id, sessionID: req.sessionID, parentSessionID: req.parentSessionID, toolCallID: req.toolCallID, error: msg.error })
-            Bus.publish(TaskWorkerEvent.Failed, {
+            log.info("publishing TaskWorkerEvent.Failed", {
               workerID: worker.id,
               sessionID: req.sessionID,
               parentSessionID: req.parentSessionID,
-              parentMessageID: req.parentMessageID,
               toolCallID: req.toolCallID,
-              linkedTodoID: req.linkedTodoID,
-              error: msg.error || "worker run failed",
-            }, { directory: capturedDirectory }).catch((err) => log.error("bus publish TaskWorkerEvent.Failed failed", { workerID: worker.id, error: String(err) }))
+              error: msg.error,
+            })
+            Bus.publish(
+              TaskWorkerEvent.Failed,
+              {
+                workerID: worker.id,
+                sessionID: req.sessionID,
+                parentSessionID: req.parentSessionID,
+                parentMessageID: req.parentMessageID,
+                toolCallID: req.toolCallID,
+                linkedTodoID: req.linkedTodoID,
+                error: msg.error || "worker run failed",
+              },
+              { directory: capturedDirectory },
+            ).catch((err) =>
+              log.error("bus publish TaskWorkerEvent.Failed failed", { workerID: worker.id, error: String(err) }),
+            )
             req.reject(new Error(msg.error || "worker run failed"))
           }
           void ensureStandbyWorker(config)
@@ -690,15 +766,24 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
           worker.busy = false
           scheduleIdleReap(worker)
           if (!req) continue
-          Bus.publish(TaskWorkerEvent.Failed, {
-            workerID: worker.id,
-            sessionID: req.sessionID,
-            parentSessionID: req.parentSessionID,
-            parentMessageID: req.parentMessageID,
-            toolCallID: req.toolCallID,
-            linkedTodoID: req.linkedTodoID,
-            error: "worker run canceled",
-          }, { directory: capturedDirectory }).catch((err) => log.error("bus publish TaskWorkerEvent.Failed failed (canceled)", { workerID: worker.id, error: String(err) }))
+          Bus.publish(
+            TaskWorkerEvent.Failed,
+            {
+              workerID: worker.id,
+              sessionID: req.sessionID,
+              parentSessionID: req.parentSessionID,
+              parentMessageID: req.parentMessageID,
+              toolCallID: req.toolCallID,
+              linkedTodoID: req.linkedTodoID,
+              error: "worker run canceled",
+            },
+            { directory: capturedDirectory },
+          ).catch((err) =>
+            log.error("bus publish TaskWorkerEvent.Failed failed (canceled)", {
+              workerID: worker.id,
+              error: String(err),
+            }),
+          )
           req.reject(new Error("worker run canceled"))
           void ensureStandbyWorker(config)
           continue
@@ -713,15 +798,24 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
             worker.current = undefined
             worker.busy = false
             scheduleIdleReap(worker)
-            Bus.publish(TaskWorkerEvent.Failed, {
-              workerID: worker.id,
-              sessionID: req.sessionID,
-              parentSessionID: req.parentSessionID,
-              parentMessageID: req.parentMessageID,
-              toolCallID: req.toolCallID,
-              linkedTodoID: req.linkedTodoID,
-              error: msg.error || "worker error",
-            }, { directory: capturedDirectory }).catch((err) => log.error("bus publish TaskWorkerEvent.Failed failed (error msg)", { workerID: worker.id, error: String(err) }))
+            Bus.publish(
+              TaskWorkerEvent.Failed,
+              {
+                workerID: worker.id,
+                sessionID: req.sessionID,
+                parentSessionID: req.parentSessionID,
+                parentMessageID: req.parentMessageID,
+                toolCallID: req.toolCallID,
+                linkedTodoID: req.linkedTodoID,
+                error: msg.error || "worker error",
+              },
+              { directory: capturedDirectory },
+            ).catch((err) =>
+              log.error("bus publish TaskWorkerEvent.Failed failed (error msg)", {
+                workerID: worker.id,
+                error: String(err),
+              }),
+            )
             req.reject(new Error(msg.error || "worker error"))
             void ensureStandbyWorker(config)
           }
@@ -752,16 +846,27 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
     }
     debugCheckpoint("task.worker", "worker_exit_unexpected", diagnostics)
     if (req) {
-      log.info("worker exit with pending request, publishing TaskWorkerEvent.Failed", { workerID: worker.id, sessionID: req.sessionID, parentSessionID: req.parentSessionID, exitCode })
-      Bus.publish(TaskWorkerEvent.Failed, {
+      log.info("worker exit with pending request, publishing TaskWorkerEvent.Failed", {
         workerID: worker.id,
         sessionID: req.sessionID,
         parentSessionID: req.parentSessionID,
-        parentMessageID: req.parentMessageID,
-        toolCallID: req.toolCallID,
-        linkedTodoID: req.linkedTodoID,
-        error: `worker process exited unexpectedly (exitCode=${exitCode})`,
-      }, { directory: capturedDirectory }).catch((err) => log.error("bus publish TaskWorkerEvent.Failed failed (exit)", { workerID: worker.id, error: String(err) }))
+        exitCode,
+      })
+      Bus.publish(
+        TaskWorkerEvent.Failed,
+        {
+          workerID: worker.id,
+          sessionID: req.sessionID,
+          parentSessionID: req.parentSessionID,
+          parentMessageID: req.parentMessageID,
+          toolCallID: req.toolCallID,
+          linkedTodoID: req.linkedTodoID,
+          error: `worker process exited unexpectedly (exitCode=${exitCode})`,
+        },
+        { directory: capturedDirectory },
+      ).catch((err) =>
+        log.error("bus publish TaskWorkerEvent.Failed failed (exit)", { workerID: worker.id, error: String(err) }),
+      )
       const detail = [
         `exitCode=${exitCode}`,
         worker.lastPhase ? `lastPhase=${worker.lastPhase}` : undefined,
@@ -1036,9 +1141,10 @@ export async function terminateActiveChild(parentSessionID: string) {
   if (!activeChild) return false
   if (activeChild.status !== "running") return false
 
-  const worker = activeChild.workerID && activeChild.workerID !== "handoff"
-    ? workers.find((candidate) => candidate.id === activeChild.workerID)
-    : undefined
+  const worker =
+    activeChild.workerID && activeChild.workerID !== "handoff"
+      ? workers.find((candidate) => candidate.id === activeChild.workerID)
+      : undefined
   if (!worker) return false
 
   // Try graceful cancel via stdin first

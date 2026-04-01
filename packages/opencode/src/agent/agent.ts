@@ -130,7 +130,8 @@ export namespace Agent {
       },
       coding: {
         name: "coding",
-        description: "Worker agent that reads files, writes code, runs lint/typecheck, and verifies changes compile. Use for ALL implementation tasks — editing code, creating files, refactoring.",
+        description:
+          "Worker agent that reads files, writes code, runs lint/typecheck, and verifies changes compile. Use for ALL implementation tasks — editing code, creating files, refactoring.",
         permission: sub,
         options: {},
         prompt: coding,
@@ -139,7 +140,8 @@ export namespace Agent {
       },
       review: {
         name: "review",
-        description: "Worker agent that reads code and reports bugs, regressions, security issues, and edge cases. Use for code review before merging or shipping.",
+        description:
+          "Worker agent that reads code and reports bugs, regressions, security issues, and edge cases. Use for code review before merging or shipping.",
         permission: sub,
         options: {},
         prompt: review,
@@ -148,7 +150,8 @@ export namespace Agent {
       },
       testing: {
         name: "testing",
-        description: "Worker agent that runs tests, analyzes failures, and writes new tests when needed. Use for all verification and test execution tasks.",
+        description:
+          "Worker agent that runs tests, analyzes failures, and writes new tests when needed. Use for all verification and test execution tasks.",
         permission: sub,
         options: {},
         prompt: testing,
@@ -234,7 +237,7 @@ export namespace Agent {
     }
   }
 
-  const state = Instance.state(async () => {
+  async function createState() {
     const cfg = await Config.get()
     const defaults = getDefaultPermissions()
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
@@ -296,7 +299,20 @@ export namespace Agent {
     }
 
     return result
-  })
+  }
+
+  let stateGetter: (() => Promise<Awaited<ReturnType<typeof createState>>>) | undefined
+  let fallbackState: Promise<Awaited<ReturnType<typeof createState>>> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export async function get(agent: string) {
     return state().then((x) => x[agent])

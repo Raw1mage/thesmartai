@@ -8,7 +8,7 @@ export namespace FileTime {
   // All tools that overwrite existing files should run their
   // assert/read/write/update sequence inside withLock(filepath, ...)
   // so concurrent writes to the same file are serialized.
-  export const state = Instance.state(() => {
+  function createState() {
     const read: {
       [sessionID: string]: {
         [path: string]: Date | undefined
@@ -19,7 +19,20 @@ export namespace FileTime {
       read,
       locks,
     }
-  })
+  }
+
+  let stateGetter: (() => ReturnType<typeof createState>) | undefined
+  let fallbackState: ReturnType<typeof createState> | undefined
+
+  export function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export function read(sessionID: string, file: string) {
     log.info("read", { sessionID, file })

@@ -105,7 +105,7 @@ export namespace PermissionNext {
     ),
   }
 
-  const state = Instance.state(async () => {
+  async function createState() {
     const projectID = Instance.project.id
     const stored = await Storage.read<Ruleset>(["permission", projectID]).catch(() => [] as Ruleset)
 
@@ -122,7 +122,30 @@ export namespace PermissionNext {
       pending,
       approved: stored,
     }
-  })
+  }
+
+  let stateGetter:
+    | (() => Promise<{
+        pending: Record<string, { info: Request; resolve: () => void; reject: (e: any) => void }>
+        approved: Ruleset
+      }>)
+    | undefined
+  let fallbackState:
+    | Promise<{
+        pending: Record<string, { info: Request; resolve: () => void; reject: (e: any) => void }>
+        approved: Ruleset
+      }>
+    | undefined
+
+  const state = () => {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export const ask = fn(
     Request.partial({ id: true }).extend({

@@ -859,8 +859,13 @@ export namespace SessionProcessor {
 
                 case "finish-step":
                   // Diagnostic: trace empty responses to stderr for root-cause analysis
-                  if (value.finishReason === "unknown" && (!value.usage || ((value.usage.totalTokens ?? 0) === 0 && (value.usage.promptTokens ?? 0) === 0))) {
-                    process.stderr.write(`[DIAG:empty-response] session=${input.sessionID} model=${input.model.id} provider=${input.model.providerId} account=${input.accountId ?? "?"} finishReason=${value.finishReason} usage=${JSON.stringify(value.usage)} providerMeta=${JSON.stringify(value.providerMetadata ?? {}).slice(0, 300)} warnings=${JSON.stringify(value.warnings ?? [])}\n`)
+                  if (
+                    value.finishReason === "unknown" &&
+                    (!value.usage || ((value.usage.totalTokens ?? 0) === 0 && (value.usage.inputTokens ?? 0) === 0))
+                  ) {
+                    process.stderr.write(
+                      `[DIAG:empty-response] session=${input.sessionID} model=${input.model.id} provider=${input.model.providerId} account=${input.accountId ?? "?"} finishReason=${value.finishReason} usage=${JSON.stringify(value.usage)} providerMeta=${JSON.stringify(value.providerMetadata ?? {}).slice(0, 300)}\n`,
+                    )
                   }
                   const usage = Session.getUsage({
                     model: input.model,

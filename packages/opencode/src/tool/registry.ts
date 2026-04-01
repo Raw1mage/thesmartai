@@ -34,7 +34,7 @@ import { pathToFileURL } from "url"
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
 
-  export const state = Instance.state(async () => {
+  async function createState() {
     const custom = [] as Tool.Info[]
     const glob = new Bun.Glob("{tool,tools}/*.{js,ts}")
 
@@ -67,7 +67,20 @@ export namespace ToolRegistry {
     })
 
     return { custom }
-  })
+  }
+
+  let stateGetter: (() => Promise<Awaited<ReturnType<typeof createState>>>) | undefined
+  let fallbackState: Promise<Awaited<ReturnType<typeof createState>>> | undefined
+
+  export function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   function fromPlugin(id: string, def: ToolDefinition, source?: string): Tool.Info {
     type PluginArgs = z.infer<z.ZodObject<typeof def.args>>

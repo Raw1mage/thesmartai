@@ -84,94 +84,106 @@ export namespace SessionMonitor {
     unsubscribers: Array<() => void>
   }
 
-  const state = Instance.state(
-    () => {
-      const result: State = {
-        sessions: new Map(),
-        statuses: new Map(),
-        dirty: new Set(),
-        rows: new Map(),
-        lastScanAt: new Map(),
-        bootstrapped: false,
-        unsubscribers: [],
-      }
+  function createState() {
+    const result: State = {
+      sessions: new Map(),
+      statuses: new Map(),
+      dirty: new Set(),
+      rows: new Map(),
+      lastScanAt: new Map(),
+      bootstrapped: false,
+      unsubscribers: [],
+    }
 
-      const markDirty = (sessionID?: string) => {
-        if (!sessionID) return
-        result.dirty.add(sessionID)
-      }
+    const markDirty = (sessionID?: string) => {
+      if (!sessionID) return
+      result.dirty.add(sessionID)
+    }
 
-      result.unsubscribers.push(
-        Bus.subscribe(Session.Event.Created, (evt) => {
-          result.sessions.set(evt.properties.info.id, evt.properties.info)
-          markDirty(evt.properties.info.id)
-        }),
-      )
+    result.unsubscribers.push(
+      Bus.subscribe(Session.Event.Created, (evt) => {
+        result.sessions.set(evt.properties.info.id, evt.properties.info)
+        markDirty(evt.properties.info.id)
+      }),
+    )
 
-      result.unsubscribers.push(
-        Bus.subscribe(Session.Event.Updated, (evt) => {
-          result.sessions.set(evt.properties.info.id, evt.properties.info)
-          markDirty(evt.properties.info.id)
-        }),
-      )
+    result.unsubscribers.push(
+      Bus.subscribe(Session.Event.Updated, (evt) => {
+        result.sessions.set(evt.properties.info.id, evt.properties.info)
+        markDirty(evt.properties.info.id)
+      }),
+    )
 
-      result.unsubscribers.push(
-        Bus.subscribe(Session.Event.Deleted, (evt) => {
-          const id = evt.properties.info.id
-          result.sessions.delete(id)
-          result.statuses.delete(id)
-          result.rows.delete(id)
-          result.lastScanAt.delete(id)
-          result.dirty.delete(id)
-        }),
-      )
+    result.unsubscribers.push(
+      Bus.subscribe(Session.Event.Deleted, (evt) => {
+        const id = evt.properties.info.id
+        result.sessions.delete(id)
+        result.statuses.delete(id)
+        result.rows.delete(id)
+        result.lastScanAt.delete(id)
+        result.dirty.delete(id)
+      }),
+    )
 
-      result.unsubscribers.push(
-        Bus.subscribe(SessionStatus.Event.Status, (evt) => {
-          const { sessionID, status } = evt.properties
-          if (status.type === "idle") {
-            result.statuses.delete(sessionID)
-            result.rows.delete(sessionID)
-            result.lastScanAt.delete(sessionID)
-            result.dirty.delete(sessionID)
-            return
-          }
-          result.statuses.set(sessionID, status)
-          markDirty(sessionID)
-        }),
-      )
+    result.unsubscribers.push(
+      Bus.subscribe(SessionStatus.Event.Status, (evt) => {
+        const { sessionID, status } = evt.properties
+        if (status.type === "idle") {
+          result.statuses.delete(sessionID)
+          result.rows.delete(sessionID)
+          result.lastScanAt.delete(sessionID)
+          result.dirty.delete(sessionID)
+          return
+        }
+        result.statuses.set(sessionID, status)
+        markDirty(sessionID)
+      }),
+    )
 
-      result.unsubscribers.push(
-        Bus.subscribe(MessageV2.Event.Updated, (evt) => {
-          if (evt.properties.info.role === "assistant") markDirty(evt.properties.info.sessionID)
-        }),
-      )
+    result.unsubscribers.push(
+      Bus.subscribe(MessageV2.Event.Updated, (evt) => {
+        if (evt.properties.info.role === "assistant") markDirty(evt.properties.info.sessionID)
+      }),
+    )
 
-      result.unsubscribers.push(
-        Bus.subscribe(MessageV2.Event.PartUpdated, (evt) => {
-          if (evt.properties.part.type === "tool") markDirty(evt.properties.part.sessionID)
-        }),
-      )
+    result.unsubscribers.push(
+      Bus.subscribe(MessageV2.Event.PartUpdated, (evt) => {
+        if (evt.properties.part.type === "tool") markDirty(evt.properties.part.sessionID)
+      }),
+    )
 
-      result.unsubscribers.push(
-        Bus.subscribe(MessageV2.Event.PartRemoved, (evt) => {
-          markDirty(evt.properties.sessionID)
-        }),
-      )
+    result.unsubscribers.push(
+      Bus.subscribe(MessageV2.Event.PartRemoved, (evt) => {
+        markDirty(evt.properties.sessionID)
+      }),
+    )
 
-      result.unsubscribers.push(
-        Bus.subscribe(Session.Event.Diff, (evt) => {
-          markDirty(evt.properties.sessionID)
-        }),
-      )
+    result.unsubscribers.push(
+      Bus.subscribe(Session.Event.Diff, (evt) => {
+        markDirty(evt.properties.sessionID)
+      }),
+    )
 
-      return result
-    },
-    async (st) => {
-      for (const unsub of st.unsubscribers) unsub()
-      st.unsubscribers = []
-    },
-  )
+    return result
+  }
+
+  async function cleanupState(st: ReturnType<typeof createState>) {
+    for (const unsub of st.unsubscribers) unsub()
+    st.unsubscribers = []
+  }
+
+  let stateGetter: (() => ReturnType<typeof createState>) | undefined
+  let fallbackState: ReturnType<typeof createState> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState, cleanupState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   function emptyTokens() {
     return {

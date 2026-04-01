@@ -208,7 +208,7 @@ export const McpRoutes = lazy(() =>
           return c.json(await ManagedAppRegistry.enable(appId))
         } catch (error) {
           if (error instanceof ManagedAppRegistry.UsageStateError) {
-            return c.json(error.toObject().data, managedAppUsageHttpStatus(error.reason))
+            return c.json(error.toObject().data, managedAppUsageHttpStatus(error.data.reason))
           }
           throw error
         }
@@ -335,7 +335,7 @@ export const McpRoutes = lazy(() =>
             scopeEnv: "GOOGLE_CALENDAR_SCOPE",
             scopeDefault: "https://www.googleapis.com/auth/calendar",
           },
-          "gmail": {
+          gmail: {
             scopeEnv: "GOOGLE_GMAIL_SCOPE",
             scopeDefault: "https://mail.google.com/",
           },

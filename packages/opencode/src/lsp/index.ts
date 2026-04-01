@@ -77,72 +77,96 @@ export namespace LSP {
     }
   }
 
-  const state = Instance.state(
-    async () => {
-      const clients: LSPClient.Info[] = []
-      const servers: Record<string, LSPServer.Info> = {}
-      const cfg = await Config.get()
+  async function createState() {
+    const clients: LSPClient.Info[] = []
+    const servers: Record<string, LSPServer.Info> = {}
+    const cfg = await Config.get()
 
-      if (cfg.lsp === false) {
-        log.info("all LSPs are disabled")
-        return {
-          broken: new Set<string>(),
-          servers,
-          clients,
-          spawning: new Map<string, Promise<LSPClient.Info | undefined>>(),
-        }
-      }
-
-      for (const server of Object.values(LSPServer)) {
-        servers[server.id] = server
-      }
-
-      filterExperimentalServers(servers)
-
-      for (const [name, item] of Object.entries(cfg.lsp ?? {})) {
-        const existing = servers[name]
-        if (item.disabled) {
-          log.info(`LSP server ${name} is disabled`)
-          delete servers[name]
-          continue
-        }
-        servers[name] = {
-          ...existing,
-          id: name,
-          root: existing?.root ?? (async () => Instance.directory),
-          extensions: item.extensions ?? existing?.extensions ?? [],
-          spawn: async (root) => {
-            return {
-              process: spawn(item.command[0], item.command.slice(1), {
-                cwd: root,
-                env: {
-                  ...Env.all(),
-                  ...item.env,
-                },
-              }),
-              initialization: item.initialization,
-            }
-          },
-        }
-      }
-
-      log.info("enabled LSP servers", {
-        serverIds: Object.values(servers)
-          .map((server) => server.id)
-          .join(", "),
-      })
-
+    if (cfg.lsp === false) {
+      log.info("all LSPs are disabled")
       return {
         broken: new Set<string>(),
         servers,
         clients,
         spawning: new Map<string, Promise<LSPClient.Info | undefined>>(),
       }
-    },
-    async (state) => {
-      await Promise.all(state.clients.map((client) => client.shutdown()))
-    },
-  )
+    }
+
+    for (const server of Object.values(LSPServer)) {
+      servers[server.id] = server
+    }
+
+    filterExperimentalServers(servers)
+
+    for (const [name, item] of Object.entries(cfg.lsp ?? {})) {
+      const existing = servers[name]
+      if (item.disabled) {
+        log.info(`LSP server ${name} is disabled`)
+        delete servers[name]
+        continue
+      }
+      servers[name] = {
+        ...existing,
+        id: name,
+        root: existing?.root ?? (async () => Instance.directory),
+        extensions: item.extensions ?? existing?.extensions ?? [],
+        spawn: async (root) => {
+          return {
+            process: spawn(item.command[0], item.command.slice(1), {
+              cwd: root,
+              env: {
+                ...Env.all(),
+                ...item.env,
+              },
+            }),
+            initialization: item.initialization,
+          }
+        },
+      }
+    }
+
+    log.info("enabled LSP servers", {
+      serverIds: Object.values(servers)
+        .map((server) => server.id)
+        .join(", "),
+    })
+
+    return {
+      broken: new Set<string>(),
+      servers,
+      clients,
+      spawning: new Map<string, Promise<LSPClient.Info | undefined>>(),
+    }
+  }
+
+  let stateGetter:
+    | (() => Promise<{
+        broken: Set<string>
+        servers: Record<string, LSPServer.Info>
+        clients: LSPClient.Info[]
+        spawning: Map<string, Promise<LSPClient.Info | undefined>>
+      }>)
+    | undefined
+  let fallbackState:
+    | Promise<{
+        broken: Set<string>
+        servers: Record<string, LSPServer.Info>
+        clients: LSPClient.Info[]
+        spawning: Map<string, Promise<LSPClient.Info | undefined>>
+      }>
+    | undefined
+
+  const state = () => {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState, async (state) => {
+        await Promise.all(state.clients.map((client) => client.shutdown()))
+      })
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export async function init() {
     return state()

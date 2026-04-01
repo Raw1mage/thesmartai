@@ -41,10 +41,23 @@ export namespace SessionStatus {
     ),
   }
 
-  const state = Instance.state(() => {
+  function createState() {
     const data: Record<string, Info> = {}
     return data
-  })
+  }
+
+  let stateGetter: (() => ReturnType<typeof createState>) | undefined
+  let fallbackState: ReturnType<typeof createState> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export function get(sessionID: string) {
     return (

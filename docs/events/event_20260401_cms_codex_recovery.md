@@ -106,6 +106,88 @@ OUT:
 - 其餘 codex runtime / efficiency / prompt / compaction 大功能群經盤點後已確認屬於 recovery 祖先主體，不是當前缺口。
 - 新的流程硬規則已確立：`beta/*`、`test/*` 分支一律在測試完成且 merge/fetch-back 回主線後立即刪除。
 
+## 2026-04-01 Recovery 主工作樹切換與 runtime/config 修補續記
+
+### 需求
+
+- 將主工作樹切回 `recovery/cms-codex-20260401-183212` 作為新的實際工作面。
+- 確認 `node` 無法執行是否為 shell 載入問題。
+- 在不再擴大測試導向修補的前提下，保留有產品/runtime 價值的修復，並同步文件。
+
+### 範圍
+
+IN:
+
+- `/home/pkcs12/projects/opencode`
+- `recovery/cms-codex-20260401-183212`
+- `packages/opencode/src/config/config.ts`
+- `packages/opencode/src/project/instance.ts`
+- `packages/opencode/src/bus/index.ts`
+- `packages/opencode/src/server/killswitch/service.ts`
+- `packages/opencode/src/mcp/apps/gauth.ts`
+- `packages/opencode/src/server/routes/mcp.ts`
+- `scripts/test-with-baseline.ts`
+
+OUT:
+
+- 不繼續擴大 `workflow-runner` / `planner-reactivation` / Smart Runner / route auth 等測試導向行為修補
+- 不以 full-suite 全綠作為本輪收尾門檻
+
+### 任務清單
+
+- [x] 確認主工作樹切到 `recovery/cms-codex-20260401-183212`
+- [x] 追查 `node` 執行失敗的環境根因
+- [x] 在 login shell 下重跑並通過全 repo `typecheck`
+- [x] 驗證 web runtime health
+- [x] 修正 root test wrapper 的 repo root 計算
+- [x] 修正 config migration / nested non-git config merge 邊界
+- [x] 補強 `Instance.project` / Bus context fallback 韌性
+- [x] 修正 managed app auth / error data contract 取值
+- [x] 盤點目前變更並停止擴大測試導向修補
+- [x] 同步 event / architecture 文件
+
+### Debug Checkpoints
+
+#### Environment
+
+- non-login / non-interactive shell 下 `node` 不在 PATH。
+- 根因是 `~/.bashrc` 以非互動 shell guard 提前 `return`，而 `nvm` 初始化在 guard 後方。
+- `bash -lc` 可透過 `~/.profile` 載入 `nvm`，恢復 `node`：
+  - `/home/pkcs12/.nvm/versions/node/v20.19.6/bin/node`
+
+#### Execution
+
+- 主工作樹已確認切到 `recovery/cms-codex-20260401-183212`。
+- 全 repo `bun turbo typecheck` 已通過。
+- `webctl.sh status` 顯示 gateway / daemon / health 正常。
+- `scripts/test-with-baseline.ts` 的 repo root 從 `../..` 修正為 `..`，root test 入口不再因錯誤 cwd 失敗。
+- `packages/opencode/src/config/config.ts` 已保留的產品向修補：
+  - 恢復 `autoshare: true` → `share: "auto"` 相容遷移
+  - 修正 non-git nested project 可向上合併父層 config 的搜尋邊界
+- `packages/opencode/src/project/instance.ts` / `packages/opencode/src/bus/index.ts` 已補強缺值 fallback，避免 runtime context 缺值直接崩潰。
+- `packages/opencode/src/server/killswitch/service.ts` 已把 seq 追蹤收斂到 `requestID + sessionID`。
+- `packages/opencode/src/mcp/apps/gauth.ts` / `packages/opencode/src/server/routes/mcp.ts` 已對齊現行 managed app error contract。
+
+#### Decision
+
+- 使用者明確要求：延緩所有跟測試有關的程式修復。
+- 因此本輪收尾只保留 branch/runtime/config/runtime-safety 類修補，不再延伸處理 workflow/planner/Smart Runner/route auth 等測試導向行為回歸。
+
+### Validation
+
+- Branch:
+  - `git branch --show-current` -> `recovery/cms-codex-20260401-183212`
+- Environment:
+  - `bash -lc 'command -v node && node -v'` -> `v20.19.6`
+- Typecheck:
+  - `bash -lc 'cd /home/pkcs12/projects/opencode && bun turbo typecheck'` ✅
+- Web runtime:
+  - `bash -lc '"/home/pkcs12/projects/opencode/webctl.sh" status'` -> healthy ✅
+- Config focused validation:
+  - `bun test ./packages/opencode/test/config/config.test.ts` -> `60 pass, 0 fail`
+- Architecture Sync:
+  - Updated: `specs/architecture.md` 已補入 config resolution 與 runtime state initialization safety 的長期規則。
+
 ## Architecture Sync
 
 - Updated: `specs/architecture.md` 已補入 beta/test disposable branch lifecycle 規則，明確禁止 merge-back 後長留 stale execution branches。

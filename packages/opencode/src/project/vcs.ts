@@ -38,33 +38,45 @@ export namespace Vcs {
       .catch(() => undefined)
   }
 
-  const state = Instance.state(
-    async () => {
-      if (Instance.project.vcs !== "git") {
-        return { branch: async () => undefined, unsubscribe: undefined }
-      }
-      let current = await currentBranch()
-      log.info("initialized", { branch: current })
+  async function createState() {
+    if (Instance.project.vcs !== "git") {
+      return { branch: async () => undefined, unsubscribe: undefined }
+    }
+    let current = await currentBranch()
+    log.info("initialized", { branch: current })
 
-      const unsubscribe = Bus.subscribe(FileWatcher.Event.Updated, async (evt) => {
-        if (evt.properties.file.endsWith("HEAD")) return
-        const next = await currentBranch()
-        if (next !== current) {
-          log.info("branch changed", { from: current, to: next })
-          current = next
-          Bus.publish(Event.BranchUpdated, { branch: next })
-        }
-      })
-
-      return {
-        branch: async () => current,
-        unsubscribe,
+    const unsubscribe = Bus.subscribe(FileWatcher.Event.Updated, async (evt) => {
+      if (evt.properties.file.endsWith("HEAD")) return
+      const next = await currentBranch()
+      if (next !== current) {
+        log.info("branch changed", { from: current, to: next })
+        current = next
+        Bus.publish(Event.BranchUpdated, { branch: next })
       }
-    },
-    async (state) => {
-      state.unsubscribe?.()
-    },
-  )
+    })
+
+    return {
+      branch: async () => current,
+      unsubscribe,
+    }
+  }
+
+  async function cleanupState(state: Awaited<ReturnType<typeof createState>>) {
+    state.unsubscribe?.()
+  }
+
+  let stateGetter: (() => Promise<Awaited<ReturnType<typeof createState>>>) | undefined
+  let fallbackState: Promise<Awaited<ReturnType<typeof createState>>> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState, cleanupState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export async function init() {
     return state()

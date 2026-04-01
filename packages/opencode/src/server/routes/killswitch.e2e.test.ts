@@ -1,5 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it, mock } from "bun:test"
 import z from "zod"
+const actualSessionModule = await import("../../session")
+const actualConfigModule = await import("../../config/config")
+const actualKillSwitchServiceModule = await import("../killswitch/service")
 
 /**
  * E2E test for kill-switch: UI → API → state change → snapshot (Task 4.2)
@@ -92,7 +95,9 @@ const publishControl = mock(
 const forceKill = mock(async () => undefined)
 
 mock.module("../killswitch/service", () => ({
+  ...actualKillSwitchServiceModule,
   KillSwitchService: {
+    ...actualKillSwitchServiceModule.KillSwitchService,
     checkCooldown,
     idempotentRequestID,
     generateMfa,
@@ -122,7 +127,9 @@ mock.module("../web-auth", () => ({
 }))
 
 mock.module("@/config/config", () => ({
+  ...actualConfigModule,
   Config: {
+    ...actualConfigModule.Config,
     getGlobal: async () => ({
       permission: globalPermissionConfig,
     }),
@@ -143,10 +150,12 @@ mock.module("@/permission/next", () => ({
 }))
 
 mock.module("@/session", () => ({
+  ...actualSessionModule,
   Session: {
-    get: {
+    ...actualSessionModule.Session,
+    get: Object.assign(actualSessionModule.Session.get, {
       schema: z.string().startsWith("ses"),
-    },
+    }),
   },
 }))
 

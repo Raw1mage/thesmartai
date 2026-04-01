@@ -49,7 +49,7 @@ export namespace Skill {
   const OPENCODE_SKILL_GLOB = new Bun.Glob("{skill,skills}/**/SKILL.md")
   const SKILL_GLOB = new Bun.Glob("**/SKILL.md")
 
-  export const state = Instance.state(async () => {
+  async function createState() {
     const skills: Record<string, Info> = {}
     const dirs = new Set<string>()
 
@@ -172,7 +172,20 @@ export namespace Skill {
       skills,
       dirs: Array.from(dirs),
     }
-  })
+  }
+
+  let stateGetter: (() => Promise<Awaited<ReturnType<typeof createState>>>) | undefined
+  let fallbackState: Promise<Awaited<ReturnType<typeof createState>>> | undefined
+
+  export function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   export async function get(name: string) {
     return state().then((x) => x.skills[name])

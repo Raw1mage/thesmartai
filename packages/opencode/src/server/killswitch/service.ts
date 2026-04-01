@@ -11,7 +11,6 @@ import z from "zod"
 const log = Log.create({ service: "killswitch" })
 
 export namespace KillSwitchService {
-
   /** Default TTL for emergency stop: 5 minutes. */
   export const DEFAULT_TTL_MS = 5 * 60 * 1000
 
@@ -185,13 +184,13 @@ export namespace KillSwitchService {
     })
   }
 
-  async function getLastSeq(sessionID: string) {
-    const v = await Storage.read<{ value: number }>(["killswitch", "seq", sessionID]).catch(() => undefined)
+  async function getLastSeq(requestID: string, sessionID: string) {
+    const v = await Storage.read<{ value: number }>(["killswitch", "seq", requestID, sessionID]).catch(() => undefined)
     return v?.value ?? 0
   }
 
-  async function setLastSeq(sessionID: string, seq: number) {
-    await Storage.write(["killswitch", "seq", sessionID], { value: seq })
+  async function setLastSeq(requestID: string, sessionID: string, seq: number) {
+    await Storage.write(["killswitch", "seq", requestID, sessionID], { value: seq })
   }
 
   export async function handleControl(input: {
@@ -201,7 +200,7 @@ export namespace KillSwitchService {
     action: ControlAction
     initiator: string
   }) {
-    const last = await getLastSeq(input.sessionID)
+    const last = await getLastSeq(input.requestID, input.sessionID)
     if (input.seq <= last) {
       const ack = {
         requestID: input.requestID,
@@ -223,7 +222,7 @@ export namespace KillSwitchService {
       return ack
     }
 
-    await setLastSeq(input.sessionID, input.seq)
+    await setLastSeq(input.requestID, input.sessionID, input.seq)
     try {
       switch (input.action) {
         case "cancel": {

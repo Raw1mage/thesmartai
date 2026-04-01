@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-const ROOT = new URL("../..", import.meta.url).pathname.replace(/\/$/, "")
+const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "")
 const TEST_TIMEOUT_MS = "30000"
 
 const TEST_GLOBS = [

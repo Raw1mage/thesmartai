@@ -155,6 +155,21 @@ The frontend is built with Solid.js and uses a bottom-up dependency model:
 - **`src/server/routes/provider.ts`**: `/provider` API assembly surface. Returns canonical provider rows keyed by supported provider registry, not raw observed provider IDs.
 - **`packages/app/src/components/model-selector-state.ts`**: Web model manager provider-row state builder. Frontend canonical aliases may be used for provider grouping and display, but disabled-provider blacklist matching must keep legacy `anthropic` distinct from canonical `claude-cli` so WebApp provider gating does not misclassify Claude CLI as disabled.
 
+## Runtime State Initialization Safety
+
+- Module-scope eager `Instance.state(...)` initialization is now considered an architecture risk surface.
+- Shared runtime modules should prefer lazy/guarded state access so import-time module evaluation does not hard-require a fully populated `Instance` context.
+- This rule matters both for runtime resilience and for any execution surface that provides only partial `Instance` context (for example worker/bootstrap/test harness paths).
+- When state truly belongs to the current `Instance`, the module should resolve it on demand; when `Instance.state` is unavailable, any fallback must remain explicit, local, and non-authoritative rather than silently changing higher-level runtime contracts.
+- `packages/opencode/src/project/instance.ts` and `packages/opencode/src/bus/index.ts` now also treat missing project context defensively: `Instance.project` may fall back to the global sentinel and bus context resolution must not crash on absent project metadata.
+
+## Config Resolution Boundary
+
+- `packages/opencode/src/config/config.ts` remains the authority for repo/user/local config merge behavior.
+- Legacy compatibility still includes `autoshare: true` → `share: "auto"`; removing that migration changes persisted user behavior and is therefore a contract change, not a cleanup.
+- Config resolution for non-git nested projects must not be prematurely truncated by current-worktree boundaries alone; nested non-git execution surfaces may still inherit parent `opencode.json` / `.opencode` configuration through the documented upward merge path.
+- Config/state initialization should follow the same lazy-state safety rule as other runtime modules so config import does not become a hidden bootstrap-time failure surface.
+
 ## Provider Universe Authority
 
 - The cms official provider universe is defined by the repo-owned supported provider registry, not by observed runtime/config/models/account provider IDs.

@@ -202,7 +202,7 @@ export namespace MCP {
 
   const managedAppExecutors: Record<string, (toolId: string, args: Record<string, unknown>) => Promise<string>> = {
     "google-calendar": GoogleCalendarApp.execute,
-    "gmail": GmailApp.execute,
+    gmail: GmailApp.execute,
   }
 
   function convertManagedAppTool(binding: ManagedAppRegistry.ReadyToolBinding): Tool {
@@ -254,85 +254,97 @@ export namespace MCP {
     return typeof entry === "object" && entry !== null && "type" in entry
   }
 
-  const state = Instance.state(
-    async () => {
-      const cfg = await Config.get()
-      const config = cfg.mcp ?? {}
-      const clients: Record<string, MCPClient> = {}
-      const status: Record<string, Status> = {}
-      const skipAutoConnect = process.env.OPENCODE_SKIP_MCP_AUTO === "1"
+  async function createState() {
+    const cfg = await Config.get()
+    const config = cfg.mcp ?? {}
+    const clients: Record<string, MCPClient> = {}
+    const status: Record<string, Status> = {}
+    const skipAutoConnect = process.env.OPENCODE_SKIP_MCP_AUTO === "1"
 
-      // Phase 1: Register all servers as disabled immediately (fast)
-      const pendingAutoConnect: Array<{ key: string; mcp: Config.Mcp }> = []
-      for (const [key, mcp] of Object.entries(config)) {
-        if (!isMcpConfigured(mcp)) {
-          log.error("Ignoring MCP config entry without type", { key })
-          continue
-        }
-        status[key] = { status: "disabled" }
-        if (!skipAutoConnect && mcp.enabled !== false) {
-          pendingAutoConnect.push({ key, mcp: mcp as Config.Mcp })
-        }
+    // Phase 1: Register all servers as disabled immediately (fast)
+    const pendingAutoConnect: Array<{ key: string; mcp: Config.Mcp }> = []
+    for (const [key, mcp] of Object.entries(config)) {
+      if (!isMcpConfigured(mcp)) {
+        log.error("Ignoring MCP config entry without type", { key })
+        continue
       }
-
-      const toolsCache: ToolsCacheEntry = {
-        value: {},
-        expiresAt: 0,
-        dirty: true,
+      status[key] = { status: "disabled" }
+      if (!skipAutoConnect && mcp.enabled !== false) {
+        pendingAutoConnect.push({ key, mcp: mcp as Config.Mcp })
       }
+    }
 
-      const unsubscribeToolsChanged = Bus.subscribe(ToolsChanged, () => {
-        invalidateToolsCache(toolsCache)
-      })
-      const unsubscribeManagedAppsUpdated = Bus.subscribe(ManagedAppRegistry.Event.Updated, () => {
-        invalidateToolsCache(toolsCache)
-      })
+    const toolsCache: ToolsCacheEntry = {
+      value: {},
+      expiresAt: 0,
+      dirty: true,
+    }
 
-      // Phase 2: Auto-connect enabled servers in background (progressive)
-      if (pendingAutoConnect.length > 0) {
-        Promise.resolve().then(async () => {
-          for (const { key, mcp } of pendingAutoConnect) {
-            try {
-              const result = await create(key, mcp)
-              if (result) {
-                status[key] = result.status
-                if (result.mcpClient) {
-                  clients[key] = result.mcpClient
-                }
-                invalidateToolsCache(toolsCache)
-                Bus.publish(ToolsChanged, { server: key })
+    const unsubscribeToolsChanged = Bus.subscribe(ToolsChanged, () => {
+      invalidateToolsCache(toolsCache)
+    })
+    const unsubscribeManagedAppsUpdated = Bus.subscribe(ManagedAppRegistry.Event.Updated, () => {
+      invalidateToolsCache(toolsCache)
+    })
+
+    // Phase 2: Auto-connect enabled servers in background (progressive)
+    if (pendingAutoConnect.length > 0) {
+      Promise.resolve().then(async () => {
+        for (const { key, mcp } of pendingAutoConnect) {
+          try {
+            const result = await create(key, mcp)
+            if (result) {
+              status[key] = result.status
+              if (result.mcpClient) {
+                clients[key] = result.mcpClient
               }
-            } catch (e) {
-              log.error("background auto-connect failed", { key, error: e })
-              status[key] = { status: "failed", error: e instanceof Error ? e.message : String(e) }
+              invalidateToolsCache(toolsCache)
+              Bus.publish(ToolsChanged, { server: key })
             }
+          } catch (e) {
+            log.error("background auto-connect failed", { key, error: e })
+            status[key] = { status: "failed", error: e instanceof Error ? e.message : String(e) }
           }
-        })
-      }
+        }
+      })
+    }
 
-      return {
-        status,
-        clients,
-        toolsCache,
-        unsubscribeToolsChanged,
-        unsubscribeManagedAppsUpdated,
-      }
-    },
-    async (state) => {
-      await Promise.all(
-        Object.values(state.clients).map((client) =>
-          client.close().catch((error) => {
-            log.error("Failed to close MCP client", {
-              error,
-            })
-          }),
-        ),
-      )
-      state.unsubscribeToolsChanged?.()
-      state.unsubscribeManagedAppsUpdated?.()
-      pendingOAuthTransports.clear()
-    },
-  )
+    return {
+      status,
+      clients,
+      toolsCache,
+      unsubscribeToolsChanged,
+      unsubscribeManagedAppsUpdated,
+    }
+  }
+
+  async function cleanupState(state: Awaited<ReturnType<typeof createState>>) {
+    await Promise.all(
+      Object.values(state.clients).map((client) =>
+        client.close().catch((error) => {
+          log.error("Failed to close MCP client", {
+            error,
+          })
+        }),
+      ),
+    )
+    state.unsubscribeToolsChanged?.()
+    state.unsubscribeManagedAppsUpdated?.()
+    pendingOAuthTransports.clear()
+  }
+
+  let stateGetter: (() => Promise<Awaited<ReturnType<typeof createState>>>) | undefined
+  let fallbackState: Promise<Awaited<ReturnType<typeof createState>>> | undefined
+
+  function state() {
+    if (typeof Instance.state === "function") {
+      stateGetter ||= Instance.state(createState, cleanupState)
+      return stateGetter()
+    }
+
+    fallbackState ||= createState()
+    return fallbackState
+  }
 
   // Helper function to fetch prompts for a specific client
   async function fetchPromptsForClient(clientName: string, client: Client) {

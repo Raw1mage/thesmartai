@@ -57,7 +57,7 @@ async function refreshAccessToken(appId: string, tokens: GAuthTokens): Promise<s
     throw new ManagedAppRegistry.UsageStateError({
       appId,
       status: "pending_auth",
-      reason: "no_refresh_token",
+      reason: "unauthenticated",
       code: "MANAGED_APP_AUTH_REQUIRED",
       message: "No refresh_token available — re-authorize to obtain one",
     })
@@ -81,7 +81,7 @@ async function refreshAccessToken(appId: string, tokens: GAuthTokens): Promise<s
     throw new ManagedAppRegistry.UsageStateError({
       appId,
       status: "pending_auth",
-      reason: "refresh_failed",
+      reason: "unauthenticated",
       code: "MANAGED_APP_AUTH_REQUIRED",
       message: `Token refresh failed (${res.status}): ${body}`,
     })

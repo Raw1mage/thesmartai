@@ -471,6 +471,369 @@ export namespace SessionPrompt {
     }
   }
 
+  export function buildSmartRunnerQuestion(input: { questionText?: string }) {
+    const questionText = input.questionText?.trim()
+    if (!questionText) return undefined
+    return {
+      question: questionText,
+      header: "Decision needed",
+      options: [],
+      custom: true,
+    } satisfies Question.Info
+  }
+
+  export function formatSmartRunnerQuestionAnswers(input: {
+    question: Pick<Question.Info, "question">
+    answers: Array<{ answer?: string[] }>
+  }) {
+    const answerText =
+      input.answers
+        .flatMap((item) => item.answer ?? [])
+        .filter(Boolean)
+        .join(", ") || "Unanswered"
+    return `User answered Smart Runner question "${input.question.question}" with: ${answerText}. Continue with this answer in mind.`
+  }
+
+  function prefixAINarration(text: string) {
+    const trimmed = text.trim()
+    if (!trimmed) return "[AI]"
+    return trimmed.startsWith("[AI]") ? trimmed : `[AI] ${trimmed}`
+  }
+
+  async function persistSmartRunnerTrace(input: {
+    sessionID: string
+    trace: any
+    persistTrace?: (input: { sessionID: string; trace: any }) => Promise<unknown>
+  }) {
+    if (!input.persistTrace) return
+    await input.persistTrace({
+      sessionID: input.sessionID,
+      trace: clone(input.trace),
+    })
+  }
+
+  export async function handleSmartRunnerAskUserAdoption(input: {
+    sessionID: string
+    question: Question.Info
+    trace: any
+    lastUser: Pick<MessageV2.User, "agent" | "model" | "variant" | "format"> & { id?: string }
+    ask?: (input: { sessionID: string; question: Question.Info }) => Promise<Question.Answer[]>
+    persistTrace?: (input: { sessionID: string; trace: any }) => Promise<unknown>
+    updateMessage?: (message: any) => Promise<unknown>
+    updatePart?: (part: any) => Promise<unknown>
+    setWorkflowState?: typeof Session.setWorkflowState
+  }) {
+    const ask =
+      input.ask ??
+      (async ({ sessionID, question }: { sessionID: string; question: Question.Info }) =>
+        Question.ask({ sessionID, questions: [question] }))
+    const updateMessage = input.updateMessage ?? Session.updateMessage
+    const updatePart = input.updatePart ?? Session.updatePart
+    const setWorkflowState = input.setWorkflowState ?? Session.setWorkflowState
+
+    try {
+      const answers = await ask({ sessionID: input.sessionID, question: input.question })
+      await persistSmartRunnerTrace(input)
+
+      const userMessage: MessageV2.User = {
+        id: Identifier.ascending("message"),
+        sessionID: input.sessionID,
+        role: "user",
+        time: { created: Date.now() },
+        agent: input.lastUser.agent,
+        model: input.lastUser.model,
+        variant: input.lastUser.variant,
+        format: input.lastUser.format,
+      }
+      await updateMessage(userMessage)
+      await updatePart({
+        id: Identifier.ascending("part"),
+        messageID: userMessage.id,
+        sessionID: input.sessionID,
+        type: "text",
+        synthetic: true,
+        text: formatSmartRunnerQuestionAnswers({
+          question: input.question,
+          answers: [{ answer: answers[0] }],
+        }),
+      })
+      return { outcome: "answered" as const }
+    } catch (error) {
+      if (!(error instanceof Question.RejectedError)) throw error
+      await persistSmartRunnerTrace(input)
+      await persistSmartRunnerTrace(input)
+      await setWorkflowState({
+        sessionID: input.sessionID,
+        state: "waiting_user",
+        stopReason: "product_decision_needed",
+      })
+      return { outcome: "rejected" as const }
+    }
+  }
+
+  export async function handleSmartRunnerApprovalRequest(input: {
+    sessionID: string
+    trace: any
+    persistTrace?: (input: { sessionID: string; trace: any }) => Promise<unknown>
+    setWorkflowState?: typeof Session.setWorkflowState
+  }) {
+    await persistSmartRunnerTrace(input)
+    await (input.setWorkflowState ?? Session.setWorkflowState)({
+      sessionID: input.sessionID,
+      state: "waiting_user",
+      stopReason: "approval_needed",
+    })
+    return { outcome: "requested" as const }
+  }
+
+  export async function handleSmartRunnerRiskPause(input: {
+    sessionID: string
+    trace: any
+    persistTrace?: (input: { sessionID: string; trace: any }) => Promise<unknown>
+    setWorkflowState?: typeof Session.setWorkflowState
+  }) {
+    await persistSmartRunnerTrace(input)
+    await (input.setWorkflowState ?? Session.setWorkflowState)({
+      sessionID: input.sessionID,
+      state: "waiting_user",
+      stopReason: "risk_review_needed",
+    })
+    return { outcome: "paused" as const }
+  }
+
+  export async function handleSmartRunnerCompletionAdoption(input: {
+    sessionID: string
+    todos: Todo.Info[]
+    suggestion: any
+    roundCount: number
+    updateTodos: (input: any) => Promise<unknown>
+    decideContinuation: (input: { sessionID: string; roundCount: number }) => Promise<any>
+    setWorkflowState?: typeof Session.setWorkflowState
+    persistTrace?: (input: { sessionID: string; trace: any }) => Promise<unknown>
+    trace: any
+  }) {
+    const adopted = Todo.applyHostAdoptedCompletion(input.todos, input.suggestion.completionRequest)
+    const trace = clone(input.trace)
+    if (trace?.suggestion?.completionRequest) {
+      trace.suggestion.completionRequest.hostAdopted = adopted.adopted
+      trace.suggestion.completionRequest.hostAdoptionReason = adopted.reason
+    }
+    await persistSmartRunnerTrace({ sessionID: input.sessionID, trace, persistTrace: input.persistTrace })
+    if (!adopted.adopted) return adopted
+
+    await input.updateTodos({ sessionID: input.sessionID, todos: adopted.todos, mode: "status_update" })
+    const decision = await input.decideContinuation({ sessionID: input.sessionID, roundCount: input.roundCount })
+    if (decision.continue) {
+      return {
+        adopted: false as const,
+        reason: "not_terminal_after_completion" as const,
+        decision,
+        todos: adopted.todos,
+      }
+    }
+    await (input.setWorkflowState ?? Session.setWorkflowState)({
+      sessionID: input.sessionID,
+      state: "completed",
+      stopReason: decision.reason,
+    })
+    return {
+      adopted: true as const,
+      reason: "adopted" as const,
+      outcome: "completed" as const,
+      decision,
+      todos: adopted.todos,
+    }
+  }
+
+  export async function handleSmartRunnerReplanAdoption(input: {
+    sessionID: string
+    todos: Todo.Info[]
+    suggestion: any
+    roundCount: number
+    fallbackDecision: any
+    updateTodos: (input: any) => Promise<unknown>
+    decideContinuation: (input: { sessionID: string; roundCount: number }) => Promise<any>
+  }) {
+    const adopted = Todo.applyHostAdoptedReplan(input.todos, input.suggestion.replanAdoption)
+    if (!adopted.adopted) return { ...adopted, decision: input.fallbackDecision }
+    await input.updateTodos({ sessionID: input.sessionID, todos: adopted.todos, mode: "status_update" })
+    const decision = await input.decideContinuation({ sessionID: input.sessionID, roundCount: input.roundCount })
+    return {
+      adopted: true as const,
+      reason: "adopted" as const,
+      decision,
+      todos: adopted.todos,
+    }
+  }
+
+  export async function handleSmartRunnerContinuationSideEffects(
+    input: Parameters<typeof handleContinuationSideEffects>[0],
+  ) {
+    const narration = describeAutonomousNextAction({
+      type: "continue",
+      reason: input.decision.reason,
+      text: input.decision.text,
+      todo: input.decision.todo!,
+    })
+    const emitNarration = input.emitNarration ?? emitAutonomousNarration
+    const enqueueContinue = input.enqueueContinue ?? enqueueAutonomousContinue
+    const nextRoundCount = input.autonomousRounds + 1
+    await emitNarration({
+      sessionID: input.sessionID,
+      parentID: input.user.id,
+      agent: input.user.agent,
+      variant: input.user.variant,
+      model: input.user.model,
+      text: input.narrationOverride ?? narration.text,
+      kind: narration.kind,
+    })
+    await enqueueContinue({
+      sessionID: input.sessionID,
+      user: input.user,
+      roundCount: nextRoundCount,
+      text: input.decision.text,
+    })
+    return {
+      halted: false as const,
+      nextRoundCount,
+      narration,
+    }
+  }
+
+  export async function handleSmartRunnerAdoptedStopNarration(input: {
+    sessionID: string
+    user: Pick<MessageV2.User, "id" | "agent" | "variant" | "model">
+    text: string
+    kind?: "pause" | "complete"
+    emitNarration?: typeof emitAutonomousNarration
+  }) {
+    await (input.emitNarration ?? emitAutonomousNarration)({
+      sessionID: input.sessionID,
+      parentID: input.user.id,
+      agent: input.user.agent,
+      variant: input.user.variant,
+      model: input.user.model,
+      kind: input.kind ?? "pause",
+      text: prefixAINarration(input.text),
+    })
+    return { emitted: true as const }
+  }
+
+  export async function handleSmartRunnerStopDecision(input: {
+    sessionID: string
+    activeModel: any
+    autonomousRounds: number
+    lastUser: MessageV2.User
+    messages: MessageV2.WithParts[]
+    todos: Todo.Info[]
+    decision: any
+    getConfig: () => Promise<{ enabled?: boolean; assist?: boolean }>
+    evaluateGovernor: (input: any) => Promise<any>
+    listQuestions: () => Promise<any[]>
+    askUser?: (input: any) => Promise<any>
+    requestApproval?: (input: any) => Promise<any>
+    pauseForRisk?: (input: any) => Promise<any>
+    completePath?: (input: any) => Promise<any>
+    replan?: (input: any) => Promise<any>
+    persistTrace?: (input: { sessionID: string; trace: any }) => Promise<unknown>
+    applyAssist?: (input: any) => any
+  }) {
+    const config = await input.getConfig()
+    if (!config.enabled) return { kind: "continue" as const, continueDecision: input.decision }
+
+    const trace = await input.evaluateGovernor({
+      sessionID: input.sessionID,
+      activeModel: input.activeModel,
+      autonomousRounds: input.autonomousRounds,
+      lastUser: input.lastUser,
+      messages: input.messages,
+      todos: input.todos,
+      decision: input.decision,
+    })
+
+    if (
+      trace.suggestion?.approvalRequest?.policy?.adoptionMode &&
+      trace.suggestion.approvalRequest.policy.adoptionMode !== "host_adoptable"
+    ) {
+      trace.suggestion.approvalRequest.hostAdoptionReason = "policy_not_host_adoptable"
+      await persistSmartRunnerTrace({ sessionID: input.sessionID, trace, persistTrace: input.persistTrace })
+      return { kind: "continue" as const, continueDecision: input.decision }
+    }
+
+    if (
+      trace.suggestion?.riskPauseRequest?.policy?.adoptionMode &&
+      trace.suggestion.riskPauseRequest.policy.adoptionMode !== "host_adoptable"
+    ) {
+      trace.suggestion.riskPauseRequest.hostAdoptionReason = "policy_not_host_adoptable"
+      await persistSmartRunnerTrace({ sessionID: input.sessionID, trace, persistTrace: input.persistTrace })
+      return { kind: "continue" as const, continueDecision: input.decision }
+    }
+
+    const governorDecision = trace.decision?.decision
+    if (governorDecision === "ask_user") {
+      const question = buildSmartRunnerQuestion({
+        questionText: trace.decision?.nextAction?.narration ?? trace.decision?.reason,
+      })
+      const outcome = await input.askUser?.({
+        sessionID: input.sessionID,
+        question,
+        trace,
+        lastUser: input.lastUser,
+      })
+      return { kind: "ask_user" as const, adopted: true as const, ...outcome }
+    }
+
+    if (governorDecision === "request_approval") {
+      const outcome = await input.requestApproval?.({ sessionID: input.sessionID, trace })
+      return { kind: "request_approval" as const, adopted: true as const, ...outcome }
+    }
+
+    if (governorDecision === "pause_for_risk") {
+      const outcome = await input.pauseForRisk?.({ sessionID: input.sessionID, trace })
+      return { kind: "pause_for_risk" as const, adopted: true as const, ...outcome }
+    }
+
+    if (governorDecision === "complete") {
+      const outcome = await input.completePath?.({ sessionID: input.sessionID, trace })
+      return { kind: "complete" as const, adopted: true as const, ...outcome }
+    }
+
+    let continueDecision = input.decision
+    if (input.replan) {
+      const replanned = await input.replan({
+        sessionID: input.sessionID,
+        todos: input.todos,
+        roundCount: input.autonomousRounds,
+        trace,
+      })
+      continueDecision = replanned?.decision ?? continueDecision
+    }
+
+    if (input.applyAssist && config.assist) {
+      const assisted = input.applyAssist({
+        trace,
+        decision: continueDecision,
+        todos: input.todos,
+      })
+      await persistSmartRunnerTrace({ sessionID: input.sessionID, trace, persistTrace: input.persistTrace })
+      if (assisted?.applied && assisted.decision) {
+        return {
+          kind: "continue" as const,
+          narrationOverride: assisted.narration ? prefixAINarration(assisted.narration) : undefined,
+          continueDecision: {
+            ...assisted.decision,
+            text: prefixAINarration(assisted.decision.text),
+          },
+        }
+      }
+    }
+
+    if (input.persistTrace) {
+      await persistSmartRunnerTrace({ sessionID: input.sessionID, trace, persistTrace: input.persistTrace })
+    }
+    return { kind: "continue" as const, continueDecision }
+  }
+
   async function runLoop(sessionID: string, options?: { replaceRuntime?: boolean }) {
     const runtime = start(sessionID, { replace: options?.replaceRuntime })
     if (!runtime) {
@@ -562,10 +925,9 @@ export namespace SessionPrompt {
         if (emptyRoundCount >= 3) {
           log.warn("breaking empty-response loop", { sessionID, emptyRounds: emptyRoundCount, step })
           // Surface error to user instead of silent stop
-          lastAssistant.error = {
-            name: "EmptyResponseError",
+          lastAssistant.error = new NamedError.Unknown({
             message: `Model returned empty responses ${emptyRoundCount} times consecutively. This may indicate an issue with the provider, account, or session context. Try sending a different message or starting a new session.`,
-          }
+          }).toObject()
           lastAssistant.finish = "error"
           await Session.updateMessage(lastAssistant)
           break
@@ -816,17 +1178,13 @@ export namespace SessionPrompt {
 
       // Continuation rebind compaction: server rejected previous_response_id,
       // use pre-built checkpoint to compact instead of resending full history.
-      if (
-        lastFinished &&
-        lastFinished.summary !== true &&
-        SessionCompaction.consumeRebindCompaction(sessionID)
-      ) {
+      if (lastFinished && lastFinished.summary !== true && SessionCompaction.consumeRebindCompaction(sessionID)) {
         log.info("rebind compaction triggered after continuation invalidation", { sessionID })
         SessionCompaction.recordCompaction(sessionID, step)
         if (!session.parentID) {
           // Priority: use pre-built checkpoint (saved during normal operation)
           const checkpoint = await SessionCompaction.loadRebindCheckpoint(sessionID)
-          const snap = checkpoint || await SharedContext.snapshot(sessionID)
+          const snap = checkpoint || (await SharedContext.snapshot(sessionID))
           if (snap) {
             await SessionCompaction.compactWithSharedContext({
               sessionID,
@@ -857,7 +1215,12 @@ export namespace SessionPrompt {
         lastFinished &&
         lastFinished.summary !== true &&
         ((await SessionCompaction.isOverflow({ tokens: lastFinished.tokens, model, sessionID, currentRound: step })) ||
-          (await SessionCompaction.shouldCacheAwareCompact({ tokens: lastFinished.tokens, model, sessionID, currentRound: step })))
+          (await SessionCompaction.shouldCacheAwareCompact({
+            tokens: lastFinished.tokens,
+            model,
+            sessionID,
+            currentRound: step,
+          })))
       ) {
         SessionCompaction.recordCompaction(sessionID, step)
         // Priority path: use shared context snapshot as summary (no LLM call)
