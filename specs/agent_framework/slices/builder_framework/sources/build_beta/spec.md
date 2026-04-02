@@ -108,15 +108,21 @@ The system SHALL detect when the authoritative main/base branch has advanced rel
 - **WHEN** builder prepares remediation
 - **THEN** the system SHALL stop instead of attempting rebase/remediation on dirty beta state
 
-### Requirement: Builder SHALL own finalize progression but stop at destructive approval
+### Requirement: Builder SHALL own finalize progression, including post-merge spec closeout, but stop at destructive approval
 
-The system SHALL allow builder to continue from successful validation into merge preflight, but SHALL not execute destructive finalize steps without explicit approval.
+The system SHALL allow builder to continue from successful validation into merge preflight and post-merge documentation/spec closeout, but SHALL not execute destructive finalize steps without explicit approval.
 
 #### Scenario: build execution completes successfully
 
 - **GIVEN** implementation and validation have passed in a beta-loop-enabled plan
 - **WHEN** build mode reaches completion
 - **THEN** the system SHALL prepare merge / cleanup preflight inside builder and pause for explicit approval before executing merge, worktree removal, or branch deletion
+
+#### Scenario: final test branch merge succeeds
+
+- **GIVEN** the final `test/*` branch merge into the authoritative `baseBranch` has succeeded
+- **WHEN** beta finalize enters closeout on the authoritative docs repo/worktree
+- **THEN** the system SHALL promote the completed dated `/plans/` package into the related semantic `/specs/` family and treat that spec family as the durable record for the completed workflow
 
 ## Acceptance Checks
 
@@ -125,4 +131,5 @@ The system SHALL allow builder to continue from successful validation into merge
 - Ambiguous branch/runtime decisions stop with explicit clarification requirements instead of guessed defaults.
 - Builder-native beta orchestration replaces routine prompt-only AI git orchestration.
 - Validation and finalize flow use deterministic built-in tooling while preserving approval gates.
+- Beta finalize includes post-merge consolidation of completed `/plans/` artifacts into the related semantic `/specs/` family.
 - External beta/dev MCP is not required for the intended builder UX.

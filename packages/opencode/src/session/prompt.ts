@@ -990,6 +990,17 @@ export namespace SessionPrompt {
         try {
           const checkpoint = await SessionCompaction.loadRebindCheckpoint(sessionID)
           if (checkpoint) {
+            const boundaryIndex = msgs.findIndex((message) => message.info.id === checkpoint.lastMessageId)
+            const postBoundary = boundaryIndex === -1 ? [] : msgs.slice(boundaryIndex + 1)
+            debugCheckpoint("prompt", "loop:rebind_checkpoint_loaded", {
+              sessionID,
+              step,
+              boundaryId: checkpoint.lastMessageId,
+              boundaryFound: boundaryIndex !== -1,
+              postBoundaryCount: postBoundary.length,
+              postBoundaryFirstId: postBoundary[0]?.info.id,
+              postBoundaryLastId: postBoundary.at(-1)?.info.id,
+            })
             const applied = SessionCompaction.applyRebindCheckpoint({
               sessionID,
               checkpoint,
@@ -998,6 +1009,13 @@ export namespace SessionPrompt {
             })
             const skipReason = "reason" in applied ? applied.reason : undefined
             if (!applied.applied) {
+              debugCheckpoint("prompt", "loop:rebind_checkpoint_skipped", {
+                sessionID,
+                step,
+                reason: skipReason,
+                boundaryId: checkpoint.lastMessageId,
+                postBoundaryCount: postBoundary.length,
+              })
               log.warn("rebind checkpoint skipped", {
                 sessionID,
                 reason: skipReason,
@@ -1006,6 +1024,13 @@ export namespace SessionPrompt {
             } else {
               msgs = applied.messages
               await SessionCompaction.deleteRebindCheckpoint(sessionID)
+              debugCheckpoint("prompt", "loop:rebind_checkpoint_applied", {
+                sessionID,
+                step,
+                boundaryId: checkpoint.lastMessageId,
+                messageCount: msgs.length,
+                postBoundaryCount: postBoundary.length,
+              })
               log.info("rebind checkpoint applied", {
                 sessionID,
                 boundaryId: checkpoint.lastMessageId,
@@ -1212,12 +1237,24 @@ export namespace SessionPrompt {
       // use pre-built checkpoint to compact instead of resending full history.
       if (lastFinished && lastFinished.summary !== true && SessionCompaction.consumeRebindCompaction(sessionID)) {
         log.info("rebind compaction triggered after continuation invalidation", { sessionID })
+        debugCheckpoint("prompt", "loop:rebind_compaction_triggered", {
+          sessionID,
+          step,
+          source: "continuation_invalidation",
+        })
         SessionCompaction.recordCompaction(sessionID, step)
         if (!session.parentID) {
           // Priority: use pre-built checkpoint (saved during normal operation)
           const checkpoint = await SessionCompaction.loadRebindCheckpoint(sessionID)
           const snap = checkpoint?.snapshot || (await SharedContext.snapshot(sessionID))
           if (snap) {
+            debugCheckpoint("prompt", "loop:rebind_compaction_snapshot_selected", {
+              sessionID,
+              step,
+              source: checkpoint ? "checkpoint" : "shared-context",
+              boundaryId: checkpoint?.lastMessageId,
+              snapshotChars: snap.length,
+            })
             await SessionCompaction.compactWithSharedContext({
               sessionID,
               snapshot: snap,
@@ -1239,6 +1276,11 @@ export namespace SessionPrompt {
         SessionCompaction.shouldRebindBudgetCompact({ tokens: lastFinished.tokens, sessionID, currentRound: step })
       ) {
         // Fire-and-forget: snapshot in background, don't block the conversation
+        debugCheckpoint("prompt", "loop:rebind_checkpoint_save_scheduled", {
+          sessionID,
+          step,
+          boundaryId: msgs.at(-1)?.info.id,
+        })
         SessionCompaction.saveRebindCheckpoint({
           sessionID,
           lastMessageId: msgs.at(-1)?.info.id,
@@ -1247,17 +1289,26 @@ export namespace SessionPrompt {
       }
 
       // context overflow OR cache-aware compaction
-      if (
+      const overflowTriggered =
         lastFinished &&
         lastFinished.summary !== true &&
-        ((await SessionCompaction.isOverflow({ tokens: lastFinished.tokens, model, sessionID, currentRound: step })) ||
-          (await SessionCompaction.shouldCacheAwareCompact({
-            tokens: lastFinished.tokens,
-            model,
-            sessionID,
-            currentRound: step,
-          })))
-      ) {
+        (await SessionCompaction.isOverflow({ tokens: lastFinished.tokens, model, sessionID, currentRound: step }))
+      const cacheAwareTriggered =
+        lastFinished &&
+        lastFinished.summary !== true &&
+        (await SessionCompaction.shouldCacheAwareCompact({
+          tokens: lastFinished.tokens,
+          model,
+          sessionID,
+          currentRound: step,
+        }))
+      if (overflowTriggered || cacheAwareTriggered) {
+        debugCheckpoint("prompt", "loop:compaction_triggered", {
+          sessionID,
+          step,
+          overflowTriggered,
+          cacheAwareTriggered,
+        })
         SessionCompaction.recordCompaction(sessionID, step)
         // Priority path: use shared context snapshot as summary (no LLM call)
         if (!session.parentID) {
@@ -1265,6 +1316,12 @@ export namespace SessionPrompt {
           if (overflowConfig.compaction?.sharedContext !== false) {
             const snap = await SharedContext.snapshot(sessionID)
             if (snap) {
+              debugCheckpoint("prompt", "loop:compaction_snapshot_selected", {
+                sessionID,
+                step,
+                source: "shared-context",
+                snapshotChars: snap.length,
+              })
               await SessionCompaction.compactWithSharedContext({
                 sessionID,
                 snapshot: snap,

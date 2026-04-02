@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { convertToOpenAIResponsesInput } from "./convert-to-openai-responses-input"
+import { convertToOpenAIResponsesInput, summarizeResponsesInputForDebug } from "./convert-to-openai-responses-input"
 
 describe("convertToOpenAIResponsesInput", () => {
   it("omits stored item references during stateless replay", async () => {
@@ -143,5 +143,37 @@ describe("convertToOpenAIResponsesInput", () => {
       },
     ])
     expect(result.warnings.length).toBeGreaterThan(0)
+  })
+
+  it("summarizes response input ids and item references for debug output", () => {
+    const summary = summarizeResponsesInputForDebug([
+      {
+        role: "assistant",
+        content: [{ type: "output_text", text: "hello" }],
+        id: "msg_text",
+      },
+      {
+        type: "item_reference",
+        id: "rs_123",
+      },
+      {
+        type: "function_call",
+        call_id: "call_1",
+        name: "test_tool",
+        arguments: "{}",
+        id: undefined,
+      },
+    ])
+
+    expect(summary).toEqual({
+      inputCount: 3,
+      idCount: 2,
+      itemReferenceCount: 1,
+      itemTypes: {
+        "role:assistant": 1,
+        item_reference: 1,
+        function_call: 1,
+      },
+    })
   })
 })

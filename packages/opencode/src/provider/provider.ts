@@ -50,6 +50,33 @@ import { ToolCallBridgeManager } from "./toolcall-bridge"
 export namespace Provider {
   const log = Log.create({ service: "provider" })
 
+  function summarizeResponsesRequestBody(body: unknown) {
+    if (!body || typeof body !== "object" || !("input" in body) || !Array.isArray(body.input)) return undefined
+    const typeCounts: Record<string, number> = {}
+    let idCount = 0
+    let itemReferenceCount = 0
+    for (const item of body.input) {
+      if (!item || typeof item !== "object") continue
+      const key = "type" in item ? String(item.type) : "role" in item ? `role:${String(item.role)}` : "unknown"
+      typeCounts[key] = (typeCounts[key] ?? 0) + 1
+      if ("id" in item && typeof item.id === "string" && item.id.length > 0) idCount++
+      if ("type" in item && item.type === "item_reference") itemReferenceCount++
+    }
+    return {
+      store: "store" in body ? body.store === true : undefined,
+      inputCount: body.input.length,
+      idCount,
+      itemReferenceCount,
+      typeCounts,
+    }
+  }
+
+  function summarizeErrorBody(body: string) {
+    const compact = body.replace(/\s+/g, " ").trim()
+    if (!compact) return undefined
+    return compact.slice(0, 240)
+  }
+
   const IGNORED_MODELS = new Set([
     "google/gemini-1.5-pro",
     "google/gemini-1.0-pro",
@@ -2002,6 +2029,8 @@ export namespace Provider {
         // Preserve custom fetch if it exists, wrap it with timeout logic
         const fetchFn = customFetch ?? fetch
         const opts = init ?? {}
+        let responsesRequestBefore: ReturnType<typeof summarizeResponsesRequestBody> | undefined
+        let responsesRequestAfter: ReturnType<typeof summarizeResponsesRequestBody> | undefined
 
         // Merge configured headers into request headers
         opts.headers = {
@@ -2024,16 +2053,30 @@ export namespace Provider {
         // Message, Reasoning, FunctionCall, LocalShellCall, CustomToolCall, WebSearchCall
         // IDs are only re-attached for Azure with store=true
         if (model.api.npm === "@ai-sdk/openai" && opts.body && opts.method === "POST") {
-          const body = JSON.parse(opts.body as string)
-          const isAzure = model.providerId.includes("azure")
-          const keepIds = isAzure && body.store === true
-          if (!keepIds && Array.isArray(body.input)) {
-            for (const item of body.input) {
-              if ("id" in item) {
-                delete item.id
+          try {
+            const body = JSON.parse(opts.body as string)
+            responsesRequestBefore = summarizeResponsesRequestBody(body)
+            const isAzure = model.providerId.includes("azure")
+            const keepIds = isAzure && body.store === true
+            if (!keepIds && Array.isArray(body.input)) {
+              for (const item of body.input) {
+                if ("id" in item) {
+                  delete item.id
+                }
               }
+              responsesRequestAfter = summarizeResponsesRequestBody(body)
+              opts.body = JSON.stringify(body)
             }
-            opts.body = JSON.stringify(body)
+            debugCheckpoint("provider-fetch", "responses request scrub summary", {
+              providerId: wrappedProviderID,
+              modelID: wrappedModelID,
+              isAzure,
+              keepIds,
+              before: responsesRequestBefore,
+              after: responsesRequestAfter ?? responsesRequestBefore,
+            })
+          } catch {
+            // If parsing fails, proceed with original body
           }
         }
 
@@ -2074,7 +2117,22 @@ export namespace Provider {
         }
         const response = await fetchFn(input, requestInit)
 
-        if (!response.ok) return response
+        if (!response.ok) {
+          const errorSummary = await response
+            .clone()
+            .text()
+            .then((body: string) => summarizeErrorBody(body))
+            .catch(() => undefined)
+          debugCheckpoint("provider-fetch", "responses error response", {
+            providerId: wrappedProviderID,
+            modelID: wrappedModelID,
+            url: inputUrl,
+            status: response.status,
+            request: responsesRequestAfter ?? responsesRequestBefore,
+            errorSummary,
+          })
+          return response
+        }
 
         const stream = (() => {
           if (!opts?.body || typeof opts.body !== "string") return false

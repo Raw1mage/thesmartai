@@ -25,6 +25,15 @@ import { Bus } from "@/bus"
 import { debugCheckpoint } from "@/util/debug"
 
 export namespace MessageV2 {
+  function hasRemoteItemId(metadata: unknown) {
+    if (!metadata || typeof metadata !== "object") return false
+    for (const value of Object.values(metadata)) {
+      if (!value || typeof value !== "object") continue
+      if ("itemId" in value && typeof value.itemId === "string" && value.itemId.length > 0) return true
+    }
+    return false
+  }
+
   export const OutputLengthError = NamedError.create("MessageOutputLengthError", z.object({}))
   export const AbortedError = NamedError.create("MessageAbortedError", z.object({ message: z.string() }))
   export const StructuredOutputError = NamedError.create(
@@ -606,16 +615,28 @@ export namespace MessageV2 {
           role: "assistant",
           parts: [],
         }
+        const replayDebug = {
+          textParts: 0,
+          textItemIds: 0,
+          reasoningParts: 0,
+          reasoningItemIds: 0,
+          toolParts: 0,
+          toolItemIds: 0,
+        }
         for (const part of msg.parts) {
           if (part.type === "text")
             if (part.metadata?.excludeFromModel === true) continue
             else
-              assistantMessage.parts.push({
-                type: "text",
-                text: part.text,
-                ...(differentModel ? {} : { providerMetadata: part.metadata }),
-              })
+              (replayDebug.textParts++,
+                hasRemoteItemId(part.metadata) && replayDebug.textItemIds++,
+                assistantMessage.parts.push({
+                  type: "text",
+                  text: part.text,
+                  ...(differentModel ? {} : { providerMetadata: part.metadata }),
+                }))
           if (part.type === "tool") {
+            replayDebug.toolParts++
+            if (hasRemoteItemId(part.metadata)) replayDebug.toolItemIds++
             toolNames.add(part.tool)
             if (part.state.status === "completed") {
               // AI SDK v5 requires output to be an object with `text` field, not a bare string
@@ -659,12 +680,26 @@ export namespace MessageV2 {
               })
           }
           if (part.type === "reasoning") {
+            replayDebug.reasoningParts++
+            if (hasRemoteItemId(part.metadata)) replayDebug.reasoningItemIds++
             assistantMessage.parts.push({
               type: "reasoning",
               text: part.text,
               ...(differentModel ? {} : { providerMetadata: part.metadata }),
             })
           }
+        }
+        if (
+          !differentModel &&
+          (replayDebug.textItemIds > 0 || replayDebug.reasoningItemIds > 0 || replayDebug.toolItemIds > 0)
+        ) {
+          debugCheckpoint("message-v2", "assistant replay metadata preserved", {
+            messageID: msg.info.id,
+            sessionID: msg.info.sessionID,
+            providerId: msg.info.providerId,
+            modelID: msg.info.modelID,
+            replay: replayDebug,
+          })
         }
         if (assistantMessage.parts.length > 0) {
           result.push(assistantMessage)

@@ -6,6 +6,7 @@ import {
 } from "@ai-sdk/provider"
 import { convertToBase64, parseProviderOptions } from "@ai-sdk/provider-utils"
 import { z } from "zod/v4"
+import { debugCheckpoint } from "@/util/debug"
 import type { OpenAIResponsesInput, OpenAIResponsesReasoning } from "./openai-responses-api-types"
 import { localShellInputSchema, localShellOutputSchema } from "./tool/local-shell"
 
@@ -21,6 +22,26 @@ function sanitizeResponsesId(id: unknown): string | undefined {
 function getReplayItemId(store: boolean, id: unknown): string | undefined {
   if (!store) return undefined
   return sanitizeResponsesId(id)
+}
+
+export function summarizeResponsesInputForDebug(input: OpenAIResponsesInput) {
+  const itemTypes: Record<string, number> = {}
+  let idCount = 0
+  let itemReferenceCount = 0
+
+  for (const item of input) {
+    const key = "type" in item ? item.type : `role:${item.role}`
+    itemTypes[key] = (itemTypes[key] ?? 0) + 1
+    if ("id" in item && typeof item.id === "string" && item.id.length > 0) idCount++
+    if ("type" in item && item.type === "item_reference") itemReferenceCount++
+  }
+
+  return {
+    inputCount: input.length,
+    idCount,
+    itemReferenceCount,
+    itemTypes,
+  }
 }
 
 /**
@@ -50,6 +71,15 @@ export async function convertToOpenAIResponsesInput({
 }> {
   const input: OpenAIResponsesInput = []
   const warnings: Array<LanguageModelV2CallWarning> = []
+  const replayDebug = {
+    assistantTextParts: 0,
+    assistantTextItemIds: 0,
+    toolCallParts: 0,
+    toolCallItemIds: 0,
+    toolResultParts: 0,
+    reasoningParts: 0,
+    reasoningItemIds: 0,
+  }
 
   for (const { role, content } of prompt) {
     switch (role) {
@@ -138,6 +168,8 @@ export async function convertToOpenAIResponsesInput({
         for (const part of content) {
           switch (part.type) {
             case "text": {
+              replayDebug.assistantTextParts++
+              if (part.providerOptions?.openai?.itemId) replayDebug.assistantTextItemIds++
               const itemId = getReplayItemId(store, part.providerOptions?.openai?.itemId)
               if (store && !itemId && part.providerOptions?.openai?.itemId) {
                 warnings.push({
@@ -153,6 +185,8 @@ export async function convertToOpenAIResponsesInput({
               break
             }
             case "tool-call": {
+              replayDebug.toolCallParts++
+              if (part.providerOptions?.openai?.itemId) replayDebug.toolCallItemIds++
               toolCallParts[part.toolCallId] = part
 
               if (part.providerExecuted) {
@@ -199,6 +233,7 @@ export async function convertToOpenAIResponsesInput({
 
             // assistant tool result parts are from provider-executed tools:
             case "tool-result": {
+              replayDebug.toolResultParts++
               if (store) {
                 // use item references to refer to tool results from built-in tools
                 const itemId = sanitizeResponsesId(part.toolCallId)
@@ -221,6 +256,7 @@ export async function convertToOpenAIResponsesInput({
             }
 
             case "reasoning": {
+              replayDebug.reasoningParts++
               const providerOptions = await parseProviderOptions({
                 provider: "copilot",
                 providerOptions: part.providerOptions,
@@ -228,6 +264,7 @@ export async function convertToOpenAIResponsesInput({
               })
 
               const reasoningId = sanitizeResponsesId(providerOptions?.itemId)
+              if (providerOptions?.itemId) replayDebug.reasoningItemIds++
 
               if (reasoningId != null) {
                 const reasoningMessage = reasoningMessages[reasoningId]
@@ -333,6 +370,16 @@ export async function convertToOpenAIResponsesInput({
         throw new Error(`Unsupported role: ${_exhaustiveCheck}`)
       }
     }
+  }
+
+  if (Object.values(replayDebug).some((value) => value > 0)) {
+    debugCheckpoint("responses-replay", "converted input summary", {
+      store,
+      hasLocalShellTool,
+      warnings: warnings.length,
+      replay: replayDebug,
+      output: summarizeResponsesInputForDebug(input),
+    })
   }
 
   return { input, warnings }

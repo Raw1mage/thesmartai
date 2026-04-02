@@ -77,15 +77,29 @@ The system SHALL keep build execution bound to the same dated `/plans/` package 
 - **WHEN** `plan_exit` transitions the session into build mode
 - **THEN** mission artifact paths and runtime task materialization must continue to reference that same `/plans` root
 
-### Requirement: Specs promotion is explicit and post-merge
+### Requirement: Specs promotion stays post-merge, with beta finalize closeout
 
-The system SHALL NOT automatically promote planner artifacts from `/plans` into `/specs` during planning, build, commit, or merge.
+The system SHALL keep ordinary workstreams in `/plans` unless separately promoted, but SHALL treat beta-workflow finalize as a required post-merge closeout that consolidates completed plan knowledge into the related semantic `/specs/` family.
 
-#### Scenario: implementation has been completed and merged
+#### Scenario: ordinary non-beta workstream finishes
 
-- **GIVEN** the plan has been fully executed, committed, and merged
-- **WHEN** no explicit user request to formalize/move artifacts has been given
+- **GIVEN** the plan has been fully executed, committed, and merged outside the beta finalize workflow
+- **WHEN** no separate formalization request or promotion step has been given
 - **THEN** the system must leave the artifacts under `/plans` and must not move them into `/specs`
+
+#### Scenario: beta workflow reaches final mainline merge
+
+- **GIVEN** a beta-enabled workflow has completed the final `test/*` branch merge into the authoritative `baseBranch`
+- **WHEN** finalize cleanup runs in the authoritative docs repo/worktree
+- **THEN** the system SHALL close out the completed dated `/plans/` package by merging its durable planning/spec content into the related semantic `/specs/` family
+- **AND** the dated `/plans/` root must no longer remain the long-term canonical spec record for that completed workflow
+
+#### Scenario: beta finalize cannot resolve a target semantic spec family
+
+- **GIVEN** a beta-enabled workflow has completed final merge, but no unambiguous related semantic `/specs/` family is identifiable
+- **WHEN** post-merge plan closeout would begin
+- **THEN** the system SHALL fail fast and require an explicit user decision for the destination spec family
+- **AND** it must not create an isolated fallback spec root silently
 
 ### Requirement: Legacy dated packages are triaged by implementation status
 
@@ -131,5 +145,6 @@ The system SHALL only create a new plan root when the user explicitly requests o
 - Build mode preserves planner-derived execution-ledger semantics.
 - Prompt/skill/AGENTS wording no longer instructs agents to use dated plan roots under `/specs/` as the active planning workspace.
 - `specs/architecture.md` remains the documented architecture SSOT.
-- No automatic `/plans` → `/specs` promotion path is introduced.
+- Non-beta workflows do not silently introduce a generic automatic `/plans` → `/specs` promotion path.
+- Beta finalize performs the required post-merge consolidation into the related semantic `/specs/` family.
 - Legacy dated packages under `/specs/` have an explicit implementation-status triage rule rather than silent fallback handling.

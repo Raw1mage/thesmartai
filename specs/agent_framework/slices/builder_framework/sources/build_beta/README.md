@@ -1,6 +1,6 @@
 # build_beta
 
-This spec root is the manual promotion target for the completed active plan originally authored under `/plans/20260321_beta-tool/`.
+This spec root is the semantic family that absorbed the completed active plan originally authored under `/plans/20260321_beta-tool/`. That historical promotion was manual; the current beta workflow now requires equivalent post-merge closeout into the related spec family after the final test-branch merge.
 
 ## Scope
 
@@ -15,8 +15,9 @@ Builder-native beta workflow integration for:
 ## Promotion Record
 
 - Source plan root: `/plans/20260321_beta-tool/`
-- Promoted manually after execution completed and plan tasks were closed
-- Promotion requested by user in this session
+- Legacy record: promoted manually after execution completed and plan tasks were closed
+- Legacy record: promotion requested by user in that session
+- Current workflow rule: future beta-completed plan roots should be closed out into the related semantic spec family as part of post-merge finalize
 
 ## Notes
 
