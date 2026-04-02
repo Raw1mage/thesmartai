@@ -1,5 +1,5 @@
 import fs from "fs/promises"
-import { constants as fsConstants } from "fs"
+import fsSync, { constants as fsConstants } from "fs"
 import { xdgData, xdgCache, xdgConfig, xdgState } from "xdg-basedir"
 import path from "path"
 import os from "os"
@@ -98,7 +98,31 @@ type TemplateManifestEntry = {
 }
 
 const SENSITIVE_FILES = new Set(["accounts.json", "mcp-auth.json"])
-const templatesDir = path.join(import.meta.dir, "../../../../templates")
+const getTemplatesDir = () => {
+  if (process.env.OPENCODE_TEMPLATES_DIR) return process.env.OPENCODE_TEMPLATES_DIR
+  
+  // 1. Check relative to current working directory (Dev mode)
+  const devPath = path.join(process.cwd(), "templates")
+  if (path.basename(process.cwd()) === "opencode" || path.basename(process.cwd()) === "opencode-data") {
+    // Basic heuristic to avoid false positives in random dirs
+    if (fsSync.existsSync(path.join(devPath, "manifest.json"))) return devPath
+  }
+
+  // 2. Check relative to source (Repo mode)
+  const repoPath = path.join(import.meta.dir, "../../../../templates")
+
+  // 3. System-wide fallback (Operation mode - independent of repo)
+  const systemPath = "/usr/local/share/opencode/templates"
+
+  // Heuristic check: check for manifest.json
+  if (fsSync.existsSync(path.join(repoPath, "manifest.json"))) return repoPath
+  if (fsSync.existsSync(path.join(systemPath, "manifest.json"))) return systemPath
+  
+  return repoPath // Fallback to repo path even if missing, as legacy behavior
+}
+
+const templatesDir = getTemplatesDir()
+
 const manifestPath = path.join(templatesDir, "manifest.json")
 
 const resolveTargetDir = (target?: TemplateTarget) => {
@@ -187,6 +211,33 @@ if (process.env.NODE_ENV !== "test") {
       version: "2",
     })
   }
+}
+
+// @event_2026-03-31_user-init: Auto-install shell profile for new users
+const installUserShellProfile = async () => {
+  const shellProfileSrc = path.join(templatesDir, "shell-profile.sh")
+  if (!(await Bun.file(shellProfileSrc).exists())) return
+
+  const marker = "# OpenCode Terminal Protection"
+  const homeDir = os.homedir()
+  const bashrcPath = path.join(homeDir, ".bashrc")
+  
+  if (!(await Bun.file(bashrcPath).exists())) return
+
+  try {
+    const content = await Bun.file(bashrcPath).text()
+    if (content.includes(marker)) return
+
+    const profileContent = await Bun.file(shellProfileSrc).text()
+    await fs.appendFile(bashrcPath, "\n" + profileContent + "\n")
+    console.log(`[user-init] 已安裝 terminal protection 到 ${bashrcPath}`)
+  } catch (error) {
+    console.warn("[user-init] 無法更新 .bashrc", error)
+  }
+}
+
+if (process.env.OPENCODE_USER_DAEMON_MODE === "1") {
+  await installUserShellProfile()
 }
 
 const CACHE_VERSION = "21"

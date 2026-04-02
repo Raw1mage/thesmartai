@@ -365,12 +365,44 @@ const installBinary = async () => {
   console.log("安裝完成")
 }
 
+const installSystemTemplates = async () => {
+  const systemTemplatesRoot = "/usr/local/share/opencode"
+  const systemTemplatesDir = path.join(systemTemplatesRoot, "templates")
+
+  console.log(`正在更新系統級模板: ${systemTemplatesDir}`)
+  
+  if (process.platform === "win32") return // Not supported yet
+
+  try {
+    ensureDir(systemTemplatesDir)
+    // Use recursive copy for the entire templates directory
+    await fsPromises.cp(templatesDir, systemTemplatesDir, { 
+      recursive: true,
+      filter: (src) => {
+        // Exclude large backup folders if they exist
+        return !src.includes("backup") && !src.includes(".git")
+      }
+    })
+    console.log("系統級模板更新完成")
+  } catch (error) {
+    if ((error as { code?: string }).code === "EACCES") {
+      console.warn("[SKIP] 權限不足，跳過系統級模板更新（需要 sudo）")
+    } else {
+      throw error
+    }
+  }
+}
+
 try {
   const entries = await loadManifestEntries()
   await runBuild()
   await installBinary()
+  
+  // 1. System-level (Master templates for independent operation)
+  await installSystemTemplates()
+
+  // 2. User-level (Local environment initialization)
   await migrateLegacyOpencode(entries)
-  // cleanupToCyclebin 已移除：install 不應清理使用者資料
   await installTemplates(entries)
   await installShellProfile()
 } catch (error) {

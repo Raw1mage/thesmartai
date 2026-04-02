@@ -101,8 +101,8 @@ export namespace Provider {
     reasoning?: boolean
   }> = [
     // Fast and lightweight
-    { id: "gpt-5.4-mini", name: "GPT-5.4 mini", family: "openai" },
-    { id: "gpt-5-mini", name: "GPT-5 mini", family: "openai" },
+    { id: "gpt-5.4-mini", name: "GPT-5.4 mini", family: "openai", reasoning: true },
+    { id: "gpt-5-mini", name: "GPT-5 mini", family: "openai", reasoning: true },
     { id: "grok-code-fast-1", name: "Grok Code Fast 1", family: "xai" },
     { id: "gemini-3-flash", name: "Gemini 3 Flash", family: "gemini" },
     // Versatile and highly intelligent

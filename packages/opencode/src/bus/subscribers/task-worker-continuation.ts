@@ -210,6 +210,35 @@ async function enqueueParentContinuation(input: {
         targetSessionID: input.parentSessionID,
         sourceSessionID: input.childSessionID,
       }).catch(() => undefined)
+
+      // Fallback: if message history was destroyed by compaction loops (e.g. weak model
+      // compacting repeatedly), use SharedContext snapshot as evidence so parent LLM
+      // has something actionable instead of an empty completion notice.
+      if (!childSummary) {
+        try {
+          const childCtx = await SharedContext.get(input.childSessionID)
+          if (childCtx) {
+            const parts: string[] = []
+            if (childCtx.currentState) parts.push(`State: ${childCtx.currentState}`)
+            if (childCtx.actions.length > 0)
+              parts.push(`Actions:\n${childCtx.actions.map((a) => `- ${a.summary}`).join("\n")}`)
+            if (childCtx.discoveries.length > 0)
+              parts.push(`Discoveries:\n${childCtx.discoveries.map((d) => `- ${d}`).join("\n")}`)
+            if (childCtx.files.length > 0)
+              parts.push(`Files touched: ${childCtx.files.map((f) => f.path).join(", ")}`)
+            if (parts.length > 0) {
+              childSummary = `<child_session_output session="${input.childSessionID}" source="shared_context">\n${parts.join("\n\n")}\n</child_session_output>`
+              log.warn("child message history empty after compaction, using SharedContext fallback", {
+                childSessionID: input.childSessionID,
+                parentSessionID: input.parentSessionID,
+                contextParts: parts.length,
+              })
+            }
+          }
+        } catch {
+          // Non-fatal: proceed without fallback
+        }
+      }
     }
 
     await Session.updateMessage({
@@ -226,7 +255,10 @@ async function enqueueParentContinuation(input: {
     const continuationText = input.ok
       ? [
           childSummary ? `${childSummary}\n\n---\n\n` : "",
-          `Subagent ${input.childSessionID} completed. Continue immediately with the next step based on the evidence above.`,
+          `Subagent ${input.childSessionID} completed.`,
+          childSummary
+            ? " Continue immediately with the next step based on the evidence above."
+            : " The subagent's detailed output was lost due to context compaction. Check SharedContext and the child session for details, then continue with the next step.",
         ].join("")
       : `Subagent ${input.childSessionID} failed. Continue immediately using the recorded task error and child session evidence: ${input.error ?? "unknown error"}`
 

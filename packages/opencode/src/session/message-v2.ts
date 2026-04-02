@@ -648,8 +648,9 @@ export namespace MessageV2 {
           value: [
             { type: "text", text: outputObject.text },
             ...attachments.map((attachment) => ({
-              type: "image",
-              image: attachment.url,
+              type: "media",
+              data: attachment.url.split(",")[1] ?? attachment.url,
+              mediaType: attachment.mime,
             })),
           ],
         }

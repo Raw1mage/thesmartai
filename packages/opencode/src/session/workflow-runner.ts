@@ -519,7 +519,8 @@ const RESUME_LOCK = "session.workflow.resume"
 const LEASE_MS = 30_000
 const MAX_RESUME_FAILURES = 3
 const SUPERVISOR_OWNER = `supervisor:${process.pid}:${Date.now().toString(36)}`
-const resumeInFlight = new Set<string>()
+const resumeInFlight = new Map<string, number>()
+const RESUME_IN_FLIGHT_TIMEOUT_MS = 5 * 60_000 // 5 minutes — if a resume takes longer, allow re-entry
 let supervisorStarted = false
 let supervisorTimer: ReturnType<typeof setInterval> | undefined
 
@@ -1182,7 +1183,8 @@ export async function getPendingContinuationQueueInspection(
   const session = await Session.get(sessionID)
   const pending = await getPendingContinuation(sessionID)
   const status = SessionStatus.get(sessionID)
-  const inFlight = resumeInFlight.has(sessionID)
+  const inFlightSince = resumeInFlight.get(sessionID)
+  const inFlight = inFlightSince !== undefined && (Date.now() - inFlightSince) < RESUME_IN_FLIGHT_TIMEOUT_MS
   const events = await RuntimeEventService.list(sessionID, { limit: 20 }).catch(() => [])
   const health = summarizeAutonomousWorkflowHealth({
     workflow: session.workflow,
@@ -1334,7 +1336,15 @@ export async function resumePendingContinuations(input?: { maxCount?: number; pr
   log.info("resumePendingContinuations: pending items", { count: items.length, sessionIDs: items.map((i) => i.sessionID) })
   const resumable: ResumeCandidate[] = []
   for (const item of items) {
-    const inFlight = resumeInFlight.has(item.sessionID)
+    const inFlightSince = resumeInFlight.get(item.sessionID)
+    const inFlight = inFlightSince !== undefined && (Date.now() - inFlightSince) < RESUME_IN_FLIGHT_TIMEOUT_MS
+    if (inFlightSince !== undefined && !inFlight) {
+      log.warn("resumePendingContinuations: clearing stale in-flight entry", {
+        sessionID: item.sessionID,
+        staleSinceMs: Date.now() - inFlightSince,
+      })
+      resumeInFlight.delete(item.sessionID)
+    }
     if (inFlight) {
       log.info("resumePendingContinuations: skipping in-flight", { sessionID: item.sessionID })
       continue
@@ -1377,7 +1387,7 @@ export async function resumePendingContinuations(input?: { maxCount?: number; pr
 
   for (const item of selected) {
     const sessionID = item.pending.sessionID
-    resumeInFlight.add(sessionID)
+    resumeInFlight.set(sessionID, Date.now())
     await Session.setWorkflowState({
       sessionID,
       state: "running",

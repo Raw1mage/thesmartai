@@ -393,7 +393,7 @@ describe("session.message-v2.toModelMessage", () => {
               type: "content",
               value: [
                 { type: "text", text: "ok" },
-                { type: "image", image: "data:image/png;base64,Zm9v" },
+                { type: "media", data: "Zm9v", mediaType: "image/png" },
               ],
             },
             providerOptions: { openai: { tool: "meta" } },
