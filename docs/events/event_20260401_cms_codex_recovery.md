@@ -1168,6 +1168,228 @@ OUT:
 - Architecture Sync:
   - Verified: `specs/architecture.md`（No doc changes；本次為 session checkpoint durability/injection hardening，未改變長期架構邊界）
 
+## 2026-04-02 Claude capability chain — latest-HEAD verification wave
+
+### 需求
+
+- 完成 `restore_missing_commits` Wave 4，驗證最新 `HEAD` 上的 Claude capability chain 是否已經處於最新可用形態。
+- 嚴格避免把舊的 `claude-provider` / `claw-code` 切片直接 replay 回來，只保留真正缺的 delta。
+
+### 範圍
+
+IN:
+
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/src/plugin/index.ts`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/src/plugin/claude-native.ts`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/src/plugin/anthropic.ts`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/src/provider/provider.ts`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode-claude-provider/*`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/.gitmodules`
+- `/home/pkcs12/projects/opencode/plans/20260402_commits/{reconstruction-map,tasks}.md`
+
+OUT:
+
+- 不重啟 standalone native transport 舊設計
+- 不回退到歷史 `refs/claw-code` submodule pointer
+- 不啟動 fetch-back / finalize / cleanup
+
+### 結論
+
+- Wave 4 完成，且以 **validation-heavy** 方式收斂：最新 `HEAD` 上的 Claude capability chain 已基本存在於較新形態，無需大規模 beta delta。
+- `R5.1` / `R5.2` / `R5.3`：**already present**
+  - `packages/opencode-claude-provider` 可成功 `cmake` build
+  - `ClaudeNativeAuthPlugin` loader smoke 成功，返回 `hasFetch=true`, `hasApiKey=true`, `isClaudeCode=true`
+- `R5.5` / `R5.6`：**already present**
+  - `Provider.list()` 已可見 `claude-cli`，模型數量為 `7`
+  - focused fetch smoke 證明 request path 仍經 `anthropic.ts`，且保留：
+    - `https://api.anthropic.com/v1/messages?beta=true`
+    - `authorization: Bearer ...`
+    - `user-agent: claude-code/2.1.39`
+    - Claude Code required betas
+    - `mcp_` tool prefix
+    - Claude Code identity injection
+- `R5.4`：保持 **merged_into_newer_subproblem**
+  - `transport.c` 仍是 placeholder，但目前活躍鏈路是較新的 plugin/TS fetch path，因此不做 standalone native transport 回補
+- `R5.7`：保持 **keep_deprecated**
+- `R5.8`：保持 **merged_into_newer_subproblem**
+- `R5.9`：調整為 **keep_deprecated**
+  - current `HEAD` 並不存在 `refs/claw-code`
+  - `.gitmodules` 已有較新的 `refs/claude-code` 與 `refs/openclaw`
+  - 因此不回補歷史 `refs/claw-code`
+
+### Validation
+
+- Admission:
+  - `git rev-parse --show-toplevel`
+  - `git rev-parse --abbrev-ref HEAD`
+  - `git merge-base main beta/restore-missing-commits`
+  - `git rev-parse main`
+  - `git rev-parse beta/restore-missing-commits`
+- Native build:
+  - `cmake -S "/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode-claude-provider" -B "/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode-claude-provider/build"`
+  - `cmake --build "/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode-claude-provider/build"`
+- Focused smokes:
+  - loader smoke -> `{"hasFetch":true,"hasApiKey":true,"isClaudeCode":true}`
+  - provider visibility smoke -> `{"hasProvider":true,"modelCount":7}`
+  - fetch/path smoke ->
+    - `url=https://api.anthropic.com/v1/messages?beta=true`
+    - Claude Code auth/betas preserved
+    - `mcp_` tool transform present
+    - Claude Code identity injection present
+- Historical evidence:
+  - `git show --stat --summary --unified=40 197fc2bd7 -- ...`
+  - `git show --stat --summary --unified=40 9321ca7b1 -- ...`
+  - `git show --stat --summary --unified=40 809135c30 -- ...`
+  - `git show --stat --summary --unified=40 4a4c69488 -- ...`
+  - `git show --stat --summary --unified=20 72ee7f4f1 -- .gitmodules refs`
+  - `git show --stat --summary --unified=20 a148c0e14 -- .gitmodules refs`
+- Hygiene:
+  - `git diff --check` in beta worktree ✅
+  - `git diff --check` in docs repo ✅
+
+### Issues
+
+- `mainWorktree` dirty-state blocker 仍存在，之後 fetch-back / finalize 前仍需處理：
+  - `docs/events/event_20260401_cms_codex_recovery.md`
+  - `plans/20260402_commits/`
+- Wave 5 可繼續，但 fetch-back / finalize 仍不可開始。
+
+## 2026-04-02 Wave 2 verification closure on beta/restore-missing-commits
+
+### 需求
+
+- 在 `beta/restore-missing-commits` 上收斂 Wave 2 真正完成狀態，避免把 partial runtime changes 誤當成可直接進 Wave 3。
+- 同步明確區分：哪些 runtime/debug slice 已存在於 current `HEAD`、哪些是本次 beta bounded delta、哪些仍需阻擋後續波次。
+
+### 範圍
+
+IN:
+
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/src/session/{compaction.ts,prompt.ts,message-v2.ts,workflow-runner.ts,llm.ts}`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/{src,test}/session/*.test.ts`
+- `/home/pkcs12/projects/opencode/plans/20260402_commits/{reconstruction-map.md,tasks.md}`
+- `/home/pkcs12/projects/opencode/docs/events/event_20260401_cms_codex_recovery.md`
+
+OUT:
+
+- 不啟動 Wave 3
+- 不修改 user-init / onboarding / marketplace
+- 不做 fetch-back / finalize / cleanup
+
+### 結論
+
+- `R2.1` / `R2.2`: **already present** on current `HEAD`
+  - `compaction.ts` / `prompt.ts` 已包含 checkpoint metadata persistence、`lastMessageId`、safe checkpoint injection、boundary-safe apply path
+  - focused `compaction.test.ts` 在 beta worktree 掛臨時 `node_modules` symlink 後通過：`6 pass, 0 fail`
+- `R2.3`: **already present** on current `HEAD`
+  - `compaction.ts` 已有 small-context truncation 與 checkpoint cooldown 邏輯
+- `R2.4` / `R2.6`: **beta bounded delta complete**
+  - `prompt.ts` 新增 subagent nudge 與 compaction-loop breaker
+  - `workflow-runner.ts` 新增 stale `resumeInFlight` timeout cleanup
+  - 視為在最新 `HEAD` 上補齊 runtime hardening / cadence 缺口，而非舊 patch replay
+- `R2.5`: **completed on beta**
+  - `message-v2.ts` 已把 tool-result attachment 從舊 `image` shape 正規化為較新的 `media` shape
+  - `message-v2.test.ts` focused test：`24 pass, 0 fail`
+- `R7.1`: **already present** on current `HEAD`
+  - `llm.ts` 已存在 `debugCheckpoint("llm.packet", "LLM outbound packet prepared", ...)`
+  - `llm.ts` 已存在 `debugCheckpoint("llm.packet", "LLM inbound packet observed", ...)`
+
+### Validation
+
+- Admission:
+  - `git rev-parse --show-toplevel`
+  - `git rev-parse --abbrev-ref HEAD`
+  - `git merge-base main beta/restore-missing-commits`
+  - `git rev-parse main`
+  - `git rev-parse beta/restore-missing-commits`
+- Diff evidence:
+  - `git diff --stat main -- packages/opencode/src/session/{compaction.ts,prompt.ts,workflow-runner.ts,message-v2.ts}`
+  - `git diff --unified=20 main -- packages/opencode/src/session/prompt.ts`
+  - `git diff --unified=20 main -- packages/opencode/src/session/workflow-runner.ts`
+  - `git diff --unified=20 main -- packages/opencode/src/session/message-v2.ts packages/opencode/test/session/message-v2.test.ts`
+- Focused tests:
+  - `ln -sfn /home/pkcs12/projects/opencode/node_modules /home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/node_modules && bun test /home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/src/session/compaction.test.ts` -> `6 pass, 0 fail`
+  - `bun test /home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/test/session/message-v2.test.ts` -> `24 pass, 0 fail`
+- Source evidence:
+  - `grep` on rebind checkpoint helpers in `packages/opencode/src/session/{compaction.ts,prompt.ts}`
+  - `grep` on `llm.packet` checkpoints in `packages/opencode/src/session/llm.ts`
+- Hygiene:
+  - `git diff --check` ✅
+
+### Decision
+
+- Wave 2 可視為 **complete**，因為：
+  - 缺失 slice (`R2.5`, `R2.4`, `R2.6`) 已在 beta 補齊或 bounded hardening 完成
+  - 其餘 `R2.1`, `R2.2`, `R2.3`, `R7.1` 已被 current `HEAD` 吸收
+- Wave 3 不再被 Wave 2 阻擋。
+
+### Architecture Sync
+
+- Verified: `specs/architecture.md`（No doc changes；本次為 Wave 2 完成狀態收斂與驗證結論，同步至 runtime recovery plan）
+
+## 2026-04-02 Wave 3 — user-init / onboarding / marketplace reconstruction
+
+### 需求
+
+- 在 admitted beta surface 上執行 Wave 3，處理 `R4.1-R4.4`：repo-independent init、shell profile injection、multi-user onboarding residue、MCP marketplace residue。
+- 以最新 `HEAD` 為基底，只補真正缺失的 delta；若 current `HEAD` 已有較新的 onboarding/market surface，則以 source evidence 記錄而不回放舊 patch。
+
+### 範圍
+
+IN:
+
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/src/global/index.ts`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/script/install.ts`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/src/server/routes/mcp.ts`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/src/mcp/index.ts`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/app/src/components/dialog-app-market.tsx`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/templates/opencode.json`
+- `/home/pkcs12/projects/opencode/plans/20260402_commits/{reconstruction-map,tasks}.md`
+
+OUT:
+
+- 不提前碰 Wave 4 Claude capability chain
+- 不對 current `HEAD` 已更完整的 app-market/onboarding surface 做舊 patch replay
+- 不啟動 fetch-back/finalize/cleanup
+
+### Execution
+
+- `R4.1`：在 beta `packages/opencode/src/global/index.ts` 新增 repo-independent templates discovery，優先讀 repo templates，否則 fallback 到 `/usr/local/share/opencode/templates`。
+- `R4.2`：在同檔案新增 daemon-mode shell profile injection，使用既有 `shell-profile.sh`，僅於 `OPENCODE_USER_DAEMON_MODE=1` 時嘗試補 `.bashrc` marker。
+- `script/install.ts` 新增 system template sync，安裝流程會在有權限時把 `templates/` 複製到 `/usr/local/share/opencode/templates`，權限不足則明確 `[SKIP]`。
+- `R4.3/R4.4`：未新增 beta code delta，因 current `HEAD` 已存在較新的 unified MCP market / managed app / OAuth / runtime surface：
+  - `packages/opencode/src/server/routes/mcp.ts`
+  - `packages/opencode/src/mcp/index.ts`
+  - `packages/app/src/components/dialog-app-market.tsx`
+  - `templates/opencode.json`
+
+### Validation
+
+- Historical evidence:
+  - `git show --stat --summary --oneline 18793931b`
+  - `git show --stat --summary --oneline 5c18f28fe`
+  - `git show --stat --summary --oneline db1050f06`
+  - `git diff 18793931b^ 18793931b -- packages/opencode/src/global/index.ts script/install.ts`
+  - `git diff 5c18f28fe^ 5c18f28fe -- packages/opencode/src/global/index.ts`
+- Source evidence on beta/current HEAD:
+  - `packages/opencode/src/server/routes/mcp.ts` already exposes `/market`, managed apps, OAuth connect/callback, runtime/usage flows
+  - `packages/opencode/src/mcp/index.ts` already aggregates unified market cards and managed-app tools
+  - `packages/app/src/components/dialog-app-market.tsx` already provides the newer unified market UI/action model
+  - `templates/opencode.json` already carries current app-market/template defaults (including `beta-tool` disabled)
+- Focused test:
+  - `ln -sfn /home/pkcs12/projects/opencode/node_modules /home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/node_modules && bun test /home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/test/mcp/app-registry.test.ts` -> `13 pass, 0 fail`
+- Hygiene:
+  - `git diff --check` ✅
+- Architecture Sync:
+  - Verified: `specs/architecture.md`（No doc changes；本次為 Wave 3 bounded reconstruction 與 latest-HEAD evidence sync，未改變長期架構邊界）
+
+### Decision
+
+- Wave 3 可視為 **complete**：
+  - `R4.1/R4.2` 已以 bounded beta delta 補齊
+  - `R4.3/R4.4` 已由 current `HEAD` 較新 surface 吸收，無需舊 patch replay
+- Wave 4 可以開始。
+
 ## 2026-04-02 plan refinement — provider-manager closure gate
 
 ### 需求
@@ -1503,3 +1725,275 @@ OUT:
 - 結論：bootstrap blocker 已解除；剩餘錯誤屬於目前非互動 shell 執行 `bun run dev` 的預期限制，而非本次 recovery slice 回歸。
 - Architecture Sync:
   - Verified: `specs/architecture.md`（No doc changes；本次為 boot-time circular init 修補，未改變長期架構邊界）
+
+## 2026-04-02 post-recovery missing cms feature inventory
+
+### 需求
+
+- 盤點 2026-04-01 大規模回歸之後，到目前 `main` 為止仍未找回的舊 `cms` commits / 功能群。
+- 核對使用者指出的 branding 回歸：browser tab title 應為 `TheSmartAI`，tab icon/logo 應回到舊 `cms` branding 設計。
+
+### 範圍
+
+IN:
+
+- `/home/pkcs12/projects/opencode`
+- `main`
+- `3ab872842`
+- `feature/claude-provider`
+- branding / provider manager / claude-provider / rebind-session / onboarding 相關歷史 commit
+
+OUT:
+
+- 不直接 cherry-pick / merge / reset 任何歷史 commit
+- 不在本輪直接修 code，只做差集盤點與證據整理
+
+### 任務清單
+
+- [x] 確認目前 authoritative branch / HEAD 與 recovery 分支關係
+- [x] 比對 `main` 相對 `3ab872842` 與 `feature/claude-provider` 的 ancestry 缺口
+- [x] 特別盤查 branding/tab title/favicon/logo 的歷史證據與當前回歸狀態
+- [x] 依功能群標記 recovered / partial / missing / uncertain
+- [x] 將本輪 forensic 結果追加到 event
+
+### Debug Checkpoints
+
+#### Baseline
+
+- 使用者持續在修復過程中發現更多回歸，懷疑 4/1 大回歸之後仍有一批舊 `cms` 功能沒有真正找回。
+- 已知新案例：瀏覽器 tab title 應為 `TheSmartAI`，tab icon/logo 應使用舊 branding 路徑，但目前又回到 `OpenCode` / v3 favicon。
+
+#### Instrumentation Plan
+
+- 以 `main` / `3ab872842` / `feature/claude-provider` 三個基準做 ancestry 差集比對。
+- 對 branding 直接檢查歷史 patch 與當前 `packages/app/index.html`、`packages/ui/src/components/favicon.tsx`。
+- 將缺口整理成功能群，而非只列 raw SHA。
+
+#### Execution
+
+- 当前 authoritative 工作面：`main`
+  - HEAD：`58d217116c808014ba5a5aba2d22ebddb6c73a9a`
+- branch 關係：
+  - `main` 已完整吃進 `recovery/cms-codex-20260401-183212`
+  - `3ab872842` 目前不在 `main` ancestry 內；`git branch -a --contains 3ab872842` 只剩 `feature/claude-provider`
+- 缺口估算：
+  - `main` vs `3ab872842`：少 **42 commits**
+  - `main` vs `feature/claude-provider`：少 **32 commits**
+  - `3ab872842` 比 `feature/claude-provider` 額外多 **10 commits**
+- branding / browser-tab 回歸已確認：
+  - 舊版代表 commit：`db1050f06`、`0f3176973`
+  - 歷史 patch 證據顯示曾改成：
+    - `<title>TheSmartAI</title>`
+    - `<link rel="icon" type="image/png" href="/logo.png" />`
+    - `<link rel="apple-touch-icon" sizes="180x180" href="/logo.png" />`
+  - 當前檔案：
+    - `packages/app/index.html:6-10` 仍為 `OpenCode` + `favicon-96x96-v3.png` / `favicon-v3.svg` / `favicon-v3.ico`
+    - `packages/ui/src/components/favicon.tsx:6-10` 仍為 v3 favicon + `apple-mobile-web-app-title="OpenCode"`
+- 功能群盤點：
+  - **still missing/regressed**
+    1. app/browser branding
+       - 代表 commits：`db1050f06`、`0f3176973`
+    2. claude-native/provider branch 主體
+       - 代表 commits：`197fc2bd7`、`9321ca7b1`、`809135c30`、`4a4c69488`、`ba48f82ce`
+    3. global onboarding / repo-independent user-init / marketplace
+       - 代表 commits：`5c18f28fe`、`18793931b`
+    4. copilot reasoning variants
+       - 代表 commit：`79e71cbde`
+  - **partially recovered**
+    1. provider manager completion
+       - 代表 commits：`dda9738d8`、`cd8238313`、`81f2dc933`、`4264f4133`、`9870e4f53`、`164930b23`
+    2. rebind / continuation / session hardening
+       - 代表 commits：`efc3b0dd9`、`3fd1ef9b8`、`f041f0db8`、`85691d6e3`、`4a6e10f99`
+    3. llm packet debug / tests
+       - 代表 commit：`3ab872842`
+       - 現況：event 已有「手動整合版」證據，但原始 commit 不在 `main`
+  - **already recovered equivalently**
+    1. claude-cli registration
+       - 代表 commit：`addb248b2`
+       - 當前 `packages/opencode/src/provider/provider.ts:1344-1346` 已有等價 `mergeProvider("claude-cli", { source: "custom" })`
+
+#### Root Cause
+
+- 4/1 的大規模 pointer drift 雖已做過 recovery，但 `main` 並沒有完全回到舊 `cms` 強基線。
+- 現在缺口可分成兩層：
+  1. `feature/claude-provider` 線上仍未併回的 **32 commits**
+  2. `3ab872842` 相對 `feature/claude-provider` 又多出的 **10 commits**（branding、copilot reasoning、llm packet debug 等）
+- 因此目前不是單一功能漏修，而是 **32~42 commits 規模** 的殘餘產品差集；其中 branding 回歸是最直接、可見、已被使用者重新踩到的證據。
+
+#### Validation
+
+- Commands:
+  - `git rev-parse --abbrev-ref HEAD`
+  - `git rev-list --left-right --count HEAD...3ab872842`
+  - `git rev-list --left-right --count main...feature/claude-provider`
+  - `git rev-list --left-right --count feature/claude-provider...3ab872842`
+  - `git branch -a --contains 3ab872842`
+  - `git branch -a --contains ba48f82ce`
+  - `git show --stat --unified=20 db1050f06`
+  - `git show --stat --unified=20 0f3176973`
+  - `git show --stat --unified=20 4264f4133`
+  - `git show --stat --unified=20 addb248b2`
+  - `git show --stat --unified=20 79e71cbde`
+  - `git show --stat --unified=20 3ab872842`
+- Current-file evidence:
+  - `packages/app/index.html:6-10`
+  - `packages/ui/src/components/favicon.tsx:6-10`
+- Notes:
+  - 使用者口述的 `templates/logo.png` 在歷史 commit 中未找到直接接到 favicon/title 的證據；目前找到的實作證據是舊 app shell 使用 `/logo.png`。
+- Architecture Sync:
+  - Verified: `specs/architecture.md`（No doc changes；本次為 git/feature forensic inventory，未新增長期架構內容）
+
+## 2026-04-02 beta Wave 1 — branding / tool ergonomics / copilot reasoning
+
+### 需求
+
+- 在 admitted beta surface `beta/restore-missing-commits` 上執行 Wave 1。
+- 只處理：
+  - branding/browser-tab
+  - tool loading / tool schema ergonomics
+  - GitHub Copilot reasoning variants
+
+### 範圍
+
+IN:
+
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/app/index.html`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/app/public/logo.png`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/ui/src/components/favicon.tsx`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/src/provider/provider.ts`
+- `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/test/provider/provider-cms.test.ts`
+- `/home/pkcs12/projects/opencode/plans/20260402_commits/{tasks,reconstruction-map,design}.md`
+
+OUT:
+
+- 不進入 Wave 2 之後的 runtime/session/Claude chain 重建
+- 不在 authoritative `mainWorktree` 上直接實作
+- 不 commit / 不 fetch-back / 不 finalize
+
+### Debug Checkpoints
+
+#### Baseline
+
+- Wave 0 已完成，允許進入 Wave 1。
+- Wave 1 目標是先完成高可見、低歧義的回歸：branding 與 Copilot reasoning；同時確認 tool ergonomics 是否其實已被目前 `HEAD` 吸收。
+
+#### Execution
+
+- beta authority 再確認：
+  - `mainRepo`: `/home/pkcs12/projects/opencode`
+  - `mainWorktree`: `/home/pkcs12/projects/opencode`
+  - `baseBranch`: `main`
+  - `implementationRepo`: `/home/pkcs12/projects/opencode`
+  - `implementationWorktree`: `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits`
+  - `implementationBranch`: `beta/restore-missing-commits`
+  - `docsWriteRepo`: `/home/pkcs12/projects/opencode`
+- branding 實作：
+  - `packages/app/index.html`
+    - `<title>` 改為 `TheSmartAI`
+    - favicon / shortcut icon / apple-touch-icon 全改為 `/logo.png`
+  - `packages/ui/src/components/favicon.tsx`
+    - icon routes 改為 `/logo.png`
+    - `apple-mobile-web-app-title` 改為 `TheSmartAI`
+  - 從歷史 commit `db1050f06` 將 `packages/app/public/logo.png` 帶回 beta surface
+- Copilot reasoning variants：
+  - `packages/opencode/src/provider/provider.ts`
+    - `gpt-5-mini`
+    - `gpt-5.4-mini`
+      皆補上 `reasoning: true`
+  - `packages/opencode/test/provider/provider-cms.test.ts`
+    - 新增 focused test，驗證兩個 fast mini model 都暴露 reasoning capability
+- tool ergonomics 判定：
+  - `7bd35fb27` / `43d2ca35c` / `a34d8027a` / `eaced345d` 比對後確認目前 `HEAD` 已吸收其主要能力
+  - 因此 Wave 1 未對 R3 實作新 code，只把 `reconstruction-map.md` 狀態改成 `already_present`
+
+#### Validation
+
+- Source diff evidence:
+  - `git diff --no-ext-diff -- packages/app/index.html packages/ui/src/components/favicon.tsx packages/opencode/src/provider/provider.ts packages/opencode/test/provider/provider-cms.test.ts`
+- Historical evidence:
+  - `git show 79e71cbde -- packages/opencode/src/provider/provider.ts`
+  - `git show --name-only --format=fuller db1050f06 -- packages/app packages/ui`
+  - `git show --name-only --format=fuller eaced345d`
+- Current-file evidence:
+  - `packages/app/index.html`
+  - `packages/ui/src/components/favicon.tsx`
+  - `packages/opencode/src/tool/tool-loader.ts`
+  - `packages/opencode/src/session/resolve-tools.ts`
+  - `packages/opencode/src/config/config.ts`
+  - `packages/opencode/src/tool/apply_patch.txt`
+  - `packages/opencode/src/tool/edit.txt`
+- Asset recovery evidence:
+  - `packages/app/public/logo.png` 存在於 beta surface
+- Focused test attempts:
+  - `bun test /home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/test/provider/provider-cms.test.ts`
+  - `bun test /home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/test/tool/registry.test.ts /home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits/packages/opencode/test/tool/read.test.ts`
+  - 兩者目前都被 beta worktree 的依賴解析阻塞：`Cannot find package 'zod'`
+  - 判定：這是 disposable beta surface 的 test runtime/dependency setup 問題，不是本輪 Wave 1 邏輯回歸本身
+- Planner sync:
+  - `plans/20260402_commits/tasks.md`
+    - `2.1`、`2.2`、`4.1` 已勾選
+  - `plans/20260402_commits/reconstruction-map.md`
+    - R3 系列改標為 `already_present`
+    - 已新增 Wave 1 conclusions
+  - `plans/20260402_commits/design.md`
+    - R3 改為「主線已吸收，後續重點為維持與驗證」
+- Architecture Sync:
+  - Verified: `specs/architecture.md`（No doc changes；本次為 beta Wave 1 reconstruction 與 planner sync）
+
+### 結論
+
+- Wave 1 已完成可執行部分：
+  - branding/browser-tab 已在 beta surface 回復
+  - GitHub Copilot reasoning variants 已補回
+  - tool ergonomics 經比對確認已存在於 current `HEAD`
+- 不阻止進入 Wave 2 的唯一驗證問題，是 beta worktree 當前無法直接跑 focused bun tests（缺 package resolution）；這需要在後續 validation/fetch-back 規劃中另外處理，但不構成 Wave 1 邏輯 blocker。
+
+## 2026-04-02 Wave 5 — docs final state / stop-before-finalize gate
+
+### 需求
+
+- 完成 `restore_missing_commits` 的文件最終態同步，確保 plans / reconstruction map / handoff / event 都反映 Waves 0-4 的實際結論。
+- 明確停在 beta workflow 的 fetch-back / finalize gate 之前，不提前進 checktest / merge / cleanup。
+
+### 範圍
+
+IN:
+
+- `/home/pkcs12/projects/opencode/plans/20260402_commits/{implementation-spec,design,reconstruction-map,branch-strategy,tasks,handoff}.md`
+- `/home/pkcs12/projects/opencode/docs/events/event_20260401_cms_codex_recovery.md`
+
+OUT:
+
+- 不執行 fetch-back
+- 不建立 checktest branch
+- 不 merge 到 `main`
+- 不 cleanup `beta/restore-missing-commits`
+
+### 結論
+
+- Wave 5 完成。
+- `R8.1-R8.4` 已以最新 coherent 文件狀態收斂，不追求回放歷史 wording。
+- `R8.5` 已完成：`implementation-spec.md`、`design.md`、`reconstruction-map.md`、`branch-strategy.md`、`tasks.md`、`handoff.md` 現在一致反映 Waves 0-4 的最新結論。
+- `tasks.md` 已更新為：
+  - Wave 1/2/3/4 對應任務完成
+  - validation / evidence / requirement-comparison 任務完成
+  - branch cleanup 任務仍未完成，因為尚未進 fetch-back/finalize/cleanup
+- workflow 目前的正確停止點是：**implementation/documentation complete, but fetch-back/finalize blocked**。
+
+### Validation
+
+- Document coherence review:
+  - `plans/20260402_commits/tasks.md`
+  - `plans/20260402_commits/handoff.md`
+  - `plans/20260402_commits/reconstruction-map.md`
+- Hygiene:
+  - `git diff --check` in `/home/pkcs12/projects/opencode` ✅
+  - `git diff --check` in `/home/pkcs12/projects/opencode-worktrees/beta-restore-missing-commits` ✅
+
+### Remaining Blockers Before Any Fetch-Back / Finalize
+
+- Authoritative `mainWorktree` is dirty:
+  - `/home/pkcs12/projects/opencode/docs/events/event_20260401_cms_codex_recovery.md`
+  - `/home/pkcs12/projects/opencode/plans/20260402_commits/`
+- 因此目前不得宣告 checktest / fetch-back / finalize ready。
+- 若下一步要進 beta workflow 的後段，必須重新 restate authority fields，並先明確處理這個 dirty-state blocker。
