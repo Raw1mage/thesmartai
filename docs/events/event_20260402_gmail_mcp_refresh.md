@@ -61,6 +61,8 @@
 - Added focused tests for serialized refresh, refresh-triggered observability publish, and MCP startup sweep behavior.
 - Tightened the startup policy so the daemon-start Google sweep only runs when at least one Google managed app is actually installed and enabled, instead of keeping stale shared auth alive for unused apps.
 - Tightened the observability publish path so refresh success only notifies active Google apps rather than broadcasting synthetic updates to both Gmail and Calendar.
+- User corrected the beta workflow expectation using the project term `checktest`: this work must not go straight from beta branch to `main`; it must first fetch back into a `test/*` branch/worktree for human validation, and only after explicit confirmation may it merge back to `main`.
+- User further clarified that the `test/*` branch for `checktest` must live on the authoritative main repo in a form they can directly `checkout`; it must not be effectively locked away by a separate disposable test worktree.
 
 ### Root Cause
 
