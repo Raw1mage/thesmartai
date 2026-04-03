@@ -560,17 +560,24 @@ export namespace ProviderTransform {
       // https://v5.ai-sdk.dev/providers/ai-sdk-providers/anthropic
       case "@ai-sdk/google-vertex/anthropic":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/google-vertex#anthropic-provider
+        // Levels: low=1k, medium=8k, high=16k budget tokens. No "max" per product decision.
         return {
+          low: {
+            thinking: {
+              type: "enabled",
+              budgetTokens: Math.min(1_024, model.limit.output - 1),
+            },
+          },
+          medium: {
+            thinking: {
+              type: "enabled",
+              budgetTokens: Math.min(8_000, Math.floor(model.limit.output / 2 - 1)),
+            },
+          },
           high: {
             thinking: {
               type: "enabled",
-              budgetTokens: Math.min(16_000, Math.floor(model.limit.output / 2 - 1)),
-            },
-          },
-          max: {
-            thinking: {
-              type: "enabled",
-              budgetTokens: Math.min(31_999, model.limit.output - 1),
+              budgetTokens: Math.min(16_000, model.limit.output - 1),
             },
           },
         }
