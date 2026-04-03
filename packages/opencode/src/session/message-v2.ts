@@ -913,26 +913,13 @@ export namespace MessageV2 {
     for await (const msg of stream) {
       result.push(msg)
 
-      // RCA Diagnostic Trace: Minimal disruption
-      const hasCompaction = msg.parts.some((p: any) => p.type === "compaction")
-      // @ts-ignore
-      const isSummary = msg.info.role === "assistant" && !!msg.info.summary
-      // @ts-ignore
-      const isFinish = msg.info.role === "assistant" && !!msg.info.finish
-
-      const rcaLog = (m: string) => require("fs").appendFileSync("/tmp/opencode-loop.log", `${m}\n`)
-      rcaLog(`[RCA] Scanned ${msg.info.role}: id=${msg.info.id}, hasCompaction=${hasCompaction}, isSummary=${isSummary}, isFinish=${isFinish}`)
-
-      // SMART FIX: Consistent with Visual/TUI. If there's a compaction marker, STOP.
-      // Also stop if this is an explicit summary assistant message (recovering dirty data).
-      if (hasCompaction || isSummary) {
-        rcaLog(`[RCA] Filter hit truncation at: ${msg.info.id} (${msg.info.role}, isSummary=${isSummary})`)
-        break
-      }
+      // Stop only at a compaction anchor — the authoritative boundary written by A or B compaction.
+      // tool-call summaries and assistant summary fields are NOT boundaries.
+      const hasCompactionAnchor = msg.parts.some((p: any) => p.type === "compaction")
+      if (hasCompactionAnchor) break
 
       if (msg.info.role === "assistant" && (msg.info as any).summary && (msg.info as any).finish) {
-         completed.add((msg.info as any).parentID)
-         rcaLog(`[RCA] Added parent ${ (msg.info as any).parentID } to completed set`)
+        completed.add((msg.info as any).parentID)
       }
 
       // Token budget guard: stop scanning if we'd exceed 70% of context limit

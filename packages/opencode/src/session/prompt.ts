@@ -885,8 +885,6 @@ export namespace SessionPrompt {
       if (filteredResult.stoppedByBudget) {
         log.warn("filterCompacted stopped by token budget guard", { sessionID, messageCount: msgs.length })
       }
-      require("fs").appendFileSync("/tmp/opencode-loop.log", `[RCA] Round ${step}: msgs.length=${msgs.length}, sessionID=${sessionID}\n`)
-
       let lastUser: MessageV2.User | undefined
       let lastAssistant: MessageV2.Assistant | undefined
       let lastFinished: MessageV2.Assistant | undefined
