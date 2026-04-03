@@ -438,8 +438,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       const set = new Set(values)
       const narrowed = preferred.filter((value) => set.has(value))
       if (narrowed.length > 0) values = narrowed
-      values = values.filter((value) => value !== "none" && value !== "minimal")
     }
+    // Always strip "none"/"minimal" — we provide our own "None" sentinel entry
+    values = values.filter((value) => value !== "none" && value !== "minimal")
     const used = new Set<string>()
     const result: VariantOption[] = [{ value: "", label: "None" }]
     for (const value of values) {
