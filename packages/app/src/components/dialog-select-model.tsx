@@ -46,7 +46,6 @@ import {
   getFilteredModelsForSelection,
   getModelUnavailableReason,
   isAccountLikeProviderId,
-  loadFavoriteProvidersFromStorage,
   pickSelectedAccount,
   pickSelectedModel,
   pickSelectedProvider,
@@ -64,29 +63,11 @@ const isFree = (provider: string, cost: { input: number } | undefined) =>
   provider === "opencode" && (!cost || cost.input === 0)
 
 const MODEL_MANAGER_LAYOUT_STORAGE_KEY = "opencode.web.modelManager.layout.v1"
-const MODEL_MANAGER_FAVORITE_PROVIDERS_STORAGE_KEY = "opencode.web.modelManager.favoriteProviders.v1"
 const MODEL_MANAGER_PROVIDER_MIN_PX = 160
 const MODEL_MANAGER_ACCOUNT_MIN_PX = 200
 const MODEL_MANAGER_MODEL_MIN_PX = 160
 const MODEL_MANAGER_DEFAULT_COLUMN_LAYOUT = { providerRatio: 0.31, accountRatio: 0.35 }
 
-function loadFavoriteProvidersFromLocalStorage() {
-  if (typeof window === "undefined") return [...popularProviders]
-  return loadFavoriteProvidersFromStorage(
-    window.localStorage,
-    MODEL_MANAGER_FAVORITE_PROVIDERS_STORAGE_KEY,
-    popularProviders,
-  )
-}
-
-function saveFavoriteProvidersToLocalStorage(favoriteProviders: string[]) {
-  if (typeof window === "undefined") return
-  try {
-    window.localStorage.setItem(MODEL_MANAGER_FAVORITE_PROVIDERS_STORAGE_KEY, JSON.stringify(favoriteProviders))
-  } catch {
-    // ignore storage quota/security errors
-  }
-}
 
 type AccountRecord = {
   id: string
@@ -790,8 +771,6 @@ export const DialogSelectModel: Component<{
     }
   }
   const [dialogSize, setDialogSize] = createSignal(initialDialogSize())
-  const [favoriteProviders, setFavoriteProviders] = createSignal<string[]>([...popularProviders])
-  const [favoritesHydrated, setFavoritesHydrated] = createSignal(false)
   const [columnLayout, setColumnLayout] = createSignal(MODEL_MANAGER_DEFAULT_COLUMN_LAYOUT)
   const [layoutHydrated, setLayoutHydrated] = createSignal(false)
   const [columnsWidth, setColumnsWidth] = createSignal(0)
@@ -959,11 +938,6 @@ export const DialogSelectModel: Component<{
     applyDialogFrame()
   })
 
-  createEffect(() => {
-    if (favoritesHydrated()) return
-    setFavoriteProviders(loadFavoriteProvidersFromLocalStorage())
-    setFavoritesHydrated(true)
-  })
 
   createEffect(() => {
     if (layoutHydrated()) return
@@ -1125,14 +1099,8 @@ export const DialogSelectModel: Component<{
 
   const toggleProviderFavorite = (providerId: string, enabled: boolean) => {
     const providerKey = providerKeyOf(providerId)
-    setFavoriteProviders((current) => {
-      const normalized = new Set(current.map((item) => providerKeyOf(item)))
-      if (enabled) normalized.delete(providerKey)
-      else normalized.add(providerKey)
-      const next = Array.from(normalized)
-      saveFavoriteProvidersToLocalStorage(next)
-      return next
-    })
+    // enabled=true means visible (remove from hidden), enabled=false means hidden (add to hidden)
+    models.setProviderHidden(providerKey, !enabled)
   }
 
   const accountProviders = createMemo(() => {
@@ -1182,10 +1150,13 @@ export const DialogSelectModel: Component<{
 
   const providers = createMemo(() => {
     const allProviders = globalSync.data.provider.all ?? []
+    const hidden = new Set(models.hiddenProviders())
+    // favoriteProviders = all provider keys NOT in hiddenProviders (default visible)
+    const visibleProviders = allProviders.map((p) => p.id).filter((id) => !hidden.has(providerKeyOf(id)))
     return buildProviderRows({
       providers: allProviders,
       accountFamilies: accountProviders(),
-      favoriteProviders: favoriteProviders(),
+      favoriteProviders: visibleProviders,
     })
   })
 

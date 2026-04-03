@@ -62,11 +62,12 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     const [serverReady, setServerReady] = createSignal(false)
     const ready = serverReady
 
+    const [hiddenProviders, setHiddenProviders] = createSignal<string[]>([])
+
     const remoteSync = {
       loaded: false,
       timer: undefined as ReturnType<typeof setTimeout> | undefined,
       retryTimer: undefined as ReturnType<typeof setTimeout> | undefined,
-      hiddenProviders: [] as string[],
       mutationVersion: 0,
       readVersion: 0,
       writeVersion: 0,
@@ -225,7 +226,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       },
       readVersion: number,
     ) => {
-      remoteSync.hiddenProviders = prefs.hiddenProviders
+      setHiddenProviders(prefs.hiddenProviders)
       if (readVersion !== remoteSync.readVersion) return
       if (remoteSync.mutationVersion > readVersion) return
       replaceUsers(buildUsersFromRemotePreferences(prefs))
@@ -261,10 +262,10 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       if (remoteSync.timer) clearTimeout(remoteSync.timer)
       const writeVersion = ++remoteSync.writeVersion
       const snapshot = unwrap(userStore.user)
-      const hiddenProviders = [...remoteSync.hiddenProviders]
+      const hiddenProvidersSnapshot = [...hiddenProviders()]
       remoteSync.timer = setTimeout(() => {
         remoteSync.timer = undefined
-        void writeRemotePreferences(writeVersion, snapshot, hiddenProviders).catch(() => undefined)
+        void writeRemotePreferences(writeVersion, snapshot, hiddenProvidersSnapshot).catch(() => undefined)
       }, 150)
     }
 
@@ -305,6 +306,15 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       setStore("variant", key, value)
     }
 
+    const setProviderHidden = (providerKey: string, hidden: boolean) => {
+      setHiddenProviders((prev) => {
+        const next = prev.filter((k) => k !== providerKey)
+        if (hidden) next.push(providerKey)
+        return next
+      })
+      scheduleRemoteSave()
+    }
+
     return {
       ready,
       list,
@@ -315,6 +325,8 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       favoriteList,
       toggleFavorite,
       isEnabled,
+      hiddenProviders,
+      setProviderHidden,
       recent: {
         list: createMemo(() => store.recent),
         push,
