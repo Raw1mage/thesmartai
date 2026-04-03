@@ -1216,6 +1216,7 @@ export namespace Provider {
       { id: "claude-opus-4-6", name: "Claude Opus 4.6", reasoning: true, context: 200000 },
       { id: "claude-3-5-sonnet-latest", name: "Claude Sonnet 4", reasoning: true, context: 200000 },
       { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", reasoning: true, context: 200000 },
+      { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", reasoning: true, context: 200000 },
     ]
 
     database["claude-cli"] = {
