@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal } from "solid-js"
-import { createStore } from "solid-js/store"
+import { createStore, unwrap } from "solid-js/store"
 import { uniqueBy } from "remeda"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useProviders } from "@/hooks/use-providers"
@@ -18,9 +18,11 @@ export type ModelKey = { providerID: string; modelID: string }
 type Visibility = "show" | "hide"
 type User = ModelKey & { visibility?: Visibility; favorite?: boolean }
 type Store = {
-  user: User[]
   recent: ModelKey[]
   variant?: Record<string, string | undefined>
+}
+type UserStore = {
+  user: User[]
 }
 
 const RECENT_LIMIT = 5
@@ -49,14 +51,16 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
     const globalSDK = useGlobalSDK()
     const globalSync = useGlobalSync()
 
-    const [store, setStore, _, ready] = persisted(
+    const [userStore, setUserStore] = createStore<UserStore>({ user: [] })
+    const [store, setStore] = persisted(
       Persist.global("model", ["model.v1"]),
       createStore<Store>({
-        user: [],
         recent: [],
         variant: {},
       }),
     )
+    const [serverReady, setServerReady] = createSignal(false)
+    const ready = serverReady
 
     const remoteSync = {
       loaded: false,
@@ -134,13 +138,13 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
 
     const replaceUsers = (next: User[]) => {
       const normalized = normalizeUsers(next)
-      if (sameUserPreferences(store.user, normalized)) return
-      setStore("user", normalized)
+      if (sameUserPreferences(userStore.user, normalized)) return
+      setUserStore("user", normalized)
     }
 
     const mutateUsers = (updater: (current: User[]) => User[]) => {
       remoteSync.mutationVersion += 1
-      replaceUsers(updater(store.user))
+      replaceUsers(updater(userStore.user))
     }
 
     const update = (model: ModelKey, partial: Partial<Omit<User, "providerID" | "modelID">>) => {
@@ -165,7 +169,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
 
     const visible = (model: ModelKey) => {
       const key = preferenceModelKey(model)
-      const user = store.user.find((x) => preferenceModelKey(x) === key)
+      const user = userStore.user.find((x) => preferenceModelKey(x) === key)
       return user?.favorite ?? false
     }
 
@@ -180,17 +184,17 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
 
     const isFavorite = (model: ModelKey) => {
       const key = preferenceModelKey(model)
-      const user = store.user.find((x) => preferenceModelKey(x) === key)
+      const user = userStore.user.find((x) => preferenceModelKey(x) === key)
       return user?.favorite ?? false
     }
 
     const favoriteList = createMemo(() =>
-      store.user.filter((x) => x.favorite).map((x) => ({ providerID: x.providerID, modelID: x.modelID })),
+      userStore.user.filter((x) => x.favorite).map((x) => ({ providerID: x.providerID, modelID: x.modelID })),
     )
 
     const isEnabled = (model: ModelKey) => {
       const key = preferenceModelKey(model)
-      const user = store.user.find((x) => preferenceModelKey(x) === key)
+      const user = userStore.user.find((x) => preferenceModelKey(x) === key)
       return user?.visibility === "show"
     }
 
@@ -227,7 +231,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       replaceUsers(buildUsersFromRemotePreferences(prefs))
     }
 
-    const writeRemotePreferences = async (writeVersion: number, snapshot: User[], hiddenProviders: string[]) => {
+    const writeRemotePreferences = async (writeVersion: number, snapshot: readonly User[], hiddenProviders: string[]) => {
       const favorite = new Map<string, { providerId: string; modelID: string }>()
       const hidden = new Map<string, { providerId: string; modelID: string }>()
 
@@ -256,7 +260,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
       if (!remoteSync.loaded) return
       if (remoteSync.timer) clearTimeout(remoteSync.timer)
       const writeVersion = ++remoteSync.writeVersion
-      const snapshot = store.user.map((item) => ({ ...item }))
+      const snapshot = unwrap(userStore.user)
       const hiddenProviders = [...remoteSync.hiddenProviders]
       remoteSync.timer = setTimeout(() => {
         remoteSync.timer = undefined
@@ -266,7 +270,6 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
 
     createEffect(() => {
       remoteRetryTick()
-      if (!ready()) return
       if (remoteSync.loaded) return
       const url = globalSDK.url
       if (!url) return
@@ -276,6 +279,7 @@ export const { use: useModels, provider: ModelsProvider } = createSimpleContext(
         .then((prefs) => {
           applyRemotePreferences(prefs, readVersion)
           remoteSync.loaded = true
+          setServerReady(true)
         })
         .catch(() => {
           if (remoteSync.retryTimer) clearTimeout(remoteSync.retryTimer)

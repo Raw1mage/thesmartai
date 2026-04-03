@@ -381,37 +381,39 @@ const AccountRenameDialog: Component<{ account: AccountRecord; onSaved: () => Pr
   )
 }
 
-const AccountDeleteDialog: Component<{ account: AccountRecord; onDeleted: () => Promise<void> | void }> = (props) => {
+const AccountDeleteDialog: Component<{
+  account: AccountRecord
+  onDeleted: () => Promise<void> | void
+  onOptimisticDelete: (id: string) => void
+}> = (props) => {
   const dialog = useDialog()
   const sdk = useSDK()
-  const [deleting, setDeleting] = createSignal(false)
-  const [error, setError] = createSignal<string>()
 
-  const remove = async () => {
-    setDeleting(true)
-    setError(undefined)
-    try {
-      const response = await sdk.fetch(
-        `${sdk.url}/api/v2/account/${encodeURIComponent(props.account.providerKey)}/${encodeURIComponent(props.account.id)}`,
-        {
-          method: "DELETE",
-        },
-      )
-      if (!response.ok) {
-        throw new Error(await readResponseMessage(response))
+  const remove = () => {
+    props.onOptimisticDelete(props.account.id)
+    dialog.close()
+    void (async () => {
+      try {
+        const response = await sdk.fetch(
+          `${sdk.url}/api/v2/account/${encodeURIComponent(props.account.providerKey)}/${encodeURIComponent(props.account.id)}`,
+          { method: "DELETE" },
+        )
+        if (!response.ok) throw new Error(await readResponseMessage(response))
+        await props.onDeleted()
+        showToast({
+          variant: "success",
+          title: "Account deleted",
+          description: `${props.account.providerKey} → ${props.account.name}`,
+        })
+      } catch (err) {
+        showToast({
+          variant: "error",
+          title: "Failed to delete account",
+          description: responseErrorMessage(err) ?? String(err),
+        })
+        await props.onDeleted()
       }
-      await props.onDeleted()
-      showToast({
-        variant: "success",
-        title: "Account deleted",
-        description: `${props.account.providerKey} → ${props.account.name}`,
-      })
-      dialog.close()
-    } catch (err) {
-      setError(responseErrorMessage(err) ?? "Failed to delete account")
-    } finally {
-      setDeleting(false)
-    }
+    })()
   }
 
   return (
@@ -424,17 +426,15 @@ const AccountDeleteDialog: Component<{ account: AccountRecord; onDeleted: () => 
           </div>
           <div class="mt-1 text-12-regular text-text-weak">Account ID: {props.account.id}</div>
         </div>
-        <Show when={error()}>{(message) => <div class="text-12-regular text-icon-danger-base">{message()}</div>}</Show>
         <div class="flex justify-end gap-2">
-          <Button size="small" variant="secondary" onClick={() => dialog.close()} disabled={deleting()}>
+          <Button size="small" variant="secondary" onClick={() => dialog.close()}>
             Cancel
           </Button>
           <Button
             size="small"
             variant="secondary"
             class="text-icon-danger-base hover:text-icon-danger-base"
-            onClick={() => void remove()}
-            loading={deleting()}
+            onClick={() => remove()}
           >
             Delete
           </Button>
@@ -762,6 +762,8 @@ export const DialogSelectModel: Component<{
     const client = sdk?.client ?? globalSDK.client
     return client.account.listAll().then((x: { data: unknown }) => x.data)
   })
+
+  const [optimisticDeletedAccountIds, setOptimisticDeletedAccountIds] = createSignal(new Set<string>())
 
   const [selectedProviderId, setSelectedProviderId] = createSignal<string>(props.initialProviderId ?? "")
   const [selectedAccountId, setSelectedAccountId] = createSignal<string>(props.initialAccountId ?? "")
@@ -1227,8 +1229,10 @@ export const DialogSelectModel: Component<{
     const providerKey = providerKeyForSelection(providerId)
     const providerRow = accountProvidersByKey()[providerKey]
     if (!providerRow?.accounts) return [] as AccountRecord[]
+    const deletedIds = optimisticDeletedAccountIds()
 
     return Object.entries(providerRow.accounts)
+      .filter(([accountId]) => !deletedIds.has(accountId))
       .map(([accountId, raw]) => normalizeAccountRecord(providerKey, accountId, raw, providerRow.activeAccount))
       .sort((a, b) => a.name.localeCompare(b.name))
   })
@@ -1416,6 +1420,7 @@ export const DialogSelectModel: Component<{
     const client = sdk?.client ?? globalSDK.client
     await client.global.dispose().catch(() => undefined)
     await refetchAccountInfo()
+    setOptimisticDeletedAccountIds(new Set<string>())
   }
 
   const reopenModelSelector = () => {
@@ -1447,7 +1452,16 @@ export const DialogSelectModel: Component<{
   const openDeleteAccount = (accountId: string) => {
     const account = accountRecordById().get(accountId)
     if (!account) return
-    dialog.show(() => <AccountDeleteDialog account={account} onDeleted={refreshAccountState} />, reopenModelSelector)
+    dialog.show(
+      () => (
+        <AccountDeleteDialog
+          account={account}
+          onDeleted={refreshAccountState}
+          onOptimisticDelete={(id) => setOptimisticDeletedAccountIds((prev) => new Set([...prev, id]))}
+        />
+      ),
+      reopenModelSelector,
+    )
   }
 
   const openAddAccount = () => {

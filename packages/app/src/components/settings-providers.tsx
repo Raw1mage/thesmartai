@@ -7,7 +7,7 @@ import { Tag } from "@opencode-ai/ui/tag"
 import { showToast } from "@opencode-ai/ui/toast"
 import { iconNames, type IconName } from "@opencode-ai/ui/icons/provider"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
-import { createMemo, type Component, For, Show } from "solid-js"
+import { createMemo, createSignal, type Component, For, Show } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
@@ -40,11 +40,15 @@ export const SettingsProviders: Component = () => {
     return "synthetic"
   }
 
+  const [optimisticDisconnectedIds, setOptimisticDisconnectedIds] = createSignal(new Set<string>())
+
   const connected = createMemo(() => {
     const ids = new Set(providers.connected().map((p) => p.id))
+    const disconnected = optimisticDisconnectedIds()
     return providers
       .all()
       .filter((p) => ids.has(p.id) || !isDisabled(p.id))
+      .filter((p) => !disconnected.has(p.id))
       .filter((p) => p.id !== "opencode" || Object.values(p.models).find((m) => m.cost?.input))
   })
 
@@ -147,27 +151,33 @@ export const SettingsProviders: Component = () => {
       })
   }
 
-  const disconnect = async (providerID: string, name: string) => {
-    if (isConfigCustom(providerID)) {
-      await globalSDK.client.auth.remove({ providerId: providerID }).catch(() => undefined)
-      await disableProvider(providerID, name)
-      return
-    }
-    await globalSDK.client.auth
-      .remove({ providerId: providerID })
-      .then(async () => {
-        await globalSDK.client.global.dispose()
-        showToast({
-          variant: "success",
-          icon: "circle-check",
-          title: language.t("provider.disconnect.toast.disconnected.title", { provider: name }),
-          description: language.t("provider.disconnect.toast.disconnected.description", { provider: name }),
-        })
-      })
-      .catch((err: unknown) => {
+  const disconnect = (providerID: string, name: string) => {
+    setOptimisticDisconnectedIds((prev) => new Set([...prev, providerID]))
+    void (async () => {
+      try {
+        if (isConfigCustom(providerID)) {
+          await globalSDK.client.auth.remove({ providerId: providerID }).catch(() => undefined)
+          await disableProvider(providerID, name)
+        } else {
+          await globalSDK.client.auth.remove({ providerId: providerID })
+          await globalSDK.client.global.dispose()
+          showToast({
+            variant: "success",
+            icon: "circle-check",
+            title: language.t("provider.disconnect.toast.disconnected.title", { provider: name }),
+            description: language.t("provider.disconnect.toast.disconnected.description", { provider: name }),
+          })
+        }
+      } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
         showToast({ title: language.t("common.requestFailed"), description: message })
-      })
+        setOptimisticDisconnectedIds((prev) => {
+          const next = new Set(prev)
+          next.delete(providerID)
+          return next
+        })
+      }
+    })()
   }
 
   return (
