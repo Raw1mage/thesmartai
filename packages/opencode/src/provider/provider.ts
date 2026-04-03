@@ -1576,7 +1576,7 @@ export namespace Provider {
           coolingDownUntil: accountInfo.type === "subscription" ? accountInfo.coolingDownUntil : undefined,
           cooldownReason: blocked ?? (accountInfo.type === "subscription" ? accountInfo.cooldownReason : undefined),
           env: [],
-          options,
+          options: mergeDeep(baseProvider.options ?? {}, options) as Info["options"],
           models: pickBy(
             mapValues(baseProvider.models, (model) => ({
               ...model,

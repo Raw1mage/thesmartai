@@ -28,6 +28,7 @@ export function useProviders() {
     return globalSync.data.provider
   })
   const connectedIDs = createMemo(() => new Set(providers().connected))
+  const serverProviderIDs = createMemo(() => new Set(providers().all.map((p) => p.id)))
   const all = createMemo(() => {
     const base = providers().all
     const merged = new Map<string, (typeof base)[number]>()
@@ -39,7 +40,8 @@ export function useProviders() {
     }
     return Array.from(merged.values())
   })
-  const connected = createMemo(() => all().filter((p) => connectedIDs().has(p.id)))
+  // Custom providers injected client-side (not known to server) are always treated as connected
+  const connected = createMemo(() => all().filter((p) => connectedIDs().has(p.id) || !serverProviderIDs().has(p.id)))
   const paid = createMemo(() =>
     connected().filter((p) => p.id !== "opencode" || Object.values(p.models).find((m) => m.cost?.input)),
   )

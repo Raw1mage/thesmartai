@@ -130,6 +130,7 @@ export namespace LLM {
     messages: ModelMessage[]
     small?: boolean
     tools: Record<string, Tool>
+    lazyTools?: Map<string, Tool>
     toolChoice?: "auto" | "required" | "none"
     retries?: number
   }
@@ -841,6 +842,24 @@ export namespace LLM {
             toolName: lower,
           }
         }
+
+        // Active Loader: check if tool exists in lazyTools and auto-unlock it
+        if (input.lazyTools?.has(failed.toolCall.toolName)) {
+          const { UnlockedTools: UnlockedToolsMod } = await import("@/session/unlocked-tools")
+          UnlockedToolsMod.unlock(input.sessionID, [failed.toolCall.toolName])
+          // Add lazy tool to active tools so it can be called
+          const lazyTool = input.lazyTools.get(failed.toolCall.toolName)
+          if (lazyTool) {
+            tools[failed.toolCall.toolName] = lazyTool
+            l.info("auto-unlocked lazy tool on demand", {
+              sessionID: input.sessionID,
+              toolID: failed.toolCall.toolName,
+            })
+            // Retry the tool call with the now-available tool
+            return failed.toolCall
+          }
+        }
+
         return {
           ...failed.toolCall,
           input: JSON.stringify({

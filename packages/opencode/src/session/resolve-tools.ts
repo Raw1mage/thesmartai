@@ -115,6 +115,11 @@ async function applyOnDemandMcpPolicy(sessionID: string, messages: MessageV2.Wit
   if (tracking.size === 0) autoEnabledBySession.delete(sessionID)
 }
 
+export interface ResolveToolsOutput {
+  tools: Record<string, AITool>
+  lazyTools?: Map<string, AITool>
+}
+
 export interface ResolveToolsInput {
   agent: Agent.Info
   model: Provider.Model
@@ -125,7 +130,7 @@ export interface ResolveToolsInput {
   messages: MessageV2.WithParts[]
 }
 
-export async function resolveTools(input: ResolveToolsInput) {
+export async function resolveTools(input: ResolveToolsInput): Promise<ResolveToolsOutput> {
   using _ = log.time("resolveTools")
   const tools: Record<string, AITool> = {}
   await applyOnDemandMcpPolicy(input.session.id, input.messages)
@@ -302,6 +307,8 @@ export async function resolveTools(input: ResolveToolsInput) {
   const lazyConfig = config.experimental?.lazy_tools
   const lazyEnabled = lazyConfig?.enabled !== false
 
+  let lazyTools: Map<string, AITool> | undefined = undefined
+
   if (lazyEnabled && input.agent.mode !== "subagent") {
     const alwaysPresent = new Set(ALWAYS_PRESENT_TOOLS)
     for (const id of lazyConfig?.always_present ?? []) alwaysPresent.add(id)
@@ -323,8 +330,13 @@ export async function resolveTools(input: ResolveToolsInput) {
       ;(tools["tool_loader"] as any).description = formatCatalogDescription(catalog, lazyToolCount)
     }
 
+    // Active Loader: collect lazy tools before removing them
+    lazyTools = new Map<string, AITool>()
     for (const id of Object.keys(tools)) {
-      if (!alwaysPresent.has(id) && !unlocked.has(id)) delete tools[id]
+      if (!alwaysPresent.has(id) && !unlocked.has(id)) {
+        lazyTools.set(id, tools[id])
+        delete tools[id]
+      }
     }
 
     debugCheckpoint("tool.resolve", "lazy-filter", {
@@ -332,7 +344,8 @@ export async function resolveTools(input: ResolveToolsInput) {
       promoted: promotedTools,
       unlocked: [...unlocked],
       catalogSize: catalog.length,
-      removedCount: allToolEntries.length - Object.keys(tools).length,
+      removedCount: lazyTools.size,
+      lazyToolsCount: lazyTools.size,
       trace: input.session.id,
     })
   }
@@ -342,8 +355,12 @@ export async function resolveTools(input: ResolveToolsInput) {
     count: ids.length,
     ids,
     hasGoogleSearch: ids.includes("google_search"),
+    lazyToolsCount: lazyTools?.size ?? 0,
     trace: input.session.id,
   })
 
-  return tools
+  return {
+    tools,
+    lazyTools,
+  }
 }

@@ -36,6 +36,7 @@ import { resolveTools } from "./resolve-tools"
 import { resolveImageRequest, stripImageParts } from "./image-router"
 import { TaskTool } from "@/tool/task"
 import { ToolInvoker } from "./tool-invoker"
+import { UnlockedTools } from "./unlocked-tools"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
 import { SessionStatus } from "./status"
@@ -435,25 +436,11 @@ export namespace SessionPrompt {
           mission: missionConsumption.trace,
         })
       : undefined
-    const narration = describeAutonomousNextAction({
-      type: "continue",
-      reason: input.decision.reason,
-      text: input.decision.text,
-      todo,
-    })
-    const emitNarration = input.emitNarration ?? emitAutonomousNarration
+    // Runner silent: no narration emitted
+    // The autonomous runner operates silently in the background
     const enqueueContinue = input.enqueueContinue ?? enqueueAutonomousContinue
     const nextRoundCount = input.autonomousRounds + 1
 
-    await emitNarration({
-      sessionID: input.sessionID,
-      parentID: input.user.id,
-      agent: input.user.agent,
-      variant: input.user.variant,
-      model: input.user.model,
-      text: input.narrationOverride ?? narration.text,
-      kind: narration.kind,
-    })
     await enqueueContinue({
       sessionID: input.sessionID,
       user: input.user,
@@ -467,7 +454,7 @@ export namespace SessionPrompt {
     return {
       halted: false as const,
       nextRoundCount,
-      narration,
+      narration: undefined, // Runner no longer emits narration
     }
   }
 
@@ -669,24 +656,10 @@ export namespace SessionPrompt {
   export async function handleSmartRunnerContinuationSideEffects(
     input: Parameters<typeof handleContinuationSideEffects>[0],
   ) {
-    const narration = describeAutonomousNextAction({
-      type: "continue",
-      reason: input.decision.reason,
-      text: input.decision.text,
-      todo: input.decision.todo!,
-    })
-    const emitNarration = input.emitNarration ?? emitAutonomousNarration
+    // Runner silent: no narration emitted
+    // The autonomous runner operates silently in the background
     const enqueueContinue = input.enqueueContinue ?? enqueueAutonomousContinue
     const nextRoundCount = input.autonomousRounds + 1
-    await emitNarration({
-      sessionID: input.sessionID,
-      parentID: input.user.id,
-      agent: input.user.agent,
-      variant: input.user.variant,
-      model: input.user.model,
-      text: input.narrationOverride ?? narration.text,
-      kind: narration.kind,
-    })
     await enqueueContinue({
       sessionID: input.sessionID,
       user: input.user,
@@ -696,7 +669,7 @@ export namespace SessionPrompt {
     return {
       halted: false as const,
       nextRoundCount,
-      narration,
+      narration: undefined, // Runner no longer emits narration
     }
   }
 
@@ -1425,7 +1398,7 @@ export namespace SessionPrompt {
       const lastUserMsg = msgs.findLast((m) => m.info.role === "user")
       const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
 
-      const tools = await resolveTools({
+      const resolvedToolsOutput = await resolveTools({
         agent,
         session,
         model: activeModel,
@@ -1434,6 +1407,34 @@ export namespace SessionPrompt {
         bypassAgentCheck,
         messages: msgs,
       })
+
+      const tools = resolvedToolsOutput.tools
+      const lazyTools = resolvedToolsOutput.lazyTools
+
+      // Active Loader: expose lazy tools with auto-unlock wrapper
+      // When AI calls a tool that's in lazyTools, it gets auto-unlocked
+      if (lazyTools && lazyTools.size > 0) {
+        for (const [toolID, lazyToolDef] of lazyTools) {
+          // Wrap the lazy tool with auto-unlock functionality
+          const wrappedTool = tool({
+            id: toolID as `${string}.${string}`,
+            description: (lazyToolDef as any).description,
+            inputSchema: (lazyToolDef as any).inputSchema,
+            async execute(args: unknown, options: any) {
+              // Auto-unlock before execution
+              UnlockedTools.unlock(sessionID, [toolID])
+              log.info("auto-unlocked lazy tool on demand", {
+                sessionID,
+                toolID,
+              })
+
+              // Execute the original tool
+              return await (lazyToolDef as any).execute(args, options)
+            },
+          })
+          tools[toolID] = wrappedTool as any
+        }
+      }
 
       if (format.type === "json_schema") {
         tools["StructuredOutput"] = createStructuredOutputTool({
@@ -1538,6 +1539,7 @@ export namespace SessionPrompt {
             : []),
         ]),
         tools,
+        lazyTools,
         model: activeModel,
         toolChoice: format.type === "json_schema" ? "required" : undefined,
       })
@@ -1644,30 +1646,9 @@ export namespace SessionPrompt {
           }
           continue
         }
-        // Stopped — emit narration and set workflow state
-        const narration = describeAutonomousNextAction({
-          type: "stop",
-          reason: decision.reason as Exclude<typeof decision.reason, "todo_pending" | "todo_in_progress">,
-        })
-        const NARRATED_STOP_REASONS = [
-          "approval_needed",
-          "product_decision_needed",
-          "wait_subagent",
-          "mission_not_approved",
-          "max_continuous_rounds",
-          "todo_complete",
-        ] as const
-        if ((NARRATED_STOP_REASONS as readonly string[]).includes(decision.reason)) {
-          await emitAutonomousNarration({
-            sessionID,
-            parentID: lastUser.id,
-            agent: lastUser.agent,
-            variant: lastUser.variant,
-            model: lastUser.model,
-            text: narration.text,
-            kind: narration.kind,
-          })
-        }
+        // Stopped — set workflow state (runner silent, no narration)
+        // The autonomous runner should not emit completion messages.
+        // Let the LLM's own outputs speak for the status.
         const completedReasons = ["todo_complete"] as const
         const waitingReasons = [
           "max_continuous_rounds",
@@ -1706,7 +1687,11 @@ export namespace SessionPrompt {
           reason: decision.reason,
           autonomousRounds,
         })
-        log.info("loop:continuation_stopped breaking out of while(true)", { sessionID, reason: decision.reason, state: decision.reason === "wait_subagent" ? "idle" : "waiting_user" })
+        log.info("loop:continuation_stopped breaking out of while(true)", {
+          sessionID,
+          reason: decision.reason,
+          state: decision.reason === "wait_subagent" ? "idle" : "waiting_user",
+        })
         break
       }
       if (result === "compact") {
@@ -1807,7 +1792,11 @@ export namespace SessionPrompt {
     for await (const item of MessageV2.stream(sessionID)) {
       if (item.info.role === "user") continue
       const queued = consumeCallbacks(sessionID)
-      log.info("loop:found_assistant_message_returning", { sessionID, returnedMessageID: item.info.id, queuedCallbacks: queued.length })
+      log.info("loop:found_assistant_message_returning", {
+        sessionID,
+        returnedMessageID: item.info.id,
+        queuedCallbacks: queued.length,
+      })
       for (const q of queued) {
         q.resolve(item)
       }

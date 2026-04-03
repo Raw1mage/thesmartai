@@ -220,6 +220,10 @@ export async function bootstrapDirectory(input: {
   loadSessions: (directory: string) => Promise<void> | void
 }) {
   if (input.store.status !== "complete") input.setStore("status", "loading")
+  // Clear transient runtime state that is in-memory on the daemon side.
+  // After a daemon restart these entries are stale and would show ghost RATE/ERR badges.
+  input.setStore("llm_history", [])
+  input.setStore("llm_errors", [])
 
   const blockingRequests = {
     project: () => input.sdk.project.current().then((x) => input.setStore("project", x.data!.id)),
