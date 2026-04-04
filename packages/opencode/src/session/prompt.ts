@@ -67,6 +67,7 @@ import {
   decideAutonomousContinuation,
   describeAutonomousNextAction,
   clearPendingContinuation,
+  collectCompletedSubagents,
   enqueueAutonomousContinue,
   getPendingContinuation,
   shouldInterruptAutonomousRun,
@@ -853,6 +854,18 @@ export namespace SessionPrompt {
       SessionStatus.set(sessionID, { type: "busy" })
       log.info("loop", { step, sessionID })
       if (abort.aborted) break
+
+      // ── Poll subagent mailbox ──────────────────────────────────
+      // Dispatch and collect live in the same loop. Every iteration
+      // checks if a dispatched subagent has completed.
+      // The push path (task-worker-continuation) already persisted the
+      // completion message in this session — we just consume the queue
+      // entry so the supervisor doesn't also try to resume us, and set
+      // a flag so the break logic below knows not to exit this iteration.
+      const hasSubagentCompletion = !!(await collectCompletedSubagents(sessionID))
+      if (hasSubagentCompletion) {
+        log.info("loop: subagent completion collected from queue", { sessionID, step })
+      }
       const filteredResult = await MessageV2.filterCompacted(MessageV2.stream(sessionID))
       let msgs = filteredResult.messages
       if (filteredResult.stoppedByBudget) {
@@ -919,7 +932,8 @@ export namespace SessionPrompt {
       if (
         lastAssistant?.finish &&
         !["tool-calls", "unknown"].includes(lastAssistant.finish) &&
-        lastUser.id < lastAssistant.id
+        lastUser.id < lastAssistant.id &&
+        !hasSubagentCompletion
       ) {
         if (
           format.type === "json_schema" &&

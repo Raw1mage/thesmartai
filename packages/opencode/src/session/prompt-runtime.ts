@@ -2,6 +2,9 @@ import { Instance } from "../project/instance"
 import { MessageV2 } from "./message-v2"
 import { Session } from "."
 import { SessionStatus } from "./status"
+import { Log } from "../util/log"
+
+const log = Log.create({ service: "session.prompt-runtime" })
 
 type RuntimeEntry = {
   runID: string
@@ -96,7 +99,20 @@ export function cancel(sessionID: string) {
 export function finish(sessionID: string, runID: string) {
   const s = state()
   const match = s[sessionID]
-  if (!match || match.runID !== runID) return
+  if (!match) {
+    // Runtime entry already gone (e.g. cleaned up externally).
+    // Ensure status is not left stuck on "busy".
+    if (SessionStatus.get(sessionID).type !== "idle") {
+      log.warn("finish: runtime entry missing but status not idle — forcing idle", { sessionID, runID })
+      SessionStatus.set(sessionID, { type: "idle" })
+    }
+    return
+  }
+  if (match.runID !== runID) {
+    // A newer runtime has taken over — don't touch it.
+    log.info("finish: runID mismatch, newer runtime active — skipping", { sessionID, runID, activeRunID: match.runID })
+    return
+  }
   delete s[sessionID]
   SessionStatus.set(sessionID, { type: "idle" })
 }

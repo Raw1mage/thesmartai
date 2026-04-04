@@ -1055,27 +1055,9 @@ export async function decideAutonomousContinuation(input: { sessionID: string; r
     missionExists: !!session.mission,
     missionReady: session.mission?.executionReady,
   })
-  // Race condition guard: if the gate says "stop" but a task completion
-  // continuation was enqueued while we were busy (e.g. answering a question),
-  // override the decision to continue so we don't miss the subagent's report.
-  // The synthetic completion message is already persisted in the session;
-  // we just need to keep the loop alive so the LLM processes it.
-  if (!decision.continue) {
-    const pendingEntry = await RunQueue.peek(input.sessionID)
-    if (
-      pendingEntry &&
-      (pendingEntry.triggerType === "task_completion" || pendingEntry.triggerType === "task_failure")
-    ) {
-      // Consume the queue entry so the supervisor doesn't double-resume
-      await RunQueue.remove(input.sessionID)
-      return {
-        continue: true as const,
-        reason: "todo_pending" as const,
-        text: pendingEntry.text,
-        todo: todos.find((t) => t.status === "pending" || t.status === "in_progress"),
-      }
-    }
-  }
+  // NOTE: subagent completion collection is handled by collectCompletedSubagents()
+  // at the runloop boundary in prompt.ts, BEFORE this decision function is called.
+  // This function only decides whether to continue — it does not collect results.
   if (decision.continue && session.mission) {
     const missionConsumption = await consumeMissionArtifacts(session.mission)
     if (!missionConsumption.ok) {
@@ -1605,6 +1587,29 @@ export async function enqueueAutonomousContinue(input: {
 // Re-export trigger types for consumers
 export { type RunTrigger, type TriggerGateResult, type TriggerPriority, type TriggerGatePolicy } from "./trigger"
 export { buildContinuationTrigger, buildApiTrigger, CONTINUATION_GATE_POLICY, API_GATE_POLICY } from "./trigger"
+
+/**
+ * Collect completed subagent results from the RunQueue.
+ *
+ * Called at the runloop boundary — after model output is finalized but BEFORE
+ * the autonomous continuation decision. This is the "return half" of the
+ * dispatch/collect pair: every subagent dispatch must eventually be collected.
+ *
+ * Returns the consumed queue entry if a completion was found, undefined otherwise.
+ */
+export async function collectCompletedSubagents(sessionID: string) {
+  const entry = await RunQueue.peek(sessionID)
+  if (!entry) return undefined
+  if (entry.triggerType !== "task_completion" && entry.triggerType !== "task_failure") return undefined
+
+  await RunQueue.remove(sessionID)
+  log.info("collectCompletedSubagents: consumed", {
+    sessionID,
+    triggerType: entry.triggerType,
+    messageID: entry.messageID,
+  })
+  return entry
+}
 
 // Re-export queue and lane types for consumers
 export { RunQueue, type QueueEntry } from "./queue"
