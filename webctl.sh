@@ -1028,12 +1028,17 @@ do_install() {
             --with-desktop|--skip-system|--yes|-y)
                 install_args+=("$1")
                 ;;
-            --service-user|--service-name)
+            --service-user)
+                # Deprecated: consumed but warns in install.sh
+                if [ -n "${2:-}" ]; then shift; fi
+                install_args+=("--service-user" "ignored")
+                ;;
+            --service-name)
                 if [ -z "${2:-}" ]; then
-                    log_error "$1 requires a value"
+                    log_error "--service-name requires a value"
                     exit 1
                 fi
-                install_args+=("$1" "$2")
+                install_args+=("--service-name" "$2")
                 shift
                 ;;
             --help|-h)
@@ -1044,11 +1049,11 @@ do_install() {
                 echo "  --prod   Production bootstrap (default). Adds --system-init automatically."
                 echo "  --dev    Development bootstrap. Does not add --system-init."
                 echo ""
-                echo "Pass-through options: --with-desktop --skip-system --yes/-y --service-user --service-name"
+                echo "Pass-through options: --with-desktop --skip-system --yes/-y --service-name"
                 echo "Examples:"
                 echo "  ./webctl.sh install"
                 echo "  ./webctl.sh install --dev --skip-system"
-                echo "  ./webctl.sh install --prod --service-name opencode-web --yes"
+                echo "  ./webctl.sh install --prod --service-name opencode-gateway --yes"
                 echo ""
                 return 0
                 ;;

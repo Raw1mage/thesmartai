@@ -9,8 +9,7 @@ WITH_DESKTOP=0
 SKIP_SYSTEM=0
 ASSUME_YES=0
 SYSTEM_INIT=0
-SYSTEM_SERVICE_USER="opencode"
-SYSTEM_SERVICE_NAME="opencode-web"
+SYSTEM_SERVICE_NAME="opencode-gateway"
 SYSTEM_INIT_DONE=0
 
 RED='\033[0;31m'
@@ -51,8 +50,8 @@ Options:
   --with-desktop   Install extra desktop(Tauri) prerequisites
   --skip-system    Skip OS package installation
   --system-init    Initialize Linux system user + systemd service
-  --service-user   Service account name for --system-init (default: opencode)
-  --service-name   systemd unit basename for --system-init (default: opencode-web)
+  --service-user   (deprecated, ignored — gateway runs as root)
+  --service-name   systemd unit basename for --system-init (default: opencode-gateway)
   --yes, -y        Non-interactive mode
   --help, -h       Show help
 EOF
@@ -134,22 +133,6 @@ dirs_identical_root() {
 
 # ── End fingerprint helpers ────────────────────────────────────────────
 
-detect_nologin_shell() {
-  if command -v nologin >/dev/null 2>&1; then
-    command -v nologin
-    return
-  fi
-  if [[ -x "/usr/sbin/nologin" ]]; then
-    echo "/usr/sbin/nologin"
-    return
-  fi
-  if [[ -x "/sbin/nologin" ]]; then
-    echo "/sbin/nologin"
-    return
-  fi
-  echo "/bin/false"
-}
-
 system_init() {
   local os
   os="$(uname -s)"
@@ -161,39 +144,16 @@ system_init() {
 
   ensure_command systemctl "systemd is required for --system-init."
 
-  local shell_path
-  shell_path="$(detect_nologin_shell)"
+  # ── Clean up legacy "opencode" service user artifacts ──────────────
+  # The old architecture ran a single-process web service as a dedicated
+  # "opencode" system user.  The current architecture uses a root gateway
+  # (opencode-gateway) that fork+setuid's per-user daemons, so the
+  # service account is no longer needed.
+  _clean_legacy_service_user
 
-  log_info "Initializing system service account: ${SYSTEM_SERVICE_USER}"
-  if run_as_root id -u "${SYSTEM_SERVICE_USER}" >/dev/null 2>&1; then
-    log_ok "Service user already exists: ${SYSTEM_SERVICE_USER}"
-    # Keep service account non-login and home-less (nobody-style)
-    run_as_root usermod --home /nonexistent --shell "${shell_path}" "${SYSTEM_SERVICE_USER}" || true
-  else
-    run_as_root useradd --system --no-create-home --home-dir /nonexistent --shell "${shell_path}" "${SYSTEM_SERVICE_USER}"
-    log_ok "Created service user: ${SYSTEM_SERVICE_USER}"
-  fi
-
-  log_info "Preparing service runtime directories..."
-  run_as_root install -d -m 750 "/var/lib/opencode"
-  run_as_root chown -R "${SYSTEM_SERVICE_USER}:${SYSTEM_SERVICE_USER}" "/var/lib/opencode"
-
-  local wrapper_src="${ROOT_DIR}/scripts/opencode-run-as-user.sh"
-  local wrapper_dst="/usr/local/libexec/opencode-run-as-user"
+  # ── Per-user daemon launcher (/usr/local/libexec) ──────────────────
   local daemon_launcher_src="${ROOT_DIR}/templates/system/opencode-user-daemon-launch.sh"
   local daemon_launcher_dst="/usr/local/libexec/opencode-user-daemon-launch"
-  if [[ -f "${wrapper_src}" ]]; then
-    if files_identical_root "${wrapper_src}" "${wrapper_dst}"; then
-      log_ok "Privilege wrapper up-to-date: ${wrapper_dst}"
-    else
-      run_as_root install -d -m 755 "/usr/local/libexec"
-      run_as_root install -m 755 "${wrapper_src}" "${wrapper_dst}"
-      log_ok "Installed privilege wrapper: ${wrapper_dst}"
-    fi
-  else
-    log_warn "Wrapper source not found: ${wrapper_src}"
-  fi
-
   if [[ -f "${daemon_launcher_src}" ]]; then
     if files_identical_root "${daemon_launcher_src}" "${daemon_launcher_dst}"; then
       log_ok "Daemon launcher up-to-date: ${daemon_launcher_dst}"
@@ -206,26 +166,7 @@ system_init() {
     log_warn "Daemon launcher source not found: ${daemon_launcher_src}"
   fi
 
-  local sudoers_file="/etc/sudoers.d/opencode-run-as-user"
-  local tmp_sudoers="/tmp/opencode-run-as-user.sudoers.$$"
-  cat >"${tmp_sudoers}" <<EOF
-Defaults:${SYSTEM_SERVICE_USER} !requiretty
-${SYSTEM_SERVICE_USER} ALL=(root) NOPASSWD: /usr/local/libexec/opencode-run-as-user
-${SYSTEM_SERVICE_USER} ALL=(root) NOPASSWD: /usr/bin/systemctl start opencode-user-daemon@*.service
-${SYSTEM_SERVICE_USER} ALL=(root) NOPASSWD: /bin/systemctl start opencode-user-daemon@*.service
-EOF
-  if files_identical_root "${tmp_sudoers}" "${sudoers_file}"; then
-    rm -f "${tmp_sudoers}"
-    log_ok "Sudoers policy up-to-date: ${sudoers_file}"
-  else
-    run_as_root install -m 440 "${tmp_sudoers}" "${sudoers_file}"
-    rm -f "${tmp_sudoers}"
-    if command -v visudo >/dev/null 2>&1; then
-      run_as_root visudo -cf "${sudoers_file}" >/dev/null
-    fi
-    log_ok "Installed sudoers policy: ${sudoers_file}"
-  fi
-
+  # ── /etc/opencode — config directory (root-owned) ──────────────────
   local env_dir="/etc/opencode"
   local runtime_cfg_file="${env_dir}/opencode.cfg"
   local runtime_cfg_template="${ROOT_DIR}/templates/system/opencode.cfg"
@@ -238,36 +179,21 @@ EOF
   local planner_templates_dst="${env_dir}/specs"
   run_as_root install -d -m 755 "${env_dir}"
 
-  # Initialize Google binding registry (gateway reads, per-user daemons write)
+  # Google binding registry — gateway reads, per-user daemons write via gateway API.
+  # Owned root:root 0664 so gateway (root) can read/write directly.
   local binding_file="${env_dir}/google-bindings.json"
   if [ ! -f "${binding_file}" ] || [ ! -s "${binding_file}" ]; then
     echo '{}' | run_as_root tee "${binding_file}" > /dev/null
     log_ok "Initialized Google binding registry: ${binding_file}"
   fi
-  run_as_root chown "root:${SYSTEM_SERVICE_USER}" "${binding_file}" 2>/dev/null || true
+  run_as_root chown root:root "${binding_file}"
   run_as_root chmod 0664 "${binding_file}"
 
   if files_identical_root "${ROOT_DIR}/webctl.sh" "${runtime_webctl_dst}"; then
     log_ok "Runtime web controller up-to-date: ${runtime_webctl_dst}"
   else
     run_as_root install -m 755 "${ROOT_DIR}/webctl.sh" "${runtime_webctl_dst}"
-    run_as_root chown -R "${SYSTEM_SERVICE_USER}:${SYSTEM_SERVICE_USER}" "${env_dir}"
-    run_as_root chmod 755 "${env_dir}"
-    run_as_root chmod g=u "${env_dir}"/*
     log_ok "Installed runtime web controller: ${runtime_webctl_dst}"
-  fi
-
-  # Add invoking user to the service group so they can execute
-  # scripts in /etc/opencode/ without privilege escalation.
-  local invoking_user="${SUDO_USER:-$(whoami)}"
-  if [[ "${invoking_user}" != "root" && "${invoking_user}" != "${SYSTEM_SERVICE_USER}" ]]; then
-    if ! id -nG "${invoking_user}" 2>/dev/null | grep -qw "${SYSTEM_SERVICE_USER}"; then
-      run_as_root usermod -aG "${SYSTEM_SERVICE_USER}" "${invoking_user}"
-      log_ok "Added ${invoking_user} to group ${SYSTEM_SERVICE_USER}"
-      log_warn "Group change takes effect on next login (or run: newgrp ${SYSTEM_SERVICE_USER})"
-    else
-      log_ok "${invoking_user} already in group ${SYSTEM_SERVICE_USER}"
-    fi
   fi
 
   if [[ ! -f "${runtime_cfg_template}" ]]; then
@@ -288,7 +214,6 @@ EOF
   fi
 
   if run_as_root test -f "${runtime_cfg_file}"; then
-    # Check if config already has correct values — skip sed if so
     local cfg_ok=1
     run_as_root grep -q "^OPENCODE_FRONTEND_PATH=\"${installed_frontend_path}\"" "${runtime_cfg_file}" || cfg_ok=0
     run_as_root grep -q "^OPENCODE_WEBCTL_PATH=\"${runtime_webctl_dst}\"" "${runtime_cfg_file}" || cfg_ok=0
@@ -328,6 +253,7 @@ EOF
     fi
   fi
 
+  # ── Binaries ───────────────────────────────────────────────────────
   local bin_src="${ROOT_DIR}/dist/opencode-linux-x64/bin/opencode"
   local bin_dst="/usr/local/bin/opencode"
   if files_identical_root "${bin_src}" "${bin_dst}"; then
@@ -360,6 +286,7 @@ EOF
     fi
   fi
 
+  # ── Frontend static assets (root-owned) ────────────────────────────
   run_as_root install -d -m 755 "/usr/local/share/opencode/frontend"
   if [[ -d "${ROOT_DIR}/packages/app/dist" ]]; then
     if dirs_identical_root "${ROOT_DIR}/packages/app/dist" "/usr/local/share/opencode/frontend"; then
@@ -367,72 +294,13 @@ EOF
     else
       log_info "Installing web frontend to ${installed_frontend_path}..."
       run_as_root cp -r "${ROOT_DIR}/packages/app/dist/"* "/usr/local/share/opencode/frontend/"
-      run_as_root chown -R "${SYSTEM_SERVICE_USER}:${SYSTEM_SERVICE_USER}" "/usr/local/share/opencode/frontend"
     fi
   fi
 
-  local unit_file="/etc/systemd/system/${SYSTEM_SERVICE_NAME}.service"
-  local tmp_unit="/tmp/${SYSTEM_SERVICE_NAME}.service.$$"
-  local daemon_template_src="${ROOT_DIR}/templates/system/opencode-user-daemon@.service"
-  local daemon_template_dst="/etc/systemd/system/opencode-user-daemon@.service"
-  cat >"${tmp_unit}" <<EOF
-[Unit]
-Description=OpenCode Web Service
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=${SYSTEM_SERVICE_USER}
-Group=${SYSTEM_SERVICE_USER}
-WorkingDirectory=/var/lib/opencode
-Environment=HOME=/nonexistent
-Environment=OPENCODE_DATA_HOME=/var/lib/opencode
-Environment=XDG_CONFIG_HOME=/var/lib/opencode/config
-Environment=XDG_DATA_HOME=/var/lib/opencode/data
-Environment=XDG_STATE_HOME=/var/lib/opencode/state
-Environment=XDG_CACHE_HOME=/var/lib/opencode/cache
-Environment=OPENCODE_LAUNCH_MODE=systemd
-EnvironmentFile=-/etc/opencode/opencode.cfg
-EnvironmentFile=-/etc/opencode/opencode.env
-ExecStart=/usr/local/bin/opencode web --port \$OPENCODE_PORT --hostname \$OPENCODE_HOSTNAME
-Restart=on-failure
-RestartSec=2
-NoNewPrivileges=false
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=false
-ReadWritePaths=/home /var/lib/opencode
-LimitNOFILE=65535
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
+  # ── Systemd units ──────────────────────────────────────────────────
   local units_changed=0
-  if files_identical_root "${tmp_unit}" "${unit_file}"; then
-    rm -f "${tmp_unit}"
-    log_ok "Systemd unit up-to-date: ${unit_file}"
-  else
-    run_as_root install -m 644 "${tmp_unit}" "${unit_file}"
-    rm -f "${tmp_unit}"
-    log_ok "Installed systemd unit: ${unit_file}"
-    units_changed=1
-  fi
 
-  if [[ -f "${daemon_template_src}" ]]; then
-    if files_identical_root "${daemon_template_src}" "${daemon_template_dst}"; then
-      log_ok "Daemon unit template up-to-date: ${daemon_template_dst}"
-    else
-      run_as_root install -m 644 "${daemon_template_src}" "${daemon_template_dst}"
-      log_ok "Installed per-user daemon unit template: ${daemon_template_dst}"
-      units_changed=1
-    fi
-  else
-    log_warn "Per-user daemon unit template not found: ${daemon_template_src}"
-  fi
-
-  # Gateway (C root daemon) service unit + binary
+  # Gateway (C root daemon) — the primary service
   local gateway_unit_src="${ROOT_DIR}/daemon/opencode-gateway.service"
   local gateway_unit_dst="/etc/systemd/system/opencode-gateway.service"
   local gateway_user_unit_src="${ROOT_DIR}/daemon/opencode-user@.service"
@@ -460,6 +328,21 @@ EOF
     fi
   fi
 
+  # Per-user daemon template (systemd-managed alternative to gateway fork)
+  local daemon_template_src="${ROOT_DIR}/templates/system/opencode-user-daemon@.service"
+  local daemon_template_dst="/etc/systemd/system/opencode-user-daemon@.service"
+  if [[ -f "${daemon_template_src}" ]]; then
+    if files_identical_root "${daemon_template_src}" "${daemon_template_dst}"; then
+      log_ok "Daemon unit template up-to-date: ${daemon_template_dst}"
+    else
+      run_as_root install -m 644 "${daemon_template_src}" "${daemon_template_dst}"
+      log_ok "Installed per-user daemon unit template: ${daemon_template_dst}"
+      units_changed=1
+    fi
+  else
+    log_warn "Per-user daemon unit template not found: ${daemon_template_src}"
+  fi
+
   if [[ -x "${gateway_bin_src}" ]]; then
     run_as_root install -m 755 "${gateway_bin_src}" /usr/local/bin/opencode-gateway
     log_ok "Installed gateway binary: /usr/local/bin/opencode-gateway"
@@ -478,6 +361,62 @@ EOF
   log_ok "Enabled service: ${SYSTEM_SERVICE_NAME}.service"
 
   SYSTEM_INIT_DONE=1
+}
+
+# ── Legacy cleanup: remove "opencode" service user artifacts ─────────
+# Called by system_init() on every install to ensure stale artifacts from
+# the old single-process architecture are cleaned up.
+_clean_legacy_service_user() {
+  local legacy_user="opencode"
+  local cleaned=0
+
+  # 1. Remove legacy opencode-web.service (ran as User=opencode)
+  if run_as_root test -f "/etc/systemd/system/opencode-web.service"; then
+    run_as_root systemctl disable --now opencode-web.service 2>/dev/null || true
+    run_as_root rm -f /etc/systemd/system/opencode-web.service
+    log_ok "Removed legacy unit: opencode-web.service"
+    cleaned=1
+  fi
+
+  # 2. Remove sudoers policy for the legacy service user
+  if run_as_root test -f "/etc/sudoers.d/opencode-run-as-user"; then
+    run_as_root rm -f /etc/sudoers.d/opencode-run-as-user
+    log_ok "Removed legacy sudoers: /etc/sudoers.d/opencode-run-as-user"
+    cleaned=1
+  fi
+
+  # 3. Remove legacy privilege wrapper (source no longer exists)
+  if run_as_root test -f "/usr/local/libexec/opencode-run-as-user"; then
+    run_as_root rm -f /usr/local/libexec/opencode-run-as-user
+    log_ok "Removed legacy wrapper: /usr/local/libexec/opencode-run-as-user"
+    cleaned=1
+  fi
+
+  # 4. Fix ownership: /etc/opencode and /usr/local/share/opencode → root:root
+  if run_as_root test -d "/etc/opencode"; then
+    run_as_root chown -R root:root /etc/opencode
+  fi
+  if run_as_root test -d "/usr/local/share/opencode"; then
+    run_as_root chown -R root:root /usr/local/share/opencode
+  fi
+
+  # 5. Remove the system user itself (if it exists and is a system account)
+  if run_as_root id -u "${legacy_user}" >/dev/null 2>&1; then
+    local uid
+    uid="$(run_as_root id -u "${legacy_user}")"
+    if [[ "${uid}" -lt 1000 ]]; then
+      run_as_root userdel "${legacy_user}" 2>/dev/null || true
+      run_as_root groupdel "${legacy_user}" 2>/dev/null || true
+      log_ok "Removed legacy system user: ${legacy_user} (uid ${uid})"
+      cleaned=1
+    else
+      log_warn "User '${legacy_user}' exists but uid=${uid} >= 1000; skipping removal (not a system account)"
+    fi
+  fi
+
+  if [[ "${cleaned}" -eq 1 ]]; then
+    log_info "Legacy service user cleanup complete"
+  fi
 }
 
 start_system_service_if_ready() {
@@ -626,12 +565,10 @@ main() {
       --skip-system) SKIP_SYSTEM=1 ;;
       --system-init) SYSTEM_INIT=1 ;;
       --service-user)
-        shift
-        SYSTEM_SERVICE_USER="${1:-}"
-        if [[ -z "${SYSTEM_SERVICE_USER}" ]]; then
-          log_err "--service-user requires a value"
-          exit 1
-        fi
+        # Deprecated: legacy flag, ignored. Gateway runs as root; per-user
+        # daemons run as the actual login user. No service account needed.
+        log_warn "--service-user is deprecated and ignored (gateway architecture uses root + per-user setuid)"
+        shift  # consume the value argument
         ;;
       --service-name)
         shift
