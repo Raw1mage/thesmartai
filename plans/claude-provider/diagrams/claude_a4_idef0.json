@@ -1,0 +1,58 @@
+{
+  "diagram_title": "Execute Transport Exchange — A4 Decomposition",
+  "node_reference": "A4",
+  "activities": [
+    {
+      "id": "A41",
+      "title": "Verify Token Freshness",
+      "description": "Check auth status. If token stale or expired, trigger A26 (refresh) before proceeding. If refresh fails, abort with auth error.",
+      "decomposition": null
+    },
+    {
+      "id": "A42",
+      "title": "Send HTTP Request",
+      "description": "Execute libcurl HTTPS POST with assembled headers, body, and URL. Set streaming write callback. Configure TLS, timeouts, retries.",
+      "decomposition": null
+    },
+    {
+      "id": "A43",
+      "title": "Parse SSE Event Stream",
+      "description": "Buffer incoming bytes, split on double-newline boundaries, extract event: type and data: JSON. Handle multi-line data fields. Dispatch to event handler.",
+      "decomposition": null
+    },
+    {
+      "id": "A44",
+      "title": "Strip Response Protocol Artifacts",
+      "description": "Remove mcp_ prefix from tool names in response events (content_block_start, content_block_delta with tool_use type). Buffer incomplete lines to handle chunk boundaries.",
+      "decomposition": null
+    },
+    {
+      "id": "A45",
+      "title": "Deliver Structured Events",
+      "description": "Map Anthropic event types to claude_event_t enum values. Extract text deltas, tool_use deltas, thinking blocks. Extract usage from message_delta. Invoke host callback.",
+      "decomposition": null
+    },
+    {
+      "id": "A46",
+      "title": "Handle Transport Errors",
+      "description": "Classify errors: rate_limit (429) → backoff retry, unauthorized (401) → trigger refresh, server_error (500+) → retry with limit, context_length (400) → report, timeout → report.",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    { "id": "AR1", "source": "EXTERNAL", "target": "A41:input", "label": "Current Auth Status", "type": "input" },
+    { "id": "AR2", "source": "A41", "target": "A42:input", "label": "Verified Fresh Token", "type": "input" },
+    { "id": "AR3", "source": "EXTERNAL", "target": "A42:input", "label": "Wire-Format HTTP Packet (headers + body + URL)", "type": "input" },
+    { "id": "AR4", "source": "A42", "target": "A43:input", "label": "Raw SSE Byte Stream", "type": "input" },
+    { "id": "AR5", "source": "A43", "target": "A44:input", "label": "Parsed SSE Events (type + JSON data)", "type": "input" },
+    { "id": "AR6", "source": "A44", "target": "A45:input", "label": "Clean Events (mcp_ stripped)", "type": "input" },
+    { "id": "AR7", "source": "A45", "target": "EXTERNAL", "label": "Structured SSE Events (via host callback)", "type": "output" },
+    { "id": "AR8", "source": "A42", "target": "A46:input", "label": "HTTP Error Response", "type": "input" },
+    { "id": "AR9", "source": "A46", "target": "A42:input", "label": "Retry Signal (with backoff)", "type": "input" },
+    { "id": "AR10", "source": "A46", "target": "EXTERNAL", "label": "Error Event (via host callback)", "type": "output" },
+    { "id": "AR11", "source": "EXTERNAL", "target": "A42:mechanism", "label": "libcurl (HTTPS + TLS + streaming)", "type": "mechanism" },
+    { "id": "AR12", "source": "EXTERNAL", "target": "A43:mechanism", "label": "cJSON (JSON parse)", "type": "mechanism" },
+    { "id": "AR13", "source": "EXTERNAL", "target": "A42:control", "label": "Transport Config (timeout, retries, CA cert)", "type": "control" },
+    { "id": "AR14", "source": "EXTERNAL", "target": "A43:control", "label": "SSE Event Schema", "type": "control" }
+  ]
+}

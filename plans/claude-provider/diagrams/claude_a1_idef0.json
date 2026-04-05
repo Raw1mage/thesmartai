@@ -1,0 +1,72 @@
+{
+  "diagram_title": "Extract Protocol Specification — A1 Decomposition",
+  "node_reference": "A1",
+  "activities": [
+    {
+      "id": "A11",
+      "title": "Locate and Inventory Binary Artifacts",
+      "description": "Find official binary at ~/.local/share/claude/versions/LATEST, determine version, identify embedded JavaScript bundle boundaries, catalog string table regions.",
+      "decomposition": null
+    },
+    {
+      "id": "A12",
+      "title": "Extract Protocol Constants",
+      "description": "Use strings/objdump to extract all protocol-relevant constants: version strings, OAuth client IDs, issuer URLs, beta flags, attribution salt, system prompt variants, header names, scope lists.",
+      "decomposition": null
+    },
+    {
+      "id": "A13",
+      "title": "Reconstruct Attribution Hash Algorithm",
+      "description": "Identify the TG$ function and its callers. Trace how the hash parameter H is computed. Determine whether salt-based or version-appended. Verify cch=00000 is hardcoded. Document cc_workload source (iP$ function).",
+      "decomposition": null
+    },
+    {
+      "id": "A14",
+      "title": "Map OAuth Handshake Sequence",
+      "description": "Extract complete OAuth endpoint URLs, PKCE parameters, scope lists (authorize vs refresh), redirect URI, code exchange body format, profile fetch endpoint. Produce handshake chart.",
+      "decomposition": null
+    },
+    {
+      "id": "A15",
+      "title": "Document Packet Composition Format",
+      "description": "Reconstruct the exact HTTP request structure: header ordering, header values, URL format, body transform rules (mcp_ prefix, system prompt injection, empty block filtering). Produce packet composition diagram.",
+      "decomposition": null
+    },
+    {
+      "id": "A16",
+      "title": "Extract SSE Response Event Schema",
+      "description": "Identify all SSE event types handled (message_start through message_stop, ping, error), their JSON data structure, content block types (text, tool_use, thinking), usage fields, and mcp_ stripping rules.",
+      "decomposition": null
+    },
+    {
+      "id": "A17",
+      "title": "Generate Test Vectors",
+      "description": "Construct known-input test cases. For each test case, record the expected wire-format HTTP request (headers + body + URL). Include edge cases: empty system prompt, no tools, multiple tool_use blocks, expired token.",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    { "id": "AR1", "source": "EXTERNAL", "target": "A11:input", "label": "Official Binary Image", "type": "input" },
+    { "id": "AR2", "source": "EXTERNAL", "target": "A11:control", "label": "Binary Version Tag", "type": "control" },
+    { "id": "AR3", "source": "A11", "target": "A12:input", "label": "String Table Regions", "type": "input" },
+    { "id": "AR4", "source": "A11", "target": "A13:input", "label": "Function Boundary Map", "type": "input" },
+    { "id": "AR5", "source": "A12", "target": "A13:input", "label": "Raw Constant Catalog", "type": "input" },
+    { "id": "AR6", "source": "A12", "target": "A14:input", "label": "OAuth Constants", "type": "input" },
+    { "id": "AR7", "source": "A12", "target": "A15:input", "label": "Header and Transform Constants", "type": "input" },
+    { "id": "AR8", "source": "A12", "target": "A16:input", "label": "SSE Event Type Strings", "type": "input" },
+    { "id": "AR9", "source": "A13", "target": "A15:input", "label": "Attribution Hash Algorithm Spec", "type": "input" },
+    { "id": "AR10", "source": "A14", "target": "EXTERNAL", "label": "Handshake Chart", "type": "output" },
+    { "id": "AR11", "source": "A15", "target": "EXTERNAL", "label": "Packet Composition Diagram", "type": "output" },
+    { "id": "AR12", "source": "A15", "target": "A17:input", "label": "Packet Format Spec", "type": "input" },
+    { "id": "AR13", "source": "A14", "target": "A17:input", "label": "Handshake Sequence Spec", "type": "input" },
+    { "id": "AR14", "source": "A13", "target": "A17:input", "label": "Hash Algorithm Spec", "type": "input" },
+    { "id": "AR15", "source": "A16", "target": "EXTERNAL", "label": "SSE Event Schema", "type": "output" },
+    { "id": "AR16", "source": "A17", "target": "EXTERNAL", "label": "Test Vectors", "type": "output" },
+    { "id": "AR17", "source": "A12", "target": "EXTERNAL", "label": "Protocol Datasheet", "type": "output" },
+    { "id": "AR18", "source": "A14", "target": "EXTERNAL", "label": "OAuth Endpoint Spec", "type": "output" },
+    { "id": "AR19", "source": "EXTERNAL", "target": "A11:mechanism", "label": "strings / file / readelf", "type": "mechanism" },
+    { "id": "AR20", "source": "EXTERNAL", "target": "A12:mechanism", "label": "strings / grep / regex extraction", "type": "mechanism" },
+    { "id": "AR21", "source": "EXTERNAL", "target": "A13:mechanism", "label": "objdump / decompiler / JS beautifier", "type": "mechanism" },
+    { "id": "AR22", "source": "EXTERNAL", "target": "A13:control", "label": "Known anthropic.ts Constants (偏差對照用)", "type": "control" }
+  ]
+}
