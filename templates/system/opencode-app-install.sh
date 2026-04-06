@@ -132,7 +132,7 @@ with open('${tmp_file}', 'w') as f:
     json.dump(data, f, indent=2)
 " || die "Failed to update mcp-apps.json"
 
-  mv "${tmp_file}" "${MCP_APPS_JSON}"
+  cp "${tmp_file}" "${MCP_APPS_JSON}" && rm -f "${tmp_file}"
   chown "${SVC_USER}:${SVC_USER}" "${MCP_APPS_JSON}"
   chmod 0644 "${MCP_APPS_JSON}"
   ok "Registered app '${id}' → ${resolved} in ${MCP_APPS_JSON}"
@@ -156,7 +156,7 @@ data.get('apps', {}).pop('${id}', None)
 with open('${tmp_file}', 'w') as f:
     json.dump(data, f, indent=2)
 " || die "Failed to update mcp-apps.json"
-    mv "${tmp_file}" "${MCP_APPS_JSON}"
+    cp "${tmp_file}" "${MCP_APPS_JSON}" && rm -f "${tmp_file}"
     chown "${SVC_USER}:${SVC_USER}" "${MCP_APPS_JSON}"
     chmod 0644 "${MCP_APPS_JSON}"
     ok "Removed app '${id}' from ${MCP_APPS_JSON}"
@@ -171,18 +171,72 @@ with open('${tmp_file}', 'w') as f:
   fi
 }
 
+cmd_write_entry() {
+  # Write a complete pre-built entry (with probed tools) to mcp-apps.json.
+  # Entry JSON is read from a tmp file provided by the daemon.
+  local id="${1:-}"
+  local entry_file="${2:-}"
+  [[ -z "${id}" ]]         && die "Usage: opencode-app-install write-entry <app-id> <entry-json-file>"
+  [[ -z "${entry_file}" ]] && die "Usage: opencode-app-install write-entry <app-id> <entry-json-file>"
+
+  validate_app_id "${id}"
+
+  if [[ ! -f "${entry_file}" ]]; then
+    die "Entry file not found: ${entry_file}"
+  fi
+
+  # Validate the entry file is valid JSON with required fields
+  python3 -c "
+import json, sys
+with open('${entry_file}') as f:
+    entry = json.load(f)
+required = ['path', 'command', 'enabled']
+for key in required:
+    if key not in entry:
+        print(f'Missing required field: {key}', file=sys.stderr)
+        sys.exit(1)
+" || die "Invalid entry JSON in ${entry_file}"
+
+  # Ensure mcp-apps.json exists
+  if [[ ! -f "${MCP_APPS_JSON}" ]]; then
+    echo '{"version":1,"apps":{}}' > "${MCP_APPS_JSON}"
+    chown "${SVC_USER}:${SVC_USER}" "${MCP_APPS_JSON}"
+  fi
+
+  # Merge entry into mcp-apps.json
+  local tmp_file
+  tmp_file="$(mktemp)"
+  python3 -c "
+import json
+with open('${MCP_APPS_JSON}') as f:
+    data = json.load(f)
+with open('${entry_file}') as f:
+    entry = json.load(f)
+data.setdefault('apps', {})['${id}'] = entry
+with open('${tmp_file}', 'w') as f:
+    json.dump(data, f, indent=2)
+" || die "Failed to merge entry into mcp-apps.json"
+
+  cp "${tmp_file}" "${MCP_APPS_JSON}" && rm -f "${tmp_file}"
+  chown "${SVC_USER}:${SVC_USER}" "${MCP_APPS_JSON}"
+  chmod 0644 "${MCP_APPS_JSON}"
+  ok "Wrote entry '${id}' to ${MCP_APPS_JSON}"
+}
+
 # ── Main ──────────────────────────────────────────────────────────────
 case "${1:-}" in
-  clone)    shift; cmd_clone "$@" ;;
-  register) shift; cmd_register "$@" ;;
-  remove)   shift; cmd_remove "$@" ;;
+  clone)       shift; cmd_clone "$@" ;;
+  register)    shift; cmd_register "$@" ;;
+  write-entry) shift; cmd_write_entry "$@" ;;
+  remove)      shift; cmd_remove "$@" ;;
   *)
-    echo "Usage: opencode-app-install {clone|register|remove} [args...]" >&2
+    echo "Usage: opencode-app-install {clone|register|write-entry|remove} [args...]" >&2
     echo "" >&2
     echo "Commands:" >&2
-    echo "  clone  <github-url> <app-id>   Clone repo to /opt/opencode-apps/<id>" >&2
-    echo "  register <app-id> <app-path>   Register app in /etc/opencode/mcp-apps.json" >&2
-    echo "  remove <app-id>                Unregister and optionally delete app" >&2
+    echo "  clone  <github-url> <app-id>      Clone repo to /opt/opencode-apps/<id>" >&2
+    echo "  register <app-id> <app-path>      Register app (reads mcp.json for command)" >&2
+    echo "  write-entry <app-id> <json-file>  Write pre-built entry with tool list" >&2
+    echo "  remove <app-id>                   Unregister and optionally delete app" >&2
     exit 1
     ;;
 esac

@@ -6,6 +6,11 @@ import { NamedError } from "@opencode-ai/util/error"
 import { Global } from "@/global"
 import { Log } from "@/util/log"
 import { McpAppManifest } from "./manifest"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
+import { withTimeout } from "@/util/timeout"
+import { Env } from "@/env"
+import { Installation } from "@/installation"
 
 /**
  * MCP App Store — Two-tier registry + lifecycle management (Layer 2)
@@ -33,12 +38,20 @@ export namespace McpAppStore {
   ])
   export type AppSource = z.infer<typeof AppSource>
 
+  export const AppToolInfo = z.object({
+    name: z.string(),
+    description: z.string().optional(),
+    inputSchema: z.record(z.string(), z.unknown()).optional(),
+  })
+  export type AppToolInfo = z.infer<typeof AppToolInfo>
+
   export const AppEntry = z.object({
     path: z.string(),
     command: z.array(z.string()).min(1),
     enabled: z.boolean(),
     installedAt: z.string(),
     source: AppSource,
+    tools: z.array(AppToolInfo).optional(),
   })
   export type AppEntry = z.infer<typeof AppEntry>
 
@@ -119,10 +132,6 @@ export namespace McpAppStore {
   export type InstallTarget = "system" | "user"
 
   /**
-   * Register an App by path. Reads manifest, validates, writes to the
-   * appropriate tier.
-   */
-  /**
    * Resolve manifest command to absolute paths at registration time.
    * Single point of truth — runtime uses entry.command directly, no re-resolution.
    */
@@ -135,30 +144,107 @@ export namespace McpAppStore {
     })
   }
 
+  /**
+   * Probe an App via stdio spawn → tools/list. Returns tool metadata.
+   * Disposes the connection after probing.
+   */
+  async function probeTools(command: string[], manifest?: McpAppManifest.Manifest): Promise<AppToolInfo[]> {
+    // Build probe env: inject dummy auth tokens so the server doesn't crash
+    // before tools/list. We only need the tool schema, not actual API access.
+    const probeEnv: Record<string, string> = { ...Env.all(), ...manifest?.env }
+    if (manifest?.auth?.type === "oauth" || manifest?.auth?.type === "api-key") {
+      const tokenEnv = (manifest.auth as { tokenEnv?: string }).tokenEnv
+      if (tokenEnv && !probeEnv[tokenEnv]) {
+        probeEnv[tokenEnv] = "probe-dummy-token"
+      }
+    }
+
+    const transport = new StdioClientTransport({
+      command: command[0],
+      args: command.slice(1),
+      env: probeEnv,
+      stderr: "pipe",
+    })
+    const client = new Client({ name: "opencode-probe", version: Installation.VERSION })
+
+    try {
+      await withTimeout(client.connect(transport), 30_000)
+      const result = await withTimeout(client.listTools(), 10_000)
+      return result.tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema as Record<string, unknown> | undefined,
+      }))
+    } finally {
+      await client.close().catch(() => {})
+    }
+  }
+
+  /**
+   * Build a complete AppEntry with resolved command and probed tools.
+   */
+  async function buildEntry(appPath: string, manifest: McpAppManifest.Manifest): Promise<AppEntry> {
+    const resolvedCmd = resolveCommand(appPath, manifest.command)
+
+    let tools: AppToolInfo[] = []
+    try {
+      tools = await probeTools(resolvedCmd, manifest)
+      log.info("probed app tools", { id: manifest.id, count: tools.length })
+    } catch (err) {
+      log.warn("probe failed, registering without tool list", {
+        id: manifest.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+
+    return {
+      path: appPath,
+      command: resolvedCmd,
+      enabled: true,
+      installedAt: new Date().toISOString(),
+      source: { type: "local" },
+      tools,
+    }
+  }
+
+  /**
+   * Write a complete entry to system-level mcp-apps.json via sudo.
+   * Uses write-entry command: passes full JSON entry via tmp file.
+   */
+  async function writeSystemEntry(id: string, entry: AppEntry): Promise<void> {
+    // Use XDG_RUNTIME_DIR (not /tmp) because per-user daemons run with
+    // PrivateTmp=true — their /tmp is isolated from root's /tmp.
+    const runtimeDir = process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.() ?? 1000}`
+    const tmpFile = `${runtimeDir}/mcp-entry-${id}-${Date.now()}.json`
+    try {
+      await fs.writeFile(tmpFile, JSON.stringify(entry, null, 2))
+      sudoWrapper(["write-entry", id, tmpFile])
+    } finally {
+      await fs.unlink(tmpFile).catch(() => {})
+    }
+  }
+
+  /**
+   * Register an App by path. Reads manifest, probes tools, persists full entry
+   * with resolved command and tool list.
+   */
   export async function addApp(
     id: string,
     appPath: string,
     target: InstallTarget = "system",
   ): Promise<McpAppManifest.Manifest> {
     const manifest = await McpAppManifest.load(appPath)
+    const entry = await buildEntry(appPath, manifest)
 
     if (target === "system") {
-      // sudo wrapper reads mcp.json and resolves command to absolute path
-      sudoWrapper(["register", id, appPath])
+      await writeSystemEntry(id, entry)
     } else {
-      const resolvedCmd = resolveCommand(appPath, manifest.command)
       const config = await readConfigFile(userConfigPath())
-      config.apps[id] = {
-        path: appPath,
-        command: resolvedCmd,
-        enabled: true,
-        installedAt: new Date().toISOString(),
-        source: { type: "local" },
-      }
+      config.apps[id] = entry
       await saveUserConfig(config)
     }
 
-    log.info("app registered", { id, path: appPath, target })
+    log.info("app registered", { id, path: appPath, tools: entry.tools?.length ?? 0, target })
     return manifest
   }
 
@@ -170,7 +256,8 @@ export namespace McpAppStore {
     sudoWrapper(["clone", githubUrl, id])
     const appPath = `/opt/opencode-apps/${id}`
     const manifest = await McpAppManifest.load(appPath)
-    sudoWrapper(["register", id, appPath])
+    const entry = await buildEntry(appPath, manifest)
+    await writeSystemEntry(id, entry)
     log.info("app cloned and registered", { id, url: githubUrl })
     return manifest
   }
