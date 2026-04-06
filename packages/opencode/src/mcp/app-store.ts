@@ -239,6 +239,14 @@ export namespace McpAppStore {
     const manifest = await McpAppManifest.load(appPath)
     const entry = await buildEntry(appPath, manifest)
 
+    // Preserve existing enabled state and installedAt if re-registering
+    const configPath = target === "system" ? SYSTEM_CONFIG_PATH : userConfigPath()
+    const existing = (await readConfigFile(configPath)).apps[id]
+    if (existing) {
+      entry.enabled = existing.enabled
+      entry.installedAt = existing.installedAt
+    }
+
     if (target === "system") {
       await writeSystemEntry(id, entry)
     } else {
