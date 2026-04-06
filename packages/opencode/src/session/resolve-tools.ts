@@ -1,10 +1,10 @@
 import z from "zod"
-import { type Tool as AITool, tool, jsonSchema } from "ai"
+import { type Tool as AITool, tool, jsonSchema, dynamicTool } from "ai"
 import { Log } from "../util/log"
 import { debugCheckpoint } from "@/util/debug"
 import { ProviderTransform } from "../provider/transform"
 import { ToolRegistry } from "../tool/registry"
-import { MCP } from "../mcp"
+import { MCP, McpAppStore } from "../mcp"
 import { Tool } from "@/tool/tool"
 import { ToolInvoker } from "./tool-invoker"
 import { PermissionNext } from "@/permission/next"
@@ -337,6 +337,75 @@ export async function resolveTools(input: ResolveToolsInput): Promise<ResolveToo
         lazyTools.set(id, tools[id])
         delete tools[id]
       }
+    }
+
+    // Inject disabled store app tools as lazy tools (Active Loader)
+    // These tools exist only as schema stubs — when AI calls one, the
+    // wrapper auto-connects the App via MCP.add() then forwards the call.
+    try {
+      const storeConfig = await McpAppStore.loadConfig()
+      for (const [appId, entry] of Object.entries(storeConfig.apps)) {
+        if (entry.enabled) continue // enabled apps already in tool pool
+        if (!entry.tools || entry.tools.length === 0) continue
+
+        for (const appTool of entry.tools) {
+          const toolKey = `mcpapp-${appId}_${appTool.name.replace(/[^a-zA-Z0-9_-]/g, "_")}`
+          if (tools[toolKey] || lazyTools.has(toolKey)) continue
+
+          const storeAppTool = dynamicTool({
+            description: appTool.description ?? `[${appId}] ${appTool.name}`,
+            inputSchema: jsonSchema(appTool.inputSchema ?? { type: "object", properties: {} }),
+            execute: async (args) => {
+              // Auto-connect the App on first call
+              log.info("auto-connecting store app for lazy tool", { appId, tool: appTool.name })
+              const { McpAppManifest } = await import("../mcp/manifest")
+              let env: Record<string, string> = {}
+              try {
+                const manifest = await McpAppManifest.load(entry.path)
+                env = { ...manifest.env }
+                // Resolve auth token
+                const pathMod = await import("path")
+                const globalMod = await import("../global")
+                const gauthPath = pathMod.join(globalMod.Global.Path.config, "gauth.json")
+                try {
+                  const fs = await import("fs/promises")
+                  const tokens = JSON.parse(await fs.default.readFile(gauthPath, "utf-8"))
+                  if (manifest.auth?.type === "oauth" || manifest.auth?.type === "api-key") {
+                    const tokenEnv = (manifest.auth as any).tokenEnv
+                    if (tokenEnv && tokens.access_token) {
+                      env[tokenEnv] = tokens.access_token
+                    }
+                  }
+                } catch {}
+              } catch {}
+
+              await MCP.add(`mcpapp-${appId}`, {
+                type: "local",
+                command: entry.command,
+                environment: env,
+                enabled: true,
+              })
+
+              // Now call the tool via the connected client
+              const clients = await MCP.clients()
+              const client = clients[`mcpapp-${appId}`]
+              if (!client) {
+                return { content: [{ type: "text" as const, text: `Failed to connect App: ${appId}` }] }
+              }
+              const result = await client.callTool({
+                name: appTool.name,
+                arguments: (args ?? {}) as Record<string, unknown>,
+              })
+              return result as any
+            },
+          })
+          lazyTools.set(toolKey, storeAppTool as AITool)
+        }
+      }
+    } catch (err) {
+      log.warn("failed to inject store app lazy tools", {
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
 
     debugCheckpoint("tool.resolve", "lazy-filter", {
