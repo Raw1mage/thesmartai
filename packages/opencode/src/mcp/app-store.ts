@@ -164,6 +164,9 @@ export namespace McpAppStore {
       args: command.slice(1),
       env: probeEnv,
       stderr: "pipe",
+      // Use /tmp as cwd to avoid bun standalone binaries picking up
+      // project-level bunfig.toml preload from cwd ancestors
+      cwd: "/tmp",
     })
     const client = new Client({ name: "opencode-probe", version: Installation.VERSION })
 

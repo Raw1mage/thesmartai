@@ -494,8 +494,11 @@ export namespace MCP {
       // Internal MCP binaries (compiled with bun build --compile) must not inherit
       // the project-level bunfig.toml (which has @opentui/solid/preload for the TUI).
       // Use /tmp as cwd for these to avoid the preload-not-found crash.
-      const isInternalMcpBinary = cmd.startsWith("/usr/local/lib/opencode/mcp/")
-      const cwd = isInternalMcpBinary ? "/tmp" : Instance.directory
+      // Bun compiled binaries read bunfig.toml from cwd ancestors.
+      // Use /tmp as cwd for any binary outside the project tree to avoid
+      // picking up the project-level preload config.
+      const isExternalBinary = cmd.startsWith("/usr/local/lib/opencode/mcp/") || cmd.startsWith("/opt/opencode-apps/")
+      const cwd = isExternalBinary ? "/tmp" : Instance.directory
 
       // Ensure memory storage directory exists when MEMORY_FILE_PATH is configured.
       if (key.startsWith("memory")) {
