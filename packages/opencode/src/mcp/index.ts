@@ -31,6 +31,7 @@ import { Bus } from "@/bus"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import open from "open"
 import { Env } from "@/env"
+import { Global } from "@/global"
 import fs from "fs/promises"
 import path from "path"
 
@@ -793,10 +794,16 @@ export namespace MCP {
     if (auth.provider === "google") {
       // Try multiple paths: Global.Path.config may not be initialized yet during
       // early daemon startup. Fall back to standard XDG path.
-      const candidates = [
-        path.join(Global.Path.config, "gauth.json"),
-        path.join(process.env.XDG_CONFIG_HOME || path.join(process.env.HOME || "", ".config"), "opencode", "gauth.json"),
-      ]
+      const xdgFallback = path.join(
+        process.env.XDG_CONFIG_HOME || path.join(process.env.HOME || "", ".config"),
+        "opencode",
+        "gauth.json",
+      )
+      let globalConfigPath: string | undefined
+      try { globalConfigPath = path.join(Global.Path.config, "gauth.json") } catch {}
+      const candidates = globalConfigPath
+        ? [globalConfigPath, xdgFallback]
+        : [xdgFallback]
       for (const gauthPath of candidates) {
         try {
           const content = await fs.readFile(gauthPath, "utf-8")
