@@ -1,0 +1,246 @@
+import fs from "fs/promises"
+import path from "path"
+import { execSync } from "child_process"
+import z from "zod/v4"
+import { NamedError } from "@opencode-ai/util/error"
+import { Global } from "@/global"
+import { Log } from "@/util/log"
+import { McpAppManifest } from "./manifest"
+
+/**
+ * MCP App Store — Two-tier registry + lifecycle management (Layer 2)
+ *
+ * System-level: /etc/opencode/mcp-apps.json  (managed by sudo wrapper)
+ * User-level:   ~/.config/opencode/mcp-apps.json  (managed by per-user daemon)
+ *
+ * Merge rule: system-level wins on id collision.
+ */
+export namespace McpAppStore {
+  const log = Log.create({ service: "mcp-app-store" })
+
+  const SYSTEM_CONFIG_PATH = "/etc/opencode/mcp-apps.json"
+  const SUDO_WRAPPER = "/usr/local/bin/opencode-app-install"
+
+  function userConfigPath(): string {
+    return path.join(Global.Path.config, "mcp-apps.json")
+  }
+
+  // ── Schema ──────────────────────────────────────────────────────────
+
+  export const AppSource = z.discriminatedUnion("type", [
+    z.object({ type: z.literal("github"), repo: z.string(), ref: z.string().optional() }),
+    z.object({ type: z.literal("local") }),
+  ])
+  export type AppSource = z.infer<typeof AppSource>
+
+  export const AppEntry = z.object({
+    path: z.string(),
+    enabled: z.boolean(),
+    installedAt: z.string(),
+    source: AppSource,
+  })
+  export type AppEntry = z.infer<typeof AppEntry>
+
+  export const AppsConfig = z.object({
+    version: z.literal(1),
+    apps: z.record(z.string(), AppEntry),
+  })
+  export type AppsConfig = z.infer<typeof AppsConfig>
+
+  export const StoreError = NamedError.create(
+    "McpAppStoreError",
+    z.object({ operation: z.string(), reason: z.string() }),
+  )
+
+  // ── Read ────────────────────────────────────────────────────────────
+
+  async function readConfigFile(filePath: string): Promise<AppsConfig> {
+    try {
+      const content = await fs.readFile(filePath, "utf-8")
+      const parsed = AppsConfig.safeParse(JSON.parse(content))
+      if (!parsed.success) {
+        const errors = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")
+        log.warn("mcp-apps.json schema error, treating as empty", { path: filePath, errors })
+        return { version: 1, apps: {} }
+      }
+      return parsed.data
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return { version: 1, apps: {} }
+      }
+      log.warn("failed to read mcp-apps.json", { path: filePath, error: String(err) })
+      return { version: 1, apps: {} }
+    }
+  }
+
+  /**
+   * Load and merge two-tier config. System-level wins on id collision.
+   */
+  export async function loadConfig(): Promise<AppsConfig> {
+    const [system, user] = await Promise.all([
+      readConfigFile(SYSTEM_CONFIG_PATH),
+      readConfigFile(userConfigPath()),
+    ])
+
+    // System takes priority: start with user, then overwrite with system
+    const merged: AppsConfig = {
+      version: 1,
+      apps: { ...user.apps, ...system.apps },
+    }
+
+    return merged
+  }
+
+  // ── User-level write (daemon direct write) ──────────────────────────
+
+  async function saveUserConfig(config: AppsConfig): Promise<void> {
+    const filePath = userConfigPath()
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.writeFile(filePath, JSON.stringify(config, null, 2))
+    await fs.chmod(filePath, 0o644).catch(() => {})
+  }
+
+  // ── System-level write (via sudo wrapper) ───────────────────────────
+
+  function sudoWrapper(args: string[]): string {
+    const cmd = `sudo ${SUDO_WRAPPER} ${args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ")}`
+    try {
+      return execSync(cmd, { encoding: "utf-8", timeout: 60_000 }).trim()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      log.warn("sudo wrapper failed", { args, error: msg })
+      throw new StoreError({ operation: args[0] ?? "unknown", reason: msg })
+    }
+  }
+
+  // ── Public API ──────────────────────────────────────────────────────
+
+  export type InstallTarget = "system" | "user"
+
+  /**
+   * Register an App by path. Reads manifest, validates, writes to the
+   * appropriate tier.
+   */
+  export async function addApp(
+    id: string,
+    appPath: string,
+    target: InstallTarget = "system",
+  ): Promise<McpAppManifest.Manifest> {
+    const manifest = await McpAppManifest.load(appPath)
+
+    if (target === "system") {
+      sudoWrapper(["register", id, appPath])
+    } else {
+      const config = await readConfigFile(userConfigPath())
+      config.apps[id] = {
+        path: appPath,
+        enabled: true,
+        installedAt: new Date().toISOString(),
+        source: { type: "local" },
+      }
+      await saveUserConfig(config)
+    }
+
+    log.info("app registered", { id, path: appPath, target })
+    return manifest
+  }
+
+  /**
+   * Clone a GitHub repo to /opt/opencode-apps/<id>/ and register it.
+   * System-level only (requires sudo).
+   */
+  export async function cloneAndRegister(githubUrl: string, id: string): Promise<McpAppManifest.Manifest> {
+    sudoWrapper(["clone", githubUrl, id])
+    const appPath = `/opt/opencode-apps/${id}`
+    const manifest = await McpAppManifest.load(appPath)
+    sudoWrapper(["register", id, appPath])
+    log.info("app cloned and registered", { id, url: githubUrl })
+    return manifest
+  }
+
+  /**
+   * Remove an App from the registry.
+   */
+  export async function removeApp(id: string, target: InstallTarget = "system"): Promise<void> {
+    if (target === "system") {
+      sudoWrapper(["remove", id])
+    } else {
+      const config = await readConfigFile(userConfigPath())
+      delete config.apps[id]
+      await saveUserConfig(config)
+    }
+    log.info("app removed", { id, target })
+  }
+
+  /**
+   * Set enabled/disabled state for an App.
+   */
+  export async function setEnabled(id: string, enabled: boolean, target: InstallTarget = "system"): Promise<void> {
+    if (target === "system") {
+      // Read system config, update, write back via sudo register
+      // (register is idempotent — it updates if exists)
+      const config = await readConfigFile(SYSTEM_CONFIG_PATH)
+      const entry = config.apps[id]
+      if (!entry) throw new StoreError({ operation: "setEnabled", reason: `App not found: ${id}` })
+      // For system-level toggle, we use register with the existing path
+      // The wrapper's register command overwrites the entry
+      sudoWrapper(["register", id, entry.path])
+    } else {
+      const config = await readConfigFile(userConfigPath())
+      const entry = config.apps[id]
+      if (!entry) throw new StoreError({ operation: "setEnabled", reason: `App not found in user config: ${id}` })
+      entry.enabled = enabled
+      await saveUserConfig(config)
+    }
+    log.info("app state changed", { id, enabled, target })
+  }
+
+  /**
+   * List all registered Apps with their manifest metadata.
+   */
+  export async function listApps(): Promise<
+    Array<{
+      id: string
+      entry: AppEntry
+      manifest: McpAppManifest.Manifest | null
+      tier: "system" | "user"
+    }>
+  > {
+    const [system, user] = await Promise.all([
+      readConfigFile(SYSTEM_CONFIG_PATH),
+      readConfigFile(userConfigPath()),
+    ])
+
+    const result: Array<{
+      id: string
+      entry: AppEntry
+      manifest: McpAppManifest.Manifest | null
+      tier: "system" | "user"
+    }> = []
+
+    // System entries first
+    for (const [id, entry] of Object.entries(system.apps)) {
+      let manifest: McpAppManifest.Manifest | null = null
+      try {
+        manifest = await McpAppManifest.load(entry.path)
+      } catch {
+        log.warn("failed to load manifest for registered app", { id, path: entry.path })
+      }
+      result.push({ id, entry, manifest, tier: "system" })
+    }
+
+    // User entries (skip if already in system)
+    for (const [id, entry] of Object.entries(user.apps)) {
+      if (system.apps[id]) continue // system takes priority
+      let manifest: McpAppManifest.Manifest | null = null
+      try {
+        manifest = await McpAppManifest.load(entry.path)
+      } catch {
+        log.warn("failed to load manifest for registered app", { id, path: entry.path })
+      }
+      result.push({ id, entry, manifest, tier: "user" })
+    }
+
+    return result
+  }
+}
