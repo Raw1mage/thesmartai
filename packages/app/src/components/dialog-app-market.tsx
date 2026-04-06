@@ -8,13 +8,13 @@ import "./dialog-app-market.css"
 
 const CARD_MIN_W = 260
 
-/** Unified MCP app entry — covers both standard servers and managed apps */
+/** Unified MCP app entry — covers standard servers, managed apps, and store apps */
 interface MarketApp {
   id: string
   name: string
   description: string
   icon: string
-  kind: "mcp-server" | "managed-app"
+  kind: "mcp-server" | "managed-app" | "mcp-app"
   type?: "local" | "remote"
   status: string
   error?: string
@@ -25,7 +25,7 @@ interface MarketApp {
 type StatusDisplay = { labelKey: string; color: string }
 
 function statusDisplay(app: MarketApp): StatusDisplay {
-  if (app.kind === "mcp-server") {
+  if (app.kind === "mcp-server" || app.kind === "mcp-app") {
     switch (app.status) {
       case "connected":
         return { labelKey: "app_market.status.ready", color: "text-success-base" }
@@ -170,16 +170,48 @@ export const DialogAppMarket: Component = () => {
     }
   }
 
+  // --- Actions for store apps (mcp-apps.json) ---
+  async function toggleStoreApp(app: MarketApp) {
+    if (actionLoading()) return
+    setActionLoading(app.id)
+    try {
+      const storeId = app.id.replace(/^store-/, "")
+      await globalSDK.fetch(`${globalSDK.url}/api/v2/mcp/store/apps/${storeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !app.enabled }),
+      })
+      await refetch()
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function removeStoreApp(app: MarketApp) {
+    if (actionLoading()) return
+    setActionLoading(app.id)
+    try {
+      const storeId = app.id.replace(/^store-/, "")
+      await globalSDK.fetch(`${globalSDK.url}/api/v2/mcp/store/apps/${storeId}`, {
+        method: "DELETE",
+      })
+      await refetch()
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   // Dispatch action based on kind
   function handleAction(app: MarketApp) {
     if (app.kind === "mcp-server") return toggleMcpServer(app)
+    if (app.kind === "mcp-app") return toggleStoreApp(app)
     return performManagedAction(app)
   }
 
   function actionLabel(app: MarketApp): string {
     if (actionLoading() === app.id) return language.t("app_market.action.loading")
-    if (app.kind === "mcp-server") {
-      return app.status === "connected"
+    if (app.kind === "mcp-server" || app.kind === "mcp-app") {
+      return app.enabled || app.status === "connected"
         ? language.t("app_market.action.disable")
         : language.t("app_market.action.enable")
     }
@@ -214,8 +246,8 @@ export const DialogAppMarket: Component = () => {
 
   /** Icon name for the toggle action button */
   function actionIcon(app: MarketApp): string {
-    if (app.kind === "mcp-server") {
-      return app.status === "connected" ? "circle-ban-sign" : "circle-check"
+    if (app.kind === "mcp-server" || app.kind === "mcp-app") {
+      return (app.enabled || app.status === "connected") ? "circle-ban-sign" : "circle-check"
     }
     if (app.status === "ready") return "circle-ban-sign"
     if (app.status === "pending_auth" || app.status === "pending_config") return "eye"
