@@ -3,7 +3,7 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import path from "path"
 import fs from "fs/promises"
-import { MCP } from "../../mcp"
+import { MCP, McpAppStore, McpAppManifest } from "../../mcp"
 import { ManagedAppRegistry } from "../../mcp"
 import { Config } from "../../config/config"
 import { Global } from "../../global"
@@ -40,7 +40,11 @@ export const McpRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        const [serverApps, managedApps] = await Promise.all([MCP.serverApps(), ManagedAppRegistry.list()])
+        const [serverApps, managedApps, storeApps] = await Promise.all([
+          MCP.serverApps(),
+          ManagedAppRegistry.list(),
+          McpAppStore.listApps().catch(() => []),
+        ])
 
         // Convert managed apps to unified format
         const managedCards: MCP.ServerApp[] = managedApps.map((app) => ({
@@ -54,7 +58,21 @@ export const McpRoutes = lazy(() =>
           enabled: app.operator.install === "installed" && app.runtimeStatus === "ready",
         }))
 
-        return c.json([...serverApps, ...managedCards])
+        // Convert store apps to unified format
+        const storeCards = storeApps.map((app) => ({
+          id: `store-${app.id}`,
+          name: app.manifest?.name ?? app.id,
+          description: app.manifest?.description ?? "",
+          icon: app.manifest?.icon ?? "📦",
+          kind: "mcp-app" as const,
+          status: app.entry.enabled ? "connected" : "disabled",
+          tools: (app.entry.tools ?? []).map((t) => ({ id: t.name, name: t.name, description: t.description ?? "" })),
+          enabled: app.entry.enabled,
+          auth: app.manifest?.auth,
+          toolCount: app.entry.tools?.length ?? 0,
+        }))
+
+        return c.json([...serverApps, ...managedCards, ...storeCards])
       },
     )
     .get(
@@ -329,19 +347,22 @@ export const McpRoutes = lazy(() =>
       async (c) => {
         const { appId } = c.req.valid("param")
 
-        // Google OAuth app whitelist — all apps sharing the same GCP project + gauth.json
-        const GOOGLE_OAUTH_APPS: Record<string, { scopeEnv: string; scopeDefault: string }> = {
-          "google-calendar": {
-            scopeEnv: "GOOGLE_CALENDAR_SCOPE",
-            scopeDefault: "https://www.googleapis.com/auth/calendar",
-          },
-          gmail: {
-            scopeEnv: "GOOGLE_GMAIL_SCOPE",
-            scopeDefault: "https://mail.google.com/",
-          },
+        // Resolve OAuth config: check store apps first, then legacy managed apps
+        const storeApps = await McpAppStore.listApps().catch(() => [])
+        const storeApp = storeApps.find((a) => a.id === appId)
+
+        // Legacy hardcoded Google OAuth apps (fallback for managed apps still in registry)
+        const LEGACY_GOOGLE_OAUTH_APPS: Record<string, { scopeEnv: string; scopeDefault: string }> = {
+          "google-calendar": { scopeEnv: "GOOGLE_CALENDAR_SCOPE", scopeDefault: "https://www.googleapis.com/auth/calendar" },
+          gmail: { scopeEnv: "GOOGLE_GMAIL_SCOPE", scopeDefault: "https://mail.google.com/" },
         }
 
-        if (!GOOGLE_OAUTH_APPS[appId]) {
+        // Determine if this app supports OAuth
+        const storeAuth = storeApp?.manifest?.auth
+        const isStoreOAuth = storeAuth && storeAuth.type === "oauth"
+        const isLegacyOAuth = LEGACY_GOOGLE_OAUTH_APPS[appId]
+
+        if (!isStoreOAuth && !isLegacyOAuth) {
           return c.json({ error: `OAuth connect not supported for app: ${appId}` }, 400)
         }
 
@@ -351,27 +372,28 @@ export const McpRoutes = lazy(() =>
         }
         const authUri = process.env.GOOGLE_CALENDAR_AUTH_URI || "https://accounts.google.com/o/oauth2/auth"
 
-        // Merge scopes from all installed Google OAuth apps + the connecting app
-        // Always include identity scopes for automatic Google binding piggyback
+        // Merge scopes from all Google OAuth apps (store + legacy)
         const scopeSet = new Set<string>(["openid", "email", "profile"])
-        for (const [id, cfg] of Object.entries(GOOGLE_OAUTH_APPS)) {
-          // Always include the connecting app's scopes
-          if (id === appId) {
-            const envScope = process.env[cfg.scopeEnv]
-            for (const s of (envScope || cfg.scopeDefault).split(/\s+/)) {
-              if (s) scopeSet.add(s)
-            }
-            continue
-          }
-          // Include other installed apps' scopes
-          const snap = await ManagedAppRegistry.get(id).catch(() => null)
-          if (snap && snap.operator.install === "installed") {
-            const envScope = process.env[cfg.scopeEnv]
-            for (const s of (envScope || cfg.scopeDefault).split(/\s+/)) {
-              if (s) scopeSet.add(s)
-            }
+
+        // Add scopes from the connecting app
+        if (isStoreOAuth && "scopes" in storeAuth) {
+          for (const s of (storeAuth as any).scopes ?? []) scopeSet.add(s)
+        } else if (isLegacyOAuth) {
+          const envScope = process.env[isLegacyOAuth.scopeEnv]
+          for (const s of (envScope || isLegacyOAuth.scopeDefault).split(/\s+/)) {
+            if (s) scopeSet.add(s)
           }
         }
+
+        // Also merge scopes from other installed Google OAuth store apps
+        for (const app of storeApps) {
+          if (app.id === appId) continue
+          const auth = app.manifest?.auth
+          if (auth?.type === "oauth" && (auth as any).provider === "google") {
+            for (const s of (auth as any).scopes ?? []) scopeSet.add(s)
+          }
+        }
+
         const mergedScope = Array.from(scopeSet).join(" ")
 
         // Determine redirect URI from forwarded headers (proxy-safe)
@@ -410,8 +432,13 @@ export const McpRoutes = lazy(() =>
       validator("param", z.object({ appId: z.string() })),
       async (c) => {
         const { appId } = c.req.valid("param")
-        const GOOGLE_OAUTH_APP_IDS = ["google-calendar", "gmail"]
-        if (!GOOGLE_OAUTH_APP_IDS.includes(appId)) {
+
+        // Validate: this appId must be a store app with OAuth or a legacy Google app
+        const storeAppsForCallback = await McpAppStore.listApps().catch(() => [])
+        const callbackStoreApp = storeAppsForCallback.find((a) => a.id === appId)
+        const isStoreOAuthCallback = callbackStoreApp?.manifest?.auth?.type === "oauth"
+        const LEGACY_GOOGLE_OAUTH_APP_IDS = ["google-calendar", "gmail"]
+        if (!isStoreOAuthCallback && !LEGACY_GOOGLE_OAUTH_APP_IDS.includes(appId)) {
           return c.json({ error: `OAuth callback not supported for app: ${appId}` }, 400)
         }
 
@@ -506,18 +533,29 @@ export const McpRoutes = lazy(() =>
           }
         }
 
-        // Mark config complete and enable ALL installed Google OAuth apps (shared token)
+        // Enable all Google OAuth apps that share this token (store apps + legacy)
         const appNames: string[] = []
-        for (const id of GOOGLE_OAUTH_APP_IDS) {
+
+        // Store apps: any app with auth.provider === "google"
+        for (const app of storeAppsForCallback) {
+          const auth = app.manifest?.auth
+          if (auth?.type === "oauth" && (auth as any).provider === "google") {
+            appNames.push(app.manifest?.name ?? app.id)
+            oauthLog.info("store app authenticated after shared OAuth", { appId: app.id })
+          }
+        }
+
+        // Legacy managed apps (if any still registered)
+        for (const id of LEGACY_GOOGLE_OAUTH_APP_IDS) {
           const snap = await ManagedAppRegistry.get(id).catch(() => null)
           if (snap && snap.operator.install === "installed") {
             try {
               await ManagedAppRegistry.setConfigKeys(id, ["googleOAuth"])
               await ManagedAppRegistry.enable(id)
-              appNames.push(snap.name)
-              oauthLog.info("app enabled after shared OAuth", { appId: id })
+              if (!appNames.includes(snap.name)) appNames.push(snap.name)
+              oauthLog.info("legacy app enabled after shared OAuth", { appId: id })
             } catch {
-              oauthLog.info("app enable skipped (already enabled or not ready)", { appId: id })
+              oauthLog.info("legacy app enable skipped", { appId: id })
             }
           }
         }
@@ -742,6 +780,125 @@ export const McpRoutes = lazy(() =>
         const { name } = c.req.valid("param")
         await MCP.disconnect(name)
         return c.json(true)
+      },
+    )
+
+    // ── MCP App Store CRUD (Layer 2) ─────────────────────────────────
+
+    .get(
+      "/store/apps",
+      describeRoute({
+        summary: "List installed MCP Apps from mcp-apps.json",
+        operationId: "mcp.store.list",
+        responses: { 200: { description: "App list with manifest metadata and tier" } },
+      }),
+      async (c) => {
+        const apps = await McpAppStore.listApps()
+        return c.json(apps)
+      },
+    )
+    .post(
+      "/store/apps",
+      describeRoute({
+        summary: "Register a new MCP App",
+        operationId: "mcp.store.add",
+        responses: {
+          200: { description: "Registered app manifest" },
+          400: { description: "Validation error" },
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          path: z.string().optional(),
+          githubUrl: z.string().optional(),
+          id: z.string().optional(),
+          target: z.enum(["system", "user"]).optional().default("system"),
+        }),
+      ),
+      async (c) => {
+        const body = c.req.valid("json")
+
+        if (body.githubUrl) {
+          const id = body.id ?? body.githubUrl.split("/").pop()?.replace(/\.git$/, "") ?? "unknown"
+          try {
+            const manifest = await McpAppStore.cloneAndRegister(body.githubUrl, id)
+            return c.json({ id, manifest, status: "installed" })
+          } catch (err) {
+            return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
+          }
+        }
+
+        if (body.path) {
+          const id = body.id ?? body.path.split("/").pop() ?? "unknown"
+          try {
+            const manifest = await McpAppStore.addApp(id, body.path, body.target)
+            return c.json({ id, manifest, status: "registered" })
+          } catch (err) {
+            return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
+          }
+        }
+
+        return c.json({ error: "Either 'path' or 'githubUrl' is required" }, 400)
+      },
+    )
+    .post(
+      "/store/apps/preview",
+      describeRoute({
+        summary: "Preview an MCP App manifest without registering",
+        operationId: "mcp.store.preview",
+        responses: {
+          200: { description: "Manifest preview" },
+          400: { description: "Manifest not found or invalid" },
+        },
+      }),
+      validator("json", z.object({ path: z.string() })),
+      async (c) => {
+        const { path: appPath } = c.req.valid("json")
+        try {
+          const manifest = await McpAppManifest.load(appPath)
+          return c.json({ manifest })
+        } catch (err) {
+          return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
+        }
+      },
+    )
+    .patch(
+      "/store/apps/:id",
+      describeRoute({
+        summary: "Update MCP App state (enable/disable)",
+        operationId: "mcp.store.update",
+        responses: { 200: { description: "Updated" } },
+      }),
+      validator("param", z.object({ id: z.string() })),
+      validator("json", z.object({ enabled: z.boolean() })),
+      async (c) => {
+        const { id } = c.req.valid("param")
+        const { enabled } = c.req.valid("json")
+        try {
+          await McpAppStore.setEnabled(id, enabled)
+          return c.json({ id, enabled })
+        } catch (err) {
+          return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
+        }
+      },
+    )
+    .delete(
+      "/store/apps/:id",
+      describeRoute({
+        summary: "Remove an MCP App",
+        operationId: "mcp.store.remove",
+        responses: { 200: { description: "Removed" } },
+      }),
+      validator("param", z.object({ id: z.string() })),
+      async (c) => {
+        const { id } = c.req.valid("param")
+        try {
+          await McpAppStore.removeApp(id)
+          return c.json({ id, status: "removed" })
+        } catch (err) {
+          return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
+        }
       },
     ),
 )

@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+# opencode-app-install — Privileged wrapper for MCP App lifecycle operations.
+#
+# This script is installed to /usr/local/bin/opencode-app-install and
+# invoked via sudo by per-user daemons (system-manager MCP tool).
+# It is the ONLY mechanism for non-root processes to write to
+# /opt/opencode-apps/ and /etc/opencode/mcp-apps.json.
+#
+# Sudoers entry (installed by install.sh):
+#   ALL ALL=(root) NOPASSWD: /usr/local/bin/opencode-app-install
+#
+# Usage:
+#   sudo opencode-app-install clone  <github-url> <app-id>
+#   sudo opencode-app-install register <app-id> <app-path>
+#   sudo opencode-app-install remove <app-id>
+#
+# Security:
+#   - All paths are resolved and validated against /opt/opencode-apps/
+#   - No arbitrary path writes allowed
+#   - All created files are chown'd to opencode:opencode
+
+set -euo pipefail
+
+readonly APPS_DIR="/opt/opencode-apps"
+readonly MCP_APPS_JSON="/etc/opencode/mcp-apps.json"
+readonly SVC_USER="opencode"
+
+die() { echo "[ERR] $1" >&2; exit 1; }
+ok()  { echo "[OK] $1"; }
+
+# Validate app-id: alphanumeric, hyphens, underscores only
+validate_app_id() {
+  local id="$1"
+  if [[ ! "${id}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    die "Invalid app-id '${id}': only alphanumeric, hyphens, and underscores allowed"
+  fi
+  if [[ "${#id}" -gt 64 ]]; then
+    die "App-id '${id}' too long (max 64 chars)"
+  fi
+}
+
+# Ensure target path is strictly under APPS_DIR (prevent path traversal)
+safe_app_path() {
+  local id="$1"
+  local resolved
+  resolved="$(realpath -m "${APPS_DIR}/${id}")"
+  if [[ "${resolved}" != "${APPS_DIR}/"* ]]; then
+    die "Path traversal rejected: ${id} resolves to ${resolved}"
+  fi
+  echo "${resolved}"
+}
+
+cmd_clone() {
+  local url="${1:-}"
+  local id="${2:-}"
+  [[ -z "${url}" ]] && die "Usage: opencode-app-install clone <github-url> <app-id>"
+  [[ -z "${id}" ]]  && die "Usage: opencode-app-install clone <github-url> <app-id>"
+
+  validate_app_id "${id}"
+  local target
+  target="$(safe_app_path "${id}")"
+
+  if [[ -d "${target}" ]]; then
+    die "App directory already exists: ${target}"
+  fi
+
+  # Validate URL looks like a git remote (basic check)
+  if [[ ! "${url}" =~ ^https?:// ]] && [[ ! "${url}" =~ ^git@ ]]; then
+    die "Invalid source URL: ${url}"
+  fi
+
+  git clone --depth 1 "${url}" "${target}" 2>&1
+  chown -R "${SVC_USER}:${SVC_USER}" "${target}"
+  ok "Cloned ${url} → ${target} (owner: ${SVC_USER})"
+}
+
+cmd_register() {
+  local id="${1:-}"
+  local app_path="${2:-}"
+  [[ -z "${id}" ]]       && die "Usage: opencode-app-install register <app-id> <app-path>"
+  [[ -z "${app_path}" ]] && die "Usage: opencode-app-install register <app-id> <app-path>"
+
+  validate_app_id "${id}"
+
+  # Resolve app_path — allow paths outside /opt/opencode-apps/ (e.g. local dev paths)
+  local resolved
+  resolved="$(realpath -m "${app_path}")"
+  if [[ ! -d "${resolved}" ]]; then
+    die "App path does not exist: ${resolved}"
+  fi
+
+  # Ensure mcp-apps.json exists
+  if [[ ! -f "${MCP_APPS_JSON}" ]]; then
+    echo '{"version":1,"apps":{}}' > "${MCP_APPS_JSON}"
+    chown "${SVC_USER}:${SVC_USER}" "${MCP_APPS_JSON}"
+  fi
+
+  # Read mcp.json and resolve command to absolute path at registration time.
+  # This is the single point of truth — runtime never needs to resolve again.
+  local tmp_file
+  tmp_file="$(mktemp)"
+  python3 -c "
+import json, os, sys
+from datetime import datetime, timezone
+
+app_path = '${resolved}'
+mcp_json_path = os.path.join(app_path, 'mcp.json')
+
+# Read command from mcp.json (required)
+command = []
+if os.path.isfile(mcp_json_path):
+    with open(mcp_json_path) as f:
+        manifest = json.load(f)
+    command = manifest.get('command', [])
+else:
+    print(f'WARNING: no mcp.json found at {mcp_json_path}, command will be empty', file=sys.stderr)
+
+# Resolve first element (binary) to absolute path
+if command and not command[0].startswith('/'):
+    command[0] = os.path.normpath(os.path.join(app_path, command[0]))
+
+with open('${MCP_APPS_JSON}') as f:
+    data = json.load(f)
+data.setdefault('apps', {})['${id}'] = {
+    'path': app_path,
+    'command': command,
+    'enabled': False,
+    'installedAt': datetime.now(timezone.utc).isoformat(),
+    'source': {'type': 'local'}
+}
+with open('${tmp_file}', 'w') as f:
+    json.dump(data, f, indent=2)
+" || die "Failed to update mcp-apps.json"
+
+  cp "${tmp_file}" "${MCP_APPS_JSON}" && rm -f "${tmp_file}"
+  chown "${SVC_USER}:${SVC_USER}" "${MCP_APPS_JSON}"
+  chmod 0644 "${MCP_APPS_JSON}"
+  ok "Registered app '${id}' → ${resolved} in ${MCP_APPS_JSON}"
+}
+
+cmd_remove() {
+  local id="${1:-}"
+  [[ -z "${id}" ]] && die "Usage: opencode-app-install remove <app-id>"
+
+  validate_app_id "${id}"
+
+  # Remove from mcp-apps.json
+  if [[ -f "${MCP_APPS_JSON}" ]]; then
+    local tmp_file
+    tmp_file="$(mktemp)"
+    python3 -c "
+import json
+with open('${MCP_APPS_JSON}') as f:
+    data = json.load(f)
+data.get('apps', {}).pop('${id}', None)
+with open('${tmp_file}', 'w') as f:
+    json.dump(data, f, indent=2)
+" || die "Failed to update mcp-apps.json"
+    cp "${tmp_file}" "${MCP_APPS_JSON}" && rm -f "${tmp_file}"
+    chown "${SVC_USER}:${SVC_USER}" "${MCP_APPS_JSON}"
+    chmod 0644 "${MCP_APPS_JSON}"
+    ok "Removed app '${id}' from ${MCP_APPS_JSON}"
+  fi
+
+  # NOTE: Do NOT delete app files from /opt/opencode-apps/.
+  # Unregister only removes the entry from mcp-apps.json.
+  # Physical deletion requires explicit `purge` command (not exposed to AI tools).
+}
+
+cmd_write_entry() {
+  # Write a complete pre-built entry (with probed tools) to mcp-apps.json.
+  # Entry JSON is read from a tmp file provided by the daemon.
+  local id="${1:-}"
+  local entry_file="${2:-}"
+  [[ -z "${id}" ]]         && die "Usage: opencode-app-install write-entry <app-id> <entry-json-file>"
+  [[ -z "${entry_file}" ]] && die "Usage: opencode-app-install write-entry <app-id> <entry-json-file>"
+
+  validate_app_id "${id}"
+
+  if [[ ! -f "${entry_file}" ]]; then
+    die "Entry file not found: ${entry_file}"
+  fi
+
+  # Validate the entry file is valid JSON with required fields
+  python3 -c "
+import json, sys
+with open('${entry_file}') as f:
+    entry = json.load(f)
+required = ['path', 'command', 'enabled']
+for key in required:
+    if key not in entry:
+        print(f'Missing required field: {key}', file=sys.stderr)
+        sys.exit(1)
+" || die "Invalid entry JSON in ${entry_file}"
+
+  # Ensure mcp-apps.json exists
+  if [[ ! -f "${MCP_APPS_JSON}" ]]; then
+    echo '{"version":1,"apps":{}}' > "${MCP_APPS_JSON}"
+    chown "${SVC_USER}:${SVC_USER}" "${MCP_APPS_JSON}"
+  fi
+
+  # Merge entry into mcp-apps.json
+  local tmp_file
+  tmp_file="$(mktemp)"
+  python3 -c "
+import json
+with open('${MCP_APPS_JSON}') as f:
+    data = json.load(f)
+with open('${entry_file}') as f:
+    entry = json.load(f)
+data.setdefault('apps', {})['${id}'] = entry
+with open('${tmp_file}', 'w') as f:
+    json.dump(data, f, indent=2)
+" || die "Failed to merge entry into mcp-apps.json"
+
+  cp "${tmp_file}" "${MCP_APPS_JSON}" && rm -f "${tmp_file}"
+  chown "${SVC_USER}:${SVC_USER}" "${MCP_APPS_JSON}"
+  chmod 0644 "${MCP_APPS_JSON}"
+  ok "Wrote entry '${id}' to ${MCP_APPS_JSON}"
+}
+
+# ── Main ──────────────────────────────────────────────────────────────
+case "${1:-}" in
+  clone)       shift; cmd_clone "$@" ;;
+  register)    shift; cmd_register "$@" ;;
+  write-entry) shift; cmd_write_entry "$@" ;;
+  remove)      shift; cmd_remove "$@" ;;
+  *)
+    echo "Usage: opencode-app-install {clone|register|write-entry|remove} [args...]" >&2
+    echo "" >&2
+    echo "Commands:" >&2
+    echo "  clone  <github-url> <app-id>      Clone repo to /opt/opencode-apps/<id>" >&2
+    echo "  register <app-id> <app-path>      Register app (reads mcp.json for command)" >&2
+    echo "  write-entry <app-id> <json-file>  Write pre-built entry with tool list" >&2
+    echo "  remove <app-id>                   Unregister and optionally delete app" >&2
+    exit 1
+    ;;
+esac

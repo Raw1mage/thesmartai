@@ -1,9 +1,10 @@
 export * from "./app-registry"
+export { McpAppStore } from "./app-store"
+export { McpAppManifest } from "./manifest"
 
 import { dynamicTool, type Tool, jsonSchema, type JSONSchema7 } from "ai"
 import { ManagedAppRegistry } from "./app-registry"
-import { GoogleCalendarApp } from "./apps/google-calendar"
-import { GmailApp } from "./apps/gmail"
+import { McpAppStore } from "./app-store"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
@@ -24,7 +25,6 @@ import { withTimeout } from "@/util/timeout"
 import { McpOAuthProvider } from "./oauth-provider"
 import { McpOAuthCallback } from "./oauth-callback"
 import { McpAuth } from "./auth"
-import { sweepSharedGoogleAccessToken } from "./apps/gauth"
 import { BusEvent } from "../bus/bus-event"
 import { Bus } from "@/bus"
 import { TuiEvent } from "@/cli/cmd/tui/event"
@@ -156,71 +156,10 @@ export namespace MCP {
     })
   }
 
-  function managedAppToolKey(namespace: string, toolId: string) {
-    const sanitizedNamespace = namespace.replace(/[^a-zA-Z0-9_-]/g, "_")
-    const sanitizedToolId = toolId.replace(/[^a-zA-Z0-9_-]/g, "_")
-    return `${sanitizedNamespace}_${sanitizedToolId}`
-  }
-
-  function managedAppArgumentSchema(argument: ManagedAppRegistry.ToolArgument): JSONSchema7 {
-    switch (argument.type) {
-      case "string":
-        return { type: "string", description: argument.description }
-      case "string[]":
-        return { type: "array", items: { type: "string" }, description: argument.description }
-      case "datetime":
-        return { type: "string", format: "date-time", description: argument.description }
-      case "datetime[]":
-        return {
-          type: "array",
-          items: { type: "string", format: "date-time" },
-          description: argument.description,
-        }
-      case "number":
-        return { type: "number", description: argument.description }
-      case "boolean":
-        return { type: "boolean", description: argument.description }
-      case "object":
-        return { type: "object", additionalProperties: true, description: argument.description }
-    }
-  }
-
-  function managedAppInputSchema(tool: ManagedAppRegistry.ToolDescriptor): JSONSchema7 {
-    return {
-      type: "object",
-      properties: Object.fromEntries(
-        tool.arguments.map((argument: ManagedAppRegistry.ToolArgument) => [
-          argument.name,
-          managedAppArgumentSchema(argument),
-        ]),
-      ),
-      required: tool.arguments
-        .filter((argument: ManagedAppRegistry.ToolArgument) => argument.required)
-        .map((argument: ManagedAppRegistry.ToolArgument) => argument.name),
-      additionalProperties: false,
-    }
-  }
-
-  const managedAppExecutors: Record<string, (toolId: string, args: Record<string, unknown>) => Promise<string>> = {
-    "google-calendar": GoogleCalendarApp.execute,
-    gmail: GmailApp.execute,
-  }
-
-  function convertManagedAppTool(binding: ManagedAppRegistry.ReadyToolBinding): Tool {
-    return dynamicTool({
-      description: binding.tool.description,
-      inputSchema: jsonSchema(managedAppInputSchema(binding.tool)),
-      execute: async (args) => {
-        await ManagedAppRegistry.requireReady(binding.appId)
-        const executor = managedAppExecutors[binding.appId]
-        if (!executor) {
-          throw new Error(`No executor registered for managed app: ${binding.appId}`)
-        }
-        const text = await executor(binding.tool.id, args as Record<string, unknown>)
-        return { content: [{ type: "text" as const, text }] }
-      },
-    })
-  }
+  // NOTE: managedAppExecutors, convertManagedAppTool, and related helper
+  // functions have been removed (mcp-separation Step 6c). Gmail and Calendar
+  // now run as standalone stdio MCP servers via mcp-apps.json, using the same
+  // convertMcpTool() path as all other MCP servers.
 
   // Store transports for OAuth servers to allow finishing auth
   type TransportWithAuth = StreamableHTTPClientTransport | SSEClientTransport
@@ -253,10 +192,6 @@ export namespace MCP {
   type McpEntry = NonNullable<Config.Info["mcp"]>[string]
   function isMcpConfigured(entry: McpEntry): entry is Config.Mcp {
     return typeof entry === "object" && entry !== null && "type" in entry
-  }
-
-  export async function shouldRunSharedGoogleStartupSweep() {
-    return (await ManagedAppRegistry.activeGoogleAppIds()).length > 0
   }
 
   async function createState() {
@@ -292,14 +227,8 @@ export namespace MCP {
       invalidateToolsCache(toolsCache)
     })
 
-    Promise.resolve().then(async () => {
-      try {
-        if (!(await shouldRunSharedGoogleStartupSweep())) return
-        await sweepSharedGoogleAccessToken()
-      } catch (error) {
-        log.error("shared Google token startup sweep failed", { error })
-      }
-    })
+    // NOTE: Google OAuth token startup sweep removed (mcp-separation).
+    // Gmail/Calendar now run as standalone servers; token injected via env.
 
     // Phase 2: Auto-connect enabled servers in background (progressive)
     if (pendingAutoConnect.length > 0) {
@@ -565,8 +494,11 @@ export namespace MCP {
       // Internal MCP binaries (compiled with bun build --compile) must not inherit
       // the project-level bunfig.toml (which has @opentui/solid/preload for the TUI).
       // Use /tmp as cwd for these to avoid the preload-not-found crash.
-      const isInternalMcpBinary = cmd.startsWith("/usr/local/lib/opencode/mcp/")
-      const cwd = isInternalMcpBinary ? "/tmp" : Instance.directory
+      // Bun compiled binaries read bunfig.toml from cwd ancestors.
+      // Use /tmp as cwd for any binary outside the project tree to avoid
+      // picking up the project-level preload config.
+      const isExternalBinary = cmd.startsWith("/usr/local/lib/opencode/mcp/") || cmd.startsWith("/opt/opencode-apps/")
+      const cwd = isExternalBinary ? "/tmp" : Instance.directory
 
       // Ensure memory storage directory exists when MEMORY_FILE_PATH is configured.
       if (key.startsWith("memory")) {
@@ -843,7 +775,126 @@ export namespace MCP {
     invalidateToolsCache(s.toolsCache)
   }
 
+  // ── mcp-apps.json integration (Layer 2) ────────────────────────────
+
+  /**
+   * Resolve auth token for an MCP App based on its manifest auth config.
+   * Reads from gauth.json (Google OAuth) or accounts.json (other providers).
+   * Returns env vars to inject into the App's spawn environment.
+   */
+  async function resolveAuthEnv(manifest: { auth?: { type: string; provider?: string; tokenEnv?: string } }): Promise<Record<string, string>> {
+    if (!manifest.auth || manifest.auth.type === "none") return {}
+
+    const auth = manifest.auth as { type: string; provider?: string; tokenEnv?: string }
+    if (!auth.tokenEnv) return {}
+
+    // Google OAuth: read from gauth.json (legacy) or accounts.json
+    if (auth.provider === "google") {
+      try {
+        const gauthPath = path.join(Global.Path.config, "gauth.json")
+        const content = await fs.readFile(gauthPath, "utf-8")
+        const tokens = JSON.parse(content) as { access_token?: string; refresh_token?: string; expires_at?: number }
+
+        if (tokens.access_token) {
+          // Check if token is expired
+          if (tokens.expires_at && Date.now() / 1000 > tokens.expires_at) {
+            log.warn("google oauth token expired, app may fail API calls", {
+              expiresAt: new Date((tokens.expires_at ?? 0) * 1000).toISOString(),
+            })
+          }
+          log.info("injecting google oauth token", { tokenEnv: auth.tokenEnv })
+          return { [auth.tokenEnv]: tokens.access_token }
+        }
+      } catch {
+        log.warn("failed to read gauth.json for token injection")
+      }
+    }
+
+    // TODO: other providers — read from accounts.json by auth.provider key
+
+    return {}
+  }
+
+  let mcpAppsInitialized = false
+
+  /**
+   * Connect all enabled Apps from mcp-apps.json on first tools() call.
+   * Uses the existing MCP.add() path so they appear as regular MCP servers
+   * in the tool pool — no separate tool collection logic needed.
+   */
+  async function connectMcpApps(): Promise<void> {
+    if (mcpAppsInitialized) return
+    mcpAppsInitialized = true
+
+    try {
+      const config = await McpAppStore.loadConfig()
+      const enabledApps = Object.entries(config.apps).filter(([, entry]) => entry.enabled)
+
+      if (enabledApps.length === 0) return
+
+      log.info("loading mcp-apps.json apps", { count: enabledApps.length })
+
+      await Promise.allSettled(
+        enabledApps.map(async ([id, entry]) => {
+          // Skip if already connected (e.g. via opencode.json.mcp)
+          const s = await state()
+          if (s.status[`mcpapp-${id}`]?.status === "connected") return
+
+          try {
+            // entry.command is already resolved to absolute path at registration time
+            // by the sudo wrapper or addApp(). No re-resolution needed here.
+            if (!entry.command || entry.command.length === 0) {
+              log.warn("mcp-apps.json app has no command", { id, path: entry.path })
+              return
+            }
+
+            // Load manifest for env/auth, then resolve auth tokens
+            let env: Record<string, string> = {}
+            try {
+              const { McpAppManifest } = await import("./manifest")
+              const manifest = await McpAppManifest.load(entry.path)
+              env = { ...manifest.env }
+              const authEnv = await resolveAuthEnv(manifest)
+              Object.assign(env, authEnv)
+            } catch {
+              log.info("no mcp.json metadata, proceeding with entry.command only", { id })
+            }
+
+            const result = await add(`mcpapp-${id}`, {
+              type: "local",
+              command: entry.command,
+              environment: env,
+              enabled: true,
+            })
+
+            // Check if connection actually succeeded
+            const statusMap = result?.status as Record<string, Status> | undefined
+            const addedStatus = statusMap?.[`mcpapp-${id}`]
+            if (addedStatus?.status === "failed") {
+              const errorMsg = "error" in addedStatus ? addedStatus.error : "unknown"
+              log.warn("mcp-apps.json app failed to start", { id, error: errorMsg })
+            } else {
+              log.info("mcp-apps.json app connected", { id, command: entry.command, tools: "via tools/list" })
+            }
+          } catch (err) {
+            log.warn("mcp-apps.json app failed to connect", {
+              id,
+              path: entry.path,
+              error: err instanceof Error ? err.message : String(err),
+            })
+          }
+        }),
+      )
+    } catch (err) {
+      log.warn("failed to load mcp-apps.json", {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
   export async function tools() {
+    // Ensure mcp-apps.json apps are connected on first call
+    await connectMcpApps()
     const s = await state()
     const now = Date.now()
     if (!s.toolsCache.dirty && s.toolsCache.expiresAt > now) {
@@ -890,9 +941,10 @@ export namespace MCP {
       }
     }
 
-    for (const binding of await ManagedAppRegistry.readyTools()) {
-      result[managedAppToolKey(binding.namespace, binding.tool.id)] = convertManagedAppTool(binding)
-    }
+    // NOTE: Managed app tools (Gmail/Calendar) are no longer collected here
+    // via managedAppExecutors. They now run as standalone stdio MCP servers
+    // and their tools appear via the standard convertMcpTool() path above
+    // (registered through mcp-apps.json → connectMcpApps()).
 
     s.toolsCache.value = result
     s.toolsCache.expiresAt = now + cacheMs

@@ -8,24 +8,26 @@ import "./dialog-app-market.css"
 
 const CARD_MIN_W = 260
 
-/** Unified MCP app entry — covers both standard servers and managed apps */
+/** Unified MCP app entry — covers standard servers, managed apps, and store apps */
 interface MarketApp {
   id: string
   name: string
   description: string
   icon: string
-  kind: "mcp-server" | "managed-app"
+  kind: "mcp-server" | "managed-app" | "mcp-app"
   type?: "local" | "remote"
   status: string
   error?: string
   tools: Array<{ id: string; name: string; description: string }>
   enabled: boolean
+  auth?: { type: string; provider?: string }
+  toolCount?: number
 }
 
 type StatusDisplay = { labelKey: string; color: string }
 
 function statusDisplay(app: MarketApp): StatusDisplay {
-  if (app.kind === "mcp-server") {
+  if (app.kind === "mcp-server" || app.kind === "mcp-app") {
     switch (app.status) {
       case "connected":
         return { labelKey: "app_market.status.ready", color: "text-success-base" }
@@ -64,6 +66,10 @@ export const DialogAppMarket: Component = () => {
   const [actionLoading, setActionLoading] = createSignal<string | null>(null)
   const [appMap, setAppMap] = createSignal<Map<string, MarketApp>>(new Map())
   const [expandedTools, setExpandedTools] = createSignal<Set<string>>(new Set())
+  const [showAddDialog, setShowAddDialog] = createSignal(false)
+  const [addSource, setAddSource] = createSignal("")
+  const [addLoading, setAddLoading] = createSignal(false)
+  const [addError, setAddError] = createSignal<string | null>(null)
 
   function toggleToolsExpand(id: string) {
     setExpandedTools((prev) => {
@@ -170,16 +176,77 @@ export const DialogAppMarket: Component = () => {
     }
   }
 
+  // --- Actions for store apps (mcp-apps.json) ---
+  async function toggleStoreApp(app: MarketApp) {
+    if (actionLoading()) return
+    setActionLoading(app.id)
+    try {
+      const storeId = app.id.replace(/^store-/, "")
+      await globalSDK.fetch(`${globalSDK.url}/api/v2/mcp/store/apps/${storeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !app.enabled }),
+      })
+      await refetch()
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function removeStoreApp(app: MarketApp) {
+    if (actionLoading()) return
+    setActionLoading(app.id)
+    try {
+      const storeId = app.id.replace(/^store-/, "")
+      await globalSDK.fetch(`${globalSDK.url}/api/v2/mcp/store/apps/${storeId}`, {
+        method: "DELETE",
+      })
+      await refetch()
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  // --- Add new app ---
+  async function addNewApp() {
+    const source = addSource().trim()
+    if (!source) return
+    setAddLoading(true)
+    setAddError(null)
+    try {
+      const isGithub = source.startsWith("https://github.com/") || source.startsWith("git@")
+      const body = isGithub ? { githubUrl: source } : { path: source }
+      const res = await globalSDK.fetch(`${globalSDK.url}/api/v2/mcp/store/apps`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Unknown error" })) as { error?: string }
+        setAddError(err.error ?? `HTTP ${res.status}`)
+        return
+      }
+      setShowAddDialog(false)
+      setAddSource("")
+      await refetch()
+    } catch (err: any) {
+      setAddError(err.message ?? "Failed to add app")
+    } finally {
+      setAddLoading(false)
+    }
+  }
+
   // Dispatch action based on kind
   function handleAction(app: MarketApp) {
     if (app.kind === "mcp-server") return toggleMcpServer(app)
+    if (app.kind === "mcp-app") return toggleStoreApp(app)
     return performManagedAction(app)
   }
 
   function actionLabel(app: MarketApp): string {
     if (actionLoading() === app.id) return language.t("app_market.action.loading")
-    if (app.kind === "mcp-server") {
-      return app.status === "connected"
+    if (app.kind === "mcp-server" || app.kind === "mcp-app") {
+      return app.enabled || app.status === "connected"
         ? language.t("app_market.action.disable")
         : language.t("app_market.action.enable")
     }
@@ -191,31 +258,31 @@ export const DialogAppMarket: Component = () => {
     return language.t("app_market.action.install")
   }
 
-  /** Per-app custom action buttons — extensible per app.id */
+  /** Per-app action buttons: gear icon for apps with auth/settings */
   function renderAppActions(app: MarketApp, isLoading: boolean) {
-    switch (app.id) {
-      case "google-calendar":
-        return (
-          <Show when={app.status === "ready" || app.status === "pending_auth" || app.status === "pending_config"}>
-            <button
-              onClick={() => openOAuthConnect(app.id)}
-              disabled={isLoading}
-              class="p-1 rounded text-text-weak hover:text-text-base hover:bg-white/5 transition-colors disabled:opacity-50"
-              title="Google OAuth"
-            >
-              <Icon name="settings-gear" size="small" />
-            </button>
-          </Show>
-        )
-      default:
-        return null
+    const hasAuth = app.auth && app.auth.type !== "none"
+
+    // Show gear icon for any app with auth requirement (store apps or legacy)
+    if (hasAuth || app.id === "google-calendar") {
+      const storeId = app.kind === "mcp-app" ? app.id.replace(/^store-/, "") : app.id
+      return (
+        <button
+          onClick={() => openOAuthConnect(storeId)}
+          disabled={isLoading}
+          class="p-1 rounded text-text-weak hover:text-text-base hover:bg-white/5 transition-colors disabled:opacity-50"
+          title="Settings"
+        >
+          <Icon name="settings-gear" size="small" />
+        </button>
+      )
     }
+    return null
   }
 
   /** Icon name for the toggle action button */
   function actionIcon(app: MarketApp): string {
-    if (app.kind === "mcp-server") {
-      return app.status === "connected" ? "circle-ban-sign" : "circle-check"
+    if (app.kind === "mcp-server" || app.kind === "mcp-app") {
+      return (app.enabled || app.status === "connected") ? "circle-ban-sign" : "circle-check"
     }
     if (app.status === "ready") return "circle-ban-sign"
     if (app.status === "pending_auth" || app.status === "pending_config") return "eye"
@@ -234,6 +301,12 @@ export const DialogAppMarket: Component = () => {
               {language.t("app_market.description", { installed: String(enabledCount()), total: String(totalCount()) })}
             </span>
           </div>
+          <button
+            onClick={() => setShowAddDialog(true)}
+            class="shrink-0 px-2.5 py-1 rounded-sm border border-border-base bg-background-input text-12-regular text-text-base hover:bg-white/5 transition-colors"
+          >
+            + Add App
+          </button>
           <div class="relative w-full md:w-44 md:ml-auto md:mr-8">
             <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-icon-base">
               <Icon name="magnifying-glass" size="small" />
@@ -329,7 +402,7 @@ export const DialogAppMarket: Component = () => {
                     </p>
 
                     {/* Tools list — collapsed by default */}
-                    <Show when={live().tools.length > 0}>
+                    <Show when={live().tools.length > 0 || (live() as any).toolCount > 0}>
                       <div class="app-market-tools mx-3 mb-3 md:mx-2 md:mb-2">
                         <button
                           onClick={() => toggleToolsExpand(live().id)}
@@ -339,7 +412,7 @@ export const DialogAppMarket: Component = () => {
                             name={expandedTools().has(live().id) ? "chevron-down" : "chevron-right"}
                             size="small"
                           />
-                          <span>{language.t("app_market.tools_count", { count: String(live().tools.length) })}</span>
+                          <span>{language.t("app_market.tools_count", { count: String(live().tools.length || (live() as any).toolCount || 0) })}</span>
                         </button>
                         <Show when={expandedTools().has(live().id)}>
                           <div class="app-market-tools-list flex flex-wrap gap-1 px-2 py-1.5 rounded-b bg-background-base/60 border border-t-0 border-border-base/30 content-start overflow-y-auto">
@@ -363,6 +436,44 @@ export const DialogAppMarket: Component = () => {
             </For>
           </div>
         </Show>
+      </Show>
+
+      {/* Add App Dialog Overlay */}
+      <Show when={showAddDialog()}>
+        <div class="absolute inset-0 bg-black/60 flex items-center justify-center z-10 rounded-lg">
+          <div class="bg-[#1a1a2e] border border-border-base rounded-lg p-6 w-[400px] max-w-[90%]">
+            <h3 class="text-14-medium text-text-strong mb-3">Add MCP App</h3>
+            <p class="text-12-regular text-text-weak mb-4">
+              Enter a local path to an MCP App directory, or a GitHub URL to clone.
+            </p>
+            <input
+              type="text"
+              placeholder="/opt/opencode-apps/my-app or https://github.com/owner/repo"
+              value={addSource()}
+              onInput={(e) => { setAddSource(e.currentTarget.value); setAddError(null) }}
+              onKeyDown={(e) => { if (e.key === "Enter") addNewApp() }}
+              class="w-full px-3 py-2 bg-background-input border border-border-base rounded-sm text-13-regular text-text-base placeholder:text-text-weaker focus:outline-none focus:border-border-focus mb-3"
+            />
+            <Show when={addError()}>
+              <p class="text-12-regular text-danger-base mb-3">{addError()}</p>
+            </Show>
+            <div class="flex justify-end gap-2">
+              <button
+                onClick={() => { setShowAddDialog(false); setAddSource(""); setAddError(null) }}
+                class="px-3 py-1.5 rounded-sm text-12-regular text-text-weak hover:text-text-base transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={addNewApp}
+                disabled={addLoading() || !addSource().trim()}
+                class="px-3 py-1.5 rounded-sm bg-accent-base text-12-regular text-white hover:bg-accent-hover transition-colors disabled:opacity-50"
+              >
+                {addLoading() ? "Adding..." : "Add"}
+              </button>
+            </div>
+          </div>
+        </div>
       </Show>
     </Dialog>
   )
