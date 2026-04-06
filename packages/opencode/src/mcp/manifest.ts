@@ -22,6 +22,7 @@ export namespace McpAppManifest {
     type: z.literal("oauth"),
     provider: z.string(),
     tokenEnv: z.string(),
+    refreshTokenEnv: z.string().optional(),
     scopes: z.array(z.string()).optional(),
   })
 
