@@ -70,6 +70,8 @@ export const McpRoutes = lazy(() =>
           enabled: app.entry.enabled,
           auth: app.manifest?.auth,
           toolCount: app.entry.tools?.length ?? 0,
+          settingsSchema: app.entry.settingsSchema ?? app.manifest?.settings,
+          config: app.entry.config,
         }))
 
         return c.json([...serverApps, ...managedCards, ...storeCards])
@@ -878,6 +880,26 @@ export const McpRoutes = lazy(() =>
         try {
           await McpAppStore.setEnabled(id, enabled)
           return c.json({ id, enabled })
+        } catch (err) {
+          return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
+        }
+      },
+    )
+    .put(
+      "/store/apps/:id/config",
+      describeRoute({
+        summary: "Update MCP App config values",
+        operationId: "mcp.store.setConfig",
+        responses: { 200: { description: "Config updated" } },
+      }),
+      validator("param", z.object({ id: z.string() })),
+      validator("json", z.object({ config: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])) })),
+      async (c) => {
+        const { id } = c.req.valid("param")
+        const { config } = c.req.valid("json")
+        try {
+          await McpAppStore.setConfig(id, config)
+          return c.json({ id, status: "configured" })
         } catch (err) {
           return c.json({ error: err instanceof Error ? err.message : String(err) }, 400)
         }

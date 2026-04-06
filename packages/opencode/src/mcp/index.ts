@@ -861,7 +861,7 @@ export namespace MCP {
               return
             }
 
-            // Load manifest for env/auth, then resolve auth tokens
+            // Load manifest for env/auth, then resolve auth tokens + user config
             let env: Record<string, string> = {}
             try {
               const manifest = await McpAppManifest.load(entry.path)
@@ -876,6 +876,15 @@ export namespace MCP {
                 path: entry.path,
                 error: manifestErr instanceof Error ? manifestErr.message : String(manifestErr),
               })
+            }
+
+            // Inject user config values as env vars (key uppercased)
+            if (entry.config) {
+              for (const [key, value] of Object.entries(entry.config)) {
+                const envKey = key.toUpperCase()
+                env[envKey] = String(value)
+              }
+              log.info("user config injected as env", { id, keys: Object.keys(entry.config) })
             }
 
             const result = await add(`mcpapp-${id}`, {
