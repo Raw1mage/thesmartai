@@ -1,6 +1,7 @@
 export * from "./app-registry"
 export { McpAppStore } from "./app-store"
 export { McpAppManifest } from "./manifest"
+import { McpAppManifest } from "./manifest"
 
 import { dynamicTool, type Tool, jsonSchema, type JSONSchema7 } from "ai"
 import { ManagedAppRegistry } from "./app-registry"
@@ -790,24 +791,28 @@ export namespace MCP {
 
     // Google OAuth: read from gauth.json (legacy) or accounts.json
     if (auth.provider === "google") {
-      try {
-        const gauthPath = path.join(Global.Path.config, "gauth.json")
-        const content = await fs.readFile(gauthPath, "utf-8")
-        const tokens = JSON.parse(content) as { access_token?: string; refresh_token?: string; expires_at?: number }
-
-        if (tokens.access_token) {
-          // Check if token is expired
-          if (tokens.expires_at && Date.now() / 1000 > tokens.expires_at) {
-            log.warn("google oauth token expired, app may fail API calls", {
-              expiresAt: new Date((tokens.expires_at ?? 0) * 1000).toISOString(),
-            })
+      // Try multiple paths: Global.Path.config may not be initialized yet during
+      // early daemon startup. Fall back to standard XDG path.
+      const candidates = [
+        path.join(Global.Path.config, "gauth.json"),
+        path.join(process.env.XDG_CONFIG_HOME || path.join(process.env.HOME || "", ".config"), "opencode", "gauth.json"),
+      ]
+      for (const gauthPath of candidates) {
+        try {
+          const content = await fs.readFile(gauthPath, "utf-8")
+          const tokens = JSON.parse(content) as { access_token?: string; refresh_token?: string; expires_at?: number }
+          if (tokens.access_token) {
+            if (tokens.expires_at && Date.now() > tokens.expires_at) {
+              log.warn("google oauth token expired, app may fail API calls", { path: gauthPath })
+            }
+            log.info("injecting google oauth token", { tokenEnv: auth.tokenEnv, path: gauthPath })
+            return { [auth.tokenEnv]: tokens.access_token }
           }
-          log.info("injecting google oauth token", { tokenEnv: auth.tokenEnv })
-          return { [auth.tokenEnv]: tokens.access_token }
+        } catch {
+          continue
         }
-      } catch {
-        log.warn("failed to read gauth.json for token injection")
       }
+      log.warn("no gauth.json found for token injection", { candidates })
     }
 
     // TODO: other providers — read from accounts.json by auth.provider key
@@ -825,6 +830,7 @@ export namespace MCP {
   async function connectMcpApps(): Promise<void> {
     if (mcpAppsInitialized) return
     mcpAppsInitialized = true
+    log.info("connectMcpApps: starting")
 
     try {
       const config = await McpAppStore.loadConfig()
@@ -851,13 +857,18 @@ export namespace MCP {
             // Load manifest for env/auth, then resolve auth tokens
             let env: Record<string, string> = {}
             try {
-              const { McpAppManifest } = await import("./manifest")
               const manifest = await McpAppManifest.load(entry.path)
               env = { ...manifest.env }
+              log.info("manifest loaded for auth", { id, authType: manifest.auth?.type })
               const authEnv = await resolveAuthEnv(manifest)
               Object.assign(env, authEnv)
-            } catch {
-              log.info("no mcp.json metadata, proceeding with entry.command only", { id })
+              log.info("auth env resolved", { id, envKeys: Object.keys(env) })
+            } catch (manifestErr) {
+              log.warn("failed to load manifest for auth resolution", {
+                id,
+                path: entry.path,
+                error: manifestErr instanceof Error ? manifestErr.message : String(manifestErr),
+              })
             }
 
             const result = await add(`mcpapp-${id}`, {
