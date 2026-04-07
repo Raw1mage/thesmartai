@@ -452,6 +452,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "open_fileview",
+        description: "Open a file in the web UI file viewer tab. Use this to display rich content (HTML, markdown, SVG) to the user without reading it yourself. The file will open in a new tab in the file viewer panel.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: { type: "string", description: "Absolute path to the file to display" },
+            title: { type: "string", description: "Optional display title for the tab" },
+          },
+          required: ["path"],
+        },
+      },
+      {
         name: "manage_session",
         description:
           "Manage opencode sessions for non-switching operations (fork, summarize, undo, redo, create, list, search). Use switch_session / rename_session / switch_model / switch_account / switch_provider for session-based control actions. If a user asks in natural language to switch session/provider/account/model or rename a session, prefer those dedicated tools over manage_session.",
@@ -852,6 +864,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { path: targetPath } = args as { path: string }
       await execAsync(`xdg-open ${JSON.stringify(targetPath)}`)
       return { content: [{ type: "text", text: `Opened ${targetPath} in editor` }] }
+    }
+
+    if (name === "open_fileview") {
+      const { path: targetPath, title } = args as { path: string; title?: string }
+      // Write to KV store — frontend watches for fileview_open changes
+      let kv: any = {}
+      try {
+        kv = JSON.parse(await fs.readFile(KV_PATH, "utf-8"))
+      } catch (e) {}
+      kv.fileview_open = { path: targetPath, title: title ?? targetPath, ts: Date.now() }
+      await fs.writeFile(KV_PATH, JSON.stringify(kv, null, 2))
+      return { content: [{ type: "text", text: `File viewer opened: ${title ?? targetPath}` }] }
     }
 
     if (name === "set_ui_config") {

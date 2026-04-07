@@ -103,33 +103,33 @@ export const MessageToolInvocation: Component<MessageToolInvocationProps> = (pro
         <Match when={props.part.tool === "task"}>
           <SubagentActivityCard part={props.part} />
         </Match>
-        <Match when={(props.part.state as any)?.metadata?.directRender}>
+        <Match when={props.part.tool === "system-manager_open_fileview" && status() === "completed"}>
           {(_) => {
-            const dr = () => (props.part.state as any).metadata.directRender as { filePath: string; title: string; size: number }
-            const sizeLabel = () => {
-              const s = dr().size
-              if (s > 1024) return `${(s / 1024).toFixed(1)}KB`
-              return `${s} chars`
-            }
+            const filePath = () => (props.part.state as any)?.input?.path ?? ""
+            const title = () => (props.part.state as any)?.input?.title ?? filePath().split("/").pop() ?? "File"
+            // Auto-open fileview on first render
+            createEffect(() => {
+              if (filePath()) {
+                window.dispatchEvent(new CustomEvent("opencode:open-file", { detail: { path: filePath() } }))
+              }
+            })
             return (
               <BasicTool
-                icon="mcp"
+                icon="file-text"
                 trigger={{
-                  title: props.part.tool,
-                  subtitle: dr().title,
+                  title: "File Viewer",
+                  subtitle: title(),
                 }}
               >
                 <div class="mt-2 px-2">
                   <button
                     onClick={() => {
-                      // Open file in fileview tab via SDK
-                      window.dispatchEvent(new CustomEvent("opencode:open-file", { detail: { path: dr().filePath } }))
+                      window.dispatchEvent(new CustomEvent("opencode:open-file", { detail: { path: filePath() } }))
                     }}
                     class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border-base bg-background-strong hover:bg-white/5 transition-colors text-12-regular text-text-base"
                   >
                     <Icon name="file-text" size="small" />
-                    <span class="truncate max-w-[300px]">{dr().title}</span>
-                    <span class="text-text-weaker text-[10px]">{sizeLabel()}</span>
+                    <span class="truncate max-w-[300px]">{title()}</span>
                   </button>
                 </div>
               </BasicTool>

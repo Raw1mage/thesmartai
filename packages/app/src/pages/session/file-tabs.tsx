@@ -385,6 +385,7 @@ export function FileTabContent(props: {
     return c?.mimeType === "image/svg+xml"
   })
   const isBinary = createMemo(() => state()?.content?.type === "binary")
+  const isHtml = createMemo(() => path()?.endsWith(".html") || path()?.endsWith(".htm"))
   const isMarkdown = createMemo(() => isMarkdownPath(path()))
   const svgContent = createMemo(() => {
     if (!isSvg()) return
@@ -841,6 +842,15 @@ export function FileTabContent(props: {
                 return props.file.tree.children(dir)
               }}
               onSaveContent={undefined}
+            />
+          </Match>
+          <Match when={state()?.loaded && isHtml()}>
+            <iframe
+              sandbox="allow-same-origin"
+              srcDoc={contents()}
+              class="w-full h-full border-0"
+              style={{ "min-height": "600px" }}
+              title={path()?.split("/").pop() ?? "HTML"}
             />
           </Match>
           <Match when={state()?.loaded && isBinary()}>
