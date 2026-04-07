@@ -103,47 +103,8 @@ export const MessageToolInvocation: Component<MessageToolInvocationProps> = (pro
         <Match when={props.part.tool === "task"}>
           <SubagentActivityCard part={props.part} />
         </Match>
-        <Match when={props.part.tool === "system-manager_open_fileview" && status() === "completed"}>
-          {(_) => {
-            const filePath = () => (props.part.state as any)?.input?.path ?? ""
-            const title = () => (props.part.state as any)?.input?.title ?? filePath().split("/").pop() ?? "File"
-            // Auto-open fileview on first render
-            createEffect(() => {
-              if (filePath()) {
-                window.dispatchEvent(new CustomEvent("opencode:open-file", { detail: { path: filePath() } }))
-              }
-            })
-            return (
-              <BasicTool
-                icon="file-text"
-                trigger={{
-                  title: "File Viewer",
-                  subtitle: title(),
-                }}
-              >
-                <div class="mt-2 px-2">
-                  <button
-                    onClick={() => {
-                      window.dispatchEvent(new CustomEvent("opencode:open-file", { detail: { path: filePath() } }))
-                    }}
-                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border-base bg-background-strong hover:bg-white/5 transition-colors text-12-regular text-text-base"
-                  >
-                    <Icon name="file-text" size="small" />
-                    <span class="truncate max-w-[300px]">{title()}</span>
-                  </button>
-                </div>
-              </BasicTool>
-            )
-          }}
-        </Match>
         <Match when={true}>
-          <BasicTool
-            icon="mcp"
-            trigger={{
-              title: props.part.tool,
-              subtitle: JSON.stringify(input()),
-            }}
-          />
+          <DefaultMcpTool part={props.part} input={input} status={status} />
         </Match>
       </Switch>
 
@@ -353,5 +314,55 @@ const SubagentActivityCard: Component<SubagentActivityCardProps> = (props) => {
         </Show>
       </div>
     </BasicTool>
+  )
+}
+
+/** Default MCP tool display — handles open_fileview auto-open + generic fallback */
+const DefaultMcpTool: Component<{
+  part: ToolPart
+  input: () => Record<string, unknown>
+  status: () => string | undefined
+}> = (props) => {
+  const isFileView = () => props.part.tool.endsWith("open_fileview")
+  const filePath = () => isFileView() ? String(props.input()?.path ?? "") : ""
+  const fileTitle = () => String(props.input()?.title ?? filePath().split("/").pop() ?? "")
+
+  // Auto-open fileview when open_fileview tool completes
+  createEffect(() => {
+    if (isFileView() && props.status() === "completed" && filePath()) {
+      window.dispatchEvent(new CustomEvent("opencode:open-file", { detail: { path: filePath() } }))
+    }
+  })
+
+  return (
+    <Show when={isFileView()} fallback={
+      <BasicTool
+        icon="mcp"
+        trigger={{
+          title: props.part.tool,
+          subtitle: JSON.stringify(props.input()),
+        }}
+      />
+    }>
+      <BasicTool
+        icon="file-text"
+        trigger={{
+          title: "File Viewer",
+          subtitle: fileTitle(),
+        }}
+      >
+        <div class="mt-2 px-2">
+          <button
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("opencode:open-file", { detail: { path: filePath() } }))
+            }}
+            class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border-base bg-background-strong hover:bg-white/5 transition-colors text-12-regular text-text-base"
+          >
+            <Icon name="file-text" size="small" />
+            <span class="truncate max-w-[300px]">{fileTitle()}</span>
+          </button>
+        </div>
+      </BasicTool>
+    </Show>
   )
 }
