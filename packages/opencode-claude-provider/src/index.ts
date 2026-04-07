@@ -1,29 +1,26 @@
+// Protocol constants
 export {
-  // Core constants
   VERSION,
   CLIENT_ID,
   API_VERSION,
   BASE_API_URL,
   TOOL_PREFIX,
   BOUNDARY_MARKER,
-  // OAuth
   OAUTH,
   AUTHORIZE_SCOPES,
   REFRESH_SCOPES,
-  // Identity
   IDENTITY_INTERACTIVE,
   IDENTITY_AGENT_SDK,
   IDENTITY_PURE_AGENT,
   IDENTITY_VALIDATION_SET,
-  // Beta flags
   MINIMUM_BETAS,
   assembleBetas,
-  // Billing
   calculateAttributionHash,
   buildBillingHeader,
 } from "./protocol.js"
 export type { AssembleBetasOptions } from "./protocol.js"
 
+// Model catalog
 export {
   MODEL_CATALOG,
   getMaxOutput,
@@ -31,3 +28,40 @@ export {
   isKnownModel,
 } from "./models.js"
 export type { ClaudeModelSpec } from "./models.js"
+
+// Format converters
+export {
+  convertPrompt,
+  convertTools,
+  convertSystemBlocks,
+  stripToolPrefix,
+} from "./convert.js"
+export type {
+  AnthropicMessage,
+  AnthropicContentBlock,
+  AnthropicSystemBlock,
+  AnthropicTool,
+  ConvertSystemOptions,
+} from "./convert.js"
+
+// HTTP headers
+export { buildHeaders } from "./headers.js"
+export type { BuildHeadersOptions } from "./headers.js"
+
+// SSE parser
+export { parseAnthropicSSE, mapFinishReason } from "./sse.js"
+
+// Auth
+export {
+  authorize,
+  exchange,
+  refreshToken,
+  refreshTokenWithMutex,
+  fetchProfile,
+  isClaudeCredentials,
+} from "./auth.js"
+export type { ClaudeCredentials, TokenSet, Profile } from "./auth.js"
+
+// Provider (main entry)
+export { createClaudeCode } from "./provider.js"
+export type { ClaudeCodeProviderOptions } from "./provider.js"
