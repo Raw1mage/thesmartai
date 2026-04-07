@@ -54,6 +54,7 @@ export namespace McpAppStore {
     tools: z.array(AppToolInfo).optional(),
     settingsSchema: McpAppManifest.Settings.optional(),
     config: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+    modelProcess: z.array(z.string()).optional(),
   })
   export type AppEntry = z.infer<typeof AppEntry>
 
@@ -210,6 +211,7 @@ export namespace McpAppStore {
       source: { type: "local" },
       tools,
       settingsSchema: manifest.settings,
+      modelProcess: manifest.modelProcess,
     }
   }
 

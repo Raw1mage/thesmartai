@@ -77,6 +77,7 @@ export namespace McpAppManifest {
       version: z.string().optional(),
       env: z.record(z.string(), z.string()).optional(),
       settings: Settings.optional(),
+      modelProcess: z.array(z.string()).optional(),
       auth: Auth.optional().default({ type: "none" }),
       source: Source.optional(),
     })

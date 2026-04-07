@@ -103,6 +103,39 @@ export const MessageToolInvocation: Component<MessageToolInvocationProps> = (pro
         <Match when={props.part.tool === "task"}>
           <SubagentActivityCard part={props.part} />
         </Match>
+        <Match when={(props.part.state as any)?.metadata?.directRender}>
+          {(_) => {
+            const dr = () => (props.part.state as any).metadata.directRender as { filePath: string; title: string; size: number }
+            const sizeLabel = () => {
+              const s = dr().size
+              if (s > 1024) return `${(s / 1024).toFixed(1)}KB`
+              return `${s} chars`
+            }
+            return (
+              <BasicTool
+                icon="mcp"
+                trigger={{
+                  title: props.part.tool,
+                  subtitle: dr().title,
+                }}
+              >
+                <div class="mt-2 px-2">
+                  <button
+                    onClick={() => {
+                      // Open file in fileview tab via SDK
+                      window.dispatchEvent(new CustomEvent("opencode:open-file", { detail: { path: dr().filePath } }))
+                    }}
+                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border-base bg-background-strong hover:bg-white/5 transition-colors text-12-regular text-text-base"
+                  >
+                    <Icon name="file-text" size="small" />
+                    <span class="truncate max-w-[300px]">{dr().title}</span>
+                    <span class="text-text-weaker text-[10px]">{sizeLabel()}</span>
+                  </button>
+                </div>
+              </BasicTool>
+            )
+          }}
+        </Match>
         <Match when={true}>
           <BasicTool
             icon="mcp"
