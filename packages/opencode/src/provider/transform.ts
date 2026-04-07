@@ -322,10 +322,11 @@ export namespace ProviderTransform {
       model.id.includes("claude") ||
       model.api.npm === "@ai-sdk/anthropic"
     ) {
-      // CRITICAL: Disable all caching headers for Claude Code subscription sessions.
-      // Caching is NOT supported in the Sessions API protocol and acts as a fingerprint.
+      // Disable caching for subscription sessions — caching is handled by the provider itself.
+      // claude-cli uses native LanguageModelV2 provider with its own cache_control logic.
       const isSubscription = options?.subscription || model.providerId.includes("subscription")
-      if (!isSubscription && !options?.isClaudeCode) {
+      const isNativeProvider = model.api.npm === "@opencode-ai/claude-provider"
+      if (!isSubscription && !isNativeProvider) {
         msgs = applyCaching(msgs, model.providerId)
       }
     }
@@ -809,25 +810,11 @@ export namespace ProviderTransform {
       result["promptCacheKey"] = input.sessionID
     }
 
-    // CRITICAL: Pass isClaudeCode flag to disable caching for Claude Code subscription sessions
-    // This flag comes from the plugin loader (anthropic.ts) and must be propagated to message()
-    // @event_20260209_claude_code_protocol
-    if (input.providerOptions?.isClaudeCode) {
-      result["isClaudeCode"] = true
-    }
-
     return result
   }
 
   export function smallOptions(model: Provider.Model, providerOptions?: Record<string, any>) {
     const result: Record<string, any> = {}
-
-    // CRITICAL: Pass isClaudeCode flag for Claude Code subscription sessions
-    // This is needed even for small/title requests to pass Anthropic's verification
-    // @event_20260209_claude_code_protocol
-    if (providerOptions?.isClaudeCode) {
-      result["isClaudeCode"] = true
-    }
 
     if (
       model.providerId === "openai" ||

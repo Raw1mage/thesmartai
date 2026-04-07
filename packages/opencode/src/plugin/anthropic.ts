@@ -130,6 +130,14 @@ export async function AnthropicAuthPlugin(input: PluginInput): Promise<Hooks> {
           apiKey: "",
           isClaudeCode: true,
           fetchId, // This gets included in cache key calculation
+          // Expose credentials for native claude-cli provider (createClaudeCode)
+          type: auth.type,
+          refresh: auth.refresh,
+          access: auth.access,
+          expires: auth.expires,
+          orgID: auth.orgID,
+          email: auth.email,
+          accountId: auth.accountId,
           fetch: async (reqInput: RequestInfo | URL, init?: RequestInit) => {
             log.info("CHECKPOINT: anthropic.ts fetch() called — TypeScript implementation is active")
             // DEBUG: Log INCOMING request from SDK (before any modifications)

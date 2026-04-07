@@ -1234,9 +1234,9 @@ export namespace Provider {
         name: m.name,
         providerId: "claude-cli",
         family: "claude",
-        // PHASE 1: Revert to standard Anthropic SDK for basic Haiku compatibility.
-        // We rely on transform.ts logic (isClaudeCode flag) to prevent cache_control pollution.
-        api: { id: m.id, url: "", npm: "@ai-sdk/anthropic" },
+        // Native LanguageModelV2 provider — no @ai-sdk/anthropic in call path.
+        // Model is created by CUSTOM_LOADERS["claude-cli"].getModel()
+        api: { id: m.id, url: "https://api.anthropic.com", npm: "@opencode-ai/claude-provider" },
         status: "active",
         capabilities: {
           temperature: true,
@@ -1681,7 +1681,16 @@ export namespace Provider {
             providers[family].options = mergeDeep(providers[family].options, {
               fetch: providers[activeAccountId].options.fetch,
               apiKey: providers[activeAccountId].options.apiKey,
-              isClaudeCode: providers[activeAccountId].options.isClaudeCode,
+              // Auth credentials for native claude-cli provider
+              ...(providers[activeAccountId].options.type && {
+                type: providers[activeAccountId].options.type,
+                refresh: providers[activeAccountId].options.refresh,
+                access: providers[activeAccountId].options.access,
+                expires: providers[activeAccountId].options.expires,
+                orgID: providers[activeAccountId].options.orgID,
+                email: providers[activeAccountId].options.email,
+                accountId: providers[activeAccountId].options.accountId,
+              }),
             }) as Info["options"]
           } else {
             log.warn("base provider fetch inheritance skipped: no active account fetch", {
