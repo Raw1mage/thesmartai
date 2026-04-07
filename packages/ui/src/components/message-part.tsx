@@ -881,6 +881,15 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 
   const render = ToolRegistry.render(part.tool) ?? GenericTool
 
+  // Auto-open fileview when open_fileview tool completes
+  createEffect(() => {
+    if (part.state.status !== "completed") return
+    if (!part.tool.endsWith("open_fileview")) return
+    const fp = String(part.state?.input?.path ?? "")
+    if (!fp) return
+    window.dispatchEvent(new CustomEvent("opencode:open-file", { detail: { path: fp } }))
+  })
+
   return (
     <div data-component="tool-part-wrapper" data-permission={showPermission()} data-question={showQuestion()}>
       <Switch>
