@@ -1,36 +1,43 @@
 # Tasks
 
-## Phase 1 — Schema + Backend Plumbing
+## Phase 1 — Schema + Manifest
 
-- [ ] 1.1 Add `directRender: z.array(z.string()).optional()` to `McpAppManifest.Schema` in manifest.ts
-- [ ] 1.2 Add `directRender` to `AppEntry` schema in app-store.ts, populate from manifest in `buildEntry()`
-- [ ] 1.3 Extend `ToolPart` state type in message-v2.ts: add optional `fullOutput: string` field
-- [ ] 1.4 In resolve-tools.ts MCP tool wrapper: after result normalization, check if tool name is in app's `directRender[]`. If yes, move output to `fullOutput` and replace `output` with summary string
-- [ ] 1.5 Verify: model receives summary, part.state.fullOutput contains full text (log check)
+- [ ] 1.1 Add `modelProcess: z.array(z.string()).optional()` to `McpAppManifest.Schema` (tools that NEED model processing; all others default to direct render)
+- [ ] 1.2 Propagate `modelProcess` to `AppEntry` in app-store.ts via `buildEntry()`
+- [ ] 1.3 Add `fullOutput: z.string().optional()` to ToolPart state in message-v2.ts
 
-## Phase 2 — UI Rendering
+## Phase 2 — Core Fork Mechanism (resolve-tools.ts)
 
-- [ ] 2.1 In message-tool-invocation.tsx: detect `part.state.fullOutput` presence
-- [ ] 2.2 When fullOutput exists: render as markdown (use existing markdown renderer component)
-- [ ] 2.3 Add collapsible "Show more" for outputs exceeding ~200 lines
-- [ ] 2.4 Ensure tool header (title, status) still renders normally above the content
+- [ ] 2.1 In MCP tool wrapper: after result normalization, check if tool name is NOT in app's `modelProcess[]`
+- [ ] 2.2 Direct render path: call `Session.updatePart()` to write `fullOutput` to part state BEFORE returning to AI SDK
+- [ ] 2.3 Direct render path: return summary string to AI SDK instead of full text
+- [ ] 2.4 Summary format: `[Content displayed to user ({N} chars). Ask user to describe what they see, or request "analyze this" to read the content.]`
 
-## Phase 3 — Gmail App Integration
+## Phase 3 — Processor Merge Guard
 
-- [ ] 3.1 Update `~/projects/mcp-apps/gmail/mcp.json`: add `"directRender": ["get-message", "list-messages"]`
-- [ ] 3.2 Rebuild and deploy gmail-server binary
-- [ ] 3.3 Re-register gmail in mcp-apps.json (or restart daemon to pick up manifest change)
+- [ ] 3.1 In processor.ts "tool-result" handler: when updating part state, preserve existing `fullOutput` if already set
+- [ ] 3.2 Verify no race: side-channel write completes before processor write (log timestamps)
 
-## Phase 4 — Validation
+## Phase 4 — UI Rendering
 
-- [ ] 4.1 Test: `get-message` on 52KB email — UI shows full markdown table, model log shows < 100 token result
-- [ ] 4.2 Test: `list-messages` — each message renders directly in UI
-- [ ] 4.3 Test: `send-message` (NOT in directRender) — model still processes result normally
-- [ ] 4.4 Test: small model (qwen 9B) can handle direct-rendered gmail without failing
-- [ ] 4.5 Test: follow-up question after direct render — model responds coherently
+- [ ] 4.1 In message-tool-invocation.tsx: detect `part.state.fullOutput`
+- [ ] 4.2 When fullOutput exists: render with existing markdown component (tables, text, code)
+- [ ] 4.3 Collapsible "Show more" for outputs exceeding ~200 lines
+- [ ] 4.4 Tool header (title, status icon) still renders above content
+
+## Phase 5 — Gmail Integration + Validation
+
+- [ ] 5.1 Gmail mcp.json: default direct render (no `modelProcess` field needed — all tools direct by default)
+- [ ] 5.2 If send-message/reply-message need model confirmation, add them to `modelProcess`
+- [ ] 5.3 Rebuild and deploy gmail-server binary
+- [ ] 5.4 Test: `get-message` on large email — UI shows markdown, model sees < 100 token summary
+- [ ] 5.5 Test: `send-message` — model still processes result (in modelProcess list)
+- [ ] 5.6 Test: small model (qwen 9B) handles direct-rendered gmail
+- [ ] 5.7 Test: non-MCP tools (bash, edit) unchanged
 
 ## Stop Gates
 
-- SG-1: Non-directRender tools must behave identically to current behavior (zero regression)
-- SG-2: Model must never receive >200 tokens for a direct-rendered tool result
-- SG-3: UI must render markdown tables properly (not raw pipe characters)
+- SG-1: Non-MCP tools (bash, edit, etc.) must be completely unaffected
+- SG-2: Model must never see >200 tokens for a direct-rendered result
+- SG-3: fullOutput capped at 64KB
+- SG-4: Race between side-channel write and processor write must be verified safe
