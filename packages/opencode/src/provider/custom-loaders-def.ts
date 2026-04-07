@@ -5,7 +5,8 @@ import { BunProc } from "@/bun"
 import { Config } from "@/config/config"
 import { Env } from "@/env"
 import { iife } from "@/util/iife"
-import { createClaudeCode, isClaudeCredentials } from "@opencode-ai/claude-provider/provider"
+import { createClaudeCode } from "@opencode-ai/claude-provider/provider"
+import { isClaudeCredentials } from "@opencode-ai/claude-provider/auth"
 import { Log } from "@/util/log"
 
 const claudeProviderLog = Log.create({ service: "provider.claude-cli" })
