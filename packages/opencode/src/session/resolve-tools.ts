@@ -4,7 +4,11 @@ import { Log } from "../util/log"
 import { debugCheckpoint } from "@/util/debug"
 import { ProviderTransform } from "../provider/transform"
 import { ToolRegistry } from "../tool/registry"
+import fs from "fs/promises"
+import path from "path"
 import { MCP, McpAppStore } from "../mcp"
+import { Storage } from "../storage"
+import { Identifier } from "../id/id"
 import { Tool } from "@/tool/tool"
 import { ToolInvoker } from "./tool-invoker"
 import { PermissionNext } from "@/permission/next"
@@ -218,6 +222,40 @@ export async function resolveTools(input: ResolveToolsInput): Promise<ResolveToo
     })
   }
 
+  // ── Direct render support for MCP app tools ───────────────────────
+  // Load modelProcess lists from manifests (reads mcp.json, not mcp-apps.json)
+  const modelProcessMap = new Map<string, Set<string>>()
+  const isCronSession = input.session.title?.startsWith("cron:")
+  try {
+    const storeApps = await McpAppStore.listApps()
+    for (const app of storeApps) {
+      const mp = app.manifest?.modelProcess
+      if (mp && mp.length > 0) {
+        modelProcessMap.set(`mcpapp-${app.id}`, new Set(mp))
+      }
+    }
+  } catch {
+    // No store apps or config error — all tools default to direct render
+  }
+
+  const DIRECT_RENDER_MAX = 64 * 1024 // 64KB cap
+
+  /**
+   * Check if an MCP tool should use direct render (output → fileview, summary → model).
+   * Default: direct render for all MCP app tools in interactive sessions.
+   * Exceptions: tools in modelProcess list, cron sessions.
+   */
+  function shouldDirectRender(toolKey: string): boolean {
+    if (isCronSession) return false
+    // Only mcpapp- prefixed tools support direct render
+    const mcpAppMatch = toolKey.match(/^(mcpapp-[^_]+)_(.+)$/)
+    if (!mcpAppMatch) return false
+    const [, clientName, toolName] = mcpAppMatch
+    const modelProcessSet = modelProcessMap.get(clientName)
+    if (modelProcessSet && modelProcessSet.has(toolName)) return false
+    return true
+  }
+
   for (const [key, item] of Object.entries(await MCP.tools())) {
     if (!toolAllowed(key)) continue
     const execute = item.execute
@@ -285,7 +323,55 @@ export async function resolveTools(input: ResolveToolsInput): Promise<ResolveToo
         }
       }
 
-      const truncated = await Truncate.output(textParts.join("\n\n"), {}, input.agent, input.session.id)
+      const fullText = textParts.join("\n\n")
+
+      // ── Direct render: write file, return summary to model ──────
+      const sessionDir = shouldDirectRender(key) && fullText.length > 0
+        ? await Storage.sessionDirectory(input.session.id)
+        : undefined
+
+      if (sessionDir && shouldDirectRender(key) && fullText.length > 0) {
+        let content = fullText
+        if (content.length > DIRECT_RENDER_MAX) {
+          content = content.slice(0, DIRECT_RENDER_MAX) + `\n\n... (truncated, ${fullText.length} chars total)`
+        }
+
+        // Derive a title from tool args or tool name
+        const title = (args as any)?.subject ?? (args as any)?.query ?? key.replace(/^mcpapp-[^_]+_/, "")
+
+        // Write to session files directory
+        const filesDir = path.join(sessionDir, "files")
+        await fs.mkdir(filesDir, { recursive: true }).catch(() => {})
+        const fileId = Identifier.ascending("dr")
+        const sanitizedTitle = title.replace(/[^a-zA-Z0-9_\u4e00-\u9fff-]/g, "_").slice(0, 60)
+        const fileName = `${fileId}-${sanitizedTitle}.md`
+        const filePath = path.join(filesDir, fileName)
+        await fs.writeFile(filePath, content)
+
+        const directRenderInfo: MessageV2.DirectRenderInfo = {
+          filePath,
+          title,
+          size: content.length,
+        }
+
+        log.info("direct render: file written", { toolKey: key, filePath, size: content.length })
+
+        const summary = `[File displayed: "${title}" (${content.length} chars). User can see it in file viewer.]`
+
+        return {
+          title: "",
+          metadata: {
+            ...(result.metadata ?? {}),
+            directRender: directRenderInfo,
+          },
+          output: summary,
+          attachments,
+          content: result.content,
+        }
+      }
+
+      // ── Normal path: model processes full output ────────────────
+      const truncated = await Truncate.output(fullText, {}, input.agent, input.session.id)
       const metadata = {
         ...(result.metadata ?? {}),
         truncated: truncated.truncated,

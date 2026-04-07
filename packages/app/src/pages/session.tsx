@@ -1695,9 +1695,19 @@ export default function Page() {
     })
   })
 
+  // Direct render: listen for file open requests from tool invocation buttons
+  const handleOpenFile = (e: Event) => {
+    const detail = (e as CustomEvent).detail as { path: string } | undefined
+    if (!detail?.path) return
+    const tabValue = `file://${detail.path}`
+    openTab(tabValue)
+  }
+  window.addEventListener("opencode:open-file", handleOpenFile)
+
   onCleanup(() => {
     cancelTurnBackfill()
     document.removeEventListener("keydown", handleKeyDown)
+    window.removeEventListener("opencode:open-file", handleOpenFile)
     scrollSpy.destroy()
     if (scrollStateFrame !== undefined) cancelAnimationFrame(scrollStateFrame)
   })

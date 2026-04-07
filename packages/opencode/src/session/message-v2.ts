@@ -425,6 +425,13 @@ export namespace MessageV2 {
     })
   export type ToolStateRunning = z.infer<typeof ToolStateRunning>
 
+  export const DirectRenderInfo = z.object({
+    filePath: z.string(),
+    title: z.string(),
+    size: z.number(),
+  })
+  export type DirectRenderInfo = z.infer<typeof DirectRenderInfo>
+
   export const ToolStateCompleted = z
     .object({
       status: z.literal("completed"),
@@ -438,6 +445,7 @@ export namespace MessageV2 {
         compacted: z.number().optional(),
       }),
       attachments: FilePart.array().optional(),
+      directRender: DirectRenderInfo.optional(),
     })
     .meta({
       ref: "ToolStateCompleted",
