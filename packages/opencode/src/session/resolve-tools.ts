@@ -356,7 +356,7 @@ export async function resolveTools(input: ResolveToolsInput): Promise<ResolveToo
 
         log.info("direct render: file written", { toolKey: key, filePath, size: content.length })
 
-        const summary = `[File displayed: "${title}" (${content.length} chars). User can see it in file viewer.]`
+        const summary = `Tool succeeded. The full result (${content.length} chars) has been automatically displayed to the user in the file viewer. Do NOT attempt to read or re-fetch this content. Simply confirm to the user what was retrieved: "${title}".`
 
         return {
           title: "",
