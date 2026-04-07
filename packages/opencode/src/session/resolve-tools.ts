@@ -223,14 +223,15 @@ export async function resolveTools(input: ResolveToolsInput): Promise<ResolveToo
   }
 
   // ── Direct render support for MCP app tools ───────────────────────
-  // Load modelProcess lists from all registered store apps (once per resolve)
+  // Load modelProcess lists from manifests (reads mcp.json, not mcp-apps.json)
   const modelProcessMap = new Map<string, Set<string>>()
   const isCronSession = input.session.title?.startsWith("cron:")
   try {
-    const storeApps = await McpAppStore.loadConfig()
-    for (const [appId, entry] of Object.entries(storeApps.apps)) {
-      if (entry.modelProcess && entry.modelProcess.length > 0) {
-        modelProcessMap.set(`mcpapp-${appId}`, new Set(entry.modelProcess))
+    const storeApps = await McpAppStore.listApps()
+    for (const app of storeApps) {
+      const mp = app.manifest?.modelProcess
+      if (mp && mp.length > 0) {
+        modelProcessMap.set(`mcpapp-${app.id}`, new Set(mp))
       }
     }
   } catch {
