@@ -1,0 +1,39 @@
+/**
+ * Codex protocol constants.
+ *
+ * Source: refs/codex/codex-rs/login/src/auth/default_client.rs
+ *         refs/codex/codex-rs/core/src/client.rs
+ */
+
+/** OAuth client ID for Codex CLI */
+export const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
+
+/** OpenAI auth issuer */
+export const ISSUER = "https://auth.openai.com"
+
+/** Codex Responses API endpoint (backend-api, not api.openai.com) */
+export const CODEX_API_URL = "https://chatgpt.com/backend-api/codex/responses"
+
+/** WebSocket variant of the endpoint */
+export const CODEX_WS_URL = "wss://chatgpt.com/backend-api/codex/responses"
+
+/**
+ * Originator header value.
+ * `codex-tui` is in the upstream first-party whitelist as of #16116.
+ * See: refs/codex/codex-rs/login/src/auth/default_client.rs
+ */
+export const ORIGINATOR = "codex-tui"
+
+/** Beta features header for WebSocket v2 protocol */
+export const WS_BETA_HEADER = "responses_websockets=2026-02-06"
+
+/** OAuth port for local callback server */
+export const OAUTH_PORT = 1455
+
+/** Safety margin for device code polling */
+export const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000
+
+/** Transport timeouts */
+export const WS_CONNECT_TIMEOUT_MS = 15_000
+export const WS_IDLE_TIMEOUT_MS = 30_000
+export const WS_FIRST_FRAME_TIMEOUT_MS = 10_000
