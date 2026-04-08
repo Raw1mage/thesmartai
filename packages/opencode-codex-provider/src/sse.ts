@@ -284,11 +284,16 @@ function mapEvent(event: ResponseStreamEvent, state: StreamState): LanguageModel
 // § 4  Helpers
 // ---------------------------------------------------------------------------
 
-function buildUsage(capture: ResponseUsageCapture | undefined): LanguageModelV2Usage {
+function buildUsage(capture: ResponseUsageCapture | undefined): LanguageModelV2Usage & {
+  cachedInputTokens?: number
+  reasoningTokens?: number
+} {
   return {
     inputTokens: capture?.inputTokens,
     outputTokens: capture?.outputTokens,
     totalTokens: capture ? capture.inputTokens + capture.outputTokens : undefined,
+    cachedInputTokens: capture?.cachedTokens,
+    reasoningTokens: capture?.reasoningTokens,
   }
 }
 
