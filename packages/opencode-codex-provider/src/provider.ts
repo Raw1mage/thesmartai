@@ -117,13 +117,20 @@ class CodexLanguageModel implements LanguageModelV2 {
       callOptions.tools?.filter((t): t is Extract<typeof t, { type: "function" }> => t.type === "function"),
     )
 
-    // § 2.1.5  Build request body
+    // § 2.1.5  Extract provider options (nested under "codex" or "openai" key)
+    const po = (callOptions.providerOptions?.codex
+      ?? callOptions.providerOptions?.openai
+      ?? callOptions.providerOptions
+      ?? {}) as Record<string, unknown>
+
+    // § 2.1.6  Build request body — match old AI SDK adapter output exactly
     const body: ResponsesApiRequest = {
       model: this.modelId,
       instructions,
       input,
-      stream: true,
-      prompt_cache_key: cacheKey,
+      // NOTE: `stream` is intentionally omitted for WS (WS is inherently streaming).
+      // Only set for HTTP path — handled below before fetch().
+      prompt_cache_key: (po.promptCacheKey as string) ?? cacheKey,
       context_management: [{
         type: "compaction",
         compact_threshold: getCompactThreshold(this.modelId),
@@ -134,23 +141,35 @@ class CodexLanguageModel implements LanguageModelV2 {
       }),
     }
 
+    // store (default false for Codex/OpenAI)
+    body.store = (po.store as boolean) ?? false
+
+    // service_tier
+    if (po.serviceTier) {
+      body.service_tier = po.serviceTier as string
+    }
+
+    // include (e.g. ["reasoning.encrypted_content"])
+    if (po.include) {
+      body.include = po.include as string[]
+    }
+
+    // reasoning controls
+    if (po.reasoningEffort || po.reasoningSummary) {
+      body.reasoning = {}
+      if (po.reasoningEffort) body.reasoning.effort = po.reasoningEffort as string
+      if (po.reasoningSummary) body.reasoning.summary = po.reasoningSummary as string
+    }
+
+    // text controls
+    if (po.textVerbosity) {
+      body.text = { verbosity: po.textVerbosity as string }
+    }
+
+    // tools
     if (tools && tools.length > 0) {
       body.tools = tools
       body.tool_choice = "auto"
-      body.parallel_tool_calls = true
-    }
-
-    // Reasoning controls
-    if (callOptions.providerOptions?.reasoning) {
-      body.reasoning = callOptions.providerOptions.reasoning as any
-    }
-    if (callOptions.providerOptions?.include) {
-      body.include = callOptions.providerOptions.include as string[]
-    }
-
-    // Service tier
-    if (callOptions.providerOptions?.serviceTier) {
-      body.service_tier = callOptions.providerOptions.serviceTier as string
     }
 
     // § 2.1.5  Try WebSocket transport first
@@ -177,7 +196,8 @@ class CodexLanguageModel implements LanguageModelV2 {
       return { stream, request: { body } }
     }
 
-    // § 2.1.6  HTTP SSE fallback
+    // § 2.1.7  HTTP SSE fallback — add stream:true for HTTP (WS strips it)
+    body.stream = true
     const headers = buildHeaders({
       accessToken: this.options.credentials.access!,
       accountId: accountId,
@@ -192,7 +212,7 @@ class CodexLanguageModel implements LanguageModelV2 {
     const response = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify(body),
+      body: bodyStr,
       signal: callOptions.abortSignal,
     })
 
