@@ -166,6 +166,11 @@ class CodexLanguageModel implements LanguageModelV2 {
       body.text = { verbosity: po.textVerbosity as string }
     }
 
+    // max_output_tokens (from AI SDK callOptions)
+    if (callOptions.maxOutputTokens != null) {
+      body.max_output_tokens = callOptions.maxOutputTokens
+    }
+
     // tools
     if (tools && tools.length > 0) {
       body.tools = tools
@@ -212,7 +217,7 @@ class CodexLanguageModel implements LanguageModelV2 {
     const response = await fetch(url, {
       method: "POST",
       headers,
-      body: bodyStr,
+      body: JSON.stringify(body),
       signal: callOptions.abortSignal,
     })
 

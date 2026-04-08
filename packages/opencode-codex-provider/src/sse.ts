@@ -77,6 +77,9 @@ interface StreamState {
   reasoningIdCounter: number
   usage?: ResponseUsageCapture
   finishReason?: LanguageModelV2FinishReason
+  hasFunctionCall: boolean
+  /** ID of the currently-open text part (null = no dangling text) */
+  openTextId: string | null
 }
 
 interface ResponseUsageCapture {
@@ -101,6 +104,8 @@ export function mapResponseStream(
     textIdCounter: 0,
     toolIdCounter: 0,
     reasoningIdCounter: 0,
+    hasFunctionCall: false,
+    openTextId: null,
   }
 
   let resolveResponseId: (id: string | undefined) => void
@@ -122,17 +127,27 @@ export function mapResponseStream(
           }
         }
 
-        // Emit finish if not already emitted
-        if (state.finishReason) {
-          controller.enqueue({
-            type: "finish",
-            finishReason: state.finishReason,
-            usage: buildUsage(state.usage),
-            providerMetadata: state.responseId
-              ? { openai: { responseId: state.responseId } }
-              : undefined,
-          } as LanguageModelV2StreamPart)
+        // Flush dangling text part before finish (§4.4: text-end if dangling)
+        if (state.openTextId != null) {
+          controller.enqueue({ type: "text-end", id: state.openTextId } as LanguageModelV2StreamPart)
+          state.openTextId = null
         }
+
+        // Determine finish reason: function_call present → "tool-calls" (§4.6)
+        const finishReason: LanguageModelV2FinishReason =
+          state.finishReason === "stop" && state.hasFunctionCall
+            ? "tool-calls"
+            : (state.finishReason ?? "other")
+
+        // Emit finish
+        controller.enqueue({
+          type: "finish",
+          finishReason,
+          usage: buildUsage(state.usage),
+          providerMetadata: state.responseId
+            ? { openai: { responseId: state.responseId } }
+            : undefined,
+        } as LanguageModelV2StreamPart)
 
         resolveResponseId(state.responseId)
         controller.close()
@@ -176,8 +191,10 @@ function mapEvent(event: ResponseStreamEvent, state: StreamState): LanguageModel
       if (item.type === "message") {
         // Text output starts
         const id = `text_${state.textIdCounter++}`
+        state.openTextId = id
         parts.push({ type: "text-start", id } as LanguageModelV2StreamPart)
       } else if (item.type === "function_call") {
+        state.hasFunctionCall = true
         const id = item.call_id ?? `tool_${state.toolIdCounter++}`
         parts.push({
           type: "tool-input-start",
@@ -204,6 +221,7 @@ function mapEvent(event: ResponseStreamEvent, state: StreamState): LanguageModel
     case "response.output_text.done": {
       const id = `text_${state.textIdCounter > 0 ? state.textIdCounter - 1 : 0}`
       parts.push({ type: "text-end", id } as LanguageModelV2StreamPart)
+      state.openTextId = null
       break
     }
 
@@ -246,6 +264,7 @@ function mapEvent(event: ResponseStreamEvent, state: StreamState): LanguageModel
     case "response.output_item.done": {
       const doneItem = (event as any).item as { type: string; call_id?: string; name?: string; arguments?: string; id?: string }
       if (doneItem?.type === "function_call" && doneItem.call_id) {
+        state.hasFunctionCall = true
         // Emit tool-input-end + tool-call with FINAL arguments from done event.
         // Streaming deltas may be obfuscated (delta="{}"), but output_item.done
         // contains the real, complete arguments.
@@ -261,6 +280,23 @@ function mapEvent(event: ResponseStreamEvent, state: StreamState): LanguageModel
       break
     }
 
+    case "response.incomplete": {
+      const resp = (event as any).response as ResponseObject | undefined
+      if (resp?.id) state.responseId = resp.id
+      if (resp?.usage) {
+        state.usage = {
+          inputTokens: resp.usage.input_tokens,
+          outputTokens: resp.usage.output_tokens,
+          cachedTokens: resp.usage.input_tokens_details?.cached_tokens,
+          reasoningTokens: resp.usage.output_tokens_details?.reasoning_tokens,
+        }
+      }
+      // Map incomplete reason to finish reason
+      const reason = (resp as any)?.incomplete_details?.reason
+      state.finishReason = reason === "max_output_tokens" ? "length" : "other"
+      break
+    }
+
     case "response.completed": {
       const resp = (event as any).response as ResponseObject | undefined
       if (resp?.id) state.responseId = resp.id
@@ -272,7 +308,7 @@ function mapEvent(event: ResponseStreamEvent, state: StreamState): LanguageModel
           reasoningTokens: resp.usage.output_tokens_details?.reasoning_tokens,
         }
       }
-      state.finishReason = resp?.status === "completed" ? "stop" : "other"
+      state.finishReason = mapFinishReason(resp?.status)
       break
     }
 
