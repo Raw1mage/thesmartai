@@ -116,10 +116,80 @@ Golden reference: `golden-request.json`
 
 ## 3. Tool Schema
 
+### 3.1 Custom function tool（opencode 使用）
+
 ```json
 { "type": "function", "name": "bash", "description": "...", "parameters": {...}, "strict": false }
 ```
 - `strict: false` 必須存在
+
+### 3.2 Hosted tools output item 格式
+
+來源：https://developers.openai.com/api/docs/guides/tools-*
+
+opencode 目前不使用 hosted tools，但 sse.ts 必須能正確處理其 streaming events（AI 可能在 response 中返回這些 item types）。
+
+#### web_search_call
+
+```json
+// output_item.added
+{ "type": "web_search_call", "id": "ws_xxx", "status": "completed" }
+// output_item.done — action 欄位
+{ "type": "web_search_call", "id": "ws_xxx", "status": "completed",
+  "action": { "type": "search", "query": "..." } }
+```
+- action types: `search`, `open_page`, `find_in_page`
+- annotations: `url_citation { url, title, start_index, end_index }`
+
+#### file_search_call
+
+```json
+{ "type": "file_search_call", "id": "fs_xxx", "status": "completed",
+  "queries": ["search query"],
+  "search_results": null }  // populated when include=["file_search_call.results"]
+```
+- annotations: `file_citation { file_id, filename }`
+
+#### code_interpreter_call
+
+```json
+{ "type": "code_interpreter_call", "id": "ci_xxx",
+  "code": "print('hello')", "container_id": "cntr_xxx",
+  "outputs": [
+    { "type": "logs", "logs": "hello" },
+    { "type": "image", "url": "..." }
+  ] }
+```
+- streaming: `code_interpreter_call.code.delta` + `code_interpreter_call.code.done`
+- annotations: `container_file_citation { file_id, container_id, filename }`
+
+#### computer_call
+
+```json
+{ "type": "computer_call", "call_id": "call_xxx", "status": "completed",
+  "actions": [
+    { "type": "click", "x": 100, "y": 200 },
+    { "type": "keypress", "keys": ["Enter"] }
+  ] }
+```
+- action types: `screenshot`, `click`, `double_click`, `drag`, `move`, `scroll`, `keypress`, `type`, `wait`
+
+#### local_shell_call
+
+```json
+{ "type": "local_shell_call", "id": "ls_xxx", "call_id": "call_xxx",
+  "action": { "type": "exec", "command": ["ls", "-la"],
+    "working_directory": "/home/user", "timeout_ms": 30000 } }
+```
+- output: `local_shell_call_output { call_id, output: "stdout+stderr string" }`
+- 注意：server 只返回指令，不執行。client 負責 sandbox 和執行。
+
+#### image_generation_call
+
+```json
+{ "type": "image_generation_call", "id": "ig_xxx", "result": "base64_data" }
+```
+- streaming: `image_generation_call.partial_image` events
 
 ---
 
