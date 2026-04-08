@@ -5,6 +5,11 @@ import { BunProc } from "@/bun"
 import { Config } from "@/config/config"
 import { Env } from "@/env"
 import { iife } from "@/util/iife"
+import { createClaudeCode } from "@opencode-ai/claude-provider/provider"
+import { isClaudeCredentials } from "@opencode-ai/claude-provider/auth"
+import { Log } from "@/util/log"
+
+const claudeProviderLog = Log.create({ service: "provider.claude-cli" })
 
 function isGpt5OrLater(modelID: string): boolean {
   const match = /^gpt-(\d+)/.exec(modelID)
@@ -24,18 +29,40 @@ type CustomLoader = (provider: any) => Promise<{
 }>
 
 export const CUSTOM_LOADERS: Record<string, CustomLoader> = {
-  async anthropic() {
+  // claude-cli: Native LanguageModelV2 provider — bypasses @ai-sdk/anthropic entirely.
+  // Auth credentials flow from plugin/anthropic.ts → provider options → here.
+  "claude-cli": async () => {
     return {
-      autoload: false,
-      options: {
-        headers: {
-          "User-Agent": "claude-cli/2.1.29 (external, npm)",
-          "x-app": "cli",
-          "x-anthropic-additional-protection": "true",
-          "anthropic-beta":
-            "claude-code-20250219,oauth-2025-04-20,prompt-caching-scope-2026-01-05,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
-        },
+      autoload: true,
+      async getModel(_sdk: any, modelID: string, options?: Record<string, any>) {
+        // Extract credentials from provider options (set by plugin auth loader)
+        const credentials = options as any
+        if (!isClaudeCredentials(credentials)) {
+          claudeProviderLog.warn("claude-cli getModel: no valid credentials in provider options, checking nested", {
+            hasOptions: !!options,
+            optionKeys: options ? Object.keys(options) : [],
+          })
+          // Credentials may be nested under the fetch wrapper's closure
+          // Fall back to creating provider with whatever we have
+        }
+
+        const provider = createClaudeCode({
+          credentials: isClaudeCredentials(credentials)
+            ? credentials
+            : {
+                type: (credentials?.type as "oauth" | "subscription") ?? "subscription",
+                refresh: credentials?.refresh ?? "",
+                access: credentials?.access,
+                expires: credentials?.expires,
+                orgID: credentials?.orgID,
+                email: credentials?.email,
+                accountId: credentials?.accountId,
+              },
+          enableCaching: true,
+        })
+        return provider.languageModel(modelID)
       },
+      options: {},
     }
   },
   async opencode(input) {

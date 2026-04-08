@@ -904,7 +904,7 @@ export namespace LLM {
               "x-opencode-request": input.user.id,
               "x-opencode-client": Flag.OPENCODE_CLIENT,
             }
-          : input.model.providerId !== "claude-cli"
+          : input.model.api.npm !== "@opencode-ai/claude-provider"
             ? {
                 "User-Agent": `opencode/${Installation.VERSION}`,
               }

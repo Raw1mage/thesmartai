@@ -46,6 +46,7 @@ import { createGitLab } from "@gitlab/gitlab-ai-provider"
 import type { Auth as SDKAuth } from "@opencode-ai/sdk"
 import { ProviderTransform } from "./transform"
 import { ToolCallBridgeManager } from "./toolcall-bridge"
+import { CUSTOM_LOADERS as IMPORTED_CUSTOM_LOADERS } from "./custom-loaders-def"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -1234,9 +1235,9 @@ export namespace Provider {
         name: m.name,
         providerId: "claude-cli",
         family: "claude",
-        // PHASE 1: Revert to standard Anthropic SDK for basic Haiku compatibility.
-        // We rely on transform.ts logic (isClaudeCode flag) to prevent cache_control pollution.
-        api: { id: m.id, url: "", npm: "@ai-sdk/anthropic" },
+        // Native LanguageModelV2 provider — no @ai-sdk/anthropic in call path.
+        // Model is created by CUSTOM_LOADERS["claude-cli"].getModel()
+        api: { id: m.id, url: "https://api.anthropic.com", npm: "@opencode-ai/claude-provider" },
         status: "active",
         capabilities: {
           temperature: true,
@@ -1681,7 +1682,16 @@ export namespace Provider {
             providers[family].options = mergeDeep(providers[family].options, {
               fetch: providers[activeAccountId].options.fetch,
               apiKey: providers[activeAccountId].options.apiKey,
-              isClaudeCode: providers[activeAccountId].options.isClaudeCode,
+              // Auth credentials for native claude-cli provider
+              ...(providers[activeAccountId].options.type && {
+                type: providers[activeAccountId].options.type,
+                refresh: providers[activeAccountId].options.refresh,
+                access: providers[activeAccountId].options.access,
+                expires: providers[activeAccountId].options.expires,
+                orgID: providers[activeAccountId].options.orgID,
+                email: providers[activeAccountId].options.email,
+                accountId: providers[activeAccountId].options.accountId,
+              }),
             }) as Info["options"]
           } else {
             log.warn("base provider fetch inheritance skipped: no active account fetch", {
@@ -1786,7 +1796,9 @@ export namespace Provider {
       }
     }
 
-    for (const [providerId, fn] of Object.entries(CUSTOM_LOADERS)) {
+    // Merge inline CUSTOM_LOADERS with imported ones (imported takes precedence)
+    const mergedCustomLoaders = { ...CUSTOM_LOADERS, ...IMPORTED_CUSTOM_LOADERS }
+    for (const [providerId, fn] of Object.entries(mergedCustomLoaders)) {
       if (disabled.has(providerId)) continue
       const data = database[providerId]
       if (!data) {
@@ -2332,15 +2344,19 @@ export namespace Provider {
     if (s.models.has(key)) return s.models.get(key)!
 
     const provider = s.providers[model.providerId]
-    const sdk = await getSDK(model)
+
+    // Resolve model loader by base provider ID.
+    // Account-specific providerId (e.g. "codex-subscription-...") must resolve
+    // to the canonical provider ("codex") that registered the CUSTOM_LOADER.
+    const canonicalProviderId = Account.parseProvider(model.providerId) ?? model.providerId
+    const loader = s.modelLoaders[canonicalProviderId]
+
+    // Skip SDK loading when the model loader doesn't need it (e.g. native LMv2 providers).
+    // This prevents InitError from getSDK() trying to install a non-existent npm package.
+    const sdk = loader ? await getSDK(model).catch(() => null) : await getSDK(model)
 
     try {
-      // Resolve model loader by base provider ID.
-      // Account-specific providerId (e.g. "codex-subscription-...") must resolve
-      // to the canonical provider ("codex") that registered the CUSTOM_LOADER.
-      const canonicalProviderId = Account.parseProvider(model.providerId) ?? model.providerId
-      const loader = s.modelLoaders[canonicalProviderId]
-      const language = loader ? await loader(sdk, model.api.id, provider.options) : sdk.languageModel(model.api.id)
+      const language = loader ? await loader(sdk, model.api.id, provider.options) : sdk!.languageModel(model.api.id)
       s.models.set(key, language)
       return language
     } catch (e) {
