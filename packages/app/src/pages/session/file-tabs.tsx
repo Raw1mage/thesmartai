@@ -43,62 +43,19 @@ const formatCommentLabel = (range: SelectedLineRange) => {
 
 const LazySvgEditor = lazy(() => import("@/components/svg-editor").then((m) => ({ default: m.SvgEditor })))
 
-/** Detect if a filename looks like a drawmiat diagram (e.g., diagram_A0.svg, foo_Main.svg) */
-function isDiagramSvg(name: string): boolean {
-  if (!name.endsWith(".svg")) return false
-  return /_(A\d+|Main|Step\d+)\./i.test(name)
-}
-
-/** Extract hierarchy level from diagram filename for sorting */
-function diagramSortKey(name: string): string {
-  const m = name.match(/_(A\d+|Main|Step\d+)\./i)
-  if (!m) return name
-  const tag = m[1]
-  if (tag === "Main" || tag === "A0") return "0"
-  return tag
-}
-
 function SvgViewer(props: {
   svgContent: () => string | undefined
   svgPreviewUrl: () => string | undefined
   path: () => string | undefined
   renderCode: (code: string, className: string) => any
   language: ReturnType<typeof useLanguage>
-  onOpenFile?: (path: string) => void
-  listDir?: (dir: string) => Promise<Array<{ name: string; path: string; type: string }>>
   onSaveContent?: (path: string, content: string) => void
 }) {
   const [scale, setScale] = createSignal(1)
   const [showSource, setShowSource] = createSignal(false)
-  const [fullscreen, setFullscreen] = createSignal(false)
   const [editing, setEditing] = createSignal(false)
-  const [relatedDiagrams, setRelatedDiagrams] = createSignal<string[]>([])
   const MIN_SCALE = 0.1
   const MAX_SCALE = 5
-
-  // Discover related diagram SVGs in the same directory
-  createEffect(() => {
-    const p = props.path()
-    if (!p || !props.listDir) return
-    const filename = p.split("/").pop() ?? ""
-    if (!isDiagramSvg(filename)) return
-    const dir = p.substring(0, p.lastIndexOf("/"))
-    if (!dir) return
-    props
-      .listDir(dir)
-      .then((entries) => {
-        const svgs = entries
-          .filter((e) => e.type === "file" && isDiagramSvg(e.name))
-          .map((e) => e.name)
-          .sort((a, b) => diagramSortKey(a).localeCompare(diagramSortKey(b)))
-        if (svgs.length > 1) {
-          setRelatedDiagrams(svgs.map((name) => (dir ? `${dir}/${name}` : name)))
-        } else {
-          setRelatedDiagrams([])
-        }
-      })
-      .catch(() => setRelatedDiagrams([]))
-  })
 
   const zoomIn = () => setScale((s) => Math.min(MAX_SCALE, s * 1.25))
   const zoomOut = () => setScale((s) => Math.max(MIN_SCALE, s / 1.25))
@@ -111,26 +68,8 @@ function SvgViewer(props: {
     else zoomOut()
   }
 
-  const downloadSvg = () => {
-    const content = props.svgContent()
-    const filename = props.path()?.split("/").pop() ?? "diagram.svg"
-    if (!content) return
-    const blob = new Blob([content], { type: "image/svg+xml" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const openInNewTab = () => {
-    const url = props.svgPreviewUrl()
-    if (url) window.open(url, "_blank")
-  }
-
   return (
-    <div class="flex flex-col h-full" classList={{ "fixed inset-0 z-50 bg-surface-primary": fullscreen() }}>
+    <div class="flex flex-col h-full">
       {/* Toolbar */}
       <div class="flex items-center gap-1 px-4 py-2 border-b border-border-base bg-surface-secondary shrink-0">
         <button
@@ -172,57 +111,7 @@ function SvgViewer(props: {
             Edit
           </button>
         </Show>
-        <button
-          class="px-2 py-1 text-12-medium text-text-dimmed hover:text-text-base hover:bg-surface-tertiary rounded transition-colors"
-          onClick={downloadSvg}
-          title="Download SVG"
-        >
-          Download
-        </button>
-        <button
-          class="px-2 py-1 text-12-medium text-text-dimmed hover:text-text-base hover:bg-surface-tertiary rounded transition-colors"
-          onClick={openInNewTab}
-          title="Open in New Tab"
-        >
-          New Tab
-        </button>
-        <button
-          class="px-2 py-1 text-12-medium text-text-dimmed hover:text-text-base hover:bg-surface-tertiary rounded transition-colors"
-          onClick={() => setFullscreen((v) => !v)}
-          title={fullscreen() ? "Exit Fullscreen" : "Fullscreen"}
-        >
-          {fullscreen() ? "Exit" : "Expand"}
-        </button>
       </div>
-
-      {/* Related Diagrams Gallery Bar */}
-      <Show when={relatedDiagrams().length > 0}>
-        <div class="flex items-center gap-1 px-4 py-1.5 border-b border-border-base bg-surface-primary overflow-x-auto shrink-0">
-          <span class="text-11-medium text-text-dimmed mr-1 shrink-0">Diagrams:</span>
-          <For each={relatedDiagrams()}>
-            {(diagramPath) => {
-              const name = () => diagramPath.split("/").pop() ?? diagramPath
-              const isCurrent = () => diagramPath === props.path()
-              return (
-                <button
-                  class="px-2 py-0.5 text-11-medium rounded transition-colors shrink-0"
-                  classList={{
-                    "bg-accent-primary text-white": isCurrent(),
-                    "text-text-dimmed hover:text-text-base hover:bg-surface-tertiary": !isCurrent(),
-                  }}
-                  onClick={() => {
-                    if (!isCurrent() && props.onOpenFile) {
-                      props.onOpenFile(diagramPath)
-                    }
-                  }}
-                >
-                  {name()}
-                </button>
-              )
-            }}
-          </For>
-        </div>
-      </Show>
 
       {/* Content: Editor or Preview */}
       <Show
@@ -837,11 +726,6 @@ export function FileTabContent(props: {
               path={path}
               renderCode={renderCode}
               language={props.language}
-              onOpenFile={(p) => props.tabs().open(p)}
-              listDir={async (dir) => {
-                await props.file.tree.list(dir)
-                return props.file.tree.children(dir)
-              }}
               onSaveContent={undefined}
             />
           </Match>
