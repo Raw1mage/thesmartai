@@ -355,11 +355,8 @@ export namespace Provider {
         options: hasKey ? {} : { apiKey: "public" },
       }
     },
-    codex: async () => ({
-      autoload: true,
-      getModel: (sdk: any, modelID: string) => sdk.responses(modelID),
-      options: {},
-    }),
+    // codex: moved to IMPORTED_CUSTOM_LOADERS (custom-loaders-def.ts)
+    // Uses native @opencode-ai/codex-provider — bypasses @ai-sdk/openai
     openai: async () => {
       return {
         autoload: false,
