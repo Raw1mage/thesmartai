@@ -751,8 +751,25 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
                   }
 
                   // Server-side inline compaction (context_management)
+                  // Threshold is 80% of model context limit — leaves room for client compaction at ~96%.
                   if (!body.context_management) {
-                    body.context_management = [{ type: "compaction", compact_threshold: 100000 }]
+                    let compactThreshold = 100000
+                    if (body.model) {
+                      try {
+                        const { Provider } = await import("../provider/provider")
+                        const modelInfo = await Provider.getModel("codex", body.model)
+                        if (modelInfo?.limit?.context) {
+                          compactThreshold = Math.floor(modelInfo.limit.context * 0.8)
+                        }
+                      } catch (e) {
+                        log.warn("compact_threshold: model lookup failed, using fallback", {
+                          model: body.model,
+                          fallback: compactThreshold,
+                          error: String(e).slice(0, 100),
+                        })
+                      }
+                    }
+                    body.context_management = [{ type: "compaction", compact_threshold: compactThreshold }]
                   }
 
                   // Note: request-side delta (previous_response_id + input trim) is

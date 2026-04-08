@@ -124,18 +124,3 @@
 
 ---
 
-## SessionSnapshot Tags
-
-When a turn produces a clear fact, conclusion, or decision, append one or more tag lines at the END of your response:
-
-- `#fact <statement>` — a confirmed fact, observed problem, or symptom
-- `#problem <statement>` — a problem or issue identified
-- `#summary <statement>` — a conclusion or finding from discussion
-- `#decision <statement>` — a decision made or direction confirmed
-- `#rejected <statement>` — an option that was explicitly ruled out
-
-Rules:
-- Only emit tags when there is genuine new information (discovery, conclusion, decision)
-- Do NOT emit tags for routine Q&A or work-in-progress turns
-- One line per tag, at the end of the response
-- Keep each tag line concise (one sentence)
