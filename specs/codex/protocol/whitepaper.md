@@ -2,57 +2,38 @@
 
 ## Scope
 
-This document describes the request and transport patterns observed in the official Codex CLI source that is vendored in `refs/codex/`. It is not a normative OpenAI specification. It is a source-derived interoperability note for `opencode`.
+This document describes the request and transport patterns observed in the official Codex CLI source vendored in `refs/codex/`. It is a source-derived interoperability note for `opencode`, not a normative OpenAI specification.
 
-The focus is:
-
-- Responses API request body shape
-- Input item encoding rules
-- Tool encoding rules
-- Session and transport metadata attached by the official client
-- Areas where `opencode` is currently aligned vs misaligned
-
-This document intentionally does not recommend client impersonation. Where the official client emits identity-bearing metadata, this paper treats it as transport context, not something a third-party client should copy verbatim.
+**Upstream ref**: `refs/codex/` at `origin/main` (fetched 2026-04-08, HEAD = `2250fdd54a`)
 
 ## Primary Source Files
 
-- `refs/codex/codex-rs/core/src/client.rs`
-- `refs/codex/codex-rs/codex-api/src/common.rs`
-- `refs/codex/codex-rs/core/src/client_common.rs`
-- `refs/codex/codex-rs/core/src/models_manager/model_info.rs`
-- `refs/codex/codex-rs/core/prompt.md`
-- `refs/codex/codex-rs/core/templates/model_instructions/gpt-5.2-codex_instructions_template.md`
-- `refs/codex/codex-rs/core/templates/personalities/gpt-5.2-codex_pragmatic.md`
+- `refs/codex/codex-rs/core/src/client.rs` — transport, headers, WS session management
+- `refs/codex/codex-rs/codex-api/src/common.rs` — `ResponsesApiRequest`, `ResponseCreateWsRequest` types
+- `refs/codex/codex-rs/core/src/client_common.rs` — input encoding, tool serialization
+- `refs/codex/codex-rs/core/src/codex.rs` — session lifecycle, compaction orchestration, subagent
+- `refs/codex/codex-rs/core/src/compact.rs` — compaction logic, WS reset after compact
+- `refs/codex/codex-rs/core/src/agent/` — agent registry, mailbox, control
+- `refs/codex/codex-rs/login/src/auth/default_client.rs` — originator, first-party detection
+- `refs/codex/codex-rs/app-server/src/message_processor.rs` — app-server bootstrap, originator routing
+- `refs/codex/codex-rs/codex-api/src/endpoint/realtime_call.rs` — WebRTC transport (NEW)
+- `refs/codex/codex-rs/core/src/installation_id.rs` — stable installation UUID (NEW)
+
+---
 
 ## Protocol Layers
 
-The official Codex CLI behavior is easier to reason about as four layers:
-
-1. Instruction layer
-2. Responses API request body
-3. Session-scoped transport metadata
-4. Incremental continuation behavior
-
 ### 1. Instruction Layer
 
-Codex builds a large top-level `instructions` string and keeps it separate from normal conversational `input`.
+Codex builds a top-level `instructions` string separate from conversational `input`.
 
-Observed properties:
-
-- The canonical base instructions come from model metadata or prompt templates.
-- Personality is composed into the instruction template before request dispatch.
-- The request body uses top-level `instructions`, not a pseudo-user message, to carry the main agent contract.
-
-Key references:
-
-- `refs/codex/codex-rs/core/src/client.rs`
-- `refs/codex/codex-rs/core/src/models_manager/model_info.rs`
+- Canonical base instructions from model metadata or prompt templates.
+- Personality composed into instruction template before dispatch.
+- Request body uses top-level `instructions`, not pseudo-user messages.
 
 ### 2. Responses API Request Body
 
-The official request body is represented by `ResponsesApiRequest`.
-
-Observed canonical fields:
+`ResponsesApiRequest` (HTTP) canonical fields:
 
 ```json
 {
@@ -68,367 +49,234 @@ Observed canonical fields:
   "include": [],
   "service_tier": "priority",
   "prompt_cache_key": "thread-id",
-  "text": {}
+  "text": {},
+  "context_management": [],
+  "client_metadata": {}
 }
 ```
 
-Field notes:
+**Delta from previous whitepaper revision**:
 
-- `model`: official model slug
-- `instructions`: full base instruction contract
-- `input`: `ResponseItem[]`
-- `tools`: serialized tool specs
-- `tool_choice`: currently fixed to `"auto"`
-- `parallel_tool_calls`: derived from model/tool support
-- `reasoning`: included only when supported
-- `store`: provider-dependent
-- `stream`: always `true` in the standard turn flow
-- `include`: currently used for items like `reasoning.encrypted_content`
-- `service_tier`: optional
-- `prompt_cache_key`: tied to conversation/thread identity
-- `text`: optional verbosity / output schema controls
+| Field | Change | Source |
+|---|---|---|
+| `client_metadata` | **NEW** — `HashMap<String, String>`, now on both HTTP and WS requests | `common.rs` #16912 |
+| `context_management` | Unchanged — `[{type: "compaction", compact_threshold: N}]` | — |
 
-Key references:
+`ResponseCreateWsRequest` (WS-only) additional fields:
 
-- `refs/codex/codex-rs/codex-api/src/common.rs`
-- `refs/codex/codex-rs/core/src/client.rs`
+| Field | HTTP | WS |
+|---|---|---|
+| `previous_response_id` | **absent** | `Option<String>` |
+| `generate` | absent | `Option<bool>` |
+| `client_metadata` | `Option<HashMap>` (NEW) | `Option<HashMap>` |
+
+**Key finding**: `previous_response_id` remains WS-only in codex-rs. HTTP struct does not have it.
 
 ### 3. Input Item Encoding
 
-The official client sends `input` as Responses API items, not plain chat messages.
-
 Observed item families:
 
-- conversational items
-  - `system` / `developer`
-  - `user`
-  - `assistant`
-- tool lifecycle items
-  - `function_call`
-  - `function_call_output`
-  - `custom tool` variants
-  - `local_shell_call`
-  - `local_shell_call_output`
-- reasoning and reference items
-  - `reasoning`
-  - `item_reference`
+- **Conversational**: `system`, `developer`, `user`, `assistant`
+- **Tool lifecycle**: `function_call`, `function_call_output`, `local_shell_call`, `local_shell_call_output`, custom tool variants
+- **Reasoning/Reference**: `reasoning`, `item_reference`
 
-Notable behavior:
-
-- Tool outputs may be normalized before resend.
-- Shell output is specially reserialized when the freeform `apply_patch` path is active, so the model sees structured plain text rather than arbitrary JSON blobs.
-
-Key reference:
-
-- `refs/codex/codex-rs/core/src/client_common.rs`
+Notable: shell output re-serialized for `apply_patch` path; patches now go through executor filesystem (#17048).
 
 ### 4. Tool Encoding
 
-The official client serializes tools into OpenAI Responses API tool descriptors. Observed tool categories:
+Categories: `function`, `local_shell`, `image_generation`, `web_search`, `custom`.
 
-- `function`
-- `local_shell`
-- `image_generation`
-- `web_search`
-- `custom` freeform tools
-
-Notable behavior:
-
-- Tool serialization is centralized before request creation.
-- Tool availability and parallelism are treated as part of the request contract, not inferred ad hoc downstream.
-
-Key reference:
-
-- `refs/codex/codex-rs/core/src/client_common.rs`
+**New in upstream**:
+- Namespace descriptions rendered for tools (#16879)
+- Function attribute descriptions rendered (#16880)
+- `anyOf` and `enum` support in JsonSchema (#16875, #17052)
 
 ### 5. Reasoning and Text Controls
 
-The official client conditionally sends:
+Conditionally sent: `reasoning.effort`, `reasoning.summary`, `include: ["reasoning.encrypted_content"]`, `text.verbosity`, `text.format`.
 
-- `reasoning.effort`
-- `reasoning.summary`
-- `include: ["reasoning.encrypted_content"]`
-- `text.verbosity`
-- `text.format` when structured output is required
-
-This means the official client treats reasoning and output controls as first-class request fields rather than embedding those requirements in prompt text alone.
-
-Key references:
-
-- `refs/codex/codex-rs/core/src/client.rs`
-- `refs/codex/codex-rs/codex-api/src/common.rs`
+**New**: `OpenAiVerbosity` type now publicly exported from `codex-api`.
 
 ### 6. Session-Scoped Transport Metadata
 
-Beyond the JSON body, the official client attaches extra session metadata.
+Headers and metadata channels:
 
-Observed metadata channels:
+| Channel | Purpose | Notes |
+|---|---|---|
+| `conversation_id` | Thread identity, prompt_cache_key source | Unchanged |
+| `session_source` | CLI/subagent/review origin | Unchanged |
+| `x-codex-beta-features` | Feature gating | Unchanged |
+| `x-codex-turn-state` | Sticky routing during turn | Unchanged |
+| `x-codex-turn-metadata` | Per-turn metadata | Unchanged |
+| `x-codex-window-id` | **NEW** — `{conversation_id}:{window_generation}` | #16758 |
+| `x-codex-parent-thread-id` | **NEW** — Parent thread for subagents | #16758 |
+| `x-openai-subagent` | **NEW** — Subagent identity header | #16758 |
+| `x-codex-installation-id` | **NEW** — Stable installation UUID via `client_metadata` | #16912 |
 
-- request options:
-  - `conversation_id`
-  - `session_source`
-- extra headers:
-  - `x-codex-beta-features`
-  - `x-codex-turn-state`
-  - `x-codex-turn-metadata`
-
-Observed purposes:
-
-- sticky routing / continuation affinity
-- observability
-- beta feature gating
-- subagent / session source tracking
-
-This metadata is a major part of the official protocol footprint. A client that matches only JSON body shape is still not transport-equivalent to Codex CLI.
-
-Key references:
-
-- `refs/codex/codex-rs/core/src/client.rs`
+**Context-window lineage model** (#16758): Each session tracks a monotonic `window_generation` counter. After compaction, `window_generation` is advanced. The `x-codex-window-id` header = `"{conversation_id}:{window_generation}"` — this tells the server which "window" of the context the request belongs to, enabling server-side continuity reasoning.
 
 ### 7. Continuation and Incremental Reuse
 
-The official client does not always resend a full logical history.
+Unchanged mechanisms:
+- Request equality comparison excluding `input`
+- Incremental item delta generation
+- Cached websocket session reuse
+- Thread-bound `prompt_cache_key`
 
-Observed mechanisms:
+**New behavior**: After compaction, `client_session.reset_websocket_session()` is called (#16758). This ensures the WS session is invalidated after context window changes, preventing stale continuation.
 
-- request equality comparison excluding `input`
-- incremental item delta generation
-- cached websocket session reuse
-- thread-bound `prompt_cache_key`
+### 8. Compaction
 
-This implies that "Codex protocol" is not just a static body schema. It also includes session continuity behavior.
+Server-side compaction via `context_management`:
 
-Key reference:
+```json
+{ "context_management": [{ "type": "compaction", "compact_threshold": N }] }
+```
 
-- `refs/codex/codex-rs/core/src/client.rs`
+Client-side compaction (`compact.rs`):
+- Remote compaction preferred for OpenAI providers (`should_use_remote_compact_task`)
+- Inline auto-compaction for non-OpenAI
+- After compaction: WS session reset + `window_generation` advance
+- `InitialContextInjection` enum controls whether system prompt is re-injected after compaction
 
-## Canonical Official Turn Shape
+### 9. Identity and Originator (CHANGED)
 
-At a high level, a normal Codex turn appears to be:
+**Previous model**: TUI hardcoded `codex_cli_rs` as originator (workaround).
 
-1. Build a full instruction contract.
-2. Build `ResponseItem[]` conversation and tool history.
-3. Serialize tools.
-4. Add reasoning and text controls if the model supports them.
-5. Attach session transport metadata.
-6. Reuse thread identity through `prompt_cache_key`.
-7. Optionally send only incremental `input` additions when transport state allows it.
+**Current model** (#16116):
+- App-server uses `client_name` directly as originator (no TUI workaround)
+- `codex-tui` added to first-party whitelist
+
+First-party originator values:
+1. `codex_cli_rs` (DEFAULT_ORIGINATOR, direct CLI)
+2. `codex-tui` (NEW, TUI via app-server)
+3. `codex_vscode` (VS Code extension)
+4. `Codex *` (prefix match, any official Codex product)
+
+**Installation ID** (#16912):
+- UUID persisted at `$CODEX_HOME/installation_id`
+- Sent as `x-codex-installation-id` in `client_metadata`
+- File locked (flock), mode 0644, auto-created
+
+### 10. Architecture Changes
+
+#### App-Server Bootstrap (#16582)
+
+Single app-server process bootstraps in TUI — TUI no longer runs the core directly, instead communicates through app-server protocol. This is a fundamental architectural shift:
+
+- `codex-tui` → `app-server` → `codex-core`
+- Auth centralized in app-server (#16764)
+- Config changes unified (#16961)
+- Device-code auth routed through app-server (#16827)
+
+#### Crate Restructuring
+
+- `codex-core` reduced module visibility (#16978)
+- Config types extracted to separate crate (#16962)
+- Models manager extracted from core (#16508)
+- `api_bridge` moved from `core` to `codex-api`
+- Many types previously `pub` are now `pub(crate)` — only explicit re-exports
+
+#### Agent Subsystem
+
+- **Mailbox** (`agent/mailbox.rs`): NEW — inter-agent communication via `mpsc` channels with sequence tracking
+- **Registry** (renamed from `guards.rs`): Agent role management restructured
+- Agent control significantly reworked (#16567 race fixes, state machine rework)
+
+#### WebRTC Transport (#16960)
+
+New `RealtimeCallClient` for WebRTC-based realtime sessions:
+- SDP negotiation via multipart POST
+- Uses same auth/session infrastructure as WS
+- Parallel to existing WS transport, not a replacement
+
+### 11. Analytics
+
+- Subagent analytics tracking (#15915)
+- Protocol-native turn timestamps (#16638)
+- `installation_id` in `client_metadata` (#16912)
+- `AppServerClientMetadata` carries `client_name` + `client_version` for analytics
+
+---
 
 ## Comparison With `opencode`
 
-Current `opencode` behavior differs in several important ways:
+### Currently Aligned
 
-- It uses the AI SDK OpenAI-compatible Responses client rather than Codex's native transport stack.
-- It can send `instructions`, but the main system contract is still assembled in `packages/opencode/src/session/llm.ts` and partially injected as system/developer messages.
-- It exposes more generic provider options such as `metadata`, `previous_response_id`, `user`, `safety_identifier`, and `top_logprobs`.
-- It does not currently mirror official session transport metadata such as `conversation_id`, `session_source`, or `x-codex-turn-state`.
-- Its user agent and header stack are those of `ai-sdk/openai-compatible`, not the official Codex client stack.
+| Aspect | Status |
+|---|---|
+| Top-level `instructions` | Aligned (via fetch interceptor body transform) |
+| `input` as ResponseItem[] | Aligned (via AI SDK Responses adapter) |
+| `tools` serialization | Aligned (AI SDK handles) |
+| `reasoning` / `text` controls | Aligned (via providerOptions) |
+| `prompt_cache_key` | Aligned (set to conversation_id) |
+| `context_management` | Aligned (dynamic compact_threshold, compaction-hotfix merged) |
+| `previous_response_id` (WS) | Aligned (codex-websocket.ts) |
+| WS incremental delta | Aligned (input trimming) |
 
-Relevant local files:
+### Currently Misaligned
 
-- `packages/opencode/src/session/llm.ts`
-- `packages/opencode/src/provider/sdk/copilot/copilot-provider.ts`
-- `packages/opencode/src/provider/sdk/copilot/responses/openai-responses-language-model.ts`
-- `packages/opencode/src/provider/sdk/copilot/responses/convert-to-openai-responses-input.ts`
+| Aspect | Gap | Priority |
+|---|---|---|
+| **Originator** | We send nothing → third-party on dashboard | HIGH |
+| **client_metadata** | Not sent (missing installation_id, window lineage) | HIGH |
+| **x-codex-window-id** | Not sent | MEDIUM |
+| **x-codex-parent-thread-id** | Not sent (no subagent thread tracking) | LOW |
+| **WS reset after compaction** | Not implemented | MEDIUM |
+| **window_generation tracking** | Not implemented | MEDIUM |
+| **User-agent** | AI SDK default, not codex-compatible | LOW |
+| **context_management** via interceptor | Works but not model-switch reactive | DONE (hotfix) |
 
-## Whitepaper Conclusions
+### Architecture Divergence
 
-- The official Codex client is defined by both body shape and transport behavior.
-- The most important body-level invariant is top-level `instructions` plus `ResponseItem[] input`.
-- The most important transport-level invariant is thread/session continuity metadata.
-- `opencode` can align more closely for compatibility without pretending to be the official client.
-- Any third-party compatibility effort should preserve truthful client identity even when request semantics are aligned.
+| Official | opencode |
+|---|---|
+| TUI → app-server → core (single process) | Web → AI SDK → fetch interceptor → provider |
+| Rust crate boundaries, `pub(crate)` isolation | TypeScript modules, plugin boundary |
+| Native Responses API client | AI SDK `@ai-sdk/openai` adapter |
+| Mailbox-based inter-agent comm | Bus pub/sub |
+| `installation_id` file-based | No equivalent yet |
+
+---
 
 ## Internal or Non-Public Surfaces
 
-The following fields and channels are visible in the vendored source, but should not be treated as stable public protocol standards.
-
-They are listed here specifically to help `opencode` avoid accidental misuse.
-
-### A. `x-codex-turn-state`
-
-Observed behavior:
-
-- Used as a sticky-routing token during a turn.
-- Replayed across requests within the same turn.
-
-Why it is non-public:
-
-- The token format is not documented as a public standard.
-- The generation, rotation, validation, and expiration semantics are not described for third parties.
-
-Implementation guidance:
-
-- Do not attempt to synthesize or imitate this header.
-- Do not make `opencode` depend on its presence.
-- If `opencode` needs an equivalent mechanism, define an `x-opencode-*` namespace instead.
-
-Primary reference:
-
-- `refs/codex/codex-rs/core/src/client.rs`
-
-### B. `x-codex-turn-metadata`
-
-Observed behavior:
-
-- Optional per-turn metadata header.
-- Can also be mapped into websocket `client_metadata`.
-
-Why it is non-public:
-
-- The payload schema is not described as a stable public contract.
-- Field meanings appear tied to official observability and runtime plumbing.
-
-Implementation guidance:
-
-- Do not copy the header name or assume schema compatibility.
-- Treat the official behavior as informative only.
-- Use a separate `opencode` metadata schema if turn-level metadata is required.
-
-Primary reference:
-
-- `refs/codex/codex-rs/core/src/client.rs`
-
-### C. `x-codex-beta-features`
-
-Observed behavior:
-
-- Header carries comma-separated beta feature keys.
-
-Why it is non-public:
-
-- Feature key vocabulary, rollout semantics, and compatibility guarantees are not publicly specified.
-- Values are likely coupled to official feature gates.
-
-Implementation guidance:
-
-- Do not emit the official header from `opencode`.
-- Do not infer that observed feature key names are safe for third-party use.
-- Keep compatibility flags in `opencode` config or `x-opencode-*` headers.
-
-Primary reference:
-
-- `refs/codex/codex-rs/core/src/client.rs`
-
-### D. `conversation_id`
-
-Observed behavior:
-
-- Passed as transport/session metadata.
-- Also reused as the source for `prompt_cache_key`.
-
-Why it is not fully public:
-
-- The existence of a thread identifier is observable, but the official lifecycle semantics are not fully documented as an external contract.
-- The relationship between thread identity, routing, cache reuse, and server-side storage is implementation-specific.
-
-Implementation guidance:
-
-- It is reasonable for `opencode` to maintain its own stable thread identity.
-- It is not reasonable to claim official Codex thread identity semantics.
-- Reuse the concept, not the official provenance.
-
-Primary references:
-
-- `refs/codex/codex-rs/core/src/client.rs`
-- `refs/codex/codex-rs/core/src/thread_manager.rs`
-
-### E. `session_source`
-
-Observed behavior:
-
-- Transport metadata indicates whether the session is CLI, subagent, review, or another internal origin.
-
-Why it is not fully public:
-
-- The enum values and semantics are part of the official runtime model.
-- The meaning is tied to Codex's own orchestration system.
-
-Implementation guidance:
-
-- `opencode` can model its own session roles.
-- It should not claim official Codex session-source values or origins.
-- Any mapping should be internal and clearly third-party.
-
-Primary references:
-
-- `refs/codex/codex-rs/core/src/client.rs`
-- `refs/codex/codex-rs/core/src/tools/spec.rs`
-
-### F. Incremental resend and websocket reuse rules
-
-Observed behavior:
-
-- The official client computes deltas against the last request.
-- It may reuse websocket session state and only send incremental `input` extensions.
-
-Why it is not fully public:
-
-- The exact server expectations for safe reuse are not defined as a public compatibility contract.
-- Equality checks and replay boundaries are internal client logic.
-
-Implementation guidance:
-
-- `opencode` should not assume that matching JSON shape alone reproduces official continuation behavior.
-- If incremental transport is implemented, it should be treated as an independent `opencode` feature with its own invariants.
-
-Primary reference:
-
-- `refs/codex/codex-rs/core/src/client.rs`
-
-### G. Shell output normalization rules
-
-Observed behavior:
-
-- The official client rewrites certain shell outputs into structured text before resending them to the model, especially around freeform patch flows.
-
-Why it is not fully public:
-
-- This is an implementation behavior, not an explicitly published wire standard.
-- The exact formatting is coupled to tool orchestration choices.
-
-Implementation guidance:
-
-- `opencode` may adopt a similar strategy for model quality.
-- It should treat this as a local compatibility heuristic, not a guaranteed official protocol requirement.
-
-Primary reference:
-
-- `refs/codex/codex-rs/core/src/client_common.rs`
-
-### H. Official user-agent tokenization
-
-Observed behavior:
-
-- The official stack has dedicated user-agent token sanitation and terminal metadata handling.
-
-Why it is non-public for compatibility purposes:
-
-- Even when partly visible in source, user-agent composition is identity-bearing metadata.
-- Copying it would blur the distinction between compatibility and impersonation.
-
-Implementation guidance:
-
-- `opencode` should use a truthful user-agent string.
-- Compatibility claims should be additive and explicit, for example `opencode/... codex-compatible/...`, not substitutive.
-
-Primary reference:
-
-- `refs/codex/codex-rs/core/src/terminal.rs`
-
-## Safe Interpretation Rule
-
-For `opencode`, use the following rule when implementing against observed Codex behavior:
-
-- Treat request body fields that mirror OpenAI Responses API concepts as potentially alignable.
-- Treat official `x-codex-*` headers, official identity metadata, routing tokens, and beta feature channels as non-public surfaces.
-- When in doubt, reimplement the capability under an `opencode` namespace rather than copying the official field.
-
-## Anti-Footgun Checklist
-
-- Do not send official `x-codex-*` headers from `opencode`.
+### Safe to adopt (public Responses API)
+
+- `instructions`, `input`, `tools`, `reasoning`, `text`, `prompt_cache_key`
+- `context_management` (compaction)
+- `client_metadata` (arbitrary key-value, documented)
+- `service_tier`
+
+### Caution — observed but not public
+
+| Surface | Guidance |
+|---|---|
+| `x-codex-turn-state` | Do not synthesize. Sticky-routing token with undocumented lifecycle. |
+| `x-codex-turn-metadata` | Do not copy. Schema tied to official observability. |
+| `x-codex-beta-features` | Do not emit. Feature keys coupled to official gates. |
+| `x-codex-window-id` | Potentially adoptable (thread:gen format), but verify server acceptance for third-party. |
+| `x-codex-parent-thread-id` | Same caution as window-id. |
+| `session_source` | Internal enum. Model `opencode` session roles separately. |
+| Shell output normalization | Adopt as quality heuristic, not protocol requirement. |
+| User-agent tokenization | Use truthful `opencode/...` agent string. |
+
+### Anti-Footgun Checklist
+
+- Do not send official `x-codex-*` headers without verifying server acceptance for non-official clients.
 - Do not copy the official user-agent format.
 - Do not assume `conversation_id` and `session_source` are public compatibility requirements.
 - Do not rely on observed beta feature keys.
 - Do not assume incremental websocket behavior can be reproduced by matching body shape alone.
 - Do not treat client-side shell normalization details as mandatory wire protocol.
+- **NEW**: Do not assume `codex_cli_rs` is the only valid first-party originator — `codex-tui` and `Codex *` prefix are also valid.
+- **NEW**: `client_metadata` is propagated from HTTP to WS — use it for analytics, not identity claims.
+
+---
+
+## Changelog
+
+| Date | Change |
+|---|---|
+| 2026-04-02 | Initial whitepaper from source analysis |
+| 2026-04-08 | Major update: context-window lineage, originator architecture change, client_metadata, WebRTC, installation_id, app-server bootstrap, crate restructuring, agent mailbox, compaction WS reset |

@@ -6,7 +6,7 @@
 
 - `provider_runtime/` — opencode 內部對 Codex provider runtime 的正式實作策略、需求、設計與 handoff。
 - `websocket/` — 已完成的 Codex WebSocket transport adapter formal spec，承接原 `plans/codex-websocket/`。
-- `protocol/` — 來自 `refs/codex/` 的 source-derived protocol / interoperability notes。
+- `protocol/` — 來自 `refs/codex/` 的 source-derived protocol / interoperability notes（含 IDEF0 + Grafcet 多階層拆解）。
 - `incremental_delta/` — Codex incremental delta end-to-end 保留策略，含 continuation failure handling。承接原 `plans/20260330_incremental-delta/`。
 
 ## Promotion Rule

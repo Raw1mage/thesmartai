@@ -29,6 +29,17 @@
 ## Requirement Revision History
 
 - 2026-04-08: 初始需求，從 quota 效率調查中衍生出的架構重構需求
+- 2026-04-08: Upstream delta 分析完成（origin/main HEAD = 2250fdd54a, 30+ commits）。關鍵發現：
+  - **Originator 架構已變**：TUI 不再硬編碼 `codex_cli_rs`，改用 client_name 直接作為 originator。`codex-tui` 已加入 first-party 白名單。
+  - **App-server 架構**：TUI 不再直接執行 core，改由 app-server 中介（#16582）。Auth 集中在 app-server（#16764）。
+  - **Context-window lineage**：新增 `x-codex-window-id`（conversation_id:generation）和 `x-codex-parent-thread-id` headers（#16758）。
+  - **client_metadata**：HTTP `ResponsesApiRequest` 新增 `client_metadata: HashMap` 欄位（#16912），攜帶 installation_id。
+  - **Compaction 後 WS reset**：compaction 完成後呼叫 `reset_websocket_session()` + advance window_generation。
+  - **Agent mailbox**：新增 inter-agent 通訊機制（mailbox.rs）。
+  - **WebRTC transport**：新增 realtime_call.rs，SDP negotiation，與 WS 並行。
+  - **Crate 重構**：大量 `pub` → `pub(crate)` 收斂，models manager 從 core 抽出，config types 抽為獨立 crate。
+  - **HTTP delta 仍不可行**：`ResponsesApiRequest` 仍無 `previous_response_id` 欄位，僅 WS 有。此 plan 的 HTTP delta 目標需調整。
+  - 完整分析見 `specs/codex/protocol/whitepaper.md`（同日更新）
 
 ## Effective Requirement Description
 
@@ -37,7 +48,7 @@
 3. 拆解 AI SDK 為可重用（transport、auth、message format）和不可重用（provider-specific adapter）子模塊
 4. Codex plugin 直接對接 OpenAI Responses API，不經過 AI SDK 的 provider adapter
 5. 保留 `previous_response_id`、`context_management`、WS transport 等 Codex 原生 protocol 特性，不被 AI SDK 抽象層改寫
-6. HTTP delta（`previous_response_id` over HTTP）作為此重構的一部分實作
+6. ~~HTTP delta（`previous_response_id` over HTTP）~~ **DROPPED** — upstream 確認 `ResponsesApiRequest` (HTTP) 無此欄位，僅 WS 支援。改為確保 WS delta + compaction-after WS reset 正確運作
 
 ## Scope
 
@@ -50,7 +61,10 @@
 - `packages/opencode/src/provider/provider.ts` 中的 codex model 定義 — 搬進 plugin
 - AI SDK 子模塊拆分（識別可重用 vs 不可重用）
 - Codex plugin 直接實作 Responses API client（不經 `@ai-sdk/openai`）
-- HTTP delta（`previous_response_id` over HTTP）
+- ~~HTTP delta~~ DROPPED（upstream 不支援）
+- Originator header 設定（使用合法 first-party 值或申請白名單）
+- client_metadata 攜帶 installation_id + window lineage
+- Compaction 後 WS session reset + window_generation advance
 
 ### OUT
 
@@ -84,7 +98,8 @@
 
 - **Codex zero-config plugin**: 可從 opencode 分離的獨立 plugin 檔案包
 - **Native Responses API client**: 直接對接 OpenAI API，保留完整 protocol fingerprint
-- **HTTP delta**: `previous_response_id` over HTTP，不依賴 WS 連線持續
+- **Originator + client_metadata**: 正確的 first-party 識別 + analytics metadata
+- **Compaction WS reset**: 壓縮後正確重設 WS session 和 window generation
 
 ### Modified Capabilities
 
