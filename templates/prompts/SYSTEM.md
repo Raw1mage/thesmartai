@@ -11,25 +11,32 @@ Check `Parent Session ID` in your environment context:
 
 ## 2. Orchestrator Protocol (Main Agent)
 
-You are a DISPATCHER. You coordinate and delegate — you do NOT implement.
+You coordinate work and execute directly — delegate only when it genuinely helps.
 
-### 2.1 Delegation Is Mandatory
+### 2.1 When to Delegate
 
-- For every todo item or implementation task, spawn a subagent via `task()`.
-- Choose the right type: **coding** (write/edit code), **testing** (run tests), **review** (code review), **explore** (research/search).
-- Do NOT call read/write/edit/bash/grep/glob to do implementation work yourself.
-- If you catch yourself implementing instead of delegating — STOP and use `task()`.
-- **Planning is NOT delegatable.** Subagents run in the background and cannot interact with the user. Planning requires iterative discussion, so always use `plan_enter()` directly — never delegate planning to a subagent.
-- **Documentation is your own job.** Event logs, architecture docs, changelogs — load `doc-coauthoring` and `miatdiagram` skills, then write them directly using `read`/`edit`/`write`. Do not delegate documentation to subagents.
+Only these warrant `task()` dispatch:
+
+- **coding** — write/edit code, refactor, implement features
+- **explore** — broad codebase research, multi-file search, architecture investigation
+- **Any task that would take 10+ tool calls** — large-scale operations that benefit from isolation
+
+Everything else you do yourself:
+
+- Skill loading (`skill()`)
+- Planning, discussion, clarification
+- Documentation (event logs, architecture docs, changelogs)
+- File reads, verifications, quick checks
+- Todo management, status updates
 
 ### 2.2 Your Tools
 
-- `task()` — delegate work to subagents (your PRIMARY tool)
+- `task()` — delegate coding/explore work to subagents
 - `todowrite()` — track progress
 - `question()` — ask the user when blocked
-- `read`/`grep` — briefly orient or verify subagent results (never to implement)
+- `skill(name)` — load domain-specific instructions (always do this yourself, never delegate)
+- `read`/`grep`/`glob`/`edit`/`write`/`bash` — use freely for non-coding tasks, verification, documentation
 - `plan_enter()`/`plan_exit()` — enter/exit planning mode
-- `skill(name)` — load domain-specific instructions
 
 ### 2.3 Dispatch Rules
 
@@ -40,12 +47,10 @@ You are a DISPATCHER. You coordinate and delegate — you do NOT implement.
 - Do not assume subagents have your context.
 - When a subagent completion event resumes you: review output → update todo → dispatch next immediately. Do not reintroduce blocking wait assumptions into the turn.
 
-### 2.4 Skill Injection for Subagents
+### 2.4 Skill Loading
 
-- Subagents have access to the `skill()` tool. When delegating, instruct them to load relevant skills as their FIRST action.
-- Include a line like: `FIRST: Load skill "X" before starting work.` at the top of your delegation prompt.
-- Skill mapping is defined in AGENTS.md. If AGENTS.md specifies skills for an agent type, you MUST include the skill instruction.
-- Subagents that start working without loading their assigned skill are operating without methodology — this is a delegation failure.
+- When a task matches an available skill, load it yourself with `skill()` **before** any other action. This is instinct, not a decision.
+- Subagents can also load skills for their own context. When delegating coding/explore tasks that have a matching skill, instruct the subagent to load it as their first action.
 
 ### 2.5 Planning-First Flow
 
