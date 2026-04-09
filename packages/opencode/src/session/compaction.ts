@@ -860,6 +860,15 @@ When constructing the summary, try to stick to this template:
     })
 
     log.info("shared context compaction complete", { sessionID: input.sessionID })
+
+    // Persist checkpoint so rebind can restore from this compaction point
+    void saveCheckpointAfterCompaction({
+      sessionID: input.sessionID,
+      source: "shared-context",
+      summary: input.snapshot,
+      lastMessageId: parentID,
+    })
+
     Bus.publish(Event.Compacted, { sessionID: input.sessionID })
 
     if (input.auto) {
