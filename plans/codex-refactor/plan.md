@@ -203,155 +203,79 @@ index.ts        Public exports
 
 ## Phase 2：整合獨立（未開始）
 
+### 設計原則
+
+opencode 是殼（session 管理、tool 執行、UI、telemetry），provider 處理對話中的一切（request 格式、transport、response 解析、delta、compaction 方式）。Core 不應該知道任何 provider-specific 的邏輯。
+
+opencode 已有完整的 plugin 機制（`@opencode-ai/plugin` 的 `Hooks` 介面），Phase 2 盡量延用現有架構，最小化改動。
+
 ### 目標
 
 opencode 在沒有 codex-provider plugin 的情況下正常運作。當 plugin 存在時，opencode 自動獲得 codex 能力。使用者只需在 config 加一行 `"plugin": ["@opencode-ai/codex-provider"]`。
 
-### 問題拆解
+### 需要從 core 推回 provider 的三件事
 
-Phase 2 拆成 7 個可獨立解決的工作項（WS = workstream）。依賴關係：
+**經分析，core 只有三個地方越權插手了 provider 的事：**
 
-```
-WS1 (models hook)  ─┐
-WS3 (chat.params)   ├──→ WS2 (plugin loader) ──→ WS6 (file migration) ──→ WS7 (core cleanup)
-WS4 (lifecycle hook)─┤
-WS5 (compaction hook)┘
-```
+#### 1. ProviderOptions（store, serviceTier, promptCacheKey）
 
-Phase 2a（無依賴，可並行）：WS1, WS3, WS4, WS5
-Phase 2b（依賴 2a）：WS2, WS6
-Phase 2c（依賴全部）：WS7
+每個 provider 的 API 有自己的偏好設定。例如 codex 要 `store=false`（不讓 OpenAI 存對話到訓練資料庫）、`serviceTier=priority`（ChatGPT Plus 的優先通道）、`promptCacheKey`（讓 server 知道「這是同一個對話，用快取」）。這些是 codex 的商業/協定需求，跟 AI 能力無關。
 
----
+**現狀**：transform.ts 硬編碼 `if (providerId === "codex")` 判斷。
+**Phase 1 已解**：provider.ts 的 `doStream()` 已自己處理這些欄位。
+**Phase 2 要做**：刪掉 transform.ts 裡殘留的 codex checks。或者用 `chat.params` hook 覆蓋。
+**不需要新 hook**。
 
-### WS1：正式化 `models()` hook
+#### 2. Delta（previousResponseId / continuation）
 
-**問題**：plugin/index.ts 的 `discoverModels()` 已經在呼叫 `hook.models()`，但 `Hooks` 介面沒有定義這個 hook。是 ad-hoc cast (`HookWithModels`)。provider.ts 的 codex model 定義（L1257-1300）應該由 plugin 提供。
+Codex WS transport 支持 incremental delta：只送上次之後的新 input，server 用 `previous_response_id` 接續。這是 provider 內部的 transport 優化。
 
-**現狀**：
-- `discoverModels()` 存在且能用（plugin/index.ts:163-187）
-- codex-auth.ts 沒有實作 `models()`
-- model 定義硬編碼在 provider.ts
+**現狀**：llm.ts 硬編碼 `codexSessionState`（L113-114）、送出前注入 previousResponseId（L657-679）、收到後擷取 responseId（L761-777）。
+**但 provider 已經自己管了**：transport-ws.ts 內部有完整的 continuation 管理（getContinuation → 注入 previous_response_id → updateContinuation → 持久化磁碟）。llm.ts 的邏輯是舊 AI SDK adapter 時代的殘留，與 provider 內部重複。
+**Phase 2 要做**：直接刪掉 llm.ts 的 codex delta 區塊。Provider 靜默處理，core 完全不知情。
+**不需要新 hook**。
 
-**修復**：
-1. 在 `packages/plugin/src/index.ts` 的 `Hooks` 介面加 `models?: () => Promise<ModelDefinition[]>`
-2. 定義 `ModelDefinition` type（對齊 `Provider.addDynamicModels()` 已接受的格式）
-3. 在 codex-provider package 實作 `models()` hook，回傳 7 個 model 定義
-4. 移除 provider.ts L1257-1300 的 codex 硬編碼
+#### 3. Compaction（local vs server）
 
-**解決硬接點**：#3, #6
-**依賴**：無
-**風險**：低 — 機制已存在，只是 type 缺失
+opencode 有 local compaction（SharedContext snapshot → LLM 摘要 → checkpoint）。何時壓縮由 core 決定（token 數超過 compact_threshold）。怎麼壓縮則應該可以由 provider 自己選擇。
 
----
+Codex 有 server compaction：POST 到 `/responses/compact` 端點，server 回傳壓縮後的 opaque items，品質比 local LLM 摘要更好（因為 server 有原始 context）。
 
-### WS2：Plugin loader hook（model factory）
+**現狀**：compaction.ts 硬 import `codexServerCompact`（codex-compaction.ts:L22）。
+**Phase 2 要做**：讓 plugin 能回答「我有自己的壓縮方式」，回傳壓縮結果或 null（走預設 local compaction）。
+**需要一個新 hook**：`session.compact` — 這是 Phase 2 唯一真正需要新增的 hook。
 
-**問題**：`custom-loaders-def.ts` 硬 import `createCodex`，用 auth credentials 建立 `LanguageModelV2` instance。Plugin 應該自帶 model factory，不需要 core 知道怎麼建立 codex model。
+### 工作項
 
-**現狀**：
-- `auth.loader()` 回傳 credentials（key/value），不回傳 model instance
-- `CustomLoaderResult.getModel` 已經是 `unknown` type — core 不假設型別
-- `applyCustomLoaders()` 已經把 `result.getModel` 存進 `modelLoaders[providerId]`
+三件事拆成 4 個工作項，可依序或部分並行：
 
-**Gap**：`@opencode-ai/plugin` 沒有 depend on `@ai-sdk/provider`，不能直接用 `LanguageModelV2` type。
+#### WS1：刪除 transform.ts 的 codex 硬編碼
 
-**修復方案**：
-- 方案 A：在 `Hooks` 加 `loader?: (options: Record<string, any>) => Promise<CustomLoaderResult>`，讓 plugin 回傳 `{ autoload, getModel, options }`。`getModel` 保持 `unknown`（runtime 是 `LanguageModelV2`，但 type 不強制）。**優點**：不改 plugin package 的 peerDep。**缺點**：type-unsafe。
-- 方案 B：`@opencode-ai/plugin` 加 `@ai-sdk/provider` 為 peerDependency，`getModel` type 為 `(modelId: string) => LanguageModelV2`。**優點**：type-safe。**缺點**：plugin package 多了一個 peerDep。
+- 移除 `providerId === "codex"` 的 store/serviceTier/promptCacheKey 判斷（L708, L741, L748）
+- 移除 `id.includes("codex")` 的 xhigh reasoning 判斷（L462, L533）
+- 移除 `id.includes("codex")` 的 textVerbosity 排除（L797）
+- 這些已由 provider.ts `doStream()` 或 model capabilities 處理
+- **不需要新 hook**
+- 風險：低
 
-**建議**：方案 A。`getModel` 保持 `unknown` 符合現有 `custom-loader.ts` 的設計（L3: `getModel?: unknown`）。
+#### WS2：刪除 llm.ts 的 codex delta 邏輯
 
-**修復步驟**：
-1. `Hooks` 介面加 `provider?: { loader: (auth: AuthResult, provider: ProviderInfo) => Promise<{ autoload: boolean; getModel: unknown; options?: Record<string, any> }> }`
-2. `plugin/index.ts` 的 provider 初始化流程改為：先呼叫 `hook.provider?.loader()`，結果注入 `customLoaders`
-3. codex-provider package 實作 `provider.loader()`，內含 `createCodex()` 邏輯
-4. 移除 `custom-loaders-def.ts` 的 codex 區段
-5. `plugin/index.ts` 移除 codex-auth 硬 import，改為 config-based 動態載入
+- 刪除 `codexSessionState` map（L113-114）
+- 刪除送出前 `previousResponseId` 注入（L657-679）
+- 刪除收到後 `responseId` 擷取（L761-777）
+- Provider 的 transport-ws.ts 已完整管理 delta/continuation，core 的邏輯是重複的
+- **不需要新 hook**
+- 風險：低 — 但需驗證 provider 內部 delta 獨立運作正常
 
-**解決硬接點**：#1, #2
-**依賴**：WS1（model 定義先就位）
-**風險**：中 — 改動 plugin 初始化流程，影響所有 plugin
+#### WS3：新增 `session.compact` hook + 搬遷 codex-compaction.ts
 
----
+- `Hooks` 介面新增 `"session.compact"?`
+- compaction.ts 改為：先問 plugin 有無 server compact，有就用，無就走預設 local compact
+- codex-compaction.ts 搬進 `@opencode-ai/codex-provider` package，透過 hook 暴露
+- 移除 compaction.ts 對 codex-compaction.ts 的 hard import
+- **唯一需要新增的 hook**
 
-### WS3：擴展 `chat.params` 覆蓋 provider options
-
-**問題**：transform.ts 硬編碼 codex 的 `store=false`、`serviceTier=priority`、`promptCacheKey`。這些應該由 plugin 透過 `chat.params` hook 注入。
-
-**現狀**：
-- `chat.params` 已存在，output 有 `options: Record<string, any>`
-- `ProviderTransform.options()` 先算 base options，`chat.params` hook 再 override
-- 問題是 transform.ts 的 codex checks 在 `chat.params` **之前**執行
-
-**修復**：
-1. 在 codex-provider package 的 plugin entry 實作 `chat.params` hook
-2. 在 hook 裡注入 `store=false`、`serviceTier=priority`、`promptCacheKey`
-3. 移除 transform.ts 中 `providerId === "codex"` 的特殊判斷（L708, L741, L748）
-4. 移除 transform.ts 中 `id.includes("codex")` 的 xhigh reasoning 判斷（L462, L533）— 改由 WS1 的 model capabilities 帶入
-5. 移除 transform.ts 中 `id.includes("codex")` 的 textVerbosity 排除（L797）
-
-**解決硬接點**：#5, #6（部分）
-**依賴**：無
-**風險**：低 — `chat.params` 機制成熟，只是搬邏輯
-
----
-
-### WS4：Request/response lifecycle hooks
-
-**問題**：llm.ts 硬編碼 codex delta 邏輯：送出前注入 `previousResponseId`（L657-679），收到後擷取 `responseId`（L761-777）。這是 provider-specific 的 request/response transform，不屬於任何現有 hook。
-
-**現狀**：
-- `chat.params` 只改 temperature/options，不能注入 arbitrary providerOptions nested fields
-- `chat.headers` 只改 headers
-- 沒有 post-response hook
-
-**修復**：
-1. `Hooks` 介面新增 `"chat.request.transform"?`：在 `streamText` 呼叫前，讓 plugin 修改 providerOptions（含嵌套欄位如 `codex.previousResponseId`）
-2. `Hooks` 介面新增 `"chat.response.complete"?`：在 LLM response 完成後，讓 plugin 擷取 providerMetadata（如 responseId）
-3. llm.ts 在對應位置呼叫這兩個 hook
-4. codex-provider package 實作這兩個 hook，搬入 delta/continuation 邏輯
-5. 移除 llm.ts 的 `codexSessionState` 和 `if (providerId === "codex")` 區塊
-6. `ContinuationInvalidatedEvent` 搬進 plugin，由 `chat.response.complete` hook 內部管理
-
-**Hook 簽名草案**：
-```typescript
-"chat.request.transform"?: (
-  input: { sessionID: string; model: Model; provider: ProviderContext },
-  output: { providerOptions: Record<string, any> },
-) => Promise<void>
-
-"chat.response.complete"?: (
-  input: {
-    sessionID: string; model: Model; provider: ProviderContext;
-    finishReason: string; providerMetadata?: Record<string, any>;
-    usage?: { inputTokens?: number; outputTokens?: number };
-  },
-  output: {},
-) => Promise<void>
-```
-
-**解決硬接點**：#4, #8
-**依賴**：無
-**風險**：中 — 新增核心 hook，需謹慎設計不破壞其他 provider 的流程
-
----
-
-### WS5：Server compaction hook
-
-**問題**：compaction.ts 硬 import `codexServerCompact`（codex-compaction.ts）。Codex 的 server compaction 是 POST 到獨立端點，與其他 provider 的 LLM-based compaction 不同。
-
-**現狀**：
-- `experimental.session.compacting` hook 只修改 compaction prompt，不能替代整個 compaction 實作
-- compaction.ts 的 codex path（L1016-1030）直接呼叫 `codexServerCompact()`
-
-**修復**：
-1. `Hooks` 介面新增 `"session.compact"?`：讓 plugin 提供完整的 server-side compaction 實作。回傳 compacted messages 或 null（null = fallback 到預設 LLM compaction）
-2. compaction.ts 在 codex path 改為：先查有無 plugin 提供 `session.compact`，有則呼叫，無則走預設
-3. codex-provider package 實作 `session.compact` hook，內含 `codexServerCompact` 邏輯
-4. 移除 compaction.ts 對 `codex-compaction.ts` 的 import
-
-**Hook 簽名草案**：
+Hook 簽名草案：
 ```typescript
 "session.compact"?: (
   input: {
@@ -359,52 +283,36 @@ Phase 2c（依賴全部）：WS7
     model: { providerId: string; modelID: string };
     messages: ConversationInput[];
     instructions: string;
-    tools: ToolDefinition[];
   },
   output: {
-    /** null = plugin 不處理，走預設 compaction */
+    /** null = plugin 不處理，走預設 local compaction */
     compacted: ConversationInput[] | null;
   },
 ) => Promise<void>
 ```
 
-**解決硬接點**：#7
-**依賴**：無
-**風險**：中 — compaction 是關鍵路徑，需充分測試
+- 風險：中 — compaction 是關鍵路徑，需充分測試
 
----
+#### WS4：搬遷 codex-auth.ts + core cleanup
 
-### WS6：檔案搬遷
+- codex-auth.ts 搬進 `@opencode-ai/codex-provider` package
+- plugin/index.ts 移除 codex hard import → 改為 config plugin 動態載入
+- custom-loaders-def.ts 移除 codex 區段 → plugin 的 `auth.loader()` 回傳 getModel
+- 確認 core 零 codex import 殘留
+- model definitions 暫時保留在 provider.ts（跟其他 22 個 provider 的 legacy 共存）
+- 風險：低 — 純搬遷
 
-**問題**：`codex-auth.ts` 和 `codex-compaction.ts` 還在 opencode core 裡。
+### 不做的事
 
-**修復**：
-1. `codex-auth.ts` 的 OAuth 邏輯搬進 `@opencode-ai/codex-provider` package（auth.ts 已有部分，需合併）
-2. `codex-compaction.ts` 搬進 `@opencode-ai/codex-provider` package
-3. package 透過 WS2 的 loader hook 和 WS5 的 compaction hook 對外暴露能力
-4. 移除 core 裡的兩個檔案
+- 不重構 opencode 的 legacy model management（22 個 provider 都硬編碼，不在 codex plan scope）
+- 不改 `@opencode-ai/plugin` 的 peerDependency
+- 不動其他 provider 的硬編碼
 
-**解決硬接點**：#9, #10
-**依賴**：WS2（loader hook 就位）、WS4（lifecycle hook 就位）、WS5（compaction hook 就位）
-**風險**：低 — 純搬遷，邏輯不變
+### 驗證標準
 
----
-
-### WS7：Core cleanup + 驗證
-
-**問題**：確認 opencode core 零 codex 硬編碼殘留。
-
-**修復**：
-1. `grep -r "codex" packages/opencode/src/ --include="*.ts"` — 只允許 string literal（如 `"codex"` provider ID 比對）
-2. 從 `packages/opencode/package.json` 移除 `@opencode-ai/codex-provider` workspace dependency
-3. `bun test` 全過
-4. 啟動 daemon — 正常運作，無 codex 功能
-5. 在 config 加 `"plugin": ["@opencode-ai/codex-provider"]`
-6. 重啟 — codex 功能恢復
-
-**解決硬接點**：全部
-**依賴**：WS1-WS6 全部完成
-**風險**：低 — 純驗證
+- `grep -r "codex" packages/opencode/src/ --include="*.ts"` 只出現 `"codex"` string literal（provider ID 比對）和 model definitions（legacy 共存），不出現 import/硬編碼邏輯
+- codex-provider package 零 opencode core dependency（只依賴 `@ai-sdk/provider` types）
+- daemon 正常運作，codex 功能正常
 
 ---
 
