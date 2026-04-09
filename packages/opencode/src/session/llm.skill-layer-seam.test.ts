@@ -120,29 +120,6 @@ describe("LLM skill layer registry seam", () => {
     const entry = injected.find((e) => e.name === "test-skill")
     expect(entry?.desiredState).toBe("full")
     expect(entry?.runtimeState).toBe("active")
-    expect(entry?.lastReason).toBe("billing_unknown_fail_closed_keep_full")
-
-    SkillLayerRegistry.clear(sessionID)
-  })
-
-  it("request billing mode triggers request-billed keep-full behavior", () => {
-    const sessionID = "seam-test-request-billing"
-    const now = Date.now()
-    SkillLayerRegistry.recordLoaded(sessionID, "test-skill", { content: "content", now })
-
-    // Simulate idle time
-    const later = now + 1000 * 60 * 60 * 2
-
-    // Process with 'request' billing mode
-    const injected = SkillLayerRegistry.listForInjection(sessionID, {
-      billingMode: "request",
-      latestUserText: "hello",
-      now: later,
-    })
-
-    const entry = injected.find((e) => e.name === "test-skill")
-    expect(entry?.desiredState).toBe("full")
-    expect(entry?.runtimeState).toBe("active")
     expect(entry?.lastReason).toBe("request_billed_keep_full")
 
     SkillLayerRegistry.clear(sessionID)

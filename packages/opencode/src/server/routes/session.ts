@@ -103,6 +103,11 @@ const SkillLayerActionSchema = z.object({
   action: z.enum(["pin", "unpin", "promote", "demote", "unload"]),
 })
 
+const SkillLayerActionResponseSchema = z.object({
+  ok: z.boolean(),
+  entries: SkillLayerInfoSchema.array(),
+})
+
 const log = Log.create({ service: "server" })
 const SESSION_ROUTE_DEBUG_ENABLED = false
 
@@ -407,7 +412,10 @@ export const SessionRoutes = lazy(() =>
         const username = RequestUser.username()
         if (username && UserDaemonManager.routeSessionReadEnabled()) {
           const response = await UserDaemonManager.callSessionChildren<Session.Info[]>(username, sessionID)
-          if (response.ok && Array.isArray(response.data)) return c.json(response.data)
+          if (response.ok) {
+            const parsed = SkillLayerInfoSchema.array().safeParse(response.data)
+            if (parsed.success) return c.json(parsed.data)
+          }
           return c.json(
             {
               code: response.ok ? "DAEMON_INVALID_PAYLOAD" : response.error.code,
@@ -449,7 +457,10 @@ export const SessionRoutes = lazy(() =>
         const username = RequestUser.username()
         if (username && UserDaemonManager.routeSessionReadEnabled()) {
           const response = await UserDaemonManager.callSessionTodo<z.infer<typeof Todo.Info>[]>(username, sessionID)
-          if (response.ok && Array.isArray(response.data)) return c.json(response.data)
+          if (response.ok) {
+            const parsed = SkillLayerInfoSchema.array().safeParse(response.data)
+            if (parsed.success) return c.json(parsed.data)
+          }
           return c.json(
             {
               code: response.ok ? "DAEMON_INVALID_PAYLOAD" : response.error.code,
@@ -514,12 +525,22 @@ export const SessionRoutes = lazy(() =>
         const sessionID = c.req.valid("param").sessionID
         const username = RequestUser.username()
         if (username && UserDaemonManager.routeSessionReadEnabled()) {
+          const response = await UserDaemonManager.callSessionSkillLayerList<z.infer<typeof SkillLayerInfoSchema>[]>(
+            username,
+            sessionID,
+          )
+          if (response.ok) {
+            const parsed = SkillLayerInfoSchema.array().safeParse(response.data)
+            if (parsed.success) return c.json(parsed.data)
+          }
           return c.json(
             {
-              code: "NOT_IMPLEMENTED",
-              message: "session skill-layer list is not yet available via user-daemon routing",
+              code: response.ok ? "DAEMON_INVALID_PAYLOAD" : response.error.code,
+              message: response.ok
+                ? "daemon session.skillLayer.list payload failed schema validation"
+                : response.error.message,
             },
-            501,
+            503,
           )
         }
         await Session.get(sessionID)
@@ -537,12 +558,7 @@ export const SessionRoutes = lazy(() =>
             description: "Mutation result",
             content: {
               "application/json": {
-                schema: resolver(
-                  z.object({
-                    ok: z.boolean(),
-                    entries: SkillLayerInfoSchema.array(),
-                  }),
-                ),
+                schema: resolver(SkillLayerActionResponseSchema),
               },
             },
           },
@@ -562,12 +578,22 @@ export const SessionRoutes = lazy(() =>
         const body = c.req.valid("json")
         const username = RequestUser.username()
         if (username && UserDaemonManager.routeSessionMutationEnabled()) {
+          const response = await UserDaemonManager.callSessionSkillLayerAction<{
+            ok: boolean
+            entries: z.infer<typeof SkillLayerInfoSchema>[]
+          }>(username, params.sessionID, params.name, body)
+          if (response.ok) {
+            const parsed = SkillLayerActionResponseSchema.safeParse(response.data)
+            if (parsed.success) return c.json(parsed.data)
+          }
           return c.json(
             {
-              code: "NOT_IMPLEMENTED",
-              message: "session skill-layer action is not yet available via user-daemon routing",
+              code: response.ok ? "DAEMON_INVALID_PAYLOAD" : response.error.code,
+              message: response.ok
+                ? "daemon session.skillLayer.action payload failed schema validation"
+                : response.error.message,
             },
-            501,
+            503,
           )
         }
 

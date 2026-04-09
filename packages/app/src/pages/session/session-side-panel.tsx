@@ -38,6 +38,21 @@ import "./file-pane-scroll.css"
 import { useGlobalSync } from "@/context/global-sync"
 import { resolveTelemetryAccountLabel, useSessionTelemetryHydration } from "./session-telemetry-ui"
 
+type SkillLayerState = {
+  name: string
+  loadedAt: number
+  lastUsedAt: number
+  runtimeState: "active" | "idle" | "sticky" | "summarized" | "unloaded"
+  desiredState: "full" | "summary" | "absent"
+  pinned: boolean
+  lastReason: string
+}
+
+type SkillLayerActionResponse = {
+  ok: boolean
+  entries: SkillLayerState[]
+}
+
 /** Dropdown menu replacing the "+" button — includes Open File, Download, Open in New Tab */
 function FileTabMenu(props: {
   file: ReturnType<typeof useFile>
@@ -636,16 +651,30 @@ export function SessionSidePanel(props: {
                       fallback={<div class="text-12-regular text-text-weak px-1">No active session.</div>}
                     >
                       {(() => {
-                        const [layers, setLayers] = createSignal<any[]>([])
+                        const [layers, setLayers] = createSignal<SkillLayerState[]>([])
                         const [error, setError] = createSignal<string | null>(null)
+                        const formatTimestamp = (value?: number) => {
+                          if (!value) return "—"
+                          return new Date(value).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        }
                         const fetchLayers = async () => {
                           const sid = activeSessionID()
                           if (!sid) return
                           try {
                             const res = await sdk.fetch(`${sdk.url}/api/v2/session/${sid}/skill-layer`)
-                            if (res.ok) setLayers(await res.json())
+                            if (!res.ok) {
+                              const body = await res.json().catch(() => ({ message: "Failed to load skill layers." }))
+                              throw new Error(body.message || "Failed to load skill layers.")
+                            }
+                            setError(null)
+                            const payload = (await res.json()) as SkillLayerState[]
+                            setLayers(payload)
                           } catch (e) {
                             console.error(e)
+                            setError(e instanceof Error ? e.message : "Failed to load skill layers.")
                           }
                         }
                         const runAction = async (name: string, action: string) => {
@@ -659,7 +688,8 @@ export function SessionSidePanel(props: {
                               body: JSON.stringify({ action }),
                             })
                             if (!res.ok) throw new Error((await res.json()).message || "Action failed")
-                            setLayers((await res.json()).entries)
+                            const payload = (await res.json()) as SkillLayerActionResponse
+                            setLayers(payload.entries)
                           } catch (e: any) {
                             setError(e.message)
                           }
@@ -678,7 +708,7 @@ export function SessionSidePanel(props: {
                               <For each={layers()}>
                                 {(layer) => (
                                   <div class="flex flex-col gap-1 p-1.5 rounded hover:bg-surface-tertiary">
-                                    <div class="flex items-center justify-between min-w-0">
+                                    <div class="flex items-center justify-between min-w-0 gap-2">
                                       <span class="text-12-medium text-text-strong truncate" title={layer.name}>
                                         {layer.name}
                                         <Show when={layer.pinned}>
@@ -714,7 +744,7 @@ export function SessionSidePanel(props: {
                                     </div>
                                     <div class="flex items-center gap-2 text-11-regular text-text-weak">
                                       <span
-                                        class={{
+                                        classList={{
                                           "text-success": layer.runtimeState === "active",
                                           "text-info": layer.runtimeState === "sticky",
                                           "text-warning": layer.runtimeState === "summarized",
@@ -724,6 +754,9 @@ export function SessionSidePanel(props: {
                                       </span>
                                       <span>{layer.desiredState}</span>
                                       <span class="truncate max-w-[100px]">{layer.lastReason}</span>
+                                    </div>
+                                    <div class="text-11-regular text-text-weak">
+                                      last used {formatTimestamp(layer.lastUsedAt)}
                                     </div>
                                   </div>
                                 )}

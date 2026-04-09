@@ -30,7 +30,7 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
           "",
           "The skill will inject detailed instructions, workflows, and access to bundled resources (scripts, references, templates) into the conversation context.",
           "",
-          'Tool output includes a `<skill_content name="...">` block with the loaded content.',
+          'Tool output includes a `<skill_loaded name="...">` block while the actual skill content is injected through session-managed skill layers.',
           "",
           "The following skills provide specialized sets of instructions for particular tasks",
           "Invoke this tool to load a skill when a task matches one of the available skills listed below:",
