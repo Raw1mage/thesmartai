@@ -173,7 +173,11 @@ const useMcpToggle = (input: {
   return { loading, toggle }
 }
 
-export function SessionStatusSections(props: { todoContent?: JSX.Element; monitorContent?: JSX.Element }) {
+export function SessionStatusSections(props: {
+  todoContent?: JSX.Element
+  monitorContent?: JSX.Element
+  skillsContent?: JSX.Element
+}) {
   const sync = useSync()
   const sdk = useSDK()
   const server = useServer()
@@ -200,9 +204,14 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
   const defaultServer = useDefaultServerUrl(platform.getDefaultServerUrl)
   const mcpNames = createMemo(() => Object.keys(sync.data.mcp ?? {}).sort((a, b) => a.localeCompare(b)))
   const mcpStatus = (name: string) => sync.data.mcp?.[name]?.status
-  type StatusCardKey = "monitor" | "todo" | "servers" | "mcp" | "llm"
+  type StatusCardKey = "monitor" | "todo" | "skills" | "servers" | "mcp" | "llm"
 
-  const renderSection = (key: StatusCardKey, title: JSX.Element | string, children: JSX.Element, options?: { hidden?: boolean }) => {
+  const renderSection = (
+    key: StatusCardKey,
+    title: JSX.Element | string,
+    children: JSX.Element,
+    options?: { hidden?: boolean },
+  ) => {
     if (options?.hidden) return null
     return (
       <section class="flex flex-col gap-2 rounded-md border border-border-weak-base bg-surface-panel px-3 py-3">
@@ -264,25 +273,35 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
     // LLM status card — current model + recent 5 status log (deduplicated)
     const currentModel = local.model.current()
     const familyKey = currentModel ? providerKeyOf(currentModel.provider.id) : undefined
-    const activeAccountId = familyKey
-      ? globalSync.data.account_families?.[familyKey]?.activeAccount
-      : undefined
+    const activeAccountId = familyKey ? globalSync.data.account_families?.[familyKey]?.activeAccount : undefined
     const history = llmHistory()
 
     const sessionId = params.id
-    const transport = sessionId ? (sync.data as any).codex_transport?.[sessionId] as "ws" | "http" | undefined : undefined
+    const transport = sessionId
+      ? ((sync.data as any).codex_transport?.[sessionId] as "ws" | "http" | undefined)
+      : undefined
 
     result.push({
       key: "llm",
-      title: (<>LLM 狀態{transport && (<span class={transport === "ws" ? "text-emerald-400" : "text-amber-400"}>{" "}{transport.toUpperCase()}</span>)}</>) as JSX.Element,
+      title: (
+        <>
+          LLM 狀態
+          {transport && (
+            <span class={transport === "ws" ? "text-emerald-400" : "text-amber-400"}> {transport.toUpperCase()}</span>
+          )}
+        </>
+      ) as JSX.Element,
       content: (
         <div class="flex flex-col gap-1">
           {/* Recent status log — last 5 deduplicated entries */}
-          <Show when={history.length > 0} fallback={
-            <div class="flex items-center gap-2 py-1 px-1">
-              <span class="text-12-regular text-text-weak">No recent events</span>
-            </div>
-          }>
+          <Show
+            when={history.length > 0}
+            fallback={
+              <div class="flex items-center gap-2 py-1 px-1">
+                <span class="text-12-regular text-text-weak">No recent events</span>
+              </div>
+            }
+          >
             <For each={history}>
               {(h) => {
                 if (h.state === "rotated") {
@@ -291,7 +310,8 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
                       <div class="flex items-center gap-1.5">
                         <div class="size-1.5 rounded-full bg-icon-warning-base shrink-0" />
                         <span class="text-11-regular text-text-warning truncate">
-                          {h.providerId}/{shortModel(h.modelId)}{h.accountId ? ` (${resolveAccountLabel(h.accountId, h.providerId)})` : ""} rate limited
+                          {h.providerId}/{shortModel(h.modelId)}
+                          {h.accountId ? ` (${resolveAccountLabel(h.accountId, h.providerId)})` : ""} rate limited
                         </span>
                         <span class="text-11-regular text-text-weak shrink-0">{formatTime(h.timestamp)}</span>
                       </div>
@@ -314,7 +334,8 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
                     <div class="flex items-center gap-1.5 py-0.5 px-1">
                       <div class="size-1.5 rounded-full bg-icon-success-base shrink-0" />
                       <span class="text-11-regular text-success truncate flex-1">
-                        {h.providerId}/{shortModel(h.modelId)}{h.accountId ? ` (${resolveAccountLabel(h.accountId, h.providerId)})` : ""} OK
+                        {h.providerId}/{shortModel(h.modelId)}
+                        {h.accountId ? ` (${resolveAccountLabel(h.accountId, h.providerId)})` : ""} OK
                       </span>
                       <span class="text-11-regular text-text-weak shrink-0">{formatTime(h.timestamp)}</span>
                     </div>
@@ -332,7 +353,8 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
                         }}
                       />
                       <span class="text-11-regular text-text-base truncate flex-1">
-                        {h.providerId}/{shortModel(h.modelId)}{h.accountId ? ` (${resolveAccountLabel(h.accountId, h.providerId)})` : ""}
+                        {h.providerId}/{shortModel(h.modelId)}
+                        {h.accountId ? ` (${resolveAccountLabel(h.accountId, h.providerId)})` : ""}
                       </span>
                       <span
                         classList={{
@@ -362,6 +384,7 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
     if (props.monitorContent) result.push({ key: "monitor", title: "工作監控", content: props.monitorContent })
     if (props.todoContent)
       result.push({ key: "todo", title: language.t("session.tools.todo"), content: props.todoContent })
+    if (props.skillsContent) result.push({ key: "skills", title: "已載技能", content: props.skillsContent })
     result.push({
       key: "servers",
       title: language.t("status.popover.tab.servers"),
@@ -459,7 +482,10 @@ export function SessionStatusSections(props: { todoContent?: JSX.Element; monito
   )
 }
 
-function SortableStatusSection(props: { id: "monitor" | "todo" | "servers" | "mcp" | "llm"; children: JSX.Element }) {
+function SortableStatusSection(props: {
+  id: "monitor" | "todo" | "skills" | "servers" | "mcp" | "llm"
+  children: JSX.Element
+}) {
   const sortable = createSortable(props.id)
   return (
     <div use:sortable classList={{ "opacity-40": sortable.isActiveDraggable }}>

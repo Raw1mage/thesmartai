@@ -241,14 +241,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           mode: "changes" as "files" | "status" | "changes" | "context",
         },
         statusSidebar: {
-          order: ["servers", "monitor", "todo", "mcp", "llm"] as Array<"monitor" | "todo" | "servers" | "mcp" | "llm">,
+          order: ["servers", "monitor", "todo", "skills", "mcp", "llm"] as Array<
+            "monitor" | "todo" | "skills" | "servers" | "mcp" | "llm"
+          >,
           expanded: {
             llm: true,
             monitor: true,
             todo: true,
+            skills: true,
             servers: true,
             mcp: true,
-          } as Record<"monitor" | "todo" | "servers" | "mcp" | "llm", boolean>,
+          } as Record<"monitor" | "todo" | "skills" | "servers" | "mcp" | "llm", boolean>,
         },
         contextSidebar: {
           order: [...CONTEXT_SIDEBAR_ORDER_DEFAULT] as ContextSidebarKey[],
@@ -694,17 +697,28 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       statusSidebar: {
-        order: createMemo(() => store.statusSidebar?.order ?? ["servers", "monitor", "todo", "mcp", "llm"]),
-        setOrder(order: Array<"monitor" | "todo" | "servers" | "mcp" | "llm">) {
+        order: createMemo(() =>
+          (
+            store.statusSidebar?.order?.filter(
+              (key): key is "monitor" | "todo" | "skills" | "servers" | "mcp" | "llm" =>
+                ["servers", "monitor", "todo", "skills", "mcp", "llm"].includes(key as any),
+            ) ?? ["servers", "monitor", "todo", "skills", "mcp", "llm"]
+          ).concat(
+            ["servers", "monitor", "todo", "skills", "mcp", "llm"].filter(
+              (key) => !(store.statusSidebar?.order ?? []).includes(key),
+            ),
+          ),
+        ),
+        setOrder(order: Array<"monitor" | "todo" | "skills" | "servers" | "mcp" | "llm">) {
           setStore("statusSidebar", "order", order)
         },
-        expanded(key: "monitor" | "todo" | "servers" | "mcp" | "llm") {
+        expanded(key: "monitor" | "todo" | "skills" | "servers" | "mcp" | "llm") {
           return () => store.statusSidebar?.expanded?.[key] ?? true
         },
-        setExpanded(key: "monitor" | "todo" | "servers" | "mcp" | "llm", value: boolean) {
+        setExpanded(key: "monitor" | "todo" | "skills" | "servers" | "mcp" | "llm", value: boolean) {
           setStore("statusSidebar", "expanded", key, value)
         },
-        toggleExpanded(key: "monitor" | "todo" | "servers" | "mcp" | "llm") {
+        toggleExpanded(key: "monitor" | "todo" | "skills" | "servers" | "mcp" | "llm") {
           setStore("statusSidebar", "expanded", key, (value) => !value)
         },
       },

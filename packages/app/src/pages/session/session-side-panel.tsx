@@ -241,7 +241,6 @@ export function SessionSidePanel(props: {
   const params = useParams()
   const sideMode = createMemo(() => props.layout.fileTree.mode())
   const activeSessionID = createMemo(() => props.vm.info()?.id)
-  const [layersExpanded, setLayersExpanded] = createSignal(true)
   const todos = createMemo(() => {
     const sessionID = activeSessionID()
     if (!sessionID) return undefined
@@ -639,18 +638,7 @@ export function SessionSidePanel(props: {
                     </Show>
                   </Show>
                 }
-              />
-              {/* Loaded Skills Card */}
-              <div class="px-3 pb-3">
-                <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-2">
-                  <button
-                    class="flex items-center justify-between gap-2 min-w-0 text-left"
-                    onClick={() => setLayersExpanded((v) => !v)}
-                    aria-expanded={layersExpanded()}
-                  >
-                    <div class="text-11-medium uppercase tracking-wide text-text-weak">已載技能</div>
-                    <div class="text-11-medium text-text-weak">{layersExpanded() ? "▾" : "▸"}</div>
-                  </button>
+                skillsContent={
                   <Show
                     when={activeSessionID()}
                     fallback={<div class="text-12-regular text-text-weak">No active session.</div>}
@@ -702,79 +690,77 @@ export function SessionSidePanel(props: {
                       createEffect(() => fetchLayers())
 
                       return (
-                        <Show when={layersExpanded()}>
-                          <>
-                            <Show when={error()}>
-                              <div class="text-11-regular text-warning">{error()}</div>
-                            </Show>
-                            <Show
-                              when={layers().length > 0}
-                              fallback={<div class="text-12-regular text-text-weak">No managed skills.</div>}
-                            >
-                              <For each={layers()}>
-                                {(layer) => (
-                                  <div class="flex flex-col gap-1 p-1.5 rounded hover:bg-surface-tertiary">
-                                    <div class="flex items-center justify-between min-w-0 gap-2">
-                                      <span class="text-12-medium text-text-strong truncate" title={layer.name}>
-                                        {layer.name}
-                                        <Show when={layer.pinned}>
-                                          <span class="ml-1 text-warning">★</span>
-                                        </Show>
-                                      </span>
-                                      <div class="flex gap-1 shrink-0">
-                                        <button
-                                          class="text-11-medium text-text-weak hover:text-text-strong"
-                                          onClick={() => runAction(layer.name, layer.pinned ? "unpin" : "pin")}
-                                        >
-                                          {layer.pinned ? "Unpin" : "Pin"}
-                                        </button>
-                                        <button
-                                          class="text-11-medium text-text-weak hover:text-text-strong"
-                                          onClick={() => runAction(layer.name, "promote")}
-                                        >
-                                          Full
-                                        </button>
-                                        <button
-                                          class="text-11-medium text-text-weak hover:text-text-strong"
-                                          onClick={() => runAction(layer.name, "demote")}
-                                        >
-                                          Sum
-                                        </button>
-                                        <button
-                                          class="text-11-medium text-text-weak hover:text-warning"
-                                          onClick={() => runAction(layer.name, "unload")}
-                                        >
-                                          Drop
-                                        </button>
-                                      </div>
-                                    </div>
-                                    <div class="flex items-center gap-2 text-11-regular text-text-weak">
-                                      <span
-                                        classList={{
-                                          "text-success": layer.runtimeState === "active",
-                                          "text-info": layer.runtimeState === "sticky",
-                                          "text-warning": layer.runtimeState === "summarized",
-                                        }}
+                        <>
+                          <Show when={error()}>
+                            <div class="text-11-regular text-warning">{error()}</div>
+                          </Show>
+                          <Show
+                            when={layers().length > 0}
+                            fallback={<div class="text-12-regular text-text-weak">No managed skills.</div>}
+                          >
+                            <For each={layers()}>
+                              {(layer) => (
+                                <div class="flex flex-col gap-1 p-1.5 rounded hover:bg-surface-tertiary">
+                                  <div class="flex items-center justify-between min-w-0 gap-2">
+                                    <span class="text-12-medium text-text-strong truncate" title={layer.name}>
+                                      {layer.name}
+                                      <Show when={layer.pinned}>
+                                        <span class="ml-1 text-warning">★</span>
+                                      </Show>
+                                    </span>
+                                    <div class="flex gap-1 shrink-0">
+                                      <button
+                                        class="text-11-medium text-text-weak hover:text-text-strong"
+                                        onClick={() => runAction(layer.name, layer.pinned ? "unpin" : "pin")}
                                       >
-                                        [{layer.runtimeState}]
-                                      </span>
-                                      <span>{layer.desiredState}</span>
-                                      <span class="truncate max-w-[100px]">{layer.lastReason}</span>
-                                    </div>
-                                    <div class="text-11-regular text-text-weak">
-                                      last used {formatTimestamp(layer.lastUsedAt)}
+                                        {layer.pinned ? "Unpin" : "Pin"}
+                                      </button>
+                                      <button
+                                        class="text-11-medium text-text-weak hover:text-text-strong"
+                                        onClick={() => runAction(layer.name, "promote")}
+                                      >
+                                        Full
+                                      </button>
+                                      <button
+                                        class="text-11-medium text-text-weak hover:text-text-strong"
+                                        onClick={() => runAction(layer.name, "demote")}
+                                      >
+                                        Sum
+                                      </button>
+                                      <button
+                                        class="text-11-medium text-text-weak hover:text-warning"
+                                        onClick={() => runAction(layer.name, "unload")}
+                                      >
+                                        Drop
+                                      </button>
                                     </div>
                                   </div>
-                                )}
-                              </For>
-                            </Show>
-                          </>
-                        </Show>
+                                  <div class="flex items-center gap-2 text-11-regular text-text-weak">
+                                    <span
+                                      classList={{
+                                        "text-success": layer.runtimeState === "active",
+                                        "text-info": layer.runtimeState === "sticky",
+                                        "text-warning": layer.runtimeState === "summarized",
+                                      }}
+                                    >
+                                      [{layer.runtimeState}]
+                                    </span>
+                                    <span>{layer.desiredState}</span>
+                                    <span class="truncate max-w-[100px]">{layer.lastReason}</span>
+                                  </div>
+                                  <div class="text-11-regular text-text-weak">
+                                    last used {formatTimestamp(layer.lastUsedAt)}
+                                  </div>
+                                </div>
+                              )}
+                            </For>
+                          </Show>
+                        </>
                       )
                     })()}
                   </Show>
-                </div>
-              </div>
+                }
+              />
             </Show>
             <Show when={sideMode() === "changes"}>
               <div class="relative flex-1 min-h-0 overflow-hidden">{props.changesPanel()}</div>
