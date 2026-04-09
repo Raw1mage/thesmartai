@@ -1781,11 +1781,11 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           workerOk = false
           workerError = err instanceof Error ? err.message : String(err)
           mark("worker_done_rejected", { error: workerError })
+        } finally {
+          // Always clear active child UI state — the floating status bar
+          // must disappear regardless of how the worker finishes.
+          await SessionActiveChild.set(ctx.sessionID, null).catch(() => undefined)
         }
-
-        // Clear active child UI state immediately — no more depending on
-        // Bus subscriber to do this.
-        await SessionActiveChild.set(ctx.sessionID, null).catch(() => undefined)
 
         // Reconcile linked todo
         if (linkedTodo?.id) {
@@ -1810,6 +1810,11 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           },
         }
       } catch (error: unknown) {
+        // Catch-all: if anything throws before/after await run.done,
+        // still clear the floating bar so it doesn't stick.
+        if (assignedWorkerID) {
+          await SessionActiveChild.set(ctx.sessionID, null).catch(() => undefined)
+        }
         if (linkedTodo?.id) {
           await Todo.reconcileProgress({
             sessionID: ctx.sessionID,
