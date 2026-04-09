@@ -3,6 +3,8 @@ import { createHash } from "node:crypto"
 import type { Auth as SDKAuth } from "@opencode-ai/sdk"
 import { Log } from "../util/log"
 import { generatePKCE } from "@openauthjs/openauth/pkce"
+import { createClaudeCode } from "@opencode-ai/claude-provider/provider"
+import { isClaudeCredentials } from "@opencode-ai/claude-provider/auth"
 
 const log = Log.create({ service: "plugin.claude-cli" })
 
@@ -542,6 +544,24 @@ export async function AnthropicAuthPlugin(input: PluginInput): Promise<Hooks> {
             }
 
             return response
+          },
+          async getModel(_sdk: any, modelID: string, options?: Record<string, any>) {
+            const credentials = options as any
+            const provider = createClaudeCode({
+              credentials: isClaudeCredentials(credentials)
+                ? credentials
+                : {
+                    type: (credentials?.type as "oauth" | "subscription") ?? "subscription",
+                    refresh: credentials?.refresh ?? "",
+                    access: credentials?.access,
+                    expires: credentials?.expires,
+                    orgID: credentials?.orgID,
+                    email: credentials?.email,
+                    accountId: credentials?.accountId,
+                  },
+              enableCaching: true,
+            })
+            return provider.languageModel(modelID)
           },
         }
       },

@@ -34,9 +34,20 @@ export type PluginInput = {
 
 export type Plugin = (input: PluginInput) => Promise<Hooks>
 
+/**
+ * Model factory function returned by auth loader.
+ * When provided, core uses this to create LanguageModelV2 instances
+ * instead of requiring a CUSTOM_LOADER entry.
+ *
+ * @param sdk - The AI SDK provider instance (may be null for native providers)
+ * @param modelID - The model ID to instantiate
+ * @param options - Merged provider options (credentials + config)
+ */
+export type AuthModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
+
 export type AuthHook = {
   provider: string
-  loader?: (auth: () => Promise<Auth>, provider: Provider) => Promise<Record<string, any>>
+  loader?: (auth: () => Promise<Auth>, provider: Provider) => Promise<Record<string, any> & { getModel?: AuthModelLoader }>
   methods: (
     | {
         type: "oauth"
@@ -232,6 +243,27 @@ export interface Hooks {
   "experimental.session.compacting"?: (
     input: { sessionID: string },
     output: { context: string[]; prompt?: string },
+  ) => Promise<void>
+  /**
+   * Called when session needs compaction. Allows provider plugins to handle
+   * compaction server-side (e.g. Codex /responses/compact endpoint).
+   *
+   * - If plugin sets `compactedItems` to a non-null array, core uses those items
+   *   as the canonical next context window and skips LLM-based compaction.
+   * - If `compactedItems` remains null, core falls through to default LLM compaction.
+   * - `summary` should be a human-readable text for the SharedContext marker.
+   */
+  "session.compact"?: (
+    input: {
+      sessionID: string
+      model: { providerId: string; modelID: string; accountId?: string }
+      conversationItems: unknown[]
+      instructions: string
+    },
+    output: {
+      compactedItems: unknown[] | null
+      summary: string | null
+    },
   ) => Promise<void>
   "experimental.text.complete"?: (
     input: { sessionID: string; messageID: string; partID: string },

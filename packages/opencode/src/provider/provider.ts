@@ -1641,7 +1641,13 @@ export namespace Provider {
           log.info("loading plugin for family", { family })
           const options = await plugin.auth.loader(() => loadAuth(family), providers[family])
           if (options) {
-            providers[family].options = mergeDeep(providers[family].options, options) as Info["options"]
+            // Extract getModel from auth loader result (native providers provide their own model factory)
+            const { getModel, ...rest } = options as Record<string, any> & { getModel?: CustomModelLoader }
+            if (getModel) {
+              modelLoaders[family] = getModel
+              log.info("auth loader provided getModel for family", { family })
+            }
+            providers[family].options = mergeDeep(providers[family].options, rest) as Info["options"]
           }
         } else {
           log.warn("family provider not found in providers list, skipping plugin load", { family })
@@ -1660,7 +1666,10 @@ export namespace Provider {
           const accountOptions = await plugin.auth.loader(() => loadAuth(accountId), providers[accountId])
           debugCheckpoint("provider", "account loader end", { family, accountId, hasResult: !!accountOptions })
           if (accountOptions) {
-            providers[accountId].options = mergeDeep(providers[accountId].options, accountOptions) as Info["options"]
+            const { getModel: acctGetModel, ...acctRest } = accountOptions as Record<string, any> & { getModel?: CustomModelLoader }
+            // Account-level getModel not needed — accounts inherit from family's modelLoaders
+            // via canonicalProviderId resolution in getLanguage(). Only merge options.
+            providers[accountId].options = mergeDeep(providers[accountId].options, acctRest) as Info["options"]
           }
         })
         await Promise.all(accountLoaderPromises)
