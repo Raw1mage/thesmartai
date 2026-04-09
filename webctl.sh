@@ -1752,13 +1752,21 @@ do_status() {
     local daemon_header=0
     for dir in /run/user/*/opencode /tmp/opencode-*; do
         [ -d "${dir}" ] || continue
+        # Resolve PID from daemon.json (preferred) or daemon.pid (fallback)
+        local pid="" sock=""
         local json="${dir}/daemon.json"
-        [ -f "${json}" ] || continue
-        local info
-        info="$(_daemon_read_discovery "${dir}")" || continue
-        local pid sock
-        pid="${info%% *}"
-        sock="${info#* }"
+        if [ -f "${json}" ]; then
+            local info
+            info="$(_daemon_read_discovery "${dir}")" || continue
+            pid="${info%% *}"
+            sock="${info#* }"
+        elif [ -f "${dir}/daemon.pid" ]; then
+            pid="$(cat "${dir}/daemon.pid" 2>/dev/null | tr -d '[:space:]')"
+            sock="${dir}/daemon.sock"
+        else
+            continue
+        fi
+        [ -n "${pid}" ] || continue
         if [ "${daemon_header}" -eq 0 ]; then
             printf "  %-12s %-8s %-6s %-6s %s\n" "USER" "PID" "ALIVE" "MODE" "SOCKET"
             printf "  %-12s %-8s %-6s %-6s %s\n" "----" "---" "-----" "----" "------"
@@ -2423,13 +2431,23 @@ do_daemon_killall() {
 
     for dir in /run/user/*/opencode /tmp/opencode-*; do
         [ -d "${dir}" ] || continue
-        local json="${dir}/daemon.json"
-        [ -f "${json}" ] || continue
 
-        local info
-        info="$(_daemon_read_discovery "${dir}")" || continue
-        local pid="${info%% *}"
-        local sock="${info#* }"
+        # Resolve PID from daemon.json (preferred) or daemon.pid (fallback).
+        # Some daemons (e.g. gateway-spawned) only write daemon.pid.
+        local pid="" sock=""
+        local json="${dir}/daemon.json"
+        if [ -f "${json}" ]; then
+            local info
+            info="$(_daemon_read_discovery "${dir}")" || continue
+            pid="${info%% *}"
+            sock="${info#* }"
+        elif [ -f "${dir}/daemon.pid" ]; then
+            pid="$(cat "${dir}/daemon.pid" 2>/dev/null | tr -d '[:space:]')"
+            sock="${dir}/daemon.sock"
+        else
+            continue
+        fi
+        [ -n "${pid}" ] || continue
 
         # Resolve username for display
         local username="?"
