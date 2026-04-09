@@ -85,10 +85,10 @@ describe("LLM skill layer registry seam", () => {
     const sessionID = "seam-test-unknown-billing"
     const now = Date.now()
     SkillLayerRegistry.recordLoaded(sessionID, "test-skill", { content: "content", now })
-    
+
     // Simulate idle time that would normally trigger unload under 'token' billing
     const later = now + 1000 * 60 * 60 * 2 // 2 hours later
-    
+
     // Process with 'unknown' billing mode
     const injected = SkillLayerRegistry.listForInjection(sessionID, {
       billingMode: "unknown",
@@ -96,7 +96,7 @@ describe("LLM skill layer registry seam", () => {
       now: later,
     })
 
-    const entry = injected.find(e => e.name === "test-skill")
+    const entry = injected.find((e) => e.name === "test-skill")
     expect(entry?.desiredState).toBe("full")
     expect(entry?.runtimeState).toBe("active")
     expect(entry?.lastReason).toBe("billing_unknown_fail_closed_keep_full")
@@ -108,83 +108,21 @@ describe("LLM skill layer registry seam", () => {
     SkillLayerRegistry.recordLoaded(sessionID, "test-skill", { content: "content", now })
 
     // Simulate idle time
-    const later = now + 1000 * 60 * 60 * 2 
-    
+    const later = now + 1000 * 60 * 60 * 2
+
     // Process with 'request' billing mode
     const injected = SkillLayerRegistry.listForInjection(sessionID, {
       billingMode: "request",
       latestUserText: "hello",
       now: later,
     })
-
-    const entry = injected.find(e => e.name === "test-skill")
-    expect(entry?.desiredState).toBe("full")
-    expect(entry?.runtimeState).toBe("active")
-    expect(entry?.lastReason).toBe("request_billed_keep_full")
-  })
-})
-
-    const entry = injected.find(e => e.name === "test-skill")
-    expect(entry?.desiredState).toBe("full")
-    expect(entry?.runtimeState).toBe("active")
-    expect(entry?.lastReason).toBe("billing_unknown_fail_closed_keep_full")
-  })
-
-  it("request billing mode triggers request-billed keep-full behavior", () => {
-    const sessionID = "seam-test-request-billing"
-    const now = Date.now()
-    SkillLayerRegistry.recordLoaded(sessionID, "test-skill", { content: "content", now })
-
-    // Simulate idle time
-    const later = now + 1000 * 60 * 60 * 2 
-    
-    // Process with 'request' billing mode
-    const injected = SkillLayerRegistry.listForInjection(sessionID, {
-      billingMode: "request",
-      latestUserText: "hello",
-      now: later,
-    })
-
-    const entry = injected.find(e => e.name === "test-skill")
-    expect(entry?.desiredState).toBe("full")
-    expect(entry?.runtimeState).toBe("active")
-    expect(entry?.lastReason).toBe("request_billed_keep_full")
-  })
-})
-
-    const entry = injected.find(e => e.name === "test-skill")
-    expect(entry?.desiredState).toBe("full")
-    expect(entry?.runtimeState).toBe("active")
-    expect(entry?.lastReason).toBe("billing_unknown_fail_closed_keep_full")
-  })
-
-  it("request billing mode triggers request-billed keep-full behavior", () => {
-    const sessionID = "seam-test-request-billing"
-    const now = Date.now()
-    SkillLayerRegistry.recordLoaded(sessionID, "test-skill", { content: "content", now })
-
-    // Simulate idle time
-    const later = now + 1000 * 60 * 60 * 2 
-    
-    // Process with 'request' billing mode
-    const injected = SkillLayerRegistry.listForInjection(sessionID, {
-      billingMode: "request",
-      latestUserText: "hello",
-      now: later,
-    })
-
-    const entry = injected.find(e => e.name === "test-skill")
-    expect(entry?.desiredState).toBe("full")
-    expect(entry?.runtimeState).toBe("active")
-    expect(entry?.lastReason).toBe("request_billed_keep_full")
-  })
 
     const entry = injected.find((e) => e.name === "test-skill")
     expect(entry?.desiredState).toBe("full")
     expect(entry?.runtimeState).toBe("active")
     expect(entry?.lastReason).toBe("billing_unknown_fail_closed_keep_full")
 
-    SkillLayerRegistry.sessionDeleted(sessionID)
+    SkillLayerRegistry.clear(sessionID)
   })
 
   it("request billing mode triggers request-billed keep-full behavior", () => {
@@ -207,6 +145,6 @@ describe("LLM skill layer registry seam", () => {
     expect(entry?.runtimeState).toBe("active")
     expect(entry?.lastReason).toBe("request_billed_keep_full")
 
-    SkillLayerRegistry.sessionDeleted(sessionID)
+    SkillLayerRegistry.clear(sessionID)
   })
 })
