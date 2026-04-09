@@ -2,10 +2,7 @@ import { Bus } from "../index"
 import { SessionActiveChild, TaskWorkerEvent } from "@/tool/task"
 import { Session } from "@/session"
 import { MessageV2 } from "@/session/message-v2"
-import { Identifier } from "@/id/id"
-import { Todo } from "@/session/todo"
 import { ProcessSupervisor } from "@/process/supervisor"
-import { enqueuePendingContinuation, resumePendingContinuations } from "@/session/workflow-runner"
 import { Instance } from "@/project/instance"
 import { SharedContext } from "@/session/shared-context"
 import { Log } from "@/util/log"
@@ -43,17 +40,20 @@ async function enqueueParentContinuation(input: {
     ProcessSupervisor.kill(input.toolCallID)
   }
 
+  // Always clear active child and logical task, even on early-exit errors.
+  // Previously early exits skipped clearActiveChild, leaving the UI stuck
+  // in "subagent running" state indefinitely.
+  try {
+
   log.info("[TRACE][ENQUEUE_GET_PARENT] fetching parent session", { parentSessionID: input.parentSessionID })
   const parent = await Session.get(input.parentSessionID).catch(() => undefined)
   if (!parent) {
-    log.error("[TRACE][ENQUEUE_EARLY_EXIT_1] parent session NOT FOUND — aborting without clearActiveChild", { parentSessionID: input.parentSessionID })
-    clearLogicalTask()
+    log.error("[TRACE][ENQUEUE_EARLY_EXIT_1] parent session NOT FOUND", { parentSessionID: input.parentSessionID })
     throw new Error(`task_completion_parent_missing:${input.parentSessionID}`)
   }
   log.info("[TRACE][ENQUEUE_PARENT_FOUND] parent session found", { parentSessionID: input.parentSessionID, hasParentID: !!parent.parentID })
   if (parent.parentID) {
-    log.error("[TRACE][ENQUEUE_EARLY_EXIT_2] parent has parentID (nested) — aborting without clearActiveChild", { parentSessionID: input.parentSessionID, parentID: parent.parentID })
-    clearLogicalTask()
+    log.error("[TRACE][ENQUEUE_EARLY_EXIT_2] parent has parentID (nested)", { parentSessionID: input.parentSessionID, parentID: parent.parentID })
     throw new Error(`task_completion_parent_nested_unsupported:${input.parentSessionID}`)
   }
 
@@ -63,8 +63,7 @@ async function enqueueParentContinuation(input: {
     messageID: input.parentMessageID,
   }).catch(() => undefined)
   if (!assistant || assistant.info.role !== "assistant") {
-    log.error("[TRACE][ENQUEUE_EARLY_EXIT_3] parent assistant message NOT FOUND or wrong role — aborting without clearActiveChild", { parentSessionID: input.parentSessionID, parentMessageID: input.parentMessageID, found: !!assistant, role: assistant?.info?.role })
-    clearLogicalTask()
+    log.error("[TRACE][ENQUEUE_EARLY_EXIT_3] parent assistant message NOT FOUND or wrong role", { parentSessionID: input.parentSessionID, parentMessageID: input.parentMessageID, found: !!assistant, role: assistant?.info?.role })
     throw new Error(`task_completion_parent_message_missing:${input.parentMessageID}`)
   }
   log.info("[TRACE][ENQUEUE_MSG_FOUND] parent message found", { parentMessageID: input.parentMessageID, role: assistant.info.role, parts: assistant.parts.length })
@@ -75,15 +74,10 @@ async function enqueueParentContinuation(input: {
   )
   log.info("[TRACE][ENQUEUE_FIND_TOOL_PART] searching for task tool part", { parentSessionID: input.parentSessionID, toolCallID: input.toolCallID, totalParts: assistant.parts.length, foundPart: !!taskPart, partTypes: assistant.parts.map((p: any) => ({ type: p.type, callID: (p as any).callID, tool: (p as any).tool })).slice(0, 10) })
   if (!taskPart) {
-    log.error("[TRACE][ENQUEUE_EARLY_EXIT_4] task tool part NOT FOUND — aborting without clearActiveChild", { parentSessionID: input.parentSessionID, toolCallID: input.toolCallID, partCallIDs: assistant.parts.filter((p: any) => p.type === "tool").map((p: any) => (p as any).callID) })
-    clearLogicalTask()
+    log.error("[TRACE][ENQUEUE_EARLY_EXIT_4] task tool part NOT FOUND", { parentSessionID: input.parentSessionID, toolCallID: input.toolCallID, partCallIDs: assistant.parts.filter((p: any) => p.type === "tool").map((p: any) => (p as any).callID) })
     throw new Error(`task_completion_tool_part_missing:${input.toolCallID}`)
   }
   log.info("[TRACE][ENQUEUE_TOOL_PART_FOUND] task tool part found", { toolCallID: input.toolCallID, partStatus: taskPart.state?.status })
-
-  log.info("[TRACE][ENQUEUE_CLEAR_ACTIVE_CHILD] about to clear active child", { parentSessionID: input.parentSessionID })
-  await clearActiveChild().catch(() => undefined)
-  log.info("[TRACE][ENQUEUE_ACTIVE_CHILD_CLEARED] active child cleared", { parentSessionID: input.parentSessionID })
 
   // Fix: update tool part state from "running" to "completed"/"error" so sidebar monitor clears
   const partNow = Date.now()
@@ -157,184 +151,33 @@ async function enqueueParentContinuation(input: {
     }),
   )
 
-  try {
-    if (input.linkedTodoID) {
-      await Todo.reconcileProgress({
-        sessionID: input.parentSessionID,
-        linkedTodoID: input.linkedTodoID,
-        taskStatus: input.ok ? "completed" : "error",
-      })
-    }
+  // ── Demoted to UI-only subscriber ─────────────────────────────────
+  // The primary completion channel is now the direct `done` promise that
+  // the task tool caller awaits.  This Bus subscriber only handles:
+  //   1. Tool part state update (running → completed/error) for sidebar
+  //   2. Narration emission
+  //   3. SharedContext merge (observability)
+  // It no longer injects synthetic continuation messages or resumes the
+  // parent's LLM loop — that is the task tool caller's responsibility.
 
-    const now = Date.now()
-    const messageID = Identifier.ascending("message")
-    const resumedModel = parent.execution
-      ? {
-          providerId: parent.execution.providerId,
-          modelID: parent.execution.modelID,
-          accountId: parent.execution.accountId,
-        }
-      : {
-          providerId: assistant.info.providerId,
-          modelID: assistant.info.modelID,
-          accountId: "accountId" in assistant.info ? assistant.info.accountId : undefined,
-        }
-
-    // Context Sharing v2: child's full message history is already visible to parent
-    // via prompt.ts parent message prefix. We extract a concise summary of child's
-    // key outputs for the continuation message, so parent LLM has immediate awareness.
-    let childSummary: string | undefined
-    if (input.ok) {
-      try {
-        const { messages: childMsgs } = await MessageV2.filterCompacted(MessageV2.stream(input.childSessionID))
-        const assistantTexts: string[] = []
-        for (const msg of childMsgs) {
-          if (msg.info.role !== "assistant") continue
-          for (const part of msg.parts) {
-            if (part.type === "text" && part.text?.trim()) {
-              assistantTexts.push(part.text.trim())
-            }
-          }
-        }
-        if (assistantTexts.length > 0) {
-          // Take last few assistant outputs (most relevant) — keep within ~4K tokens
-          const recent = assistantTexts.slice(-3)
-          childSummary = `<child_session_output session="${input.childSessionID}">\n${recent.join("\n\n---\n\n")}\n</child_session_output>`
-        }
-      } catch {
-        // Non-fatal: parent continues without child summary
-      }
-
-      // Merge child's SharedContext into parent's Space (retained for compaction/observability)
-      await SharedContext.mergeFrom({
-        targetSessionID: input.parentSessionID,
-        sourceSessionID: input.childSessionID,
-      }).catch(() => undefined)
-
-      // Fallback: if message history was destroyed by compaction loops (e.g. weak model
-      // compacting repeatedly), use SharedContext snapshot as evidence so parent LLM
-      // has something actionable instead of an empty completion notice.
-      if (!childSummary) {
-        try {
-          const childCtx = await SharedContext.get(input.childSessionID)
-          if (childCtx) {
-            const parts: string[] = []
-            if (childCtx.currentState) parts.push(`State: ${childCtx.currentState}`)
-            if (childCtx.actions.length > 0)
-              parts.push(`Actions:\n${childCtx.actions.map((a) => `- ${a.summary}`).join("\n")}`)
-            if (childCtx.discoveries.length > 0)
-              parts.push(`Discoveries:\n${childCtx.discoveries.map((d) => `- ${d}`).join("\n")}`)
-            if (childCtx.files.length > 0)
-              parts.push(`Files touched: ${childCtx.files.map((f) => f.path).join(", ")}`)
-            if (parts.length > 0) {
-              childSummary = `<child_session_output session="${input.childSessionID}" source="shared_context">\n${parts.join("\n\n")}\n</child_session_output>`
-              log.warn("child message history empty after compaction, using SharedContext fallback", {
-                childSessionID: input.childSessionID,
-                parentSessionID: input.parentSessionID,
-                contextParts: parts.length,
-              })
-            }
-          }
-        } catch {
-          // Non-fatal: proceed without fallback
-        }
-      }
-    }
-
-    await Session.updateMessage({
-      id: messageID,
-      role: "user",
-      sessionID: input.parentSessionID,
-      time: { created: now },
-      agent: assistant.info.agent,
-      model: resumedModel,
-      format: undefined,
-      variant: assistant.info.variant,
-    })
-
-    const continuationText = input.ok
-      ? [
-          childSummary ? `${childSummary}\n\n---\n\n` : "",
-          `Subagent ${input.childSessionID} completed.`,
-          childSummary
-            ? " Continue immediately with the next step based on the evidence above."
-            : " The subagent's detailed output was lost due to context compaction. Check SharedContext and the child session for details, then continue with the next step.",
-        ].join("")
-      : `Subagent ${input.childSessionID} failed. Continue immediately using the recorded task error and child session evidence: ${input.error ?? "unknown error"}`
-
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID,
-      sessionID: input.parentSessionID,
-      type: "text",
-      text: continuationText,
-      synthetic: true,
-      time: { start: now, end: now },
-      metadata: {
-        taskCompletion: {
-          childSessionID: input.childSessionID,
-          toolCallID: input.toolCallID,
-          ok: input.ok,
-          error: input.error,
-        },
-      },
-    })
-
-    log.info("DEBUG_RCA_STALL_SCAN: step 6: enqueuing parent continuation", {
-      parentSessionID: input.parentSessionID,
-      messageID,
-      isOk: input.ok,
-    })
-
-    log.info("[TRACE][ENQUEUE_BEFORE_ENQUEUE] calling enqueuePendingContinuation", {
-      parentSessionID: input.parentSessionID,
-      messageID,
-      isOk: input.ok,
-    })
-
-    await enqueuePendingContinuation({
-      sessionID: input.parentSessionID,
-      messageID,
-      createdAt: now,
-      roundCount: 0,
-      reason: "todo_pending",
-      text: input.ok
-        ? `Task completed for child session ${input.childSessionID}. Continue the parent orchestration from the completion evidence already stored in-session.`
-        : `Task failed for child session ${input.childSessionID}: ${input.error ?? "unknown error"}. Continue the parent orchestration from the failure evidence already stored in-session.`,
-      triggerType: input.ok ? "task_completion" : "task_failure",
-    })
-
-    log.info("DEBUG_RCA_STALL_SCAN: step 7: parent continuation enqueued", { parentSessionID: input.parentSessionID })
-
-    await Session.setWorkflowState({
-      sessionID: input.parentSessionID,
-      state: "idle",
-      stopReason: undefined,
-      lastRunAt: now,
+  if (input.ok) {
+    // Merge child's SharedContext into parent's Space (retained for compaction/observability)
+    await SharedContext.mergeFrom({
+      targetSessionID: input.parentSessionID,
+      sourceSessionID: input.childSessionID,
     }).catch(() => undefined)
+  }
 
-    log.info("triggering resumePendingContinuations", {
-      parentSessionID: input.parentSessionID,
-      childSessionID: input.childSessionID,
-      ok: input.ok,
-    })
-    await resumePendingContinuations({ maxCount: 1, preferredSessionID: input.parentSessionID }).catch((err) => {
-      log.error("resumePendingContinuations failed", {
-        parentSessionID: input.parentSessionID,
-        childSessionID: input.childSessionID,
-        error: String(err),
-      })
-    })
-  } catch (error) {
-    if (input.linkedTodoID) {
-      await Todo.reconcileProgress({
-        sessionID: input.parentSessionID,
-        linkedTodoID: input.linkedTodoID,
-        taskStatus: "error",
-      }).catch(() => undefined)
-    }
-    throw error
+  log.info("Bus subscriber UI update complete (demoted — no longer enqueues continuation)", {
+    parentSessionID: input.parentSessionID,
+    childSessionID: input.childSessionID,
+    ok: input.ok,
+  })
+
+  // Close the outer try (line 49) — clearActiveChild + clearLogicalTask
+  // always run, even on early-exit errors that previously left the UI stuck.
   } finally {
+    await clearActiveChild().catch(() => undefined)
     clearLogicalTask()
   }
 }

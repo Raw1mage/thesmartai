@@ -1126,7 +1126,6 @@ async function dispatchToWorker(input: {
     })
 
     const dispatchedAt = worker.current!.dispatchedAt
-    void done.catch(() => undefined)
     return {
       workerID: worker.id,
       requestID,
@@ -1136,6 +1135,12 @@ async function dispatchToWorker(input: {
       eventCount: worker.current!.eventCount,
       doneAt: dispatchedAt ?? Date.now(),
       metadata: { dispatched: true },
+      // Direct completion channel: caller awaits this instead of relying on
+      // the Bus event chain (worker.current id-match → Bus.publish → subscriber).
+      // The promise resolves/rejects when the stdout reader processes "done"/"error"/"canceled"/exit.
+      done: done.catch((err) => {
+        throw err
+      }),
     }
   } catch (error) {
     if (worker && !requestID && !worker.current) {
@@ -1722,8 +1727,9 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           }
         }, LIVENESS_CHECK_INTERVAL_MS)
 
+        let run: Awaited<ReturnType<typeof dispatchToWorker>>
         try {
-          const run = await dispatchToWorker({
+          run = await dispatchToWorker({
             sessionID: session.id,
             parentSessionID: ctx.sessionID,
             parentMessageID: ctx.messageID,
@@ -1759,19 +1765,44 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           unsub()
         }
 
-        const output = [
-          "Subagent dispatched in background.",
-          "",
-          "<task_metadata>",
-          `session_id: ${session.id}`,
-          "status: running",
-          "</task_metadata>",
-        ].join("\n")
-        mark("finished", { outputChars: output.length })
+        // ── Direct completion channel ──────────────────────────────────
+        // Await the worker's done promise directly instead of relying on
+        // the Bus event chain (worker.current id-match → Bus.publish →
+        // subscriber → enqueueParentContinuation).  This is the "主人和
+        // 快遞員直接溝通" fix: the caller holds a direct Promise that
+        // resolves/rejects when the worker stdout reader processes the
+        // "done"/"error"/"canceled"/exit message.
+        let workerOk = true
+        let workerError: string | undefined
+        try {
+          await run.done
+          mark("worker_done_resolved")
+        } catch (err) {
+          workerOk = false
+          workerError = err instanceof Error ? err.message : String(err)
+          mark("worker_done_rejected", { error: workerError })
+        }
+
+        // Clear active child UI state immediately — no more depending on
+        // Bus subscriber to do this.
+        await SessionActiveChild.set(ctx.sessionID, null).catch(() => undefined)
+
+        // Reconcile linked todo
+        if (linkedTodo?.id) {
+          await Todo.reconcileProgress({
+            sessionID: ctx.sessionID,
+            linkedTodoID: linkedTodo.id,
+            taskStatus: workerOk ? "completed" : "error",
+          }).catch(() => undefined)
+        }
+
+        mark("finished", { ok: workerOk, error: workerError })
 
         return {
           title: params.description,
-          output: `Subagent session dispatched: ${session.id}. Waiting for completion...`,
+          output: workerOk
+            ? `Subagent session ${session.id} completed successfully.`
+            : `Subagent session ${session.id} failed: ${workerError ?? "unknown error"}`,
           metadata: {
             dispatched: true,
             subSessionID: session.id,

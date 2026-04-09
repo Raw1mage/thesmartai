@@ -323,11 +323,13 @@ function createGlobalSync() {
           .filter((s) => !s.time?.archived)
           .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
         const limit = store.limit
-        const childSessions = store.session.filter((s) => !!s.parentID)
-        const sessions = trimSessions([...nonArchived, ...childSessions], { limit, permission: store.permission })
+        // Server now returns both roots and children; no need to manually
+        // preserve in-memory child sessions — trimSessions handles both.
+        const sessions = trimSessions(nonArchived, { limit, permission: store.permission })
+        const rootCount = nonArchived.filter((s) => !s.parentID).length
         setStore(
           "sessionTotal",
-          estimateRootSessionTotal({ count: nonArchived.length, limit: x.limit, limited: x.limited }),
+          estimateRootSessionTotal({ count: rootCount, limit: x.limit, limited: x.limited }),
         )
         setStore("session", reconcile(sessions, { key: "id" }))
         sessionMeta.set(directory, { limit })

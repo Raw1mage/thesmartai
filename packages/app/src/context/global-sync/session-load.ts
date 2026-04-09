@@ -2,7 +2,10 @@ import type { RootLoadArgs } from "./types"
 
 export async function loadRootSessionsWithFallback(input: RootLoadArgs) {
   try {
-    const result = await input.list({ directory: input.directory, roots: true, limit: input.limit })
+    // Load ALL sessions (roots + children) so the UI can build the full
+    // session tree after page reload / new tab.  The UI-side trimSessions()
+    // already separates roots from children and applies its own limits.
+    const result = await input.list({ directory: input.directory, limit: input.limit })
     return {
       data: result.data,
       limit: input.limit,
@@ -10,7 +13,7 @@ export async function loadRootSessionsWithFallback(input: RootLoadArgs) {
     } as const
   } catch {
     input.onFallback()
-    const result = await input.list({ directory: input.directory, roots: true })
+    const result = await input.list({ directory: input.directory })
     return {
       data: result.data,
       limit: input.limit,
