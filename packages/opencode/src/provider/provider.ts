@@ -355,11 +355,6 @@ export namespace Provider {
         options: hasKey ? {} : { apiKey: "public" },
       }
     },
-    codex: async () => ({
-      autoload: true,
-      getModel: (sdk: any, modelID: string) => sdk.responses(modelID),
-      options: {},
-    }),
     openai: async () => {
       return {
         autoload: false,
@@ -1273,7 +1268,7 @@ export namespace Provider {
       id: "codex",
       name: "Codex",
       source: "custom",
-      env: ["OPENAI_API_KEY"],
+      env: [],
       options: {},
       models: {},
     }
@@ -1284,7 +1279,7 @@ export namespace Provider {
         name: m.name,
         providerId: "codex",
         family: "openai",
-        api: { id: m.id, url: "https://chatgpt.com/backend-api/codex", npm: "@ai-sdk/openai" },
+        api: { id: m.id, url: "https://chatgpt.com/backend-api/codex", npm: "@opencode-ai/codex-provider" },
         status: "active",
         capabilities: {
           temperature: false,

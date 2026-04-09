@@ -1,0 +1,122 @@
+[
+  {
+    "StepNumber": 0,
+    "ModuleRef": "A0",
+    "StepType": "initial",
+    "StepAction": "閒置 — 等待呼叫選項",
+    "LinkInputType": [],
+    "LinkInputNumber": [],
+    "LinkOutputNumber": [1],
+    "LinkOutputType": "track",
+    "Condition": ["doStream() 被呼叫"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 1,
+    "ModuleRef": "A2",
+    "StepType": "normal",
+    "StepAction": "確保令牌有效",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [0],
+    "LinkOutputNumber": [2],
+    "LinkOutputType": "track",
+    "Condition": ["令牌有效 ∨ 刷新成功"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 2,
+    "ModuleRef": "A1",
+    "StepType": "normal",
+    "StepAction": "組裝請求主體",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [3],
+    "LinkOutputType": "track",
+    "Condition": ["主體組裝完成"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 3,
+    "ModuleRef": "A3",
+    "StepType": "normal",
+    "StepAction": "嘗試 WS 傳輸",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [2],
+    "LinkOutputNumber": [4, 5],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["WS 連線成功 + 首幀收到", "WS 失敗 ∨ 已停用"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 4,
+    "ModuleRef": "A4",
+    "StepType": "normal",
+    "StepAction": "WS 串流 — 映射回應事件",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [3],
+    "LinkOutputNumber": [7],
+    "LinkOutputType": "track",
+    "Condition": ["response.completed ∨ response.incomplete ∨ 錯誤"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 5,
+    "ModuleRef": "A3",
+    "StepType": "normal",
+    "StepAction": "HTTP 備援 — fetch + SSE",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [3],
+    "LinkOutputNumber": [6],
+    "LinkOutputType": "track",
+    "Condition": ["HTTP 回應收到"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 6,
+    "ModuleRef": "A4",
+    "StepType": "normal",
+    "StepAction": "HTTP 串流 — 解析 SSE + 映射回應事件",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [5],
+    "LinkOutputNumber": [7],
+    "LinkOutputType": "track",
+    "Condition": ["response.completed ∨ 錯誤"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 7,
+    "ModuleRef": "A5",
+    "StepType": "normal",
+    "StepAction": "更新接續狀態",
+    "LinkInputType": ["convergence_or"],
+    "LinkInputNumber": [4, 6],
+    "LinkOutputNumber": [8, 9],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["完成原因=tool-calls → AI SDK 繼續迴圈", "完成原因=stop → 回合結束"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 8,
+    "ModuleRef": "A0",
+    "StepType": "normal",
+    "StepAction": "工具迴圈 — AI SDK 執行工具後重新呼叫 doStream",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [7],
+    "LinkOutputNumber": [1],
+    "LinkOutputType": "track",
+    "Condition": ["AI SDK 收到工具結果，重新呼叫 doStream"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 9,
+    "ModuleRef": "A5",
+    "StepType": "normal",
+    "StepAction": "持久化接續狀態 + 回傳串流",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [7],
+    "LinkOutputNumber": [0],
+    "LinkOutputType": "track",
+    "Condition": ["串流完成，回到閒置"],
+    "SubGrafcet": []
+  }
+]

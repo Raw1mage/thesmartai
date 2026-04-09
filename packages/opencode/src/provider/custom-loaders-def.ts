@@ -7,9 +7,17 @@ import { Env } from "@/env"
 import { iife } from "@/util/iife"
 import { createClaudeCode } from "@opencode-ai/claude-provider/provider"
 import { isClaudeCredentials } from "@opencode-ai/claude-provider/auth"
+import { createCodex } from "@opencode-ai/codex-provider/provider"
+import { isCodexCredentials } from "@opencode-ai/codex-provider/auth"
+import { setContinuationFilePath } from "@opencode-ai/codex-provider/continuation"
 import { Log } from "@/util/log"
+import { Global } from "@/global"
+import { Installation } from "@/installation"
+import path from "path"
+import os from "os"
 
 const claudeProviderLog = Log.create({ service: "provider.claude-cli" })
+const codexProviderLog = Log.create({ service: "provider.codex" })
 
 function isGpt5OrLater(modelID: string): boolean {
   const match = /^gpt-(\d+)/.exec(modelID)
@@ -59,6 +67,43 @@ export const CUSTOM_LOADERS: Record<string, CustomLoader> = {
                 accountId: credentials?.accountId,
               },
           enableCaching: true,
+        })
+        return provider.languageModel(modelID)
+      },
+      options: {},
+    }
+  },
+  // codex: Native LanguageModelV2 provider — bypasses @ai-sdk/openai entirely.
+  // Auth credentials flow from plugin/codex.ts → provider options → here.
+  "codex": async () => {
+    // Initialize continuation file path once
+    setContinuationFilePath(path.join(Global.Path.state, "ws-continuation.json"))
+
+    return {
+      autoload: true,
+      async getModel(_sdk: any, modelID: string, options?: Record<string, any>) {
+        const credentials = options as any
+        if (!isCodexCredentials(credentials)) {
+          codexProviderLog.warn("codex getModel: no valid credentials", {
+            hasOptions: !!options,
+            optionKeys: options ? Object.keys(options) : [],
+          })
+        }
+
+        const provider = createCodex({
+          credentials: isCodexCredentials(credentials)
+            ? credentials
+            : {
+                type: "oauth",
+                refresh: credentials?.refresh ?? "",
+                access: credentials?.access,
+                expires: credentials?.expires,
+                accountId: credentials?.accountId,
+              },
+          conversationId: credentials?.conversationId,
+          sessionId: credentials?.sessionId,
+          installationId: credentials?.installationId,
+          userAgent: `opencode/${Installation.VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`,
         })
         return provider.languageModel(modelID)
       },

@@ -1,57 +1,84 @@
-# Handoff
+# Codex Refactor V2 — Handoff
 
-## Execution Contract
+## 接手前必讀
 
-- Build agent must read implementation-spec.md first
-- Build agent must read proposal.md before coding
-- Materialize tasks.md into runtime todos before coding
+1. **plan.md** — 施工清單（§五）和驗證方法（§六，13 項）
+2. **datasheet.md** — 完整規格（request body, input items, event mapping, providerOptions）
+3. **golden-request.json** — 舊 provider 的實際 WS request dump（唯一真相來源）
 
-## Required Reads
+## Authority SSOT
 
-- implementation-spec.md
-- proposal.md
-- tasks.md
-- `refs/codex/codex-rs/codex-api/src/common.rs` — upstream protocol 定義
-- `packages/opencode/src/plugin/claude-native.ts` — zero-config plugin 參考模板
+| Field | Value |
+|---|---|
+| mainRepo | `/home/pkcs12/projects/opencode` |
+| mainWorktree | `/home/pkcs12/projects/opencode` |
+| baseBranch | `main` (at `aa9490815`) |
+| implementationWorktree | `/home/pkcs12/projects/opencode-beta/codex-refactor-v2` |
+| implementationBranch | `beta/codex-refactor-v2` |
 
-## Prerequisite
+**main 已 reset 到 aa9490815，舊 codex provider 正常運作。新 codex 全部在 beta 裡。**
 
-- **`plans/compaction-hotfix/` 必須先完成**（compact_threshold 動態化 + SessionSnapshot 廢除），否則 codex plugin 會帶入已知問題
+## V1 失敗教訓
 
-## Current State
+convert.ts 從 type definition 猜格式，沒對照舊 provider 實際 output。結果：
+- system prompt 放錯欄位 → AI 沒 context
+- tool result stringify → AI 看到空內容
+- tool-call StreamPart 缺失 → tool 不執行
+- finishReason 永遠 "stop" → tool loop 不繼續
+- content parts 格式全錯（string vs array, input_text vs output_text）
 
-- Plan 初稿完成，Phase 1 (upstream 分析) 尚未開始
-- refs/codex submodule 在 `rust-v0.0.2504301132`，需 fetch 最新
+**V2 規則：任何格式轉換必須對照 golden-request.json 驗證，不准猜。**
 
-## Key Code References
+## 當前進度
 
-| 位置 | 用途 |
-|------|------|
-| `plugin/codex.ts` (960 行) | 現有 auth + fetch interceptor — 拆解對象 |
-| `plugin/codex-websocket.ts` (653 行) | WS transport — 搬進 plugin |
-| `plugin/codex-native.ts` (318 行) | FFI binary — 搬進 plugin |
-| `plugin/claude-native.ts` (205 行) | zero-config plugin 參考模板 |
-| `plugin/index.ts` | plugin 註冊點 |
-| `provider/provider.ts:1260-1300` | codex model 定義 — 搬進 plugin |
-| `session/llm.ts:717` | AI SDK streamText 呼叫點 — codex 路徑需改 |
-| `refs/codex/codex-rs/codex-api/src/common.rs` | upstream protocol types |
-| `refs/codex/codex-rs/core/src/client.rs` | upstream client 實作 |
+### 已完成
 
-## Stop Gates In Force
+- Package 建立（11 .ts files）
+- 整合 wiring（custom-loaders-def.ts + plugin/codex-auth.ts）
+- WS transport + delta + continuation
+- Plan + datasheet + golden dump
+- IDEF0 3 層 21 子圖 + Grafcet 2 圖（全繁體中文 + SVG）
+- **sse.ts 修復**：finishReason=tool-calls、text-end flush、text-start auto-emit、response.incomplete、max_output_tokens
+- **清理完成**：刪除 codex.ts(977) + codex-websocket.ts(653) + codex-native.ts(318) = 1948 行
+- **plugin/index.ts**：移除 old CodexAuthPlugin，僅保留 CodexNativeAuthPlugin
+- **ContinuationInvalidatedEvent** 搬到 codex-auth.ts
+- **provider.ts**：env OPENAI_API_KEY → []
+- **Unit tests**：sse.test.ts 7/7 pass
+- **bodyStr bug**：HTTP fallback path 的 undefined 變數修復
 
-- `@opencode-ai/plugin` 介面不足 → 需先擴展
-- AI SDK message format 不可分離 → fork 或 wrapper
-- Rate limit tracking 無法在 plugin 層整合 → 定義協議
+### 下一步（按順序）
 
-## Build Entry Recommendation
+1. **providerOptions dump 對照 golden**：
+   - 需啟動 beta daemon，發送 codex 請求，dump actual request body
+   - diff with golden-request.json 逐欄位比對
 
-**Phase 1 (Upstream 分析) 先做**。產出 native protocol spec 和差異清單後，Phase 2-3 的設計才有依據。不要跳到實作。
+2. **Failure path 測試**（plan §六 #8~#13）：
+   - WS 失敗 → HTTP fallback
+   - Rate limit → error propagation
+   - Token refresh mid-session
+   - Account switch → WS reset
+   - Daemon restart → continuation restore
 
-## Execution-Ready Checklist
+3. **Fetch-back to main**：通過全部 13 項驗證才能 merge
 
-- [x] Implementation spec is complete
-- [x] Proposal is complete
-- [x] Tasks are defined
-- [ ] Prerequisite plan (compaction-hotfix) completed
-- [ ] Phase 1 upstream 分析 completed
-- [ ] Phase 2-3 設計文件 completed（design.md）
+## drawmiat 工具路徑
+
+```bash
+# IDEF0
+python3 /home/pkcs12/projects/drawmiat/webapp/idef0/idef0_renderer.py input.json output.svg
+
+# Grafcet
+python3 /home/pkcs12/projects/drawmiat/webapp/grafcet_cli.py input.json --output_dir output_dir/
+```
+
+## 關鍵文件位置（beta worktree）
+
+```
+plans/codex-refactor/plan.md              — 施工清單
+plans/codex-refactor/datasheet.md         — 規格書
+plans/codex-refactor/golden-request.json  — 標準答案
+plans/codex-refactor/diagrams/            — IDEF0 + Grafcet JSON + SVG
+packages/opencode-codex-provider/src/     — provider package（11 .ts files）
+packages/opencode/src/plugin/codex-auth.ts — thin auth plugin
+packages/opencode/src/provider/custom-loaders-def.ts — codex loader
+```

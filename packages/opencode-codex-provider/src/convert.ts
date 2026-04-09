@@ -1,0 +1,194 @@
+/**
+ * LMv2 ↔ Responses API format converters.
+ *
+ * Converts AI SDK LanguageModelV2Prompt into Responses API
+ * `instructions` (top-level) + `input` (ResponseItem[]).
+ */
+import type {
+  LanguageModelV2Prompt,
+  LanguageModelV2FunctionTool,
+  LanguageModelV2Content,
+} from "@ai-sdk/provider"
+import type { ResponseItem, ContentPart } from "./types.js"
+
+// ---------------------------------------------------------------------------
+// § 1  convertPrompt — LMv2 prompt → instructions + input
+// ---------------------------------------------------------------------------
+
+export function convertPrompt(prompt: LanguageModelV2Prompt): {
+  instructions: string
+  input: ResponseItem[]
+} {
+  const instructions = "You are a helpful assistant."
+  const input: ResponseItem[] = []
+
+  for (const msg of prompt) {
+    switch (msg.role) {
+      case "system":
+        // System prompt goes into input as `developer` role message —
+        // matches AI SDK @ai-sdk/openai Responses adapter behavior.
+        // `instructions` is a short placeholder only.
+        input.push({ role: "developer", content: msg.content })
+        break
+
+      case "user": {
+        // User content is ALWAYS a content parts array (never plain string)
+        // Golden: [{type: "input_text", text: "..."}] or [{type: "input_image", image_url: "..."}]
+        const parts = convertUserContent(msg.content)
+        input.push({ role: "user", content: parts })
+        break
+      }
+
+      case "assistant": {
+        const parts = convertAssistantContent(msg.content)
+        if (parts.textParts.length > 0 || parts.toolCalls.length > 0) {
+          // Assistant content is ALWAYS a content parts array with type="output_text"
+          // Golden: [{type: "output_text", text: "..."}]
+          if (parts.textParts.length > 0) {
+            const text = parts.textParts.join("")
+            input.push({ role: "assistant", content: [{ type: "output_text", text }] })
+          }
+          // Tool calls as separate items
+          for (const tc of parts.toolCalls) {
+            input.push({
+              type: "function_call",
+              call_id: tc.toolCallId,
+              name: tc.toolName,
+              arguments: typeof tc.args === "string" ? tc.args : JSON.stringify(tc.args ?? {}),
+            })
+          }
+        }
+        break
+      }
+
+      case "tool": {
+        // Tool results — Codex API accepts two formats (codex-rs FunctionCallOutputPayload):
+        //   - String: "output": "plain text"
+        //   - Content items: "output": [{type: "input_text", text: "..."}]
+        for (const result of msg.content) {
+          // AI SDK LanguageModelV2 uses `result` field, but opencode's tool system
+          // uses `output` field. Check both.
+          const raw = result.result ?? (result as any).output
+          let output: unknown
+
+          if (raw == null) {
+            output = ""
+          } else if (typeof raw === "string") {
+            // String result → pass as-is (codex-rs Text variant)
+            output = raw
+          } else if (Array.isArray(raw)) {
+            // Content parts array → pass directly (codex-rs ContentItems variant)
+            output = raw
+          } else if (typeof raw === "object") {
+            // Object result (e.g., structured tool output) → wrap as content item
+            // Do NOT JSON.stringify — Codex API needs content items or string
+            const text = JSON.stringify(raw)
+            output = [{ type: "input_text", text }]
+          } else {
+            output = String(raw)
+          }
+
+          input.push({
+            type: "function_call_output",
+            call_id: result.toolCallId,
+            output,
+          } as ResponseItem)
+        }
+        break
+      }
+    }
+  }
+
+
+  return { instructions, input }
+}
+
+// ---------------------------------------------------------------------------
+// § 2  convertTools — LMv2 function tools → Responses API tools
+// ---------------------------------------------------------------------------
+
+export function convertTools(
+  tools: LanguageModelV2FunctionTool[] | undefined,
+): unknown[] | undefined {
+  if (!tools || tools.length === 0) return undefined
+  return tools.map((tool) => ({
+    type: "function",
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+    strict: false,
+  }))
+}
+
+// ---------------------------------------------------------------------------
+// § 3  Content conversion helpers
+// ---------------------------------------------------------------------------
+
+function convertUserContent(
+  content: LanguageModelV2Prompt[number] extends { content: infer C } ? C : never,
+): ContentPart[] {
+  if (typeof content === "string") {
+    return [{ type: "input_text", text: content }]
+  }
+  if (!Array.isArray(content)) {
+    return [{ type: "input_text", text: String(content) }]
+  }
+
+  const parts: ContentPart[] = []
+  for (const part of content as any[]) {
+    switch (part.type) {
+      case "text":
+        parts.push({ type: "input_text", text: part.text })
+        break
+      case "file":
+        if (part.mediaType?.startsWith("image/")) {
+          const data = typeof part.data === "string"
+            ? part.data
+            : Buffer.from(part.data).toString("base64")
+          parts.push({
+            type: "input_image",
+            image_url: `data:${part.mediaType};base64,${data}`,
+          })
+        } else {
+          // Non-image files: include as text reference
+          parts.push({ type: "input_text", text: `[file: ${part.mediaType}]` })
+        }
+        break
+      default:
+        // Unknown part type — include as text
+        if ("text" in part) {
+          parts.push({ type: "input_text", text: part.text })
+        }
+        break
+    }
+  }
+  return parts.length > 0 ? parts : [{ type: "input_text", text: "" }]
+}
+
+function convertAssistantContent(content: LanguageModelV2Content[]): {
+  textParts: string[]
+  toolCalls: Array<{ toolCallId: string; toolName: string; args: unknown }>
+} {
+  const textParts: string[] = []
+  const toolCalls: Array<{ toolCallId: string; toolName: string; args: unknown }> = []
+
+  for (const part of content) {
+    switch (part.type) {
+      case "text":
+        textParts.push(part.text)
+        break
+      case "tool-call":
+        toolCalls.push({
+          toolCallId: part.toolCallId,
+          toolName: part.toolName,
+          args: (part as any).input ?? (part as any).args,
+        })
+        break
+      case "reasoning":
+        // Reasoning content is not resent as input
+        break
+    }
+  }
+
+  return { textParts, toolCalls }
+}
