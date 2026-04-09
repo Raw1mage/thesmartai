@@ -223,3 +223,38 @@
 - **Fail-closed `unknown` mode**: Verified via test `unknown billing mode triggers fail-closed keep-full behavior` in `llm.skill-layer-seam.test.ts`.
 - **Baseline preservation**: Test `builds correct payload incorporating full and summarized states only` verifies seam injection behavior.
 - Tests executed successfully across skill layer seam scenarios.
+
+## Review Follow-up (test/dynamic-context-layer)
+
+- Fixed `llm.skill-layer-seam.test.ts` by removing the duplicate request-billing case and keeping one canonical expectation per billing mode.
+- Kept skill-layer routes fail-fast under daemon routing, but updated the Status Tab UI to hide controls and show an explicit unavailable message when routed mode returns `501`.
+- Updated the `skill` tool description to match the session-managed `<skill_loaded ...>` contract.
+- Added `lastUsedAt` visibility in the Skill Layers card to improve operator/debug observability during idle unload RCA.
+
+### Review Follow-up Validation
+
+- `bun test packages/opencode/src/session/skill-layer-registry.test.ts packages/opencode/src/session/llm.skill-layer-seam.test.ts`
+- Result: 7 pass / 0 fail
+- Note: no additional app/UI test was added in this follow-up; gating behavior is covered by code-path inspection plus the existing session skill-layer regressions.
+
+## Daemon Full Support Follow-up (test/dynamic-context-layer)
+
+- Added `UserDaemonManager.callSessionSkillLayerList()` and `UserDaemonManager.callSessionSkillLayerAction()` so skill-layer list/action requests are forwarded to the per-user daemon instead of returning `501`.
+- Updated `packages/opencode/src/server/routes/session.ts` to use daemon-routed read/mutation calls for `/:sessionID/skill-layer` and `/:sessionID/skill-layer/:name/action`, with `503` fail-fast responses for invalid daemon payloads.
+- Removed the Status Tab daemon-unavailable gate in `packages/app/src/pages/session/session-side-panel.tsx`; the card now treats routed mode the same as local mode and surfaces normal request errors only.
+- Added helper-level daemon tests in `packages/opencode/src/server/user-daemon/manager.skill-layer.test.ts` covering routed list/action forwarding.
+
+### Daemon Full Support Validation
+
+- `bun test packages/opencode/src/server/user-daemon/manager.skill-layer.test.ts packages/opencode/src/session/skill-layer-registry.test.ts packages/opencode/src/session/llm.skill-layer-seam.test.ts`
+- Result: 9 pass / 0 fail
+
+## P2 Follow-up (test/dynamic-context-layer)
+
+- Tightened daemon-routed skill-layer response handling in `packages/opencode/src/server/routes/session.ts` by validating list/action payloads against the route schemas before returning them to the UI.
+- Replaced the `any[]`-typed Skill Layers UI state in `packages/app/src/pages/session/session-side-panel.tsx` with explicit `SkillLayerState` / `SkillLayerActionResponse` types aligned to the route contract.
+
+### P2 Follow-up Validation
+
+- `bun test packages/opencode/src/server/user-daemon/manager.skill-layer.test.ts packages/opencode/src/session/skill-layer-registry.test.ts packages/opencode/src/session/llm.skill-layer-seam.test.ts`
+- Result: 9 pass / 0 fail

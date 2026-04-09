@@ -581,6 +581,54 @@ export namespace UserDaemonManager {
     return callJSON<T>({ entry, method: "GET", path: `/session/${encodeURIComponent(sessionID)}/todo` })
   }
 
+  export async function callSessionSkillLayerList<T>(username: string, sessionID: string) {
+    observe(username)
+    const safe = LinuxUserExec.sanitizeUsername(username)
+    if (!safe)
+      return {
+        ok: false,
+        error: { code: "DAEMON_INVALID_USER", message: "invalid username" },
+      } satisfies DaemonCallResult<T>
+    const entry = daemons.get(safe)
+    if (!entry)
+      return {
+        ok: false,
+        error: { code: "DAEMON_NOT_OBSERVED", message: "daemon not observed" },
+      } satisfies DaemonCallResult<T>
+    return callJSON<T>({
+      entry,
+      method: "GET",
+      path: `/session/${encodeURIComponent(sessionID)}/skill-layer`,
+    })
+  }
+
+  export async function callSessionSkillLayerAction<T>(
+    username: string,
+    sessionID: string,
+    name: string,
+    body: unknown,
+  ) {
+    observe(username)
+    const safe = LinuxUserExec.sanitizeUsername(username)
+    if (!safe)
+      return {
+        ok: false,
+        error: { code: "DAEMON_INVALID_USER", message: "invalid username" },
+      } satisfies DaemonCallResult<T>
+    const entry = daemons.get(safe)
+    if (!entry)
+      return {
+        ok: false,
+        error: { code: "DAEMON_NOT_OBSERVED", message: "daemon not observed" },
+      } satisfies DaemonCallResult<T>
+    return callJSON<T>({
+      entry,
+      method: "POST",
+      path: `/session/${encodeURIComponent(sessionID)}/skill-layer/${encodeURIComponent(name)}/action`,
+      body,
+    })
+  }
+
   export async function callSessionStatus<T>(username: string) {
     observe(username)
     const safe = LinuxUserExec.sanitizeUsername(username)

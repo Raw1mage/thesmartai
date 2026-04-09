@@ -11,6 +11,7 @@ import { SessionRevert } from "../../session/revert"
 import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { SessionMonitor } from "@/session/monitor"
+import { SkillLayerRegistry } from "@/session/skill-layer-registry"
 import { getSessionMessageDiff, getSessionOwnedDirtyDiff } from "@/project/workspace"
 import { Todo } from "../../session/todo"
 import { extractChecklistItems } from "@/session/tasks-checklist"
@@ -86,6 +87,25 @@ const PendingContinuationQueueControlSchema = z.object({
   reason: z.enum(["resumed", "dropped", "no_pending_continuation", "not_resumable", "resume_dispatch_skipped"]),
   blockedReasons: z.array(z.string()).optional(),
   inspection: PendingContinuationQueueInspectionSchema,
+})
+
+const SkillLayerInfoSchema = z.object({
+  name: z.string(),
+  loadedAt: z.number(),
+  lastUsedAt: z.number(),
+  runtimeState: z.enum(["active", "idle", "sticky", "summarized", "unloaded"]),
+  desiredState: z.enum(["full", "summary", "absent"]),
+  pinned: z.boolean(),
+  lastReason: z.string(),
+})
+
+const SkillLayerActionSchema = z.object({
+  action: z.enum(["pin", "unpin", "promote", "demote", "unload"]),
+})
+
+const SkillLayerActionResponseSchema = z.object({
+  ok: z.boolean(),
+  entries: SkillLayerInfoSchema.array(),
 })
 
 const log = Log.create({ service: "server" })
@@ -392,7 +412,10 @@ export const SessionRoutes = lazy(() =>
         const username = RequestUser.username()
         if (username && UserDaemonManager.routeSessionReadEnabled()) {
           const response = await UserDaemonManager.callSessionChildren<Session.Info[]>(username, sessionID)
-          if (response.ok && Array.isArray(response.data)) return c.json(response.data)
+          if (response.ok) {
+            const parsed = SkillLayerInfoSchema.array().safeParse(response.data)
+            if (parsed.success) return c.json(parsed.data)
+          }
           return c.json(
             {
               code: response.ok ? "DAEMON_INVALID_PAYLOAD" : response.error.code,
@@ -434,7 +457,10 @@ export const SessionRoutes = lazy(() =>
         const username = RequestUser.username()
         if (username && UserDaemonManager.routeSessionReadEnabled()) {
           const response = await UserDaemonManager.callSessionTodo<z.infer<typeof Todo.Info>[]>(username, sessionID)
-          if (response.ok && Array.isArray(response.data)) return c.json(response.data)
+          if (response.ok) {
+            const parsed = SkillLayerInfoSchema.array().safeParse(response.data)
+            if (parsed.success) return c.json(parsed.data)
+          }
           return c.json(
             {
               code: response.ok ? "DAEMON_INVALID_PAYLOAD" : response.error.code,
@@ -469,6 +495,134 @@ export const SessionRoutes = lazy(() =>
         }
 
         return c.json(currentTodos)
+      },
+    )
+    .get(
+      "/:sessionID/skill-layer",
+      describeRoute({
+        summary: "Get session skill layers",
+        description: "Retrieve managed skill-layer states for one session.",
+        operationId: "session.skillLayer.list",
+        responses: {
+          200: {
+            description: "Skill layer list",
+            content: {
+              "application/json": {
+                schema: resolver(SkillLayerInfoSchema.array()),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+        }),
+      ),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const username = RequestUser.username()
+        if (username && UserDaemonManager.routeSessionReadEnabled()) {
+          const response = await UserDaemonManager.callSessionSkillLayerList<z.infer<typeof SkillLayerInfoSchema>[]>(
+            username,
+            sessionID,
+          )
+          if (response.ok) {
+            const parsed = SkillLayerInfoSchema.array().safeParse(response.data)
+            if (parsed.success) return c.json(parsed.data)
+          }
+          return c.json(
+            {
+              code: response.ok ? "DAEMON_INVALID_PAYLOAD" : response.error.code,
+              message: response.ok
+                ? "daemon session.skillLayer.list payload failed schema validation"
+                : response.error.message,
+            },
+            503,
+          )
+        }
+        await Session.get(sessionID)
+        return c.json(SkillLayerRegistry.list(sessionID))
+      },
+    )
+    .post(
+      "/:sessionID/skill-layer/:name/action",
+      describeRoute({
+        summary: "Mutate session skill layer state",
+        description: "Apply operator action to one managed skill layer in the session scope.",
+        operationId: "session.skillLayer.action",
+        responses: {
+          200: {
+            description: "Mutation result",
+            content: {
+              "application/json": {
+                schema: resolver(SkillLayerActionResponseSchema),
+              },
+            },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator(
+        "param",
+        z.object({
+          sessionID: z.string().meta({ description: "Session ID" }),
+          name: z.string().meta({ description: "Skill name" }),
+        }),
+      ),
+      validator("json", SkillLayerActionSchema),
+      async (c) => {
+        const params = c.req.valid("param")
+        const body = c.req.valid("json")
+        const username = RequestUser.username()
+        if (username && UserDaemonManager.routeSessionMutationEnabled()) {
+          const response = await UserDaemonManager.callSessionSkillLayerAction<{
+            ok: boolean
+            entries: z.infer<typeof SkillLayerInfoSchema>[]
+          }>(username, params.sessionID, params.name, body)
+          if (response.ok) {
+            const parsed = SkillLayerActionResponseSchema.safeParse(response.data)
+            if (parsed.success) return c.json(parsed.data)
+          }
+          return c.json(
+            {
+              code: response.ok ? "DAEMON_INVALID_PAYLOAD" : response.error.code,
+              message: response.ok
+                ? "daemon session.skillLayer.action payload failed schema validation"
+                : response.error.message,
+            },
+            503,
+          )
+        }
+
+        await Session.get(params.sessionID)
+        if (body.action === "pin") {
+          SkillLayerRegistry.pin(params.sessionID, params.name)
+        } else if (body.action === "unpin") {
+          SkillLayerRegistry.unpin(params.sessionID, params.name)
+        } else if (body.action === "promote") {
+          SkillLayerRegistry.setDesiredState(params.sessionID, params.name, {
+            desiredState: "full",
+            lastReason: "operator_promote_full",
+          })
+        } else if (body.action === "demote") {
+          SkillLayerRegistry.setDesiredState(params.sessionID, params.name, {
+            desiredState: "summary",
+            lastReason: "operator_demote_summary",
+          })
+        } else {
+          SkillLayerRegistry.setDesiredState(params.sessionID, params.name, {
+            desiredState: "absent",
+            lastReason: "operator_unload_absent",
+          })
+        }
+
+        return c.json({
+          ok: true,
+          entries: SkillLayerRegistry.list(params.sessionID),
+        })
       },
     )
     .post(

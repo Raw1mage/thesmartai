@@ -1796,12 +1796,57 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           }).catch(() => undefined)
         }
 
+        // Extract child session output so parent LLM has the actual results
+        let childOutput = ""
+        if (workerOk) {
+          try {
+            const { messages: childMsgs } = await MessageV2.filterCompacted(MessageV2.stream(session.id))
+            const assistantTexts: string[] = []
+            for (const msg of childMsgs) {
+              if (msg.info.role !== "assistant") continue
+              for (const part of msg.parts) {
+                if (part.type === "text" && part.text?.trim()) {
+                  assistantTexts.push(part.text.trim())
+                }
+              }
+            }
+            if (assistantTexts.length > 0) {
+              const recent = assistantTexts.slice(-3)
+              childOutput = `\n\n<child_session_output session="${session.id}">\n${recent.join("\n\n---\n\n")}\n</child_session_output>`
+            }
+          } catch {
+            // Non-fatal: parent continues without child output detail
+          }
+
+          // Fallback: if message history empty (e.g. compaction), use SharedContext
+          if (!childOutput) {
+            try {
+              const childCtx = await SharedContext.get(session.id)
+              if (childCtx) {
+                const parts: string[] = []
+                if (childCtx.currentState) parts.push(`State: ${childCtx.currentState}`)
+                if (childCtx.actions.length > 0)
+                  parts.push(`Actions:\n${childCtx.actions.map((a: any) => `- ${a.summary}`).join("\n")}`)
+                if (childCtx.discoveries.length > 0)
+                  parts.push(`Discoveries:\n${childCtx.discoveries.map((d: any) => `- ${d}`).join("\n")}`)
+                if (childCtx.files.length > 0)
+                  parts.push(`Files touched: ${childCtx.files.map((f: any) => f.path).join(", ")}`)
+                if (parts.length > 0) {
+                  childOutput = `\n\n<child_session_output session="${session.id}" source="shared_context">\n${parts.join("\n\n")}\n</child_session_output>`
+                }
+              }
+            } catch {
+              // Non-fatal
+            }
+          }
+        }
+
         mark("finished", { ok: workerOk, error: workerError })
 
         return {
           title: params.description,
           output: workerOk
-            ? `Subagent session ${session.id} completed successfully.`
+            ? `Subagent session ${session.id} completed successfully.${childOutput}`
             : `Subagent session ${session.id} failed: ${workerError ?? "unknown error"}`,
           metadata: {
             dispatched: true,

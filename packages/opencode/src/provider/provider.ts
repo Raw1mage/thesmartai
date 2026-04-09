@@ -20,6 +20,7 @@ import { Global } from "../global"
 import { Installation } from "../installation"
 import { debugCheckpoint } from "../util/debug"
 import path from "path"
+import { ProviderBillingMode } from "./billing-mode"
 
 // Direct imports for bundled providers
 import { createAmazonBedrock, type AmazonBedrockProviderSettings } from "@ai-sdk/amazon-bedrock"
@@ -864,6 +865,7 @@ export namespace Provider {
       id: z.string(),
       name: z.string(),
       source: z.enum(["env", "config", "custom", "api"]),
+      billingMode: ProviderBillingMode.optional(),
       env: z.string().array(),
       key: z.string().optional(),
       options: z.record(z.string(), z.any()),
@@ -1666,7 +1668,9 @@ export namespace Provider {
           const accountOptions = await plugin.auth.loader(() => loadAuth(accountId), providers[accountId])
           debugCheckpoint("provider", "account loader end", { family, accountId, hasResult: !!accountOptions })
           if (accountOptions) {
-            const { getModel: acctGetModel, ...acctRest } = accountOptions as Record<string, any> & { getModel?: CustomModelLoader }
+            const { getModel: acctGetModel, ...acctRest } = accountOptions as Record<string, any> & {
+              getModel?: CustomModelLoader
+            }
             // Account-level getModel not needed — accounts inherit from family's modelLoaders
             // via canonicalProviderId resolution in getLanguage(). Only merge options.
             providers[accountId].options = mergeDeep(providers[accountId].options, acctRest) as Info["options"]

@@ -1164,6 +1164,10 @@ export namespace Config {
 
   export const Provider = ModelsDev.Provider.partial()
     .extend({
+      billingMode: z
+        .enum(["token", "request", "unknown"])
+        .optional()
+        .describe("Provider billing mode authority for prompt-management policy: token, request, or unknown"),
       whitelist: z.array(z.string()).optional(),
       blacklist: z.array(z.string()).optional(),
       models: z
