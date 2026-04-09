@@ -34,9 +34,20 @@ export type PluginInput = {
 
 export type Plugin = (input: PluginInput) => Promise<Hooks>
 
+/**
+ * Model factory function returned by auth loader.
+ * When provided, core uses this to create LanguageModelV2 instances
+ * instead of requiring a CUSTOM_LOADER entry.
+ *
+ * @param sdk - The AI SDK provider instance (may be null for native providers)
+ * @param modelID - The model ID to instantiate
+ * @param options - Merged provider options (credentials + config)
+ */
+export type AuthModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
+
 export type AuthHook = {
   provider: string
-  loader?: (auth: () => Promise<Auth>, provider: Provider) => Promise<Record<string, any>>
+  loader?: (auth: () => Promise<Auth>, provider: Provider) => Promise<Record<string, any> & { getModel?: AuthModelLoader }>
   methods: (
     | {
         type: "oauth"
