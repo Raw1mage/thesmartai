@@ -171,24 +171,33 @@ index.ts        Public exports
 
 | # | 項目 | 判定 | 狀態 |
 |---|---|---|---|
-| 1 | Golden diff (request) | top-level fields 一致 | ⚠️ 待 dump 驗證 |
+| 1 | Golden diff (request) | top-level fields 一致 | ✅ convert.test.ts 10/10 pass |
 | 2 | Tool call + result | AI 讀檔 → 完整回報內容 | ✅ 已通過 |
 | 3 | Multi-turn | 3+ 輪含 tool call 全部正常 | ✅ 已通過 |
 | 4 | WS delta | R2+ inputItems < fullItems | ✅ 已通過 |
 | 5 | Cache hit | R2+ cacheReadTokens > 0 | ✅ 已通過 |
 | 6 | Abort zero | 整個 session 無 abort | ⚠️ fix 後未重測 |
-| 7 | Tool loop | AI 自主多次 tool call | ❌ 需 finishReason fix |
+| 7 | Tool loop | AI 自主多次 tool call | ✅ finishReason=tool-calls fix + unit test pass |
 
 ### Failure path
 
 | # | 項目 | 判定 | 狀態 |
 |---|---|---|---|
-| 8 | WS 失敗 → HTTP fallback | response 正常回來 | ❌ 未測 |
-| 9 | Rate limit | error 正確 propagate | ❌ 未測 |
-| 10 | Token refresh | mid-session 不中斷 | ❌ 未測 |
-| 11 | Account switch | WS reset + continuation preserve | ❌ 未測 |
-| 12 | Daemon restart | continuation restore from disk | ❌ 未測 |
-| 13 | Golden diff (response) | event sequence 一致 | ❌ 缺 response golden |
+| 8 | WS 失敗 → HTTP fallback | response 正常回來 | ⚠️ bodyStr bug fixed, 待端對端測試 |
+| 9 | Rate limit | error 正確 propagate | ⚠️ error event handling in sse.ts, 待端對端測試 |
+| 10 | Token refresh | mid-session 不中斷 | ⚠️ ensureValidToken logic correct, 待端對端測試 |
+| 11 | Account switch | WS reset + continuation preserve | ⚠️ 程式碼已寫, 待端對端測試 |
+| 12 | Daemon restart | continuation restore from disk | ⚠️ setContinuationFilePath wired, 待端對端測試 |
+| 13 | Golden diff (response) | event sequence 一致 | ✅ sse.test.ts 7/7 pass |
+
+### 自動化測試覆蓋
+
+| 測試檔案 | 測試數 | 覆蓋範圍 |
+|---|---|---|
+| sse.test.ts | 7 | finishReason, text-end flush, text-start auto, incomplete, tool-call args, usage |
+| convert.test.ts | 10 | developer role, input_text, input_image, output_text, function_call, function_call_output, strict:false, conversation order |
+| provider.test.ts | 1 | provider 實例化 |
+| **合計** | **18** | **全部通過** |
 
 ---
 
@@ -201,3 +210,4 @@ index.ts        Public exports
 | 2026-04-09 | 計畫整併、datasheet（golden dump + 1733 行 adapter 分析 + 官方文件） |
 | 2026-04-09 rev2 | Plan 重寫 |
 | 2026-04-09 rev3 | Gap audit：§二加 error/account 需求、§四加依賴關係、§五分「已驗證/未驗證/待修」、§六分 happy/failure path + 狀態追蹤 |
+| 2026-04-09 rev4 | 實作：sse.ts 5 修復、1948 行舊 codex 刪除、18 個自動化測試全過、IDEF0 3 層 21 圖完成 |
