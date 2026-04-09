@@ -241,6 +241,7 @@ export function SessionSidePanel(props: {
   const params = useParams()
   const sideMode = createMemo(() => props.layout.fileTree.mode())
   const activeSessionID = createMemo(() => props.vm.info()?.id)
+  const [layersExpanded, setLayersExpanded] = createSignal(true)
   const todos = createMemo(() => {
     const sessionID = activeSessionID()
     if (!sessionID) return undefined
@@ -639,71 +640,76 @@ export function SessionSidePanel(props: {
                   </Show>
                 }
               />
-              {/* Skill Layers Card */}
+              {/* Loaded Skills Card */}
               <div class="px-3 pb-3">
-                <div class="rounded-md border border-border-weak-base bg-background-base overflow-hidden">
-                  <div class="bg-surface-tertiary px-3 py-1.5 border-b border-border-weak-base flex items-center justify-between">
-                    <span class="text-11-medium uppercase tracking-wide text-text-weak">Skill Layers</span>
-                  </div>
-                  <div class="p-2 flex flex-col gap-2">
-                    <Show
-                      when={activeSessionID()}
-                      fallback={<div class="text-12-regular text-text-weak px-1">No active session.</div>}
-                    >
-                      {(() => {
-                        const [layers, setLayers] = createSignal<SkillLayerState[]>([])
-                        const [error, setError] = createSignal<string | null>(null)
-                        const formatTimestamp = (value?: number) => {
-                          if (!value) return "—"
-                          return new Date(value).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        }
-                        const fetchLayers = async () => {
-                          const sid = activeSessionID()
-                          if (!sid) return
-                          try {
-                            const res = await sdk.fetch(`${sdk.url}/api/v2/session/${sid}/skill-layer`)
-                            if (!res.ok) {
-                              const body = await res.json().catch(() => ({ message: "Failed to load skill layers." }))
-                              throw new Error(body.message || "Failed to load skill layers.")
-                            }
-                            setError(null)
-                            const payload = (await res.json()) as SkillLayerState[]
-                            setLayers(payload)
-                          } catch (e) {
-                            console.error(e)
-                            setError(e instanceof Error ? e.message : "Failed to load skill layers.")
+                <div class="rounded-md border border-border-weak-base bg-background-base px-3 py-2 flex flex-col gap-2">
+                  <button
+                    class="flex items-center justify-between gap-2 min-w-0 text-left"
+                    onClick={() => setLayersExpanded((v) => !v)}
+                    aria-expanded={layersExpanded()}
+                  >
+                    <div class="text-11-medium uppercase tracking-wide text-text-weak">已載技能</div>
+                    <div class="text-11-medium text-text-weak">{layersExpanded() ? "▾" : "▸"}</div>
+                  </button>
+                  <Show
+                    when={activeSessionID()}
+                    fallback={<div class="text-12-regular text-text-weak">No active session.</div>}
+                  >
+                    {(() => {
+                      const [layers, setLayers] = createSignal<SkillLayerState[]>([])
+                      const [error, setError] = createSignal<string | null>(null)
+                      const formatTimestamp = (value?: number) => {
+                        if (!value) return "—"
+                        return new Date(value).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      }
+                      const fetchLayers = async () => {
+                        const sid = activeSessionID()
+                        if (!sid) return
+                        try {
+                          const res = await sdk.fetch(`${sdk.url}/api/v2/session/${sid}/skill-layer`)
+                          if (!res.ok) {
+                            const body = await res.json().catch(() => ({ message: "Failed to load skill layers." }))
+                            throw new Error(body.message || "Failed to load skill layers.")
                           }
-                        }
-                        const runAction = async (name: string, action: string) => {
-                          const sid = activeSessionID()
-                          if (!sid) return
                           setError(null)
-                          try {
-                            const res = await sdk.fetch(`${sdk.url}/api/v2/session/${sid}/skill-layer/${name}/action`, {
-                              method: "POST",
-                              headers: { "content-type": "application/json", "x-opencode-directory": sdk.directory },
-                              body: JSON.stringify({ action }),
-                            })
-                            if (!res.ok) throw new Error((await res.json()).message || "Action failed")
-                            const payload = (await res.json()) as SkillLayerActionResponse
-                            setLayers(payload.entries)
-                          } catch (e: any) {
-                            setError(e.message)
-                          }
+                          const payload = (await res.json()) as SkillLayerState[]
+                          setLayers(payload)
+                        } catch (e) {
+                          console.error(e)
+                          setError(e instanceof Error ? e.message : "Failed to load skill layers.")
                         }
-                        createEffect(() => fetchLayers())
+                      }
+                      const runAction = async (name: string, action: string) => {
+                        const sid = activeSessionID()
+                        if (!sid) return
+                        setError(null)
+                        try {
+                          const res = await sdk.fetch(`${sdk.url}/api/v2/session/${sid}/skill-layer/${name}/action`, {
+                            method: "POST",
+                            headers: { "content-type": "application/json", "x-opencode-directory": sdk.directory },
+                            body: JSON.stringify({ action }),
+                          })
+                          if (!res.ok) throw new Error((await res.json()).message || "Action failed")
+                          const payload = (await res.json()) as SkillLayerActionResponse
+                          setLayers(payload.entries)
+                        } catch (e: any) {
+                          setError(e.message)
+                        }
+                      }
+                      createEffect(() => fetchLayers())
 
-                        return (
+                      return (
+                        <Show when={layersExpanded()}>
                           <>
                             <Show when={error()}>
-                              <div class="text-11-regular text-warning px-1">{error()}</div>
+                              <div class="text-11-regular text-warning">{error()}</div>
                             </Show>
                             <Show
                               when={layers().length > 0}
-                              fallback={<div class="text-12-regular text-text-weak px-1">No managed skills.</div>}
+                              fallback={<div class="text-12-regular text-text-weak">No managed skills.</div>}
                             >
                               <For each={layers()}>
                                 {(layer) => (
@@ -763,10 +769,10 @@ export function SessionSidePanel(props: {
                               </For>
                             </Show>
                           </>
-                        )
-                      })()}
-                    </Show>
-                  </div>
+                        </Show>
+                      )
+                    })()}
+                  </Show>
                 </div>
               </div>
             </Show>
