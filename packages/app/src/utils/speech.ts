@@ -25,66 +25,66 @@ interface Recognition {
   onstart: (() => void) | null
 }
 
-const COMMIT_DELAY = 250
+const PERIOD_DELAY = 3000
 
-const appendSegment = (base: string, addition: string) => {
-  const trimmed = addition.trim()
-  if (!trimmed) return base
-  if (!base) return trimmed
-  const needsSpace = /\S$/.test(base) && !/^[,.;!?]/.test(trimmed)
-  return `${base}${needsSpace ? " " : ""}${trimmed}`
+const hasCJK = (text: string) => /[\u4e00-\u9fff\u3400-\u4dbf]/.test(text)
+
+/**
+ * Infer punctuation for a finalized segment.
+ * - Question particles (嗎/呢) → ？
+ * - "comma" (short pause, user continued) → ，/,
+ * - "period" (3s silence or explicit stop) → 。/.
+ * - Already ends with punctuation → empty
+ */
+export const inferPunctuation = (text: string, type: "comma" | "period"): string => {
+  const trimmed = text.trim()
+  if (!trimmed) return ""
+  const last = trimmed[trimmed.length - 1]
+  if (/[，。？！、；：,.?!;:\-…]/.test(last)) return ""
+
+  if (/[嗎呢]$/.test(trimmed)) return "？"
+
+  const cjk = hasCJK(trimmed)
+  if (type === "comma") return cjk ? "，" : ", "
+  return cjk ? "。" : ". "
 }
 
-const extractSuffix = (committed: string, hypothesis: string) => {
-  const cleanHypothesis = hypothesis.trim()
-  if (!cleanHypothesis) return ""
-  const baseTokens = committed.trim() ? committed.trim().split(/\s+/) : []
-  const hypothesisTokens = cleanHypothesis.split(/\s+/)
-  let index = 0
-  while (
-    index < baseTokens.length &&
-    index < hypothesisTokens.length &&
-    baseTokens[index] === hypothesisTokens[index]
-  ) {
-    index += 1
-  }
-  if (index < baseTokens.length) return ""
-  return hypothesisTokens.slice(index).join(" ")
-}
-
+/**
+ * Live-transcription speech recognition with smart punctuation.
+ *
+ * - `continuous = true`: keeps listening until explicitly stopped.
+ * - On every `onresult`, builds the full transcript with punctuation and
+ *   pushes it via `onTranscript`.
+ * - Punctuation logic:
+ *   - isFinal fires (user paused) → no punctuation yet, start 3s timer
+ *   - New speech within 3s → comma before new segment
+ *   - 3s silence → period (or ？ for question particles)
+ *   - Explicit stop → period immediately
+ */
 export function createSpeechRecognition(opts?: {
   lang?: string
-  onFinal?: (text: string) => void
-  onInterim?: (text: string) => void
+  onTranscript?: (text: string) => void
 }) {
   const ctor = getSpeechRecognitionCtor<Recognition>(typeof window === "undefined" ? undefined : window)
   const hasSupport = Boolean(ctor)
 
   const [store, setStore] = createStore({
     isRecording: false,
-    committed: "",
-    interim: "",
+    transcript: "",
   })
 
   const isRecording = () => store.isRecording
-  const committed = () => store.committed
-  const interim = () => store.interim
+  const transcript = () => store.transcript
 
   let recognition: Recognition | undefined
   let shouldContinue = false
-  let committedText = ""
-  let sessionCommitted = ""
-  let pendingHypothesis = ""
-  let lastInterimSuffix = ""
-  let shrinkCandidate: string | undefined
-  let commitTimer: number | undefined
   let restartTimer: number | undefined
 
-  const cancelPendingCommit = () => {
-    if (commitTimer === undefined) return
-    clearTimeout(commitTimer)
-    commitTimer = undefined
-  }
+  // Punctuation state — persists across auto-restarts
+  let assembledText = "" // finalized text with punctuation already decided
+  let lastFinalText = "" // most recent final segment, trailing punct pending
+  let processedFinals = 0 // how many final results processed in current session
+  let periodTimer: number | undefined
 
   const clearRestart = () => {
     if (restartTimer === undefined) return
@@ -92,184 +92,116 @@ export function createSpeechRecognition(opts?: {
     restartTimer = undefined
   }
 
+  const clearPeriodTimer = () => {
+    if (periodTimer === undefined) return
+    window.clearTimeout(periodTimer)
+    periodTimer = undefined
+  }
+
   const scheduleRestart = () => {
     clearRestart()
-    if (!shouldContinue) return
-    if (!recognition) return
+    if (!shouldContinue || !recognition) return
     restartTimer = window.setTimeout(() => {
       restartTimer = undefined
-      if (!shouldContinue) return
-      if (!recognition) return
+      if (!shouldContinue || !recognition) return
       try {
         recognition.start()
       } catch {}
     }, 150)
   }
 
-  const commitSegment = (segment: string) => {
-    const nextCommitted = appendSegment(committedText, segment)
-    if (nextCommitted === committedText) return
-    committedText = nextCommitted
-    setStore("committed", committedText)
-    if (opts?.onFinal) opts.onFinal(segment.trim())
+  const pushUpdate = (interim: string) => {
+    const full = (assembledText + lastFinalText + interim).trim()
+    console.debug("[speech] push", { assembledText, lastFinalText, interim, full })
+    setStore("transcript", full)
+    if (opts?.onTranscript) opts.onTranscript(full)
   }
 
-  const promotePending = () => {
-    if (!pendingHypothesis) return
-    const suffix = extractSuffix(sessionCommitted, pendingHypothesis)
-    if (!suffix) {
-      pendingHypothesis = ""
-      return
-    }
-    sessionCommitted = appendSegment(sessionCommitted, suffix)
-    commitSegment(suffix)
-    pendingHypothesis = ""
-    lastInterimSuffix = ""
-    shrinkCandidate = undefined
-    setStore("interim", "")
-    if (opts?.onInterim) opts.onInterim("")
-  }
-
-  const applyInterim = (suffix: string, hypothesis: string) => {
-    cancelPendingCommit()
-    pendingHypothesis = hypothesis
-    lastInterimSuffix = suffix
-    shrinkCandidate = undefined
-    setStore("interim", suffix)
-    if (opts?.onInterim) {
-      opts.onInterim(suffix ? appendSegment(committedText, suffix) : "")
-    }
-    if (!suffix) return
-    const snapshot = hypothesis
-    commitTimer = window.setTimeout(() => {
-      if (pendingHypothesis !== snapshot) return
-      const currentSuffix = extractSuffix(sessionCommitted, pendingHypothesis)
-      if (!currentSuffix) return
-      sessionCommitted = appendSegment(sessionCommitted, currentSuffix)
-      commitSegment(currentSuffix)
-      pendingHypothesis = ""
-      lastInterimSuffix = ""
-      shrinkCandidate = undefined
-      setStore("interim", "")
-      if (opts?.onInterim) opts.onInterim("")
-    }, COMMIT_DELAY)
+  /** Commit lastFinalText with period/question mark (3s timeout or explicit stop). */
+  const commitPeriod = () => {
+    if (!lastFinalText) return
+    const punct = inferPunctuation(lastFinalText, "period")
+    assembledText += lastFinalText + punct
+    lastFinalText = ""
+    pushUpdate("")
   }
 
   if (ctor) {
     recognition = new ctor()
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = opts?.lang || (typeof navigator !== "undefined" ? navigator.language : "en-US")
 
     recognition.onresult = (event: RecognitionEvent) => {
       if (!event.results.length) return
 
-      let aggregatedFinal = ""
-      let latestHypothesis = ""
+      let finalCount = 0
+      const newFinals: string[] = []
+      let interim = ""
 
       for (let i = 0; i < event.results.length; i += 1) {
-        const result = event.results[i]
-        const transcript = (result[0]?.transcript || "").trim()
-        if (!transcript) continue
-        if (result.isFinal) {
-          aggregatedFinal = appendSegment(aggregatedFinal, transcript)
+        const text = event.results[i][0]?.transcript ?? ""
+        if (event.results[i].isFinal) {
+          finalCount++
+          if (finalCount > processedFinals) {
+            newFinals.push(text)
+          }
         } else {
-          latestHypothesis = transcript
+          interim = text
         }
       }
 
-      if (aggregatedFinal) {
-        cancelPendingCommit()
-        const finalSuffix = extractSuffix(sessionCommitted, aggregatedFinal)
-        if (finalSuffix) {
-          sessionCommitted = appendSegment(sessionCommitted, finalSuffix)
-          commitSegment(finalSuffix)
+      if (newFinals.length > 0) {
+        clearPeriodTimer()
+
+        for (const text of newFinals) {
+          if (lastFinalText) {
+            // Previous segment pending — user continued speaking → comma
+            const punct = inferPunctuation(lastFinalText, "comma")
+            assembledText += lastFinalText + punct
+          }
+          lastFinalText = text
         }
-        shouldContinue = false
-        clearRestart()
-        pendingHypothesis = ""
-        lastInterimSuffix = ""
-        shrinkCandidate = undefined
-        setStore("interim", "")
-        if (opts?.onInterim) opts.onInterim("")
-        return
+        processedFinals = finalCount
+
+        // Start 3s timer — if no new speech, add period
+        periodTimer = window.setTimeout(() => {
+          periodTimer = undefined
+          commitPeriod()
+        }, PERIOD_DELAY)
       }
 
-      cancelPendingCommit()
-
-      if (!latestHypothesis) {
-        shrinkCandidate = undefined
-        applyInterim("", "")
-        return
-      }
-
-      const suffix = extractSuffix(sessionCommitted, latestHypothesis)
-
-      if (!suffix) {
-        if (!lastInterimSuffix) {
-          shrinkCandidate = undefined
-          applyInterim("", latestHypothesis)
-          return
-        }
-        if (shrinkCandidate === "") {
-          applyInterim("", latestHypothesis)
-          return
-        }
-        shrinkCandidate = ""
-        pendingHypothesis = latestHypothesis
-        return
-      }
-
-      if (lastInterimSuffix && suffix.length < lastInterimSuffix.length) {
-        if (shrinkCandidate === suffix) {
-          applyInterim(suffix, latestHypothesis)
-          return
-        }
-        shrinkCandidate = suffix
-        pendingHypothesis = latestHypothesis
-        return
-      }
-
-      shrinkCandidate = undefined
-      applyInterim(suffix, latestHypothesis)
+      pushUpdate(interim)
     }
 
     recognition.onerror = (e: { error: string }) => {
+      console.debug("[speech] onerror", e.error)
       clearRestart()
-      promotePending()
-      cancelPendingCommit()
-      lastInterimSuffix = ""
-      shrinkCandidate = undefined
       if (e.error === "no-speech") {
-        shouldContinue = false
-        setStore("interim", "")
-        if (opts?.onInterim) opts.onInterim("")
-        setStore("isRecording", false)
-        return
+        if (shouldContinue) {
+          scheduleRestart()
+          return
+        }
       }
       shouldContinue = false
       setStore("isRecording", false)
     }
 
     recognition.onstart = () => {
+      console.debug("[speech] onstart")
       clearRestart()
-      sessionCommitted = ""
-      pendingHypothesis = ""
-      cancelPendingCommit()
-      lastInterimSuffix = ""
-      shrinkCandidate = undefined
-      setStore("interim", "")
-      if (opts?.onInterim) opts.onInterim("")
+      // processedFinals resets per browser session (results array resets)
+      processedFinals = 0
       setStore("isRecording", true)
     }
 
     recognition.onend = () => {
+      console.debug("[speech] onend", { shouldContinue })
       clearRestart()
-      promotePending()
-      cancelPendingCommit()
-      lastInterimSuffix = ""
-      shrinkCandidate = undefined
-      shouldContinue = false
+      if (shouldContinue) {
+        scheduleRestart()
+        return
+      }
       setStore("isRecording", false)
     }
   }
@@ -277,13 +209,12 @@ export function createSpeechRecognition(opts?: {
   const start = () => {
     if (!recognition) return
     clearRestart()
+    clearPeriodTimer()
     shouldContinue = true
-    sessionCommitted = ""
-    pendingHypothesis = ""
-    cancelPendingCommit()
-    lastInterimSuffix = ""
-    shrinkCandidate = undefined
-    setStore("interim", "")
+    assembledText = ""
+    lastFinalText = ""
+    processedFinals = 0
+    setStore("transcript", "")
     try {
       recognition.start()
     } catch {}
@@ -293,12 +224,11 @@ export function createSpeechRecognition(opts?: {
     if (!recognition) return
     shouldContinue = false
     clearRestart()
-    promotePending()
-    cancelPendingCommit()
-    lastInterimSuffix = ""
-    shrinkCandidate = undefined
-    setStore("interim", "")
-    if (opts?.onInterim) opts.onInterim("")
+    clearPeriodTimer()
+    // Commit any pending text with period immediately
+    if (lastFinalText) {
+      commitPeriod()
+    }
     try {
       recognition.stop()
     } catch {}
@@ -307,12 +237,7 @@ export function createSpeechRecognition(opts?: {
   onCleanup(() => {
     shouldContinue = false
     clearRestart()
-    promotePending()
-    cancelPendingCommit()
-    lastInterimSuffix = ""
-    shrinkCandidate = undefined
-    setStore("interim", "")
-    if (opts?.onInterim) opts.onInterim("")
+    clearPeriodTimer()
     try {
       recognition?.stop()
     } catch {}
@@ -321,8 +246,7 @@ export function createSpeechRecognition(opts?: {
   return {
     isSupported: () => hasSupport,
     isRecording,
-    committed,
-    interim,
+    transcript,
     start,
     stop,
   }

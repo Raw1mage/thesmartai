@@ -610,20 +610,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const [composing, setComposing] = createSignal(false)
   const isImeComposing = (event: KeyboardEvent) => event.isComposing || composing() || event.keyCode === 229
-  const appendSpeechTranscript = (text: string) => {
-    const trimmed = text.trim()
-    if (!trimmed) return
+  // Speech: snapshot the prompt before recording starts so live transcript
+  // can be appended without losing pre-existing content.
+  let speechBasePrompt: ContentPart[] | null = null
 
-    const current = prompt.current()
-    const inputParts = current.filter((part) => part.type !== "image")
-    const imageParts = current.filter((part): part is ImageAttachmentPart => part.type === "image")
-    const baseParts = inputParts.length > 0 ? [...inputParts] : [...DEFAULT_PROMPT]
+  const applySpeechTranscript = (text: string) => {
+    if (!speechBasePrompt) return
+    console.debug("[speech] applySpeechTranscript", text)
+
+    // Clone base parts each time so the snapshot is never mutated
+    const inputParts = speechBasePrompt.filter((part) => part.type !== "image").map((p) => ({ ...p }))
+    const imageParts = speechBasePrompt.filter((part): part is ImageAttachmentPart => part.type === "image")
+    const baseParts = inputParts.length > 0 ? inputParts : [...DEFAULT_PROMPT]
     const last = baseParts.at(-1)
+    const trimmed = text.trim()
 
-    if (last?.type === "text") {
+    if (trimmed && last?.type === "text") {
       const needsSpace = /\S$/.test(last.content) && !/^[,.;!?]/.test(trimmed)
       last.content = `${last.content}${needsSpace ? " " : ""}${trimmed}`
-    } else {
+    } else if (trimmed) {
       baseParts.push({
         type: "text",
         content: trimmed,
@@ -641,12 +646,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       queueScroll()
     })
   }
+
   const speech = createSpeechRecognition({
-    onFinal: appendSpeechTranscript,
+    onTranscript: applySpeechTranscript,
   })
   const speechSupported = createMemo(() => speech.isSupported())
   const speechRecording = createMemo(() => speech.isRecording())
-  const speechInterim = createMemo(() => speech.interim())
+  const speechTranscript = createMemo(() => speech.transcript())
   const speechTooltip = createMemo(() => {
     if (!speechSupported()) return language.t("prompt.voice.unsupported")
     if (speechRecording()) return language.t("prompt.action.voiceInputStop")
@@ -655,11 +661,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const speechButtonDisabled = createMemo(() => !speechSupported() || working())
 
   createEffect(() => {
-    if (store.mode !== "normal" && speechRecording()) speech.stop()
+    if (store.mode !== "normal" && speechRecording()) {
+      speechBasePrompt = null
+      speech.stop()
+    }
   })
 
   createEffect(() => {
-    if (working() && speechRecording()) speech.stop()
+    if (working() && speechRecording()) {
+      speechBasePrompt = null
+      speech.stop()
+    }
   })
 
   createEffect(() => {
@@ -1403,6 +1415,36 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               {placeholder()}
             </div>
           </Show>
+          <Show when={store.mode === "normal" && speechSupported()}>
+            <button
+              type="button"
+              class="absolute top-2.5 right-2.5 p-0.5 rounded hover:bg-fill-quaternary transition-colors"
+              disabled={speechButtonDisabled()}
+              onClick={() => {
+                if (speechRecording()) {
+                  speechBasePrompt = null
+                  speech.stop()
+                  return
+                }
+                speechBasePrompt = prompt.current().map((p) => (p.type === "image" ? p : { ...p }))
+                speech.start()
+              }}
+              aria-label={speechTooltip()}
+              title={speechTooltip()}
+            >
+              <Show
+                when={!speechRecording()}
+                fallback={
+                  <svg class="size-4.5" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <circle cx="10" cy="10" r="7" fill="#ef4444" />
+                    <circle cx="10" cy="10" r="3" fill="#fff" />
+                  </svg>
+                }
+              >
+                <Icon name="microphone" class="size-4.5 text-text-weak" />
+              </Show>
+            </button>
+          </Show>
         </div>
         <div class="relative p-3 flex items-center justify-between gap-2">
           <div class="flex items-center gap-2 min-w-0 flex-1">
@@ -1479,14 +1521,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 {promptMeta()}
               </span>
             </Show>
-            <Show when={store.mode === "normal" && (speechRecording() || speechInterim())}>
+            <Show when={store.mode === "normal" && speechRecording()}>
               <span class="text-12-regular text-text-weak whitespace-nowrap overflow-hidden text-ellipsis min-w-0 flex items-center gap-1">
                 <Icon
                   name="speech-bubble"
                   size="small"
-                  class={speechRecording() ? "text-icon-danger-base" : "text-text-weak"}
+                  class="text-icon-danger-base"
                 />
-                <span class="truncate">{speechInterim() || language.t("prompt.voice.recording")}</span>
+                <span class="truncate">{language.t("prompt.voice.recording")}</span>
               </span>
             </Show>
           </div>
@@ -1513,28 +1555,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     aria-label={language.t("prompt.action.attachFile")}
                   >
                     <Icon name="photo" class="size-4.5" />
-                  </Button>
-                </Tooltip>
-                <Tooltip placement="top" value={speechTooltip()}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    class="size-6 px-1"
-                    disabled={speechButtonDisabled()}
-                    onClick={() => {
-                      if (!speechSupported()) return
-                      if (speechRecording()) {
-                        speech.stop()
-                        return
-                      }
-                      speech.start()
-                    }}
-                    aria-label={speechTooltip()}
-                  >
-                    <Icon
-                      name="speech-bubble"
-                      class={speechRecording() ? "size-4.5 text-icon-danger-base" : "size-4.5"}
-                    />
                   </Button>
                 </Tooltip>
               </Show>
