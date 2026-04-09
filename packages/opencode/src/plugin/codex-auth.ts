@@ -25,7 +25,7 @@ import type { TokenResponse, PkceCodes } from "@opencode-ai/codex-provider"
 import { Log } from "../util/log"
 import { Installation } from "../installation"
 import { Auth } from "../auth"
-import { BusEvent } from "../bus"
+import { BusEvent } from "@/bus/bus-event"
 import { z } from "zod"
 
 /** Emitted when WS continuation state is invalidated (e.g., after compaction). */
