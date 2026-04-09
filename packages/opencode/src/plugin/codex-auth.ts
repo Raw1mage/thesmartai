@@ -21,12 +21,19 @@ import {
   generateState,
   refreshAccessToken,
 } from "@opencode-ai/codex-provider"
+import { createCodex } from "@opencode-ai/codex-provider/provider"
+import { isCodexCredentials } from "@opencode-ai/codex-provider/auth"
+import { setContinuationFilePath } from "@opencode-ai/codex-provider/continuation"
 import type { TokenResponse, PkceCodes } from "@opencode-ai/codex-provider"
 import { Log } from "../util/log"
 import { Installation } from "../installation"
 import { Auth } from "../auth"
+import { Global } from "../global"
 import { BusEvent } from "@/bus/bus-event"
+import { codexServerCompact } from "../provider/codex-compaction"
 import { z } from "zod"
+import path from "path"
+import os from "os"
 
 /** Emitted when WS continuation state is invalidated (e.g., after compaction). */
 export const ContinuationInvalidatedEvent = BusEvent.define(
@@ -173,6 +180,33 @@ async function refreshIfNeeded(
 
 export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> {
   return {
+    "session.compact": async (_input, output) => {
+      // Only handle compaction for codex/openai providers
+      if (_input.model.providerId !== "codex" && _input.model.providerId !== "openai") return
+
+      const result = await codexServerCompact({
+        model: _input.model.modelID,
+        input: _input.conversationItems as unknown[],
+        instructions: _input.instructions,
+        tools: [],
+        parallel_tool_calls: true,
+      })
+
+      if (!result.success || !result.output) return
+
+      // Extract human-readable summary from compacted output
+      output.compactedItems = result.output
+      output.summary =
+        result.output
+          .filter((item: any) => item.type === "message")
+          .flatMap((item: any) => (item.content ?? []).map((c: any) => c.text ?? ""))
+          .join("\n") || "[Server-compacted conversation history]"
+
+      log.info("codex server compaction via hook", {
+        sessionID: _input.sessionID,
+        outputItems: result.output.length,
+      })
+    },
     auth: {
       provider: "codex",
       async loader(getAuth, provider) {
@@ -187,8 +221,10 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
         const authWithAccount = auth as typeof auth & { accountId?: string }
         await refreshIfNeeded(auth, authWithAccount, "codex", input.client)
 
-        // Return credentials for native codex provider (createCodex)
-        // These flow through provider options → custom-loaders-def.ts getModel()
+        // Initialize continuation file path once
+        setContinuationFilePath(path.join(Global.Path.state, "ws-continuation.json"))
+
+        // Return credentials + getModel factory for native codex provider
         return {
           apiKey: "codex-oauth", // dummy — native provider ignores this
           type: "oauth",
@@ -196,6 +232,25 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
           access: auth.access,
           expires: auth.expires,
           accountId: authWithAccount.accountId,
+          async getModel(_sdk: any, modelID: string, options?: Record<string, any>) {
+            const credentials = options as any
+            const provider = createCodex({
+              credentials: isCodexCredentials(credentials)
+                ? credentials
+                : {
+                    type: "oauth",
+                    refresh: credentials?.refresh ?? "",
+                    access: credentials?.access,
+                    expires: credentials?.expires,
+                    accountId: credentials?.accountId,
+                  },
+              conversationId: credentials?.conversationId,
+              sessionId: credentials?.sessionId,
+              installationId: credentials?.installationId,
+              userAgent: `opencode/${Installation.VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`,
+            })
+            return provider.languageModel(modelID)
+          },
         }
       },
       methods: [
