@@ -13,6 +13,7 @@ import {
   normalizeCanonicalProviderKey,
   resolveCanonicalRuntimeProvider,
 } from "../../provider/canonical-family-source"
+import { resolveProviderBillingMode } from "../../provider/billing-mode"
 import { lazy } from "../../util/lazy"
 import { Log } from "../../util/log"
 const log = Log.create({ service: "provider.routes" })
@@ -31,7 +32,7 @@ export const ProviderRoutes = lazy(() =>
               "application/json": {
                 schema: resolver(
                   z.object({
-                    all: ModelsDev.Provider.array(),
+                    all: Provider.Info.array(),
                     default: z.record(z.string(), z.string()),
                     connected: z.array(z.string()),
                   }),
@@ -86,6 +87,7 @@ export const ProviderRoutes = lazy(() =>
               ...resolvedConnected.provider,
               id: family,
               name: Account.getProviderLabel(family),
+              billingMode: resolveProviderBillingMode(config, family),
             }
             continue
           }
@@ -104,7 +106,7 @@ export const ProviderRoutes = lazy(() =>
           const hasAccountsConfigured = !!(familyData?.accounts && Object.keys(familyData.accounts).length > 0)
           if (hasAccountsConfigured) {
             const publicModels: Record<string, Provider.Model> = {}
-            for (const [modelId, modelInfo] of Object.entries(info.models)) {
+            for (const [modelId, modelInfo] of Object.entries(info.models as Record<string, Provider.Model>)) {
               if (modelInfo.cost.input === 0) {
                 publicModels[modelId] = modelInfo
               }
@@ -113,7 +115,10 @@ export const ProviderRoutes = lazy(() =>
             info.models = publicModels
           }
 
-          providers[family] = info
+          providers[family] = {
+            ...info,
+            billingMode: resolveProviderBillingMode(config, family),
+          }
         }
 
         const connectedCanonical = canonicalProviders

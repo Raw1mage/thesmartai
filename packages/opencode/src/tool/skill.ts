@@ -6,6 +6,7 @@ import { Skill } from "../skill"
 import { PermissionNext } from "../permission/next"
 import { Ripgrep } from "../file/ripgrep"
 import { iife } from "@/util/iife"
+import { SkillLayerRegistry } from "@/session/skill-layer-registry"
 
 export const SkillTool = Tool.define("skill", async (ctx) => {
   const skills = await Skill.all()
@@ -73,6 +74,12 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
         metadata: {},
       })
 
+      SkillLayerRegistry.recordLoaded(ctx.sessionID, params.name, {
+        content: skill.content.trim(),
+        purpose: `skill:${skill.name}`,
+        keepRules: [],
+      })
+
       const dir = path.dirname(skill.location)
       const base = pathToFileURL(dir).href
 
@@ -99,19 +106,14 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
       return {
         title: `Loaded skill: ${skill.name}`,
         output: [
-          `<skill_content name="${skill.name}">`,
-          `# Skill: ${skill.name}`,
-          "",
-          skill.content.trim(),
-          "",
+          `<skill_loaded name="${skill.name}">`,
+          `status: loaded`,
           `Base directory for this skill: ${base}`,
-          "Relative paths in this skill (e.g., scripts/, reference/) are relative to this base directory.",
-          "Note: file list is sampled.",
-          "",
+          `note: content is managed by session skill-layer injection`,
           "<skill_files>",
           files,
           "</skill_files>",
-          "</skill_content>",
+          "</skill_loaded>",
         ].join("\n"),
         metadata: {
           name: skill.name,

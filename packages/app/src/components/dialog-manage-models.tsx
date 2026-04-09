@@ -3,12 +3,14 @@ import { List } from "@opencode-ai/ui/list"
 import { Switch } from "@opencode-ai/ui/switch"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { Button } from "@opencode-ai/ui/button"
+import { Select } from "@opencode-ai/ui/select"
 import type { Component } from "solid-js"
 import { useLocal } from "@/context/local"
 import { popularProviders } from "@/hooks/use-providers"
 import { useLanguage } from "@/context/language"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { IconButton } from "@opencode-ai/ui/icon-button"
+import { useGlobalSync } from "@/context/global-sync"
 import { DialogSelectProvider } from "./dialog-select-provider"
 
 function cn(...classes: (string | undefined | null | false)[]) {
@@ -17,8 +19,14 @@ function cn(...classes: (string | undefined | null | false)[]) {
 
 export const DialogManageModels: Component = () => {
   const local = useLocal()
+  const globalSync = useGlobalSync()
   const language = useLanguage()
   const dialog = useDialog()
+  const billingModeOptions = [
+    { value: "token", label: "Token" },
+    { value: "request", label: "Request" },
+    { value: "unknown", label: "Unknown" },
+  ] as const
 
   const handleConnectProvider = () => {
     dialog.show(() => <DialogSelectProvider />)
@@ -30,6 +38,25 @@ export const DialogManageModels: Component = () => {
   const setProviderVisibility = (providerID: string, checked: boolean) => {
     providerList(providerID).forEach((x) => {
       local.model.setVisibility({ modelID: x.id, providerID: x.provider.id }, checked)
+    })
+  }
+  const providerBillingMode = (providerID: string) => {
+    const provider = providerList(providerID)[0]?.provider
+    return (
+      provider?.billingMode ??
+      globalSync.data.config.provider?.[providerID]?.billingMode ??
+      billingModeOptions.find((option) => option.value === "unknown")?.value
+    )
+  }
+  const setProviderBillingMode = async (providerID: string, billingMode: "token" | "request" | "unknown") => {
+    const current = globalSync.data.config.provider?.[providerID]
+    await globalSync.updateConfig({
+      provider: {
+        [providerID]: {
+          ...(current ?? {}),
+          billingMode,
+        },
+      },
     })
   }
 
@@ -53,23 +80,35 @@ export const DialogManageModels: Component = () => {
         groupHeader={(group) => {
           const provider = group.items[0].provider
           return (
-            <>
+            <div class="w-full flex items-center justify-between gap-2">
               <span>{provider.name}</span>
-              <Tooltip
-                placement="top"
-                value={language.t("dialog.model.manage.provider.toggle", { provider: provider.name })}
-              >
-                <IconButton
-                  icon="eye"
-                  variant="ghost"
-                  class={cn(
-                    "size-6 -mr-1 transition-opacity hover:text-icon-base",
-                    providerVisible(provider.id) ? "text-icon-weak-base" : "text-icon-warning-base opacity-100",
-                  )}
-                  onClick={() => setProviderVisibility(provider.id, !providerVisible(provider.id))}
+              <div class="flex items-center gap-2">
+                <Select
+                  options={billingModeOptions}
+                  current={billingModeOptions.find((option) => option.value === providerBillingMode(provider.id))}
+                  value={(option) => option.value}
+                  label={(option) => option.label}
+                  onSelect={(option) => option && setProviderBillingMode(provider.id, option.value)}
+                  variant="secondary"
+                  size="small"
+                  triggerVariant="settings"
                 />
-              </Tooltip>
-            </>
+                <Tooltip
+                  placement="top"
+                  value={language.t("dialog.model.manage.provider.toggle", { provider: provider.name })}
+                >
+                  <IconButton
+                    icon="eye"
+                    variant="ghost"
+                    class={cn(
+                      "size-6 -mr-1 transition-opacity hover:text-icon-base",
+                      providerVisible(provider.id) ? "text-icon-weak-base" : "text-icon-warning-base opacity-100",
+                    )}
+                    onClick={() => setProviderVisibility(provider.id, !providerVisible(provider.id))}
+                  />
+                </Tooltip>
+              </div>
+            </div>
           )
         }}
         sortGroupsBy={(a, b) => {

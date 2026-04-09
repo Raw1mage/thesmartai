@@ -38,6 +38,9 @@ import { RateLimitJudge, isRateLimitError, isAuthError, formatRateLimitReason } 
 import { RequestMonitor } from "@/account/monitor"
 import ENABLEMENT from "./prompt/enablement.json"
 import { logSessionAccountAudit, resolveAccountAuditSource } from "./account-audit"
+import { resolveProviderBillingMode } from "@/provider/billing-mode"
+import { SkillLayerRegistry } from "./skill-layer-registry"
+import { buildSkillLayerRegistrySystemPart } from "./skill-layer-seam"
 
 /**
  * Bus event for real-time LLM error reporting to the webapp sidebar.
@@ -109,7 +112,6 @@ export namespace LLM {
 
   let lastRateLimitToastAt = 0
   let lastRotationToastAt = 0
-
 
   export type StreamInput = {
     user: MessageV2.User
@@ -353,10 +355,16 @@ export namespace LLM {
       Provider.getProvider(executionModel.providerId),
       Auth.get(executionModel.providerId),
     ])
+    const billingMode = resolveProviderBillingMode(cfg, executionModel.providerId)
+    const skillLayerEntries = SkillLayerRegistry.listForInjection(input.sessionID, {
+      billingMode,
+      latestUserText: extractLatestUserText(input.messages),
+    })
 
     debugCheckpoint("llm", "Provider and auth loaded", {
       providerId: input.model.providerId,
       executionProviderId: executionModel.providerId,
+      billingMode,
       providerSource: provider?.source,
       hasCustomFetch: typeof provider?.options?.fetch === "function",
       accountId: currentAccountId,
@@ -419,6 +427,9 @@ export namespace LLM {
           `\n\n[IDENTITY REINFORCEMENT]\n` +
           `Current Role: ${subagentSession ? "Subagent" : "Main Agent"}\n` +
           `Session Context: ${subagentSession ? "Sub-task" : "Main-task Orchestration"}`,
+      },
+      {
+        ...buildSkillLayerRegistrySystemPart(skillLayerEntries),
       },
     ]
 
@@ -724,7 +735,6 @@ export namespace LLM {
           )
         }
         RequestMonitor.get().recordRequest(input.model.providerId, accountId || "unknown", input.model.id, totalTokens)
-
       },
       async onError(error) {
         l.error("stream error", { error: serializeError(error) })
@@ -856,7 +866,7 @@ export namespace LLM {
             }
           : input.model.api.npm === "@opencode-ai/codex-provider"
             ? {
-                "session_id": input.sessionID,
+                session_id: input.sessionID,
                 "x-opencode-session": input.sessionID,
               }
             : input.model.api.npm !== "@opencode-ai/claude-provider"

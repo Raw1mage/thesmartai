@@ -77,7 +77,12 @@ function FileTabMenu(props: {
     if (!c || !p) return
     const isBase64 = c.encoding === "base64"
     const blob = isBase64
-      ? (() => { const bin = atob(c.content); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new Blob([bytes], { type: c.mimeType || "application/octet-stream" }) })()
+      ? (() => {
+          const bin = atob(c.content)
+          const bytes = new Uint8Array(bin.length)
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+          return new Blob([bytes], { type: c.mimeType || "application/octet-stream" })
+        })()
       : new Blob([c.content], { type: c.mimeType || "text/plain" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -93,7 +98,12 @@ function FileTabMenu(props: {
     if (!c) return
     const isBase64 = c.encoding === "base64"
     const blob = isBase64
-      ? (() => { const bin = atob(c.content); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new Blob([bytes], { type: c.mimeType || "application/octet-stream" }) })()
+      ? (() => {
+          const bin = atob(c.content)
+          const bytes = new Uint8Array(bin.length)
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+          return new Blob([bytes], { type: c.mimeType || "application/octet-stream" })
+        })()
       : new Blob([c.content], { type: c.mimeType || "text/plain" })
     window.open(URL.createObjectURL(blob), "_blank")
     setOpen(false)
@@ -107,7 +117,7 @@ function FileTabMenu(props: {
       const rect = triggerRef.getBoundingClientRect()
       setMenuPos({ top: rect.bottom + 4, left: rect.right })
     }
-    setOpen(v => !v)
+    setOpen((v) => !v)
   }
 
   return (
@@ -125,7 +135,15 @@ function FileTabMenu(props: {
           <div
             ref={ref}
             class="fixed flex items-center gap-0.5 p-1 rounded-md border border-border-base bg-background-base shadow-lg"
-            style={{ "z-index": "99999", top: `${menuPos().top}px`, left: `${menuPos().left}px`, transform: "translateX(-100%)", "--icon-base": "#ffffff" } as any}
+            style={
+              {
+                "z-index": "99999",
+                top: `${menuPos().top}px`,
+                left: `${menuPos().left}px`,
+                transform: "translateX(-100%)",
+                "--icon-base": "#ffffff",
+              } as any
+            }
           >
             <button
               class="p-1.5 hover:bg-surface-tertiary rounded transition-colors [&_[data-component=icon]]:!text-white"
@@ -568,7 +586,8 @@ export function SessionSidePanel(props: {
                                                     navigate(`/${params.dir}/session/${card.sessionID}`)
                                                   }}
                                                 >
-                                                  {" "}@{card.agent}
+                                                  {" "}
+                                                  @{card.agent}
                                                 </a>
                                               </Show>
                                             </div>
@@ -605,6 +624,118 @@ export function SessionSidePanel(props: {
                   </Show>
                 }
               />
+              {/* Skill Layers Card */}
+              <div class="px-3 pb-3">
+                <div class="rounded-md border border-border-weak-base bg-background-base overflow-hidden">
+                  <div class="bg-surface-tertiary px-3 py-1.5 border-b border-border-weak-base flex items-center justify-between">
+                    <span class="text-11-medium uppercase tracking-wide text-text-weak">Skill Layers</span>
+                  </div>
+                  <div class="p-2 flex flex-col gap-2">
+                    <Show
+                      when={activeSessionID()}
+                      fallback={<div class="text-12-regular text-text-weak px-1">No active session.</div>}
+                    >
+                      {(() => {
+                        const [layers, setLayers] = createSignal<any[]>([])
+                        const [error, setError] = createSignal<string | null>(null)
+                        const fetchLayers = async () => {
+                          const sid = activeSessionID()
+                          if (!sid) return
+                          try {
+                            const res = await sdk.fetch(`${sdk.url}/api/v2/session/${sid}/skill-layer`)
+                            if (res.ok) setLayers(await res.json())
+                          } catch (e) {
+                            console.error(e)
+                          }
+                        }
+                        const runAction = async (name: string, action: string) => {
+                          const sid = activeSessionID()
+                          if (!sid) return
+                          setError(null)
+                          try {
+                            const res = await sdk.fetch(`${sdk.url}/api/v2/session/${sid}/skill-layer/${name}/action`, {
+                              method: "POST",
+                              headers: { "content-type": "application/json", "x-opencode-directory": sdk.directory },
+                              body: JSON.stringify({ action }),
+                            })
+                            if (!res.ok) throw new Error((await res.json()).message || "Action failed")
+                            setLayers((await res.json()).entries)
+                          } catch (e: any) {
+                            setError(e.message)
+                          }
+                        }
+                        createEffect(() => fetchLayers())
+
+                        return (
+                          <>
+                            <Show when={error()}>
+                              <div class="text-11-regular text-warning px-1">{error()}</div>
+                            </Show>
+                            <Show
+                              when={layers().length > 0}
+                              fallback={<div class="text-12-regular text-text-weak px-1">No managed skills.</div>}
+                            >
+                              <For each={layers()}>
+                                {(layer) => (
+                                  <div class="flex flex-col gap-1 p-1.5 rounded hover:bg-surface-tertiary">
+                                    <div class="flex items-center justify-between min-w-0">
+                                      <span class="text-12-medium text-text-strong truncate" title={layer.name}>
+                                        {layer.name}
+                                        <Show when={layer.pinned}>
+                                          <span class="ml-1 text-warning">★</span>
+                                        </Show>
+                                      </span>
+                                      <div class="flex gap-1 shrink-0">
+                                        <button
+                                          class="text-11-medium text-text-weak hover:text-text-strong"
+                                          onClick={() => runAction(layer.name, layer.pinned ? "unpin" : "pin")}
+                                        >
+                                          {layer.pinned ? "Unpin" : "Pin"}
+                                        </button>
+                                        <button
+                                          class="text-11-medium text-text-weak hover:text-text-strong"
+                                          onClick={() => runAction(layer.name, "promote")}
+                                        >
+                                          Full
+                                        </button>
+                                        <button
+                                          class="text-11-medium text-text-weak hover:text-text-strong"
+                                          onClick={() => runAction(layer.name, "demote")}
+                                        >
+                                          Sum
+                                        </button>
+                                        <button
+                                          class="text-11-medium text-text-weak hover:text-warning"
+                                          onClick={() => runAction(layer.name, "unload")}
+                                        >
+                                          Drop
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <div class="flex items-center gap-2 text-11-regular text-text-weak">
+                                      <span
+                                        class={{
+                                          "text-success": layer.runtimeState === "active",
+                                          "text-info": layer.runtimeState === "sticky",
+                                          "text-warning": layer.runtimeState === "summarized",
+                                        }}
+                                      >
+                                        [{layer.runtimeState}]
+                                      </span>
+                                      <span>{layer.desiredState}</span>
+                                      <span class="truncate max-w-[100px]">{layer.lastReason}</span>
+                                    </div>
+                                  </div>
+                                )}
+                              </For>
+                            </Show>
+                          </>
+                        )
+                      })()}
+                    </Show>
+                  </div>
+                </div>
+              </div>
             </Show>
             <Show when={sideMode() === "changes"}>
               <div class="relative flex-1 min-h-0 overflow-hidden">{props.changesPanel()}</div>
