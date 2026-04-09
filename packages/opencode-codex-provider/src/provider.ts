@@ -112,6 +112,7 @@ class CodexLanguageModel implements LanguageModelV2 {
     // § 2.1.3  Convert prompt → instructions + input
     const { instructions, input } = convertPrompt(callOptions.prompt)
 
+
     // § 2.1.4  Convert tools
     const tools = convertTools(
       callOptions.tools?.filter((t): t is Extract<typeof t, { type: "function" }> => t.type === "function"),

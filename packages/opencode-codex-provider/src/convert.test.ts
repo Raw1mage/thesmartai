@@ -147,6 +147,27 @@ describe("convertPrompt — golden format verification", () => {
     expect(item.output).toBe("file contents here")
   })
 
+  test("tool result via output field (opencode runtime format)", () => {
+    // OpenCode's tool system uses `output` instead of `result`
+    const prompt: LanguageModelV2Prompt = [
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call_xyz",
+            output: "glob found 5 files:\nfile1.md\nfile2.md",
+          } as any,
+        ],
+      },
+    ]
+    const { input } = convertPrompt(prompt)
+
+    const item = input[0] as any
+    expect(item.type).toBe("function_call_output")
+    expect(item.output).toBe("glob found 5 files:\nfile1.md\nfile2.md")
+  })
+
   test("mixed conversation preserves correct order", () => {
     const prompt: LanguageModelV2Prompt = [
       { role: "system", content: "System prompt" },

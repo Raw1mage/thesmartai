@@ -62,25 +62,32 @@ export function convertPrompt(prompt: LanguageModelV2Prompt): {
       }
 
       case "tool": {
-        // Tool results — output must match Responses API format.
-        // AI SDK wraps tool results as content part arrays:
-        //   [{type: "input_text", text: "...actual output..."}]
-        // Pass as-is for array/object, stringify only for primitives.
+        // Tool results — Codex API accepts two formats (codex-rs FunctionCallOutputPayload):
+        //   - String: "output": "plain text"
+        //   - Content items: "output": [{type: "input_text", text: "..."}]
         for (const result of msg.content) {
-          const raw = result.result
+          // AI SDK LanguageModelV2 uses `result` field, but opencode's tool system
+          // uses `output` field. Check both.
+          const raw = result.result ?? (result as any).output
           let output: unknown
+
           if (raw == null) {
             output = ""
           } else if (typeof raw === "string") {
+            // String result → pass as-is (codex-rs Text variant)
             output = raw
           } else if (Array.isArray(raw)) {
-            // Content parts array — pass directly
+            // Content parts array → pass directly (codex-rs ContentItems variant)
             output = raw
           } else if (typeof raw === "object") {
-            output = JSON.stringify(raw)
+            // Object result (e.g., structured tool output) → wrap as content item
+            // Do NOT JSON.stringify — Codex API needs content items or string
+            const text = JSON.stringify(raw)
+            output = [{ type: "input_text", text }]
           } else {
             output = String(raw)
           }
+
           input.push({
             type: "function_call_output",
             call_id: result.toolCallId,
