@@ -78,6 +78,7 @@ import {
 } from "./layout/sidebar-workspace"
 import { workspaceOpenState } from "./layout/sidebar-workspace-helpers"
 import { TaskSidebar } from "./task-list/task-sidebar"
+import { WebRouteSidebar } from "./web-routes/web-route-sidebar"
 import { ProjectDragOverlay, SortableProject, type ProjectSidebarContext } from "./layout/sidebar-project"
 import { SidebarContent } from "./layout/sidebar-shell"
 
@@ -128,6 +129,7 @@ export default function Layout(props: ParentProps) {
   const location = useLocation()
   const currentDir = createMemo(() => decode64(params.dir) ?? "")
   const isTasksRoute = createMemo(() => location.pathname.startsWith("/system/tasks"))
+  const isWebRoutesRoute = createMemo(() => location.pathname.startsWith("/system/web-routes"))
 
   const [state, setState] = createStore({
     autoselect: !initialDirectory,
@@ -1069,6 +1071,16 @@ export default function Layout(props: ParentProps) {
       layout.sidebar.toggle()
     } else {
       navigate("/system/tasks")
+      layout.sidebar.open()
+    }
+    layout.mobileSidebar.hide()
+  }
+
+  function openWebRoutes() {
+    if (isWebRoutesRoute()) {
+      layout.sidebar.toggle()
+    } else {
+      navigate("/system/web-routes")
       layout.sidebar.open()
     }
     layout.mobileSidebar.hide()
@@ -2020,19 +2032,23 @@ export default function Layout(props: ParentProps) {
                   onOpenMarket={openMarket}
                   tasksLabel={() => "Tasks"}
                   onOpenTasks={openTasks}
+                  webRoutesLabel={() => "Published Web"}
+                  onOpenWebRoutes={openWebRoutes}
                   settingsLabel={() => language.t("sidebar.settings")}
                   settingsKeybind={() => command.keybind("settings.open")}
                   onOpenSettings={openSettings}
                   logoutLabel={() => "Logout"}
                   onLogout={logout}
                   renderPanel={() => (
-                    <Show when={isTasksRoute()} fallback={
+                    <Show when={isTasksRoute() || isWebRoutesRoute()} fallback={
                       <Show when={currentProject()} keyed>
                         {(project) => <SidebarPanel project={project} />}
                       </Show>
                     }>
                       <div class="flex-1 min-w-0 bg-background-stronger border border-b-0 border-border-weak-base flex flex-col">
-                        <TaskSidebar />
+                        <Show when={isWebRoutesRoute()} fallback={<TaskSidebar />}>
+                          <WebRouteSidebar />
+                        </Show>
                       </div>
                     </Show>
                   )}
@@ -2040,15 +2056,17 @@ export default function Layout(props: ParentProps) {
               </div>
             </nav>
             {/* Push sidebar — project session list OR task list (inline flex, pushes main content) */}
-            <Show when={layout.sidebar.opened() && (desktopOverlayProject() || isTasksRoute())}>
+            <Show when={layout.sidebar.opened() && (desktopOverlayProject() || isTasksRoute() || isWebRoutesRoute())}>
               <div class="shrink-0 h-full flex relative" style={{ width: `${layout.sidebar.width()}px` }}>
-                <Show when={isTasksRoute()} fallback={
+                <Show when={isTasksRoute() || isWebRoutesRoute()} fallback={
                   <Show when={desktopOverlayProject()} keyed>
                     {(project) => <SidebarPanel project={project} />}
                   </Show>
                 }>
                   <div class="flex-1 min-w-0 bg-background-stronger border border-b-0 border-border-weak-base flex flex-col">
-                    <TaskSidebar />
+                    <Show when={isWebRoutesRoute()} fallback={<TaskSidebar />}>
+                      <WebRouteSidebar />
+                    </Show>
                   </div>
                 </Show>
                 <ResizeHandle
@@ -2111,6 +2129,8 @@ export default function Layout(props: ParentProps) {
               onOpenMarket={openMarket}
               tasksLabel={() => "Tasks"}
               onOpenTasks={openTasks}
+              webRoutesLabel={() => "Published Web"}
+              onOpenWebRoutes={openWebRoutes}
               settingsLabel={() => language.t("sidebar.settings")}
               settingsKeybind={() => command.keybind("settings.open")}
               onOpenSettings={openSettings}
@@ -2118,6 +2138,8 @@ export default function Layout(props: ParentProps) {
               onLogout={logout}
               renderPanel={() => isTasksRoute()
                 ? <div class="flex-1 min-w-0 bg-background-stronger flex flex-col"><TaskSidebar /></div>
+                : isWebRoutesRoute()
+                ? <div class="flex-1 min-w-0 bg-background-stronger flex flex-col"><WebRouteSidebar /></div>
                 : <SidebarPanel project={currentProject()} mobile />
               }
             />
