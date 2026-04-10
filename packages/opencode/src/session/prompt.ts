@@ -28,6 +28,7 @@ import { FileTime } from "../file/time"
 import { Flag } from "../flag/flag"
 import { ulid } from "ulid"
 import { Command } from "../command"
+import { Storage } from "@/storage/storage"
 import { SessionSummary } from "./summary"
 import { NamedError } from "@opencode-ai/util/error"
 import { fn } from "@/util/fn"
@@ -804,17 +805,15 @@ export namespace SessionPrompt {
     return { kind: "continue" as const, continueDecision }
   }
 
-  /** Extract text from the most recent compaction summary message in the chain. */
-  function extractLastSummaryText(msgs: MessageV2.WithParts[]): string | undefined {
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const msg = msgs[i]
-      if (msg.info.role === "assistant" && (msg.info as MessageV2.Assistant).summary) {
-        const text = msg.parts
-          .filter((p): p is MessageV2.TextPart => p.type === "text")
-          .map((p) => p.text)
-          .join("\n")
-        if (text.trim().length > 0) return text
-      }
+  /** Read only the latest user message info (no parts) — O(1) storage reads from the tail. */
+  async function findLatestUserMessageInfo(sessionID: string): Promise<MessageV2.User | undefined> {
+    const list = await Array.fromAsync(await Storage.list(["message", sessionID]))
+    // Messages are stored in ascending order; scan from the end.
+    for (let i = list.length - 1; i >= 0; i--) {
+      const info = await Storage.read<MessageV2.Info>(list[i])
+      if (info.role === "user") return info as MessageV2.User
+      // Don't scan more than the last 5 messages — if no user message found, bail.
+      if (list.length - 1 - i >= 5) break
     }
     return undefined
   }
@@ -958,6 +957,40 @@ export namespace SessionPrompt {
       isSubagent: !!session.parentID,
       title: session.title,
     })
+
+    // ── Pre-loop provider switch detection ──
+    // Must run BEFORE the main loop to avoid the expensive filterCompacted scan
+    // on a session whose entire history is incompatible with the new provider.
+    // Reads only the latest user message info (no parts, no full scan).
+    if (!session.parentID && session.execution?.providerId) {
+      const latestUserInfo = await findLatestUserMessageInfo(sessionID)
+      const incomingProvider = latestUserInfo?.model?.providerId
+      if (incomingProvider && incomingProvider !== session.execution.providerId) {
+        const prevProvider = session.execution.providerId
+        log.warn("provider switch detected (pre-loop), forcing context reinit", {
+          sessionID,
+          prevProvider,
+          nextProvider: incomingProvider,
+        })
+        const model = await Provider.getModel(incomingProvider, latestUserInfo!.model!.modelID).catch(() => undefined)
+        if (model) {
+          // Resolution chain: SharedContext (in-memory) → rebind checkpoint (disk) → minimal stub.
+          // LLM compaction is NOT safe because old provider's tool call history is incompatible.
+          const snap = await SharedContext.snapshot(sessionID)
+            ?? (await SessionCompaction.loadRebindCheckpoint(sessionID))?.snapshot
+          SessionCompaction.recordCompaction(sessionID, 1)
+          await SessionCompaction.compactWithSharedContext({
+            sessionID,
+            snapshot: snap
+              ?? `[Provider switched from ${prevProvider} to ${incomingProvider}. Previous conversation context was not recoverable. The user may re-state their request.]`,
+            model,
+            auto: true,
+          })
+          log.info("provider switch compaction complete, entering main loop", { sessionID })
+        }
+      }
+    }
+
     while (true) {
       console.error(`[LOOP-TOP] ${sessionID} step=${step} abort=${abort.aborted}`)
       SessionStatus.set(sessionID, { type: "busy" })
@@ -1099,52 +1132,6 @@ export namespace SessionPrompt {
         throw e
       })
       console.error(`[LOOP-MODEL] ${sessionID} step=${step} getModel done`)
-
-      // ── Provider switch detection ──
-      // When the user switches providers mid-session (e.g. gemini → github-copilot),
-      // the old provider's tool call/result history is structurally incompatible with
-      // the new provider's API. Force a SharedContext compaction to give the new
-      // provider a clean, text-only context.
-      if (step === 1 && !session.parentID && session.execution?.providerId) {
-        const prevProvider = session.execution.providerId
-        const nextProvider = lastUser.model.providerId
-        if (prevProvider !== nextProvider) {
-          log.warn("provider switch detected, forcing context reinit", {
-            sessionID,
-            prevProvider,
-            nextProvider,
-          })
-          // Resolution chain: SharedContext (in-memory) → rebind checkpoint (disk) → last summary text → minimal stub.
-          // LLM compaction is NOT safe here because the old provider's tool call history is
-          // structurally incompatible with the new provider's API.
-          const snap = await SharedContext.snapshot(sessionID)
-            ?? (await SessionCompaction.loadRebindCheckpoint(sessionID))?.snapshot
-            ?? extractLastSummaryText(msgs)
-          if (snap) {
-            SessionCompaction.recordCompaction(sessionID, step)
-            await SessionCompaction.compactWithSharedContext({
-              sessionID,
-              snapshot: snap,
-              model,
-              auto: true,
-            })
-            continue
-          } else {
-            // Absolute fallback: no context available at all. Create a minimal stub
-            // so the new provider starts from a clean slate rather than crashing on
-            // incompatible tool call history.
-            log.warn("provider switch: no snapshot source available, using minimal stub", { sessionID })
-            SessionCompaction.recordCompaction(sessionID, step)
-            await SessionCompaction.compactWithSharedContext({
-              sessionID,
-              snapshot: `[Provider switched from ${prevProvider} to ${nextProvider}. Previous conversation context was not recoverable. The user may re-state their request.]`,
-              model,
-              auto: true,
-            })
-            continue
-          }
-        }
-      }
 
       if (step === 1 && !session.parentID) {
         try {
