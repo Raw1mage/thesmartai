@@ -92,6 +92,7 @@ export const PromptTelemetryEvent = BusEvent.define(
     blocks: z.array(
       z.object({
         key: z.string(),
+        name: z.string(),
         chars: z.number(),
         tokens: z.number(),
         injected: z.boolean(),
@@ -384,6 +385,7 @@ export namespace LLM {
     const systemPartEntries = [
       {
         key: "provider_prompt",
+        name: "提供者層",
         // Always load provider prompt regardless of wire format.
         // useInstructionsOption only controls HOW the prompt is sent
         // (instructions field vs system messages), not WHETHER to load it.
@@ -392,36 +394,43 @@ export namespace LLM {
       },
       {
         key: "agent_prompt",
+        name: "代理提詞",
         policy: "conditional",
         text: input.agent.prompt ?? "",
       },
       {
         key: "dynamic_system",
+        name: "上下文層",
         policy: "dynamic",
         text: input.system.join("\n"),
       },
       {
         key: "enablement_snapshot",
+        name: "能力快照",
         policy: injectEnablementSnapshot ? "conditional_active" : "conditional_skipped",
         text: injectEnablementSnapshot ? buildEnablementSnapshot(input.messages) : "",
       },
       {
         key: "user_system",
+        name: "自訂提詞",
         policy: "conditional",
         text: input.user.system ?? "",
       },
       {
         key: "critical_boundary_separator",
+        name: "安全邊界",
         policy: "always_on",
         text: `\n\n--- CRITICAL OPERATIONAL BOUNDARY ---\n\n`,
       },
       {
         key: "core_system_prompt",
+        name: "核心提詞",
         policy: "always_on",
         text: (await SystemPrompt.system(subagentSession)).join("\n"),
       },
       {
         key: "identity_reinforcement",
+        name: "身分強化",
         policy: "always_on",
         text:
           `\n\n[IDENTITY REINFORCEMENT]\n` +
@@ -570,6 +579,7 @@ export namespace LLM {
     const filteredSystem = system.filter((x) => x && x.trim() !== "")
     const promptTelemetryBlocks = systemPartEntries.map((entry) => ({
       key: entry.key,
+      name: entry.name,
       chars: entry.text.length,
       tokens: Token.estimate(entry.text),
       injected: entry.text.trim().length > 0,

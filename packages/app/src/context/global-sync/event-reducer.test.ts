@@ -570,7 +570,7 @@ describe("applyDirectoryEvent", () => {
             promptSummary: {
               sessionID: "ses_1",
               promptId: "prompt_1",
-              blocks: [{ key: "agent_prompt", chars: 10, tokens: 5, injected: true, policy: "always_on" }],
+              blocks: [{ key: "agent_prompt", name: "代理提詞", chars: 10, tokens: 5, injected: true, policy: "always_on" }],
               timestamp: 10,
             },
             roundSummary: {

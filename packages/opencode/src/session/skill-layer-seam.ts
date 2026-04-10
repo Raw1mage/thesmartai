@@ -30,6 +30,7 @@ export function buildSkillLayerRegistrySystemPart(skillLayerEntries: SkillLayerE
 
   return {
     key: "skill_layer_registry",
+    name: "Skill 層",
     policy:
       skillLayerEntries.length > 0
         ? `registry_seam_loaded:${skillLayerEntries.length}:full=${fullEntries.length}:summary=${summaryEntries.length}`

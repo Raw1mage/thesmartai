@@ -6,6 +6,7 @@ describe("LLM skill layer registry seam", () => {
   it("renders full and summary entries for managed injection", () => {
     expect(buildSkillLayerRegistrySystemPart([])).toEqual({
       key: "skill_layer_registry",
+      name: "Skill 層",
       policy: "registry_seam_empty",
       text: "",
     })
@@ -76,6 +77,7 @@ describe("LLM skill layer registry seam", () => {
 
     expect(result).toEqual({
       key: "skill_layer_registry",
+      name: "Skill 層",
       policy: "registry_seam_loaded:1:full=0:summary=0",
       text: "",
     })

@@ -558,6 +558,7 @@ describe("runtime event service", () => {
           blocks: [
             {
               key: "core_system_prompt",
+              name: "核心提詞",
               chars: 320,
               tokens: 80,
               injected: true,
@@ -625,6 +626,7 @@ describe("runtime event service", () => {
           blocks: [
             {
               key: "core_system_prompt",
+              name: "核心提詞",
               chars: 320,
               tokens: 80,
               injected: true,
@@ -770,6 +772,7 @@ describe("runtime event service", () => {
           blocks: [
             {
               key: "core_system_prompt",
+              name: "核心提詞",
               chars: 320,
               tokens: 80,
               injected: true,
@@ -1010,6 +1013,7 @@ describe("runtime event service", () => {
           blocks: [
             {
               key: "core_system_prompt",
+              name: "核心提詞",
               chars: 320,
               tokens: 80,
               injected: true,
@@ -1076,6 +1080,7 @@ describe("runtime event service", () => {
           blocks: [
             {
               key: "core_system_prompt",
+              name: "核心提詞",
               chars: 320,
               tokens: 80,
               injected: true,
@@ -1221,6 +1226,7 @@ describe("runtime event service", () => {
           blocks: [
             {
               key: "core_system_prompt",
+              name: "核心提詞",
               chars: 320,
               tokens: 80,
               injected: true,

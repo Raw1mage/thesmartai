@@ -62,6 +62,7 @@ export namespace TelemetryProjector {
     blocks: z.array(
       z.object({
         key: z.string(),
+        name: z.string(),
         chars: z.number(),
         tokens: z.number(),
         injected: z.boolean(),
