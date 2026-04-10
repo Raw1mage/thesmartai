@@ -240,8 +240,8 @@ static void load_web_routes(void) {
         int port = 0, uid = 0;
         int fields = sscanf(line, "%255s %63s %d %d", prefix, host, &port, &uid);
         if (fields >= 3) {
-            strncpy(g_web_routes[g_nweb_routes].prefix, prefix, sizeof(g_web_routes[g_nweb_routes].prefix) - 1);
-            strncpy(g_web_routes[g_nweb_routes].host, host, sizeof(g_web_routes[g_nweb_routes].host) - 1);
+            snprintf(g_web_routes[g_nweb_routes].prefix, sizeof(g_web_routes[g_nweb_routes].prefix), "%s", prefix);
+            snprintf(g_web_routes[g_nweb_routes].host, sizeof(g_web_routes[g_nweb_routes].host), "%s", host);
             g_web_routes[g_nweb_routes].port = port;
             g_web_routes[g_nweb_routes].owner_uid = (uid_t)uid;
             g_nweb_routes++;
@@ -422,8 +422,8 @@ static void ctl_handle_line(CtlClient *cc, char *line) {
 
         WebRoute *wr = &g_web_routes[g_nweb_routes];
         memset(wr, 0, sizeof(WebRoute));
-        strncpy(wr->prefix, prefix, sizeof(wr->prefix) - 1);
-        strncpy(wr->host, host, sizeof(wr->host) - 1);
+        snprintf(wr->prefix, sizeof(wr->prefix), "%s", prefix);
+        snprintf(wr->host, sizeof(wr->host), "%s", host);
         wr->port = port;
         wr->owner_uid = ctl_peer_uid(cc->fd);
         g_nweb_routes++;
