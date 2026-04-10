@@ -289,26 +289,37 @@ export namespace SessionCompaction {
     const missingResultSet = new Set(missingResults)
     const missingCallSet = new Set(missingCalls)
 
-    return messages.map((msg) => {
-      const content = (msg as any).content
-      if (!Array.isArray(content)) return msg
+    return messages
+      .map((msg) => {
+        const content = (msg as any).content
+        if (!Array.isArray(content)) return msg
+        const role = (msg as any).role as string
 
-      let dirty = false
-      const newContent = content.map((part: any) => {
-        if (part?.type === "tool-call" && missingResultSet.has(part.toolCallId)) {
-          dirty = true
-          return { type: "text", text: `[tool result missing: ${part.toolCallId}]` }
+        // For role:"tool" messages: if ANY tool-result references an orphaned call,
+        // drop the entire message. The ModelMessage schema only allows tool-result
+        // parts inside role:"tool", so we can't replace them with text placeholders.
+        if (role === "tool") {
+          const hasOrphan = content.some(
+            (part: any) => part?.type === "tool-result" && missingCallSet.has(part.toolCallId),
+          )
+          if (hasOrphan) return null
+          return msg
         }
-        if (part?.type === "tool-result" && missingCallSet.has(part.toolCallId)) {
-          dirty = true
-          return { type: "text", text: `[tool call invalidated: ${part.toolCallId}]` }
-        }
-        return part
+
+        // For role:"assistant" messages: replace orphaned tool-calls with text placeholders.
+        let dirty = false
+        const newContent = content.map((part: any) => {
+          if (part?.type === "tool-call" && missingResultSet.has(part.toolCallId)) {
+            dirty = true
+            return { type: "text", text: `[tool result missing: ${part.toolCallId}]` }
+          }
+          return part
+        })
+
+        if (!dirty) return msg
+        return { ...msg, content: newContent }
       })
-
-      if (!dirty) return msg
-      return { ...msg, content: newContent }
-    })
+      .filter(Boolean)
   }
 
   export const Event = {

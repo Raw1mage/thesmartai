@@ -804,6 +804,21 @@ export namespace SessionPrompt {
     return { kind: "continue" as const, continueDecision }
   }
 
+  /** Extract text from the most recent compaction summary message in the chain. */
+  function extractLastSummaryText(msgs: MessageV2.WithParts[]): string | undefined {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const msg = msgs[i]
+      if (msg.info.role === "assistant" && (msg.info as MessageV2.Assistant).summary) {
+        const text = msg.parts
+          .filter((p): p is MessageV2.TextPart => p.type === "text")
+          .map((p) => p.text)
+          .join("\n")
+        if (text.trim().length > 0) return text
+      }
+    }
+    return undefined
+  }
+
   async function runLoop(sessionID: string, options?: { replaceRuntime?: boolean }) {
     const runtime = start(sessionID, { replace: options?.replaceRuntime })
     if (!runtime) {
@@ -1099,7 +1114,12 @@ export namespace SessionPrompt {
             prevProvider,
             nextProvider,
           })
+          // Resolution chain: SharedContext (in-memory) → rebind checkpoint (disk) → last summary text → minimal stub.
+          // LLM compaction is NOT safe here because the old provider's tool call history is
+          // structurally incompatible with the new provider's API.
           const snap = await SharedContext.snapshot(sessionID)
+            ?? (await SessionCompaction.loadRebindCheckpoint(sessionID))?.snapshot
+            ?? extractLastSummaryText(msgs)
           if (snap) {
             SessionCompaction.recordCompaction(sessionID, step)
             await SessionCompaction.compactWithSharedContext({
@@ -1110,13 +1130,15 @@ export namespace SessionPrompt {
             })
             continue
           } else {
-            // No SharedContext available — fall through to LLM compaction
-            log.warn("provider switch: no SharedContext snapshot, falling back to LLM compaction", { sessionID })
-            await SessionCompaction.create({
+            // Absolute fallback: no context available at all. Create a minimal stub
+            // so the new provider starts from a clean slate rather than crashing on
+            // incompatible tool call history.
+            log.warn("provider switch: no snapshot source available, using minimal stub", { sessionID })
+            SessionCompaction.recordCompaction(sessionID, step)
+            await SessionCompaction.compactWithSharedContext({
               sessionID,
-              agent: lastUser.agent,
-              model: lastUser.model,
-              format: lastUser.format,
+              snapshot: `[Provider switched from ${prevProvider} to ${nextProvider}. Previous conversation context was not recoverable. The user may re-state their request.]`,
+              model,
               auto: true,
             })
             continue
