@@ -1858,10 +1858,6 @@ static void route_complete_request(PendingRequest *pr) {
                     if (pipe2(c->pipe_c2d, O_NONBLOCK | O_CLOEXEC) == 0 &&
                         pipe2(c->pipe_d2c, O_NONBLOCK | O_CLOEXEC) == 0) {
                         
-                        // Push accumulated raw request to the daemon pipe
-                        ssize_t w = write(c->pipe_c2d[1], raw_buf, raw_len);
-                        (void)w;
-                        
                         c->ectx_client.type = ECTX_SPLICE_CLIENT;
                         c->ectx_client.conn = c;
                         c->ectx_daemon.type = ECTX_SPLICE_DAEMON;
@@ -1875,7 +1871,10 @@ static void route_complete_request(PendingRequest *pr) {
                         ev.events = EPOLLIN | EPOLLOUT | EPOLLET;
                         ev.data.ptr = &c->ectx_daemon;
                         epoll_ctl(g_epoll_fd, EPOLL_CTL_ADD, c->daemon_fd, &ev);
-                        
+
+                        // Push raw request directly to backend (same as auth path)
+                        send(c->daemon_fd, raw_buf, raw_len, MSG_NOSIGNAL);
+
                         return; // Successfully routed to public backend
                     }
                     
