@@ -6,7 +6,7 @@
 - [x] 1.2 Confirm browser-only scope, fail-fast unsupported policy, and stop gates
 - [x] 1.3 Confirm critical files and prompt-editor integration boundaries
 
-## 2. Integrate prompt-input voice control
+## 2. Integrate prompt-input voice control (desktop speech path)
 
 - [x] 2.1 Add mic control and route-aware UI in `packages/app/src/components/prompt-input.tsx`
 - [x] 2.2 Wire `packages/app/src/utils/speech.ts` into prompt-input state lifecycle for the desktop path
@@ -16,6 +16,17 @@
 - [x] 2.6 Define the capability gate and unsupported fallback boundary
 - [x] 2.7 Define mic UX states for supported, recording, and unsupported cases
 - [x] 2.8 Define the desktop/iPhone / Android route selection policy and detection heuristics
+
+## 2B. Implement mobile recording + transcription path (Slice B/C)
+
+- [x] 2B.1 Create `packages/app/src/utils/audio-recorder.ts` — MediaRecorder-based audio capture hook
+- [x] 2B.2 Create `packages/app/src/utils/transcribe.ts` — client-side transcription API call
+- [x] 2B.3 Add `POST /session/:sessionID/transcribe` server endpoint with audio-capable model auto-discovery
+- [x] 2B.4 Add dual-path capability detection in prompt-input (`voicePath`: speech | recording | unsupported)
+- [x] 2B.5 Wire mobile recording → upload → transcribe → prompt state integration
+- [x] 2B.6 Add transcribing state UI (spinner, status bar indicator)
+- [x] 2B.7 Add i18n strings for mobile recording/transcribing states (en, zht)
+- [x] 2B.8 Add error handling with toast notification for transcription failures
 
 ## 3. Validation
 

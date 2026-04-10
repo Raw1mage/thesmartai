@@ -1,7 +1,7 @@
 # Event: webapp voice input MVP
 
-Date: 2026-04-08
-Status: Build In Progress (Validation Blocked)
+Date: 2026-04-08 (updated 2026-04-10)
+Status: Build In Progress — Mobile Slice (beta/webapp-voice-input-mvp)
 Plan Root: `plans/20260408_webapp/`
 
 ## 需求
@@ -32,7 +32,13 @@ Plan Root: `plans/20260408_webapp/`
 - [x] 進入 beta workflow build handoff。
 - [x] 在 beta implementation surface 實作 `prompt-input` 語音輸入 MVP。
 - [~] 驗證支援瀏覽器、unsupported path、既有 prompt 行為無回歸（尚缺 browser smoke 與完整 typecheck/lint 證據）。
-- [ ] 擴充 plan 為手機錄音 + 轉寫雙路方案。
+- [x] 擴充 plan 為手機錄音 + 轉寫雙路方案。
+- [x] 實作手機 MediaRecorder 錄音 hook（`audio-recorder.ts`）。
+- [x] 實作 server-side 轉寫端點（`POST /session/:id/transcribe`，自動尋找 audio-capable model）。
+- [x] 在 prompt-input 加入 dual-path capability detection（speech | recording | unsupported）。
+- [x] 整合錄音 → 上傳 → 轉寫 → prompt state 回填。
+- [ ] 驗證手機瀏覽器錄音轉寫端到端流程。
+- [ ] Beta fetch-back + finalize。
 
 ## Debug Checkpoints
 
@@ -115,7 +121,22 @@ Plan Root: `plans/20260408_webapp/`
 - 做 unsupported path smoke。
 - 視需要補 `prompt-input` 元件級測試。
 
+## Mobile Slice (2026-04-10)
+
+- Beta worktree 從 main 重建（stale beta 已清理，舊的 20 commits behind 版本安全丟棄）。
+- 新增檔案：
+  - `packages/app/src/utils/audio-recorder.ts` — MediaRecorder-based audio capture hook
+  - `packages/app/src/utils/transcribe.ts` — client-side transcription API call
+- 修改檔案：
+  - `packages/opencode/src/server/routes/session.ts` — 新增 `POST /:sessionID/transcribe` endpoint
+  - `packages/app/src/components/prompt-input.tsx` — dual-path voice input (speech + recording)
+  - `packages/app/src/i18n/en.ts`, `zht.ts` — 新增 mobile recording/transcribing i18n strings
+- Architecture Impact:
+  - **新增 server API 邊界**：`/session/:id/transcribe` 接受 audio multipart upload，使用 audio-capable model 做轉寫。
+  - 不改變 prompt submit protocol 或 session runtime contract。
+  - 轉寫結果走既有 `prompt.set()` 回填，與 desktop speech 共用同一 prompt ownership path。
+
 ## Architecture Sync
 
-- Architecture Sync: Verified (No doc changes).
-- 依據：本次實作僅在既有 webapp `prompt-input` 內整合 browser speech helper，未改變 repo 的長期模組邊界、資料流層級、server/API 邊界或 runtime architecture。
+- Architecture Sync: **Needs Update** — 新增了 `POST /session/:id/transcribe` server endpoint。
+- 依據：本次手機錄音實作跨越了 client/server 邊界（新增 server-side transcription endpoint），與原本的 browser-only desktop speech 不同。
