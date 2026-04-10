@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "../../.."
+		},
+		{
+			"path": "../../../../drawmiat"
+		}
+	],
+	"settings": {
+		"git.ignoreLimitWarning": true,
+		"chat.editing.autoAcceptDelay": 20
+	}
+}

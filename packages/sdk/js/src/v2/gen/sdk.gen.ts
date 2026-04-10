@@ -23,6 +23,14 @@ import type {
   AccountRemove4Responses,
   AccountRemoveErrors,
   AccountRemoveResponses,
+  AccountResetCooldown2Errors,
+  AccountResetCooldown2Responses,
+  AccountResetCooldown3Errors,
+  AccountResetCooldown3Responses,
+  AccountResetCooldown4Errors,
+  AccountResetCooldown4Responses,
+  AccountResetCooldownErrors,
+  AccountResetCooldownResponses,
   AccountSetActive2Errors,
   AccountSetActive2Responses,
   AccountSetActive3Errors,
@@ -94,6 +102,8 @@ import type {
   CronJobsUpdate2Responses,
   CronJobsUpdateErrors,
   CronJobsUpdateResponses,
+  CronProject2Responses,
+  CronProjectResponses,
   EventSubscribe2Responses,
   EventSubscribeResponses,
   EventTuiCommandExecute,
@@ -139,6 +149,10 @@ import type {
   GlobalAuthSessionResponses,
   GlobalConfigGet2Responses,
   GlobalConfigGetResponses,
+  GlobalConfigProviderDelete2Errors,
+  GlobalConfigProviderDelete2Responses,
+  GlobalConfigProviderDeleteErrors,
+  GlobalConfigProviderDeleteResponses,
   GlobalConfigUpdate2Errors,
   GlobalConfigUpdate2Responses,
   GlobalConfigUpdateErrors,
@@ -155,6 +169,16 @@ import type {
   GlobalLogLevelSetResponses,
   GlobalWebRestart2Responses,
   GlobalWebRestartResponses,
+  GoogleBindingCallback2Errors,
+  GoogleBindingCallback2Responses,
+  GoogleBindingCallbackErrors,
+  GoogleBindingCallbackResponses,
+  GoogleBindingConnect2Errors,
+  GoogleBindingConnectErrors,
+  GoogleBindingStatus2Responses,
+  GoogleBindingStatusResponses,
+  GoogleBindingUnbind2Responses,
+  GoogleBindingUnbindResponses,
   InstanceDispose2Responses,
   InstanceDisposeResponses,
   KillswitchCancel2Responses,
@@ -237,6 +261,22 @@ import type {
   McpRemoteConfig,
   McpStatus2Responses,
   McpStatusResponses,
+  McpStoreAdd2Errors,
+  McpStoreAdd2Responses,
+  McpStoreAddErrors,
+  McpStoreAddResponses,
+  McpStoreList2Responses,
+  McpStoreListResponses,
+  McpStorePreview2Errors,
+  McpStorePreview2Responses,
+  McpStorePreviewErrors,
+  McpStorePreviewResponses,
+  McpStoreRemove2Responses,
+  McpStoreRemoveResponses,
+  McpStoreSetConfig2Responses,
+  McpStoreSetConfigResponses,
+  McpStoreUpdate2Responses,
+  McpStoreUpdateResponses,
   ModelPreferencesGet2Responses,
   ModelPreferencesGetResponses,
   ModelPreferencesUpdate2Responses,
@@ -411,6 +451,14 @@ import type {
   SessionShell2Responses,
   SessionShellErrors,
   SessionShellResponses,
+  SessionSkillLayerAction2Errors,
+  SessionSkillLayerAction2Responses,
+  SessionSkillLayerActionErrors,
+  SessionSkillLayerActionResponses,
+  SessionSkillLayerList2Errors,
+  SessionSkillLayerList2Responses,
+  SessionSkillLayerListErrors,
+  SessionSkillLayerListResponses,
   SessionStatus2Errors,
   SessionStatus2Responses,
   SessionStatusErrors,
@@ -427,6 +475,10 @@ import type {
   SessionTop2Responses,
   SessionTopErrors,
   SessionTopResponses,
+  SessionTranscribe2Errors,
+  SessionTranscribe2Responses,
+  SessionTranscribeErrors,
+  SessionTranscribeResponses,
   SessionUnrevert2Errors,
   SessionUnrevert2Responses,
   SessionUnrevertErrors,
@@ -705,6 +757,54 @@ export class Auth extends HeyApiClient {
   }
 }
 
+export class Provider extends HeyApiClient {
+  /**
+   * Delete custom provider from global configuration
+   *
+   * Remove a custom provider entry from the global OpenCode configuration.
+   */
+  public delete<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerId: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "providerId" }] }])
+    return (options?.client ?? this.client).delete<
+      GlobalConfigProviderDeleteResponses,
+      GlobalConfigProviderDeleteErrors,
+      ThrowOnError
+    >({
+      url: "/api/v2/global/config/provider/{providerId}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Delete custom provider from global configuration
+   *
+   * Remove a custom provider entry from the global OpenCode configuration.
+   */
+  public delete2<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerId: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "providerId" }] }])
+    return (options?.client ?? this.client).delete<
+      GlobalConfigProviderDelete2Responses,
+      GlobalConfigProviderDelete2Errors,
+      ThrowOnError
+    >({
+      url: "/global/config/provider/{providerId}",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Config extends HeyApiClient {
   /**
    * Get global configuration
@@ -780,6 +880,11 @@ export class Config extends HeyApiClient {
         ...params.headers,
       },
     })
+  }
+
+  private _provider?: Provider
+  get provider(): Provider {
+    return (this._provider ??= new Provider({ client: this.client }))
   }
 }
 
@@ -3227,6 +3332,162 @@ export class Worktree extends HeyApiClient {
   }
 }
 
+export class SkillLayer extends HeyApiClient {
+  /**
+   * Get session skill layers
+   *
+   * Retrieve managed skill-layer states for one session.
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionSkillLayerListResponses,
+      SessionSkillLayerListErrors,
+      ThrowOnError
+    >({
+      url: "/api/v2/session/{sessionID}/skill-layer",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Mutate session skill layer state
+   *
+   * Apply operator action to one managed skill layer in the session scope.
+   */
+  public action<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      name: string
+      directory?: string
+      action?: "pin" | "unpin" | "promote" | "demote" | "unload"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "action" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionSkillLayerActionResponses,
+      SessionSkillLayerActionErrors,
+      ThrowOnError
+    >({
+      url: "/api/v2/session/{sessionID}/skill-layer/{name}/action",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get session skill layers
+   *
+   * Retrieve managed skill-layer states for one session.
+   */
+  public list2<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionSkillLayerList2Responses,
+      SessionSkillLayerList2Errors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/skill-layer",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Mutate session skill layer state
+   *
+   * Apply operator action to one managed skill layer in the session scope.
+   */
+  public action2<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      name: string
+      directory?: string
+      action?: "pin" | "unpin" | "promote" | "demote" | "unload"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "action" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionSkillLayerAction2Responses,
+      SessionSkillLayerAction2Errors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/skill-layer/{name}/action",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Queue extends HeyApiClient {
   /**
    * Control pending autonomous continuation queue
@@ -4461,6 +4722,36 @@ export class Session2 extends HeyApiClient {
   }
 
   /**
+   * Transcribe audio
+   *
+   * Accept an audio recording and return transcribed text using an audio-capable model.
+   */
+  public transcribe<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionTranscribeResponses, SessionTranscribeErrors, ThrowOnError>({
+      url: "/api/v2/session/{sessionID}/transcribe",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * List sessions
    *
    * Get a list of all OpenCode sessions, sorted by most recently updated.
@@ -5467,6 +5758,41 @@ export class Session2 extends HeyApiClient {
     })
   }
 
+  /**
+   * Transcribe audio
+   *
+   * Accept an audio recording and return transcribed text using an audio-capable model.
+   */
+  public transcribe2<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionTranscribe2Responses, SessionTranscribe2Errors, ThrowOnError>({
+      url: "/session/{sessionID}/transcribe",
+      ...options,
+      ...params,
+    })
+  }
+
+  private _skillLayer?: SkillLayer
+  get skillLayer(): SkillLayer {
+    return (this._skillLayer ??= new SkillLayer({ client: this.client }))
+  }
+
   private _autonomous?: Autonomous
   get autonomous3(): Autonomous {
     return (this._autonomous ??= new Autonomous({ client: this.client }))
@@ -6161,7 +6487,7 @@ export class Oauth extends HeyApiClient {
   }
 }
 
-export class Provider extends HeyApiClient {
+export class Provider2 extends HeyApiClient {
   /**
    * List providers
    *
@@ -7175,6 +7501,386 @@ export class Auth3 extends HeyApiClient {
   }
 }
 
+export class Store extends HeyApiClient {
+  /**
+   * List installed MCP Apps from mcp-apps.json
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<McpStoreListResponses, unknown, ThrowOnError>({
+      url: "/api/v2/mcp/store/apps",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Register a new MCP App
+   */
+  public add<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      path?: string
+      githubUrl?: string
+      id?: string
+      target?: "system" | "user"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "path" },
+            { in: "body", key: "githubUrl" },
+            { in: "body", key: "id" },
+            { in: "body", key: "target" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpStoreAddResponses, McpStoreAddErrors, ThrowOnError>({
+      url: "/api/v2/mcp/store/apps",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Preview an MCP App manifest without registering
+   */
+  public preview<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      path?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpStorePreviewResponses, McpStorePreviewErrors, ThrowOnError>({
+      url: "/api/v2/mcp/store/apps/preview",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove an MCP App
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<McpStoreRemoveResponses, unknown, ThrowOnError>({
+      url: "/api/v2/mcp/store/apps/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update MCP App state (enable/disable)
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      enabled?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "enabled" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<McpStoreUpdateResponses, unknown, ThrowOnError>({
+      url: "/api/v2/mcp/store/apps/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Update MCP App config values
+   */
+  public setConfig<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      config?: {
+        [key: string]: string | number | boolean
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "config" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<McpStoreSetConfigResponses, unknown, ThrowOnError>({
+      url: "/api/v2/mcp/store/apps/{id}/config",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * List installed MCP Apps from mcp-apps.json
+   */
+  public list2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<McpStoreList2Responses, unknown, ThrowOnError>({
+      url: "/mcp/store/apps",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Register a new MCP App
+   */
+  public add2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      path?: string
+      githubUrl?: string
+      id?: string
+      target?: "system" | "user"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "path" },
+            { in: "body", key: "githubUrl" },
+            { in: "body", key: "id" },
+            { in: "body", key: "target" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpStoreAdd2Responses, McpStoreAdd2Errors, ThrowOnError>({
+      url: "/mcp/store/apps",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Preview an MCP App manifest without registering
+   */
+  public preview2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      path?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<McpStorePreview2Responses, McpStorePreview2Errors, ThrowOnError>({
+      url: "/mcp/store/apps/preview",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove an MCP App
+   */
+  public remove2<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<McpStoreRemove2Responses, unknown, ThrowOnError>({
+      url: "/mcp/store/apps/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update MCP App state (enable/disable)
+   */
+  public update2<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      enabled?: boolean
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "enabled" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<McpStoreUpdate2Responses, unknown, ThrowOnError>({
+      url: "/mcp/store/apps/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Update MCP App config values
+   */
+  public setConfig2<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      config?: {
+        [key: string]: string | number | boolean
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "config" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<McpStoreSetConfig2Responses, unknown, ThrowOnError>({
+      url: "/mcp/store/apps/{id}/config",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Mcp extends HeyApiClient {
   /**
    * Unified MCP app market
@@ -7446,6 +8152,11 @@ export class Mcp extends HeyApiClient {
   private _auth?: Auth3
   get auth(): Auth3 {
     return (this._auth ??= new Auth3({ client: this.client }))
+  }
+
+  private _store?: Store
+  get store(): Store {
+    return (this._store ??= new Store({ client: this.client }))
   }
 }
 
@@ -8179,6 +8890,7 @@ export class Account extends HeyApiClient {
       modelID?: string
       accountId?: string
       format?: "footer" | "admin"
+      fresh?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -8192,6 +8904,7 @@ export class Account extends HeyApiClient {
             { in: "query", key: "modelID" },
             { in: "query", key: "accountId" },
             { in: "query", key: "format" },
+            { in: "query", key: "fresh" },
           ],
         },
       ],
@@ -8294,6 +9007,42 @@ export class Account extends HeyApiClient {
   }
 
   /**
+   * Reset account cooldown
+   *
+   * Clear all rate limit cooldowns, daily failure counters, and health score for a specific account.
+   */
+  public resetCooldown<ThrowOnError extends boolean = false>(
+    parameters: {
+      family: string
+      accountId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "family" },
+            { in: "path", key: "accountId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      AccountResetCooldownResponses,
+      AccountResetCooldownErrors,
+      ThrowOnError
+    >({
+      url: "/api/v2/account/{family}/{accountId}/reset-cooldown",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Remove account
    *
    * Remove a specific account under a provider key. Canonical request semantics are provider-key based. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as a deprecated compatibility alias.
@@ -8380,6 +9129,7 @@ export class Account extends HeyApiClient {
       modelID?: string
       accountId?: string
       format?: "footer" | "admin"
+      fresh?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -8393,6 +9143,7 @@ export class Account extends HeyApiClient {
             { in: "query", key: "modelID" },
             { in: "query", key: "accountId" },
             { in: "query", key: "format" },
+            { in: "query", key: "fresh" },
           ],
         },
       ],
@@ -8495,6 +9246,42 @@ export class Account extends HeyApiClient {
   }
 
   /**
+   * Reset account cooldown
+   *
+   * Clear all rate limit cooldowns, daily failure counters, and health score for a specific account.
+   */
+  public resetCooldown2<ThrowOnError extends boolean = false>(
+    parameters: {
+      family: string
+      accountId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "family" },
+            { in: "path", key: "accountId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      AccountResetCooldown2Responses,
+      AccountResetCooldown2Errors,
+      ThrowOnError
+    >({
+      url: "/api/v2/accounts/{family}/{accountId}/reset-cooldown",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Remove account
    *
    * Remove a specific account under a provider key. Canonical request semantics are provider-key based. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as a deprecated compatibility alias.
@@ -8581,6 +9368,7 @@ export class Account extends HeyApiClient {
       modelID?: string
       accountId?: string
       format?: "footer" | "admin"
+      fresh?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -8594,6 +9382,7 @@ export class Account extends HeyApiClient {
             { in: "query", key: "modelID" },
             { in: "query", key: "accountId" },
             { in: "query", key: "format" },
+            { in: "query", key: "fresh" },
           ],
         },
       ],
@@ -8696,6 +9485,42 @@ export class Account extends HeyApiClient {
   }
 
   /**
+   * Reset account cooldown
+   *
+   * Clear all rate limit cooldowns, daily failure counters, and health score for a specific account.
+   */
+  public resetCooldown3<ThrowOnError extends boolean = false>(
+    parameters: {
+      family: string
+      accountId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "family" },
+            { in: "path", key: "accountId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      AccountResetCooldown3Responses,
+      AccountResetCooldown3Errors,
+      ThrowOnError
+    >({
+      url: "/account/{family}/{accountId}/reset-cooldown",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Remove account
    *
    * Remove a specific account under a provider key. Canonical request semantics are provider-key based. Legacy route param name remains 'family' for compatibility, and query may also include matching 'providerKey' as a deprecated compatibility alias.
@@ -8782,6 +9607,7 @@ export class Account extends HeyApiClient {
       modelID?: string
       accountId?: string
       format?: "footer" | "admin"
+      fresh?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -8795,6 +9621,7 @@ export class Account extends HeyApiClient {
             { in: "query", key: "modelID" },
             { in: "query", key: "accountId" },
             { in: "query", key: "format" },
+            { in: "query", key: "fresh" },
           ],
         },
       ],
@@ -8891,6 +9718,42 @@ export class Account extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<AccountLogin4Responses, unknown, ThrowOnError>({
       url: "/accounts/auth/{family}/login",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Reset account cooldown
+   *
+   * Clear all rate limit cooldowns, daily failure counters, and health score for a specific account.
+   */
+  public resetCooldown4<ThrowOnError extends boolean = false>(
+    parameters: {
+      family: string
+      accountId: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "family" },
+            { in: "path", key: "accountId" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      AccountResetCooldown4Responses,
+      AccountResetCooldown4Errors,
+      ThrowOnError
+    >({
+      url: "/accounts/{family}/{accountId}/reset-cooldown",
       ...options,
       ...params,
     })
@@ -9654,6 +10517,7 @@ export class Jobs extends HeyApiClient {
             kind: "agentTurn"
             message: string
             model?: string
+            accountId?: string
             timeoutSeconds?: number
             lightContext?: boolean
           }
@@ -9790,6 +10654,7 @@ export class Jobs extends HeyApiClient {
             kind: "agentTurn"
             message: string
             model?: string
+            accountId?: string
             timeoutSeconds?: number
             lightContext?: boolean
           }
@@ -9943,6 +10808,7 @@ export class Jobs extends HeyApiClient {
             kind: "agentTurn"
             message: string
             model?: string
+            accountId?: string
             timeoutSeconds?: number
             lightContext?: boolean
           }
@@ -10079,6 +10945,7 @@ export class Jobs extends HeyApiClient {
             kind: "agentTurn"
             message: string
             model?: string
+            accountId?: string
             timeoutSeconds?: number
             lightContext?: boolean
           }
@@ -10183,9 +11050,205 @@ export class Jobs extends HeyApiClient {
 }
 
 export class Cron extends HeyApiClient {
+  /**
+   * Get the virtual tasks project directory
+   */
+  public project<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<CronProjectResponses, unknown, ThrowOnError>({
+      url: "/api/v2/cron/project",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get the virtual tasks project directory
+   */
+  public project2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<CronProject2Responses, unknown, ThrowOnError>({
+      url: "/cron/project",
+      ...options,
+      ...params,
+    })
+  }
+
   private _jobs?: Jobs
   get jobs(): Jobs {
     return (this._jobs ??= new Jobs({ client: this.client }))
+  }
+}
+
+export class GoogleBinding extends HeyApiClient {
+  /**
+   * Get Google binding status for current user
+   *
+   * Returns whether the current PAM-authenticated user has a Google identity bound.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<GoogleBindingStatusResponses, unknown, ThrowOnError>({
+      url: "/api/v2/google-binding/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Start Google OAuth flow for binding
+   *
+   * Redirects the user to Google OAuth consent screen to verify Google identity for binding. Requires openid and email scopes only.
+   */
+  public connect<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<unknown, GoogleBindingConnectErrors, ThrowOnError>({
+      url: "/api/v2/google-binding/connect",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Handle Google OAuth callback for binding
+   *
+   * Exchanges authorization code for tokens, extracts verified email from Google userinfo, and creates the binding.
+   */
+  public callback<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<
+      GoogleBindingCallbackResponses,
+      GoogleBindingCallbackErrors,
+      ThrowOnError
+    >({
+      url: "/api/v2/google-binding/callback",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Remove Google binding for current user
+   *
+   * Removes the Google identity binding for the current PAM-authenticated user.
+   */
+  public unbind<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).delete<GoogleBindingUnbindResponses, unknown, ThrowOnError>({
+      url: "/api/v2/google-binding",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get Google binding status for current user
+   *
+   * Returns whether the current PAM-authenticated user has a Google identity bound.
+   */
+  public status2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<GoogleBindingStatus2Responses, unknown, ThrowOnError>({
+      url: "/google-binding/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Start Google OAuth flow for binding
+   *
+   * Redirects the user to Google OAuth consent screen to verify Google identity for binding. Requires openid and email scopes only.
+   */
+  public connect2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<unknown, GoogleBindingConnect2Errors, ThrowOnError>({
+      url: "/google-binding/connect",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Handle Google OAuth callback for binding
+   *
+   * Exchanges authorization code for tokens, extracts verified email from Google userinfo, and creates the binding.
+   */
+  public callback2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<
+      GoogleBindingCallback2Responses,
+      GoogleBindingCallback2Errors,
+      ThrowOnError
+    >({
+      url: "/google-binding/callback",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Remove Google binding for current user
+   *
+   * Removes the Google identity binding for the current PAM-authenticated user.
+   */
+  public unbind2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).delete<GoogleBindingUnbind2Responses, unknown, ThrowOnError>({
+      url: "/google-binding",
+      ...options,
+      ...params,
+    })
   }
 }
 
@@ -11060,9 +12123,9 @@ export class OpencodeClient extends HeyApiClient {
     return (this._question ??= new Question({ client: this.client }))
   }
 
-  private _provider?: Provider
-  get provider(): Provider {
-    return (this._provider ??= new Provider({ client: this.client }))
+  private _provider?: Provider2
+  get provider(): Provider2 {
+    return (this._provider ??= new Provider2({ client: this.client }))
   }
 
   private _mcp?: Mcp
@@ -11098,6 +12161,11 @@ export class OpencodeClient extends HeyApiClient {
   private _cron?: Cron
   get cron(): Cron {
     return (this._cron ??= new Cron({ client: this.client }))
+  }
+
+  private _googleBinding?: GoogleBinding
+  get googleBinding(): GoogleBinding {
+    return (this._googleBinding ??= new GoogleBinding({ client: this.client }))
   }
 
   private _find?: Find

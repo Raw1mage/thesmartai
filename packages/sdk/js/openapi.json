@@ -255,6 +255,46 @@
         }
       }
     },
+    "/api/v2/global/config/provider/{providerId}": {
+      "delete": {
+        "operationId": "global.config.provider.delete",
+        "summary": "Delete custom provider from global configuration",
+        "description": "Remove a custom provider entry from the global OpenCode configuration.",
+        "responses": {
+          "200": {
+            "description": "Successfully removed provider from global config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Config"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "providerId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ]
+      }
+    },
     "/api/v2/global/web/restart": {
       "post": {
         "operationId": "global.web.restart",
@@ -4500,6 +4540,259 @@
         }
       }
     },
+    "/api/v2/session/{sessionID}/skill-layer": {
+      "get": {
+        "operationId": "session.skillLayer.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Get session skill layers",
+        "description": "Retrieve managed skill-layer states for one session.",
+        "responses": {
+          "200": {
+            "description": "Skill layer list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "loadedAt": {
+                        "type": "number"
+                      },
+                      "lastUsedAt": {
+                        "type": "number"
+                      },
+                      "runtimeState": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "idle",
+                          "sticky",
+                          "summarized",
+                          "unloaded"
+                        ]
+                      },
+                      "desiredState": {
+                        "type": "string",
+                        "enum": [
+                          "full",
+                          "summary",
+                          "absent"
+                        ]
+                      },
+                      "pinned": {
+                        "type": "boolean"
+                      },
+                      "lastReason": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "loadedAt",
+                      "lastUsedAt",
+                      "runtimeState",
+                      "desiredState",
+                      "pinned",
+                      "lastReason"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/session/{sessionID}/skill-layer/{name}/action": {
+      "post": {
+        "operationId": "session.skillLayer.action",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Skill name"
+          }
+        ],
+        "summary": "Mutate session skill layer state",
+        "description": "Apply operator action to one managed skill layer in the session scope.",
+        "responses": {
+          "200": {
+            "description": "Mutation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "loadedAt": {
+                            "type": "number"
+                          },
+                          "lastUsedAt": {
+                            "type": "number"
+                          },
+                          "runtimeState": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "idle",
+                              "sticky",
+                              "summarized",
+                              "unloaded"
+                            ]
+                          },
+                          "desiredState": {
+                            "type": "string",
+                            "enum": [
+                              "full",
+                              "summary",
+                              "absent"
+                            ]
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
+                          "lastReason": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "loadedAt",
+                          "lastUsedAt",
+                          "runtimeState",
+                          "desiredState",
+                          "pinned",
+                          "lastReason"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "entries"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "pin",
+                      "unpin",
+                      "promote",
+                      "demote",
+                      "unload"
+                    ]
+                  }
+                },
+                "required": [
+                  "action"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/session/{sessionID}/autonomous": {
       "post": {
         "operationId": "session.autonomous",
@@ -6945,6 +7238,71 @@
         }
       }
     },
+    "/api/v2/session/{sessionID}/transcribe": {
+      "post": {
+        "operationId": "session.transcribe",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Transcribe audio",
+        "description": "Accept an audio recording and return transcribed text using an audio-capable model.",
+        "responses": {
+          "200": {
+            "description": "Transcription result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/permission/{requestID}/reply": {
       "post": {
         "operationId": "permission.reply",
@@ -7246,255 +7604,7 @@
                     "all": {
                       "type": "array",
                       "items": {
-                        "type": "object",
-                        "properties": {
-                          "api": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "env": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          },
-                          "id": {
-                            "type": "string"
-                          },
-                          "npm": {
-                            "type": "string"
-                          },
-                          "models": {
-                            "type": "object",
-                            "propertyNames": {
-                              "type": "string"
-                            },
-                            "additionalProperties": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "family": {
-                                  "type": "string"
-                                },
-                                "release_date": {
-                                  "type": "string"
-                                },
-                                "attachment": {
-                                  "type": "boolean"
-                                },
-                                "reasoning": {
-                                  "type": "boolean"
-                                },
-                                "temperature": {
-                                  "type": "boolean"
-                                },
-                                "tool_call": {
-                                  "type": "boolean"
-                                },
-                                "interleaved": {
-                                  "anyOf": [
-                                    {
-                                      "type": "boolean",
-                                      "const": true
-                                    },
-                                    {
-                                      "type": "object",
-                                      "properties": {
-                                        "field": {
-                                          "type": "string",
-                                          "enum": [
-                                            "reasoning_content",
-                                            "reasoning_details"
-                                          ]
-                                        }
-                                      },
-                                      "required": [
-                                        "field"
-                                      ],
-                                      "additionalProperties": false
-                                    }
-                                  ]
-                                },
-                                "cost": {
-                                  "type": "object",
-                                  "properties": {
-                                    "input": {
-                                      "type": "number"
-                                    },
-                                    "output": {
-                                      "type": "number"
-                                    },
-                                    "reasoning": {
-                                      "type": "number"
-                                    },
-                                    "cache_read": {
-                                      "type": "number"
-                                    },
-                                    "cache_write": {
-                                      "type": "number"
-                                    },
-                                    "context_over_200k": {
-                                      "type": "object",
-                                      "properties": {
-                                        "input": {
-                                          "type": "number"
-                                        },
-                                        "output": {
-                                          "type": "number"
-                                        },
-                                        "reasoning": {
-                                          "type": "number"
-                                        },
-                                        "cache_read": {
-                                          "type": "number"
-                                        },
-                                        "cache_write": {
-                                          "type": "number"
-                                        }
-                                      },
-                                      "required": [
-                                        "input",
-                                        "output"
-                                      ]
-                                    }
-                                  },
-                                  "required": [
-                                    "input",
-                                    "output"
-                                  ]
-                                },
-                                "limit": {
-                                  "type": "object",
-                                  "properties": {
-                                    "context": {
-                                      "type": "number"
-                                    },
-                                    "input": {
-                                      "type": "number"
-                                    },
-                                    "output": {
-                                      "type": "number"
-                                    }
-                                  },
-                                  "required": [
-                                    "context",
-                                    "output"
-                                  ]
-                                },
-                                "modalities": {
-                                  "type": "object",
-                                  "properties": {
-                                    "input": {
-                                      "type": "array",
-                                      "items": {
-                                        "type": "string",
-                                        "enum": [
-                                          "text",
-                                          "audio",
-                                          "image",
-                                          "video",
-                                          "pdf"
-                                        ]
-                                      }
-                                    },
-                                    "output": {
-                                      "type": "array",
-                                      "items": {
-                                        "type": "string",
-                                        "enum": [
-                                          "text",
-                                          "audio",
-                                          "image",
-                                          "video",
-                                          "pdf"
-                                        ]
-                                      }
-                                    }
-                                  },
-                                  "required": [
-                                    "input",
-                                    "output"
-                                  ]
-                                },
-                                "experimental": {
-                                  "type": "boolean"
-                                },
-                                "status": {
-                                  "type": "string",
-                                  "enum": [
-                                    "alpha",
-                                    "beta",
-                                    "deprecated"
-                                  ]
-                                },
-                                "options": {
-                                  "type": "object",
-                                  "propertyNames": {
-                                    "type": "string"
-                                  },
-                                  "additionalProperties": {}
-                                },
-                                "headers": {
-                                  "type": "object",
-                                  "propertyNames": {
-                                    "type": "string"
-                                  },
-                                  "additionalProperties": {
-                                    "type": "string"
-                                  }
-                                },
-                                "provider": {
-                                  "type": "object",
-                                  "properties": {
-                                    "npm": {
-                                      "type": "string"
-                                    },
-                                    "api": {
-                                      "type": "string"
-                                    }
-                                  }
-                                },
-                                "variants": {
-                                  "type": "object",
-                                  "propertyNames": {
-                                    "type": "string"
-                                  },
-                                  "additionalProperties": {
-                                    "type": "object",
-                                    "propertyNames": {
-                                      "type": "string"
-                                    },
-                                    "additionalProperties": {}
-                                  }
-                                }
-                              },
-                              "required": [
-                                "id",
-                                "name",
-                                "release_date",
-                                "attachment",
-                                "reasoning",
-                                "temperature",
-                                "tool_call",
-                                "limit",
-                                "options"
-                              ]
-                            }
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "env",
-                          "id",
-                          "models"
-                        ]
+                        "$ref": "#/components/schemas/Provider"
                       }
                     },
                     "default": {
@@ -12405,6 +12515,247 @@
         }
       }
     },
+    "/api/v2/mcp/store/apps": {
+      "get": {
+        "operationId": "mcp.store.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List installed MCP Apps from mcp-apps.json",
+        "responses": {
+          "200": {
+            "description": "App list with manifest metadata and tier"
+          }
+        }
+      },
+      "post": {
+        "operationId": "mcp.store.add",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Register a new MCP App",
+        "responses": {
+          "200": {
+            "description": "Registered app manifest"
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "githubUrl": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "default": "system",
+                    "type": "string",
+                    "enum": [
+                      "system",
+                      "user"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/mcp/store/apps/preview": {
+      "post": {
+        "operationId": "mcp.store.preview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Preview an MCP App manifest without registering",
+        "responses": {
+          "200": {
+            "description": "Manifest preview"
+          },
+          "400": {
+            "description": "Manifest not found or invalid"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/mcp/store/apps/{id}": {
+      "patch": {
+        "operationId": "mcp.store.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Update MCP App state (enable/disable)",
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "mcp.store.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Remove an MCP App",
+        "responses": {
+          "200": {
+            "description": "Removed"
+          }
+        }
+      }
+    },
+    "/api/v2/mcp/store/apps/{id}/config": {
+      "put": {
+        "operationId": "mcp.store.setConfig",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Update MCP App config values",
+        "responses": {
+          "200": {
+            "description": "Config updated"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "config": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/tui/append-prompt": {
       "post": {
         "operationId": "tui.appendPrompt",
@@ -12992,6 +13343,13 @@
                 "admin"
               ]
             }
+          },
+          {
+            "in": "query",
+            "name": "fresh",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Get quota hint for current model",
@@ -13454,6 +13812,60 @@
         }
       }
     },
+    "/api/v2/account/{family}/{accountId}/reset-cooldown": {
+      "post": {
+        "operationId": "account.resetCooldown",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "family",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "accountId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Reset account cooldown",
+        "description": "Clear all rate limit cooldowns, daily failure counters, and health score for a specific account.",
+        "responses": {
+          "200": {
+            "description": "Cooldown reset successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/account/{family}/{accountId}": {
       "delete": {
         "operationId": "account.remove",
@@ -13654,6 +14066,13 @@
                 "footer",
                 "admin"
               ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "fresh",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -14113,6 +14532,60 @@
         "responses": {
           "200": {
             "description": "Login URL info"
+          }
+        }
+      }
+    },
+    "/api/v2/accounts/{family}/{accountId}/reset-cooldown": {
+      "post": {
+        "operationId": "account.resetCooldown",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "family",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "accountId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Reset account cooldown",
+        "description": "Clear all rate limit cooldowns, daily failure counters, and health score for a specific account.",
+        "responses": {
+          "200": {
+            "description": "Cooldown reset successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
           }
         }
       }
@@ -15487,6 +15960,9 @@
                               "model": {
                                 "type": "string"
                               },
+                              "accountId": {
+                                "type": "string"
+                              },
                               "timeoutSeconds": {
                                 "type": "integer",
                                 "exclusiveMinimum": 0,
@@ -15607,6 +16083,12 @@
                             ]
                           },
                           "lastDeliveryError": {
+                            "type": "string"
+                          },
+                          "lastModel": {
+                            "type": "string"
+                          },
+                          "lastAccountId": {
                             "type": "string"
                           }
                         }
@@ -15784,6 +16266,9 @@
                             "model": {
                               "type": "string"
                             },
+                            "accountId": {
+                              "type": "string"
+                            },
                             "timeoutSeconds": {
                               "type": "integer",
                               "exclusiveMinimum": 0,
@@ -15904,6 +16389,12 @@
                           ]
                         },
                         "lastDeliveryError": {
+                          "type": "string"
+                        },
+                        "lastModel": {
+                          "type": "string"
+                        },
+                        "lastAccountId": {
                           "type": "string"
                         }
                       }
@@ -16049,6 +16540,9 @@
                             "type": "string"
                           },
                           "model": {
+                            "type": "string"
+                          },
+                          "accountId": {
                             "type": "string"
                           },
                           "timeoutSeconds": {
@@ -16286,6 +16780,9 @@
                             "model": {
                               "type": "string"
                             },
+                            "accountId": {
+                              "type": "string"
+                            },
                             "timeoutSeconds": {
                               "type": "integer",
                               "exclusiveMinimum": 0,
@@ -16406,6 +16903,12 @@
                           ]
                         },
                         "lastDeliveryError": {
+                          "type": "string"
+                        },
+                        "lastModel": {
+                          "type": "string"
+                        },
+                        "lastAccountId": {
                           "type": "string"
                         }
                       }
@@ -16600,6 +17103,9 @@
                             "model": {
                               "type": "string"
                             },
+                            "accountId": {
+                              "type": "string"
+                            },
                             "timeoutSeconds": {
                               "type": "integer",
                               "exclusiveMinimum": 0,
@@ -16720,6 +17226,12 @@
                           ]
                         },
                         "lastDeliveryError": {
+                          "type": "string"
+                        },
+                        "lastModel": {
+                          "type": "string"
+                        },
+                        "lastAccountId": {
                           "type": "string"
                         }
                       }
@@ -16874,6 +17386,9 @@
                             "type": "string"
                           },
                           "model": {
+                            "type": "string"
+                          },
+                          "accountId": {
                             "type": "string"
                           },
                           "timeoutSeconds": {
@@ -17105,6 +17620,178 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/cron/project": {
+      "get": {
+        "operationId": "cron.project",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get the virtual tasks project directory",
+        "responses": {
+          "200": {
+            "description": "Virtual tasks project directory path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "directory"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/google-binding/status": {
+      "get": {
+        "operationId": "googleBinding.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get Google binding status for current user",
+        "description": "Returns whether the current PAM-authenticated user has a Google identity bound.",
+        "responses": {
+          "200": {
+            "description": "Binding status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bound": {
+                      "type": "boolean"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "bound"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/google-binding/connect": {
+      "get": {
+        "operationId": "googleBinding.connect",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Start Google OAuth flow for binding",
+        "description": "Redirects the user to Google OAuth consent screen to verify Google identity for binding. Requires openid and email scopes only.",
+        "responses": {
+          "302": {
+            "description": "Redirect to Google OAuth"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/google-binding/callback": {
+      "get": {
+        "operationId": "googleBinding.callback",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Handle Google OAuth callback for binding",
+        "description": "Exchanges authorization code for tokens, extracts verified email from Google userinfo, and creates the binding.",
+        "responses": {
+          "200": {
+            "description": "Binding created, shows success page"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/google-binding": {
+      "delete": {
+        "operationId": "googleBinding.unbind",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Remove Google binding for current user",
+        "description": "Removes the Google identity binding for the current PAM-authenticated user.",
+        "responses": {
+          "200": {
+            "description": "Binding removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
                 }
               }
             }
@@ -18047,6 +18734,46 @@
             }
           }
         }
+      }
+    },
+    "/global/config/provider/{providerId}": {
+      "delete": {
+        "operationId": "global.config.provider.delete",
+        "summary": "Delete custom provider from global configuration",
+        "description": "Remove a custom provider entry from the global OpenCode configuration.",
+        "responses": {
+          "200": {
+            "description": "Successfully removed provider from global config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Config"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "providerId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ]
       }
     },
     "/global/web/restart": {
@@ -22294,6 +23021,259 @@
         }
       }
     },
+    "/session/{sessionID}/skill-layer": {
+      "get": {
+        "operationId": "session.skillLayer.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Get session skill layers",
+        "description": "Retrieve managed skill-layer states for one session.",
+        "responses": {
+          "200": {
+            "description": "Skill layer list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "loadedAt": {
+                        "type": "number"
+                      },
+                      "lastUsedAt": {
+                        "type": "number"
+                      },
+                      "runtimeState": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "idle",
+                          "sticky",
+                          "summarized",
+                          "unloaded"
+                        ]
+                      },
+                      "desiredState": {
+                        "type": "string",
+                        "enum": [
+                          "full",
+                          "summary",
+                          "absent"
+                        ]
+                      },
+                      "pinned": {
+                        "type": "boolean"
+                      },
+                      "lastReason": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "loadedAt",
+                      "lastUsedAt",
+                      "runtimeState",
+                      "desiredState",
+                      "pinned",
+                      "lastReason"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/session/{sessionID}/skill-layer/{name}/action": {
+      "post": {
+        "operationId": "session.skillLayer.action",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Skill name"
+          }
+        ],
+        "summary": "Mutate session skill layer state",
+        "description": "Apply operator action to one managed skill layer in the session scope.",
+        "responses": {
+          "200": {
+            "description": "Mutation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "loadedAt": {
+                            "type": "number"
+                          },
+                          "lastUsedAt": {
+                            "type": "number"
+                          },
+                          "runtimeState": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "idle",
+                              "sticky",
+                              "summarized",
+                              "unloaded"
+                            ]
+                          },
+                          "desiredState": {
+                            "type": "string",
+                            "enum": [
+                              "full",
+                              "summary",
+                              "absent"
+                            ]
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
+                          "lastReason": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "loadedAt",
+                          "lastUsedAt",
+                          "runtimeState",
+                          "desiredState",
+                          "pinned",
+                          "lastReason"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "entries"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "pin",
+                      "unpin",
+                      "promote",
+                      "demote",
+                      "unload"
+                    ]
+                  }
+                },
+                "required": [
+                  "action"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/session/{sessionID}/autonomous": {
       "post": {
         "operationId": "session.autonomous",
@@ -24739,6 +25719,71 @@
         }
       }
     },
+    "/session/{sessionID}/transcribe": {
+      "post": {
+        "operationId": "session.transcribe",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Session ID"
+          }
+        ],
+        "summary": "Transcribe audio",
+        "description": "Accept an audio recording and return transcribed text using an audio-capable model.",
+        "responses": {
+          "200": {
+            "description": "Transcription result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/permission/{requestID}/reply": {
       "post": {
         "operationId": "permission.reply",
@@ -25040,255 +26085,7 @@
                     "all": {
                       "type": "array",
                       "items": {
-                        "type": "object",
-                        "properties": {
-                          "api": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "env": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          },
-                          "id": {
-                            "type": "string"
-                          },
-                          "npm": {
-                            "type": "string"
-                          },
-                          "models": {
-                            "type": "object",
-                            "propertyNames": {
-                              "type": "string"
-                            },
-                            "additionalProperties": {
-                              "type": "object",
-                              "properties": {
-                                "id": {
-                                  "type": "string"
-                                },
-                                "name": {
-                                  "type": "string"
-                                },
-                                "family": {
-                                  "type": "string"
-                                },
-                                "release_date": {
-                                  "type": "string"
-                                },
-                                "attachment": {
-                                  "type": "boolean"
-                                },
-                                "reasoning": {
-                                  "type": "boolean"
-                                },
-                                "temperature": {
-                                  "type": "boolean"
-                                },
-                                "tool_call": {
-                                  "type": "boolean"
-                                },
-                                "interleaved": {
-                                  "anyOf": [
-                                    {
-                                      "type": "boolean",
-                                      "const": true
-                                    },
-                                    {
-                                      "type": "object",
-                                      "properties": {
-                                        "field": {
-                                          "type": "string",
-                                          "enum": [
-                                            "reasoning_content",
-                                            "reasoning_details"
-                                          ]
-                                        }
-                                      },
-                                      "required": [
-                                        "field"
-                                      ],
-                                      "additionalProperties": false
-                                    }
-                                  ]
-                                },
-                                "cost": {
-                                  "type": "object",
-                                  "properties": {
-                                    "input": {
-                                      "type": "number"
-                                    },
-                                    "output": {
-                                      "type": "number"
-                                    },
-                                    "reasoning": {
-                                      "type": "number"
-                                    },
-                                    "cache_read": {
-                                      "type": "number"
-                                    },
-                                    "cache_write": {
-                                      "type": "number"
-                                    },
-                                    "context_over_200k": {
-                                      "type": "object",
-                                      "properties": {
-                                        "input": {
-                                          "type": "number"
-                                        },
-                                        "output": {
-                                          "type": "number"
-                                        },
-                                        "reasoning": {
-                                          "type": "number"
-                                        },
-                                        "cache_read": {
-                                          "type": "number"
-                                        },
-                                        "cache_write": {
-                                          "type": "number"
-                                        }
-                                      },
-                                      "required": [
-                                        "input",
-                                        "output"
-                                      ]
-                                    }
-                                  },
-                                  "required": [
-                                    "input",
-                                    "output"
-                                  ]
-                                },
-                                "limit": {
-                                  "type": "object",
-                                  "properties": {
-                                    "context": {
-                                      "type": "number"
-                                    },
-                                    "input": {
-                                      "type": "number"
-                                    },
-                                    "output": {
-                                      "type": "number"
-                                    }
-                                  },
-                                  "required": [
-                                    "context",
-                                    "output"
-                                  ]
-                                },
-                                "modalities": {
-                                  "type": "object",
-                                  "properties": {
-                                    "input": {
-                                      "type": "array",
-                                      "items": {
-                                        "type": "string",
-                                        "enum": [
-                                          "text",
-                                          "audio",
-                                          "image",
-                                          "video",
-                                          "pdf"
-                                        ]
-                                      }
-                                    },
-                                    "output": {
-                                      "type": "array",
-                                      "items": {
-                                        "type": "string",
-                                        "enum": [
-                                          "text",
-                                          "audio",
-                                          "image",
-                                          "video",
-                                          "pdf"
-                                        ]
-                                      }
-                                    }
-                                  },
-                                  "required": [
-                                    "input",
-                                    "output"
-                                  ]
-                                },
-                                "experimental": {
-                                  "type": "boolean"
-                                },
-                                "status": {
-                                  "type": "string",
-                                  "enum": [
-                                    "alpha",
-                                    "beta",
-                                    "deprecated"
-                                  ]
-                                },
-                                "options": {
-                                  "type": "object",
-                                  "propertyNames": {
-                                    "type": "string"
-                                  },
-                                  "additionalProperties": {}
-                                },
-                                "headers": {
-                                  "type": "object",
-                                  "propertyNames": {
-                                    "type": "string"
-                                  },
-                                  "additionalProperties": {
-                                    "type": "string"
-                                  }
-                                },
-                                "provider": {
-                                  "type": "object",
-                                  "properties": {
-                                    "npm": {
-                                      "type": "string"
-                                    },
-                                    "api": {
-                                      "type": "string"
-                                    }
-                                  }
-                                },
-                                "variants": {
-                                  "type": "object",
-                                  "propertyNames": {
-                                    "type": "string"
-                                  },
-                                  "additionalProperties": {
-                                    "type": "object",
-                                    "propertyNames": {
-                                      "type": "string"
-                                    },
-                                    "additionalProperties": {}
-                                  }
-                                }
-                              },
-                              "required": [
-                                "id",
-                                "name",
-                                "release_date",
-                                "attachment",
-                                "reasoning",
-                                "temperature",
-                                "tool_call",
-                                "limit",
-                                "options"
-                              ]
-                            }
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "env",
-                          "id",
-                          "models"
-                        ]
+                        "$ref": "#/components/schemas/Provider"
                       }
                     },
                     "default": {
@@ -30199,6 +30996,247 @@
         }
       }
     },
+    "/mcp/store/apps": {
+      "get": {
+        "operationId": "mcp.store.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List installed MCP Apps from mcp-apps.json",
+        "responses": {
+          "200": {
+            "description": "App list with manifest metadata and tier"
+          }
+        }
+      },
+      "post": {
+        "operationId": "mcp.store.add",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Register a new MCP App",
+        "responses": {
+          "200": {
+            "description": "Registered app manifest"
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "githubUrl": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "default": "system",
+                    "type": "string",
+                    "enum": [
+                      "system",
+                      "user"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/store/apps/preview": {
+      "post": {
+        "operationId": "mcp.store.preview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Preview an MCP App manifest without registering",
+        "responses": {
+          "200": {
+            "description": "Manifest preview"
+          },
+          "400": {
+            "description": "Manifest not found or invalid"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/store/apps/{id}": {
+      "patch": {
+        "operationId": "mcp.store.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Update MCP App state (enable/disable)",
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "mcp.store.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Remove an MCP App",
+        "responses": {
+          "200": {
+            "description": "Removed"
+          }
+        }
+      }
+    },
+    "/mcp/store/apps/{id}/config": {
+      "put": {
+        "operationId": "mcp.store.setConfig",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Update MCP App config values",
+        "responses": {
+          "200": {
+            "description": "Config updated"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "config": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "config"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/tui/append-prompt": {
       "post": {
         "operationId": "tui.appendPrompt",
@@ -30786,6 +31824,13 @@
                 "admin"
               ]
             }
+          },
+          {
+            "in": "query",
+            "name": "fresh",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Get quota hint for current model",
@@ -31248,6 +32293,60 @@
         }
       }
     },
+    "/account/{family}/{accountId}/reset-cooldown": {
+      "post": {
+        "operationId": "account.resetCooldown",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "family",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "accountId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Reset account cooldown",
+        "description": "Clear all rate limit cooldowns, daily failure counters, and health score for a specific account.",
+        "responses": {
+          "200": {
+            "description": "Cooldown reset successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/account/{family}/{accountId}": {
       "delete": {
         "operationId": "account.remove",
@@ -31448,6 +32547,13 @@
                 "footer",
                 "admin"
               ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "fresh",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -31907,6 +33013,60 @@
         "responses": {
           "200": {
             "description": "Login URL info"
+          }
+        }
+      }
+    },
+    "/accounts/{family}/{accountId}/reset-cooldown": {
+      "post": {
+        "operationId": "account.resetCooldown",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "family",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "accountId",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Reset account cooldown",
+        "description": "Clear all rate limit cooldowns, daily failure counters, and health score for a specific account.",
+        "responses": {
+          "200": {
+            "description": "Cooldown reset successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
           }
         }
       }
@@ -33281,6 +34441,9 @@
                               "model": {
                                 "type": "string"
                               },
+                              "accountId": {
+                                "type": "string"
+                              },
                               "timeoutSeconds": {
                                 "type": "integer",
                                 "exclusiveMinimum": 0,
@@ -33401,6 +34564,12 @@
                             ]
                           },
                           "lastDeliveryError": {
+                            "type": "string"
+                          },
+                          "lastModel": {
+                            "type": "string"
+                          },
+                          "lastAccountId": {
                             "type": "string"
                           }
                         }
@@ -33578,6 +34747,9 @@
                             "model": {
                               "type": "string"
                             },
+                            "accountId": {
+                              "type": "string"
+                            },
                             "timeoutSeconds": {
                               "type": "integer",
                               "exclusiveMinimum": 0,
@@ -33698,6 +34870,12 @@
                           ]
                         },
                         "lastDeliveryError": {
+                          "type": "string"
+                        },
+                        "lastModel": {
+                          "type": "string"
+                        },
+                        "lastAccountId": {
                           "type": "string"
                         }
                       }
@@ -33843,6 +35021,9 @@
                             "type": "string"
                           },
                           "model": {
+                            "type": "string"
+                          },
+                          "accountId": {
                             "type": "string"
                           },
                           "timeoutSeconds": {
@@ -34080,6 +35261,9 @@
                             "model": {
                               "type": "string"
                             },
+                            "accountId": {
+                              "type": "string"
+                            },
                             "timeoutSeconds": {
                               "type": "integer",
                               "exclusiveMinimum": 0,
@@ -34200,6 +35384,12 @@
                           ]
                         },
                         "lastDeliveryError": {
+                          "type": "string"
+                        },
+                        "lastModel": {
+                          "type": "string"
+                        },
+                        "lastAccountId": {
                           "type": "string"
                         }
                       }
@@ -34394,6 +35584,9 @@
                             "model": {
                               "type": "string"
                             },
+                            "accountId": {
+                              "type": "string"
+                            },
                             "timeoutSeconds": {
                               "type": "integer",
                               "exclusiveMinimum": 0,
@@ -34514,6 +35707,12 @@
                           ]
                         },
                         "lastDeliveryError": {
+                          "type": "string"
+                        },
+                        "lastModel": {
+                          "type": "string"
+                        },
+                        "lastAccountId": {
                           "type": "string"
                         }
                       }
@@ -34668,6 +35867,9 @@
                             "type": "string"
                           },
                           "model": {
+                            "type": "string"
+                          },
+                          "accountId": {
                             "type": "string"
                           },
                           "timeoutSeconds": {
@@ -34899,6 +36101,178 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cron/project": {
+      "get": {
+        "operationId": "cron.project",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get the virtual tasks project directory",
+        "responses": {
+          "200": {
+            "description": "Virtual tasks project directory path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "directory"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/google-binding/status": {
+      "get": {
+        "operationId": "googleBinding.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get Google binding status for current user",
+        "description": "Returns whether the current PAM-authenticated user has a Google identity bound.",
+        "responses": {
+          "200": {
+            "description": "Binding status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "bound": {
+                      "type": "boolean"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "bound"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/google-binding/connect": {
+      "get": {
+        "operationId": "googleBinding.connect",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Start Google OAuth flow for binding",
+        "description": "Redirects the user to Google OAuth consent screen to verify Google identity for binding. Requires openid and email scopes only.",
+        "responses": {
+          "302": {
+            "description": "Redirect to Google OAuth"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/google-binding/callback": {
+      "get": {
+        "operationId": "googleBinding.callback",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Handle Google OAuth callback for binding",
+        "description": "Exchanges authorization code for tokens, extracts verified email from Google userinfo, and creates the binding.",
+        "responses": {
+          "200": {
+            "description": "Binding created, shows success page"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/google-binding": {
+      "delete": {
+        "operationId": "googleBinding.unbind",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Remove Google binding for current user",
+        "description": "Removes the Google identity binding for the current PAM-authenticated user.",
+        "responses": {
+          "200": {
+            "description": "Binding removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
                 }
               }
             }
@@ -35976,6 +37350,30 @@
             "required": [
               "active",
               "state"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
+      "Event.codex.continuation.invalidated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "codex.continuation.invalidated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sessionId"
             ]
           }
         },
@@ -37143,6 +38541,25 @@
             "items": {
               "$ref": "#/components/schemas/FilePart"
             }
+          },
+          "directRender": {
+            "type": "object",
+            "properties": {
+              "filePath": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "size": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "filePath",
+              "title",
+              "size"
+            ]
           }
         },
         "required": [
@@ -37533,7 +38950,10 @@
           },
           "type": {
             "type": "string",
-            "enum": ["compaction", "compaction-request"]
+            "enum": [
+              "compaction",
+              "compaction-request"
+            ]
           },
           "auto": {
             "type": "boolean"
@@ -37602,6 +39022,9 @@
               },
               "delta": {
                 "type": "string"
+              },
+              "textLength": {
+                "type": "number"
               }
             },
             "required": [
@@ -38153,6 +39576,532 @@
           "properties"
         ]
       },
+      "PermissionAction": {
+        "type": "string",
+        "enum": [
+          "allow",
+          "deny",
+          "ask"
+        ]
+      },
+      "PermissionRule": {
+        "type": "object",
+        "properties": {
+          "permission": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "action": {
+            "$ref": "#/components/schemas/PermissionAction"
+          }
+        },
+        "required": [
+          "permission",
+          "pattern",
+          "action"
+        ]
+      },
+      "PermissionRuleset": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/PermissionRule"
+        }
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "projectID": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          },
+          "parentID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "additions": {
+                "type": "number"
+              },
+              "deletions": {
+                "type": "number"
+              },
+              "files": {
+                "type": "number"
+              },
+              "diffs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FileDiff"
+                }
+              }
+            },
+            "required": [
+              "additions",
+              "deletions",
+              "files"
+            ]
+          },
+          "share": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              },
+              "compacting": {
+                "type": "number"
+              },
+              "archived": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "created",
+              "updated"
+            ]
+          },
+          "permission": {
+            "$ref": "#/components/schemas/PermissionRuleset"
+          },
+          "revert": {
+            "type": "object",
+            "properties": {
+              "messageID": {
+                "type": "string"
+              },
+              "partID": {
+                "type": "string"
+              },
+              "snapshot": {
+                "type": "string"
+              },
+              "diff": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "messageID"
+            ]
+          },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "requestsTotal": {
+                "type": "number"
+              },
+              "totalTokens": {
+                "type": "number"
+              },
+              "tokens": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "number"
+                  },
+                  "output": {
+                    "type": "number"
+                  },
+                  "reasoning": {
+                    "type": "number"
+                  },
+                  "cache": {
+                    "type": "object",
+                    "properties": {
+                      "read": {
+                        "type": "number"
+                      },
+                      "write": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "read",
+                      "write"
+                    ]
+                  }
+                },
+                "required": [
+                  "input",
+                  "output",
+                  "reasoning",
+                  "cache"
+                ]
+              },
+              "lastUpdated": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "requestsTotal",
+              "totalTokens",
+              "tokens",
+              "lastUpdated"
+            ]
+          },
+          "planner": {
+            "type": "object",
+            "properties": {
+              "committedIntent": {
+                "type": "string",
+                "enum": [
+                  "plan_enter",
+                  "plan_exit"
+                ]
+              },
+              "updatedAt": {
+                "type": "number"
+              }
+            }
+          },
+          "execution": {
+            "type": "object",
+            "properties": {
+              "providerId": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              },
+              "accountId": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "updatedAt": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "providerId",
+              "modelID",
+              "revision",
+              "updatedAt"
+            ]
+          },
+          "workflow": {
+            "type": "object",
+            "properties": {
+              "autonomous": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "maxContinuousRounds": {
+                    "type": "number"
+                  },
+                  "stopOnTestsFail": {
+                    "type": "boolean"
+                  },
+                  "requireApprovalFor": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "running",
+                  "waiting_user",
+                  "blocked",
+                  "completed"
+                ]
+              },
+              "stopReason": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "number"
+              },
+              "lastRunAt": {
+                "type": "number"
+              },
+              "supervisor": {
+                "type": "object",
+                "properties": {
+                  "leaseOwner": {
+                    "type": "string"
+                  },
+                  "leaseExpiresAt": {
+                    "type": "number"
+                  },
+                  "retryAt": {
+                    "type": "number"
+                  },
+                  "consecutiveResumeFailures": {
+                    "type": "number"
+                  },
+                  "lastResumeCategory": {
+                    "type": "string"
+                  },
+                  "lastResumeError": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "required": [
+              "autonomous",
+              "state",
+              "updatedAt"
+            ]
+          },
+          "mission": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "const": "openspec_compiled_plan"
+              },
+              "contract": {
+                "type": "string",
+                "const": "implementation_spec"
+              },
+              "approvedAt": {
+                "type": "number"
+              },
+              "planPath": {
+                "type": "string"
+              },
+              "artifactPaths": {
+                "type": "object",
+                "properties": {
+                  "root": {
+                    "type": "string"
+                  },
+                  "implementationSpec": {
+                    "type": "string"
+                  },
+                  "proposal": {
+                    "type": "string"
+                  },
+                  "spec": {
+                    "type": "string"
+                  },
+                  "design": {
+                    "type": "string"
+                  },
+                  "tasks": {
+                    "type": "string"
+                  },
+                  "handoff": {
+                    "type": "string"
+                  },
+                  "idef0": {
+                    "type": "string"
+                  },
+                  "grafcet": {
+                    "type": "string"
+                  },
+                  "c4": {
+                    "type": "string"
+                  },
+                  "sequence": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "root",
+                  "implementationSpec",
+                  "proposal",
+                  "spec",
+                  "design",
+                  "tasks",
+                  "handoff"
+                ]
+              },
+              "artifactIntegrity": {
+                "type": "object",
+                "properties": {
+                  "implementationSpec": {
+                    "type": "string"
+                  },
+                  "tasks": {
+                    "type": "string"
+                  },
+                  "handoff": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "implementationSpec",
+                  "tasks",
+                  "handoff"
+                ]
+              },
+              "beta": {
+                "type": "object",
+                "properties": {
+                  "branchName": {
+                    "type": "string"
+                  },
+                  "baseBranch": {
+                    "type": "string"
+                  },
+                  "repoPath": {
+                    "type": "string"
+                  },
+                  "mainWorktreePath": {
+                    "type": "string"
+                  },
+                  "betaPath": {
+                    "type": "string"
+                  },
+                  "runtimePolicy": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "branchName",
+                  "baseBranch",
+                  "betaPath"
+                ]
+              },
+              "admission": {
+                "type": "object",
+                "properties": {
+                  "betaQuiz": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "passed",
+                          "failed"
+                        ]
+                      },
+                      "reflectionUsed": {
+                        "type": "boolean"
+                      },
+                      "passedAt": {
+                        "type": "number"
+                      },
+                      "mismatchCount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "lastMismatches": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "field": {
+                              "type": "string"
+                            },
+                            "expected": {
+                              "type": "string"
+                            },
+                            "actual": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "expected",
+                            "actual"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "reflectionUsed"
+                    ]
+                  }
+                }
+              },
+              "executionReady": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "source",
+              "contract",
+              "approvedAt",
+              "planPath",
+              "artifactPaths",
+              "executionReady"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "projectID",
+          "directory",
+          "title",
+          "version",
+          "time"
+        ]
+      },
+      "Event.session.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "info": {
+                "$ref": "#/components/schemas/Session"
+              }
+            },
+            "required": [
+              "info"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
       "Event.llm.error": {
         "type": "object",
         "properties": {
@@ -38297,6 +40246,9 @@
                     "key": {
                       "type": "string"
                     },
+                    "name": {
+                      "type": "string"
+                    },
                     "chars": {
                       "type": "number"
                     },
@@ -38312,6 +40264,7 @@
                   },
                   "required": [
                     "key",
+                    "name",
                     "chars",
                     "tokens",
                     "injected",
@@ -39737,6 +41690,9 @@
                           "handoff"
                         ]
                       },
+                      "dispatchedAt": {
+                        "type": "number"
+                      },
                       "todo": {
                         "type": "object",
                         "properties": {
@@ -39835,493 +41791,6 @@
           "properties"
         ]
       },
-      "PermissionAction": {
-        "type": "string",
-        "enum": [
-          "allow",
-          "deny",
-          "ask"
-        ]
-      },
-      "PermissionRule": {
-        "type": "object",
-        "properties": {
-          "permission": {
-            "type": "string"
-          },
-          "pattern": {
-            "type": "string"
-          },
-          "action": {
-            "$ref": "#/components/schemas/PermissionAction"
-          }
-        },
-        "required": [
-          "permission",
-          "pattern",
-          "action"
-        ]
-      },
-      "PermissionRuleset": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/PermissionRule"
-        }
-      },
-      "Session": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^ses.*"
-          },
-          "slug": {
-            "type": "string"
-          },
-          "projectID": {
-            "type": "string"
-          },
-          "directory": {
-            "type": "string"
-          },
-          "parentID": {
-            "type": "string",
-            "pattern": "^ses.*"
-          },
-          "summary": {
-            "type": "object",
-            "properties": {
-              "additions": {
-                "type": "number"
-              },
-              "deletions": {
-                "type": "number"
-              },
-              "files": {
-                "type": "number"
-              },
-              "diffs": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/FileDiff"
-                }
-              }
-            },
-            "required": [
-              "additions",
-              "deletions",
-              "files"
-            ]
-          },
-          "share": {
-            "type": "object",
-            "properties": {
-              "url": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "url"
-            ]
-          },
-          "title": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "created": {
-                "type": "number"
-              },
-              "updated": {
-                "type": "number"
-              },
-              "compacting": {
-                "type": "number"
-              },
-              "archived": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "created",
-              "updated"
-            ]
-          },
-          "permission": {
-            "$ref": "#/components/schemas/PermissionRuleset"
-          },
-          "revert": {
-            "type": "object",
-            "properties": {
-              "messageID": {
-                "type": "string"
-              },
-              "partID": {
-                "type": "string"
-              },
-              "snapshot": {
-                "type": "string"
-              },
-              "diff": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "messageID"
-            ]
-          },
-          "stats": {
-            "type": "object",
-            "properties": {
-              "requestsTotal": {
-                "type": "number"
-              },
-              "totalTokens": {
-                "type": "number"
-              },
-              "tokens": {
-                "type": "object",
-                "properties": {
-                  "input": {
-                    "type": "number"
-                  },
-                  "output": {
-                    "type": "number"
-                  },
-                  "reasoning": {
-                    "type": "number"
-                  },
-                  "cache": {
-                    "type": "object",
-                    "properties": {
-                      "read": {
-                        "type": "number"
-                      },
-                      "write": {
-                        "type": "number"
-                      }
-                    },
-                    "required": [
-                      "read",
-                      "write"
-                    ]
-                  }
-                },
-                "required": [
-                  "input",
-                  "output",
-                  "reasoning",
-                  "cache"
-                ]
-              },
-              "lastUpdated": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "requestsTotal",
-              "totalTokens",
-              "tokens",
-              "lastUpdated"
-            ]
-          },
-          "execution": {
-            "type": "object",
-            "properties": {
-              "providerId": {
-                "type": "string"
-              },
-              "modelID": {
-                "type": "string"
-              },
-              "accountId": {
-                "type": "string"
-              },
-              "revision": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "updatedAt": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "providerId",
-              "modelID",
-              "revision",
-              "updatedAt"
-            ]
-          },
-          "workflow": {
-            "type": "object",
-            "properties": {
-              "autonomous": {
-                "type": "object",
-                "properties": {
-                  "enabled": {
-                    "type": "boolean"
-                  },
-                  "maxContinuousRounds": {
-                    "type": "number"
-                  },
-                  "stopOnTestsFail": {
-                    "type": "boolean"
-                  },
-                  "requireApprovalFor": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": [
-                  "enabled"
-                ]
-              },
-              "state": {
-                "type": "string",
-                "enum": [
-                  "idle",
-                  "running",
-                  "waiting_user",
-                  "blocked",
-                  "completed"
-                ]
-              },
-              "stopReason": {
-                "type": "string"
-              },
-              "updatedAt": {
-                "type": "number"
-              },
-              "lastRunAt": {
-                "type": "number"
-              },
-              "supervisor": {
-                "type": "object",
-                "properties": {
-                  "leaseOwner": {
-                    "type": "string"
-                  },
-                  "leaseExpiresAt": {
-                    "type": "number"
-                  },
-                  "retryAt": {
-                    "type": "number"
-                  },
-                  "consecutiveResumeFailures": {
-                    "type": "number"
-                  },
-                  "lastResumeCategory": {
-                    "type": "string"
-                  },
-                  "lastResumeError": {
-                    "type": "string"
-                  }
-                }
-              }
-            },
-            "required": [
-              "autonomous",
-              "state",
-              "updatedAt"
-            ]
-          },
-          "mission": {
-            "type": "object",
-            "properties": {
-              "source": {
-                "type": "string",
-                "const": "openspec_compiled_plan"
-              },
-              "contract": {
-                "type": "string",
-                "const": "implementation_spec"
-              },
-              "approvedAt": {
-                "type": "number"
-              },
-              "planPath": {
-                "type": "string"
-              },
-              "artifactPaths": {
-                "type": "object",
-                "properties": {
-                  "root": {
-                    "type": "string"
-                  },
-                  "implementationSpec": {
-                    "type": "string"
-                  },
-                  "proposal": {
-                    "type": "string"
-                  },
-                  "spec": {
-                    "type": "string"
-                  },
-                  "design": {
-                    "type": "string"
-                  },
-                  "tasks": {
-                    "type": "string"
-                  },
-                  "handoff": {
-                    "type": "string"
-                  },
-                  "idef0": {
-                    "type": "string"
-                  },
-                  "grafcet": {
-                    "type": "string"
-                  },
-                  "c4": {
-                    "type": "string"
-                  },
-                  "sequence": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "root",
-                  "implementationSpec",
-                  "proposal",
-                  "spec",
-                  "design",
-                  "tasks",
-                  "handoff"
-                ]
-              },
-              "artifactIntegrity": {
-                "type": "object",
-                "properties": {
-                  "implementationSpec": {
-                    "type": "string"
-                  },
-                  "tasks": {
-                    "type": "string"
-                  },
-                  "handoff": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "implementationSpec",
-                  "tasks",
-                  "handoff"
-                ]
-              },
-              "beta": {
-                "type": "object",
-                "properties": {
-                  "branchName": {
-                    "type": "string"
-                  },
-                  "baseBranch": {
-                    "type": "string"
-                  },
-                  "repoPath": {
-                    "type": "string"
-                  },
-                  "mainWorktreePath": {
-                    "type": "string"
-                  },
-                  "betaPath": {
-                    "type": "string"
-                  },
-                  "runtimePolicy": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "branchName",
-                  "baseBranch",
-                  "betaPath"
-                ]
-              },
-              "admission": {
-                "type": "object",
-                "properties": {
-                  "betaQuiz": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "type": "string",
-                        "enum": [
-                          "pending",
-                          "passed",
-                          "failed"
-                        ]
-                      },
-                      "reflectionUsed": {
-                        "type": "boolean"
-                      },
-                      "passedAt": {
-                        "type": "number"
-                      },
-                      "mismatchCount": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      },
-                      "lastMismatches": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "field": {
-                              "type": "string"
-                            },
-                            "expected": {
-                              "type": "string"
-                            },
-                            "actual": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "field",
-                            "expected",
-                            "actual"
-                          ]
-                        }
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "reflectionUsed"
-                    ]
-                  }
-                }
-              },
-              "executionReady": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "source",
-              "contract",
-              "approvedAt",
-              "planPath",
-              "artifactPaths",
-              "executionReady"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "slug",
-          "projectID",
-          "directory",
-          "title",
-          "version",
-          "time"
-        ]
-      },
       "Event.session.created": {
         "type": "object",
         "properties": {
@@ -40352,30 +41821,6 @@
           "type": {
             "type": "string",
             "const": "session.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "info": {
-                "$ref": "#/components/schemas/Session"
-              }
-            },
-            "required": [
-              "info"
-            ]
-          }
-        },
-        "required": [
-          "type",
-          "properties"
-        ]
-      },
-      "Event.session.deleted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "session.deleted"
           },
           "properties": {
             "type": "object",
@@ -42109,6 +43554,9 @@
             "$ref": "#/components/schemas/Event.killswitch.status.changed"
           },
           {
+            "$ref": "#/components/schemas/Event.codex.continuation.invalidated"
+          },
+          {
             "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
           },
           {
@@ -42161,6 +43609,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.ratelimit.auth_failed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.deleted"
           },
           {
             "$ref": "#/components/schemas/Event.llm.error"
@@ -42233,9 +43684,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.session.deleted"
           },
           {
             "$ref": "#/components/schemas/Event.session.diff"
@@ -43230,6 +44678,15 @@
               }
             }
           },
+          "billingMode": {
+            "description": "Provider billing mode authority for prompt-management policy: token, request, or unknown",
+            "type": "string",
+            "enum": [
+              "token",
+              "request",
+              "unknown"
+            ]
+          },
           "whitelist": {
             "type": "array",
             "items": {
@@ -44025,6 +45482,26 @@
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
+              },
+              "lazy_tools": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "description": "Enable lazy tool loading for primary agents (default: true)",
+                    "type": "boolean"
+                  },
+                  "promotion_threshold": {
+                    "description": "Heat score threshold for auto-promoting tools to always-present (default: 50)",
+                    "type": "number"
+                  },
+                  "always_present": {
+                    "description": "Additional tool IDs to always include without needing tool_loader",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
               }
             }
           }
@@ -44470,6 +45947,14 @@
               "api"
             ]
           },
+          "billingMode": {
+            "type": "string",
+            "enum": [
+              "token",
+              "request",
+              "unknown"
+            ]
+          },
           "env": {
             "type": "array",
             "items": {
@@ -44815,6 +46300,21 @@
               "tokens",
               "lastUpdated"
             ]
+          },
+          "planner": {
+            "type": "object",
+            "properties": {
+              "committedIntent": {
+                "type": "string",
+                "enum": [
+                  "plan_enter",
+                  "plan_exit"
+                ]
+              },
+              "updatedAt": {
+                "type": "number"
+              }
+            }
           },
           "execution": {
             "type": "object",

@@ -10,6 +10,9 @@ CAPABILITY ROUTING: For tools/skills/MCP discovery and on-demand routing, treat 
 - **Skeptical of Self**: Act as your own harshest code reviewer. Actively look for edge cases and potential regressions.
 
 ## Gemini-Specific
+
+- **Anti-Hyperactive Execution**: Gemini tends to over-execute. You must NOT perform any action (tool calls, creating todos, debugging) until the user's intention is verbally clarified. If the user makes a statement (e.g., "it failed", "that didn't work"), asks a direct question, or interrupts your workflow, you must STOP immediately and ask for clarification on how to proceed.
+
 - **Long-Range Awareness**: Leverage your context window. Read larger blocks (1000+ lines) of critical files to grasp full module logic.
 - **Tool Persistence**: If tool outputs are saved to a file, use `read` with `offset/limit` to verify every detail. Never guess the contents of truncated results.
 

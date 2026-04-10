@@ -120,6 +120,13 @@ export type EventKillswitchStatusChanged = {
   }
 }
 
+export type EventCodexContinuationInvalidated = {
+  type: "codex.continuation.invalidated"
+  properties: {
+    sessionId: string
+  }
+}
+
 export type EventLspClientDiagnostics = {
   type: "lsp.client.diagnostics"
   properties: {
@@ -459,6 +466,11 @@ export type ToolStateCompleted = {
     compacted?: number
   }
   attachments?: Array<FilePart>
+  directRender?: {
+    filePath: string
+    title: string
+    size: number
+  }
 }
 
 export type ToolStateError = {
@@ -588,6 +600,7 @@ export type EventMessagePartUpdated = {
   properties: {
     part: Part
     delta?: string
+    textLength?: number
   }
 }
 
@@ -754,6 +767,146 @@ export type EventRatelimitAuthFailed = {
   }
 }
 
+export type PermissionAction = "allow" | "deny" | "ask"
+
+export type PermissionRule = {
+  permission: string
+  pattern: string
+  action: PermissionAction
+}
+
+export type PermissionRuleset = Array<PermissionRule>
+
+export type Session = {
+  id: string
+  slug: string
+  projectID: string
+  directory: string
+  parentID?: string
+  summary?: {
+    additions: number
+    deletions: number
+    files: number
+    diffs?: Array<FileDiff>
+  }
+  share?: {
+    url: string
+  }
+  title: string
+  version: string
+  time: {
+    created: number
+    updated: number
+    compacting?: number
+    archived?: number
+  }
+  permission?: PermissionRuleset
+  revert?: {
+    messageID: string
+    partID?: string
+    snapshot?: string
+    diff?: string
+  }
+  stats?: {
+    requestsTotal: number
+    totalTokens: number
+    tokens: {
+      input: number
+      output: number
+      reasoning: number
+      cache: {
+        read: number
+        write: number
+      }
+    }
+    lastUpdated: number
+  }
+  planner?: {
+    committedIntent?: "plan_enter" | "plan_exit"
+    updatedAt?: number
+  }
+  execution?: {
+    providerId: string
+    modelID: string
+    accountId?: string
+    revision: number
+    updatedAt: number
+  }
+  workflow?: {
+    autonomous: {
+      enabled: boolean
+      maxContinuousRounds?: number
+      stopOnTestsFail?: boolean
+      requireApprovalFor?: Array<string>
+    }
+    state: "idle" | "running" | "waiting_user" | "blocked" | "completed"
+    stopReason?: string
+    updatedAt: number
+    lastRunAt?: number
+    supervisor?: {
+      leaseOwner?: string
+      leaseExpiresAt?: number
+      retryAt?: number
+      consecutiveResumeFailures?: number
+      lastResumeCategory?: string
+      lastResumeError?: string
+    }
+  }
+  mission?: {
+    source: "openspec_compiled_plan"
+    contract: "implementation_spec"
+    approvedAt: number
+    planPath: string
+    artifactPaths: {
+      root: string
+      implementationSpec: string
+      proposal: string
+      spec: string
+      design: string
+      tasks: string
+      handoff: string
+      idef0?: string
+      grafcet?: string
+      c4?: string
+      sequence?: string
+    }
+    artifactIntegrity?: {
+      implementationSpec: string
+      tasks: string
+      handoff: string
+    }
+    beta?: {
+      branchName: string
+      baseBranch: string
+      repoPath?: string
+      mainWorktreePath?: string
+      betaPath: string
+      runtimePolicy?: string
+    }
+    admission?: {
+      betaQuiz?: {
+        status: "pending" | "passed" | "failed"
+        reflectionUsed: boolean
+        passedAt?: number
+        mismatchCount?: number
+        lastMismatches?: Array<{
+          field: string
+          expected: string
+          actual: string
+        }>
+      }
+    }
+    executionReady: boolean
+  }
+}
+
+export type EventSessionDeleted = {
+  type: "session.deleted"
+  properties: {
+    info: Session
+  }
+}
+
 export type EventLlmError = {
   type: "llm.error"
   properties: {
@@ -795,6 +948,7 @@ export type EventLlmPromptTelemetry = {
     messageCount: number
     blocks: Array<{
       key: string
+      name: string
       chars: number
       tokens: number
       injected: boolean
@@ -1174,6 +1328,7 @@ export type EventSessionActiveChildUpdated = {
       title: string
       agent: string
       status: "running" | "handoff"
+      dispatchedAt?: number
       todo?: {
         id: string
         content: string
@@ -1202,135 +1357,6 @@ export type EventSessionActiveChildUpdated = {
   }
 }
 
-export type PermissionAction = "allow" | "deny" | "ask"
-
-export type PermissionRule = {
-  permission: string
-  pattern: string
-  action: PermissionAction
-}
-
-export type PermissionRuleset = Array<PermissionRule>
-
-export type Session = {
-  id: string
-  slug: string
-  projectID: string
-  directory: string
-  parentID?: string
-  summary?: {
-    additions: number
-    deletions: number
-    files: number
-    diffs?: Array<FileDiff>
-  }
-  share?: {
-    url: string
-  }
-  title: string
-  version: string
-  time: {
-    created: number
-    updated: number
-    compacting?: number
-    archived?: number
-  }
-  permission?: PermissionRuleset
-  revert?: {
-    messageID: string
-    partID?: string
-    snapshot?: string
-    diff?: string
-  }
-  stats?: {
-    requestsTotal: number
-    totalTokens: number
-    tokens: {
-      input: number
-      output: number
-      reasoning: number
-      cache: {
-        read: number
-        write: number
-      }
-    }
-    lastUpdated: number
-  }
-  execution?: {
-    providerId: string
-    modelID: string
-    accountId?: string
-    revision: number
-    updatedAt: number
-  }
-  workflow?: {
-    autonomous: {
-      enabled: boolean
-      maxContinuousRounds?: number
-      stopOnTestsFail?: boolean
-      requireApprovalFor?: Array<string>
-    }
-    state: "idle" | "running" | "waiting_user" | "blocked" | "completed"
-    stopReason?: string
-    updatedAt: number
-    lastRunAt?: number
-    supervisor?: {
-      leaseOwner?: string
-      leaseExpiresAt?: number
-      retryAt?: number
-      consecutiveResumeFailures?: number
-      lastResumeCategory?: string
-      lastResumeError?: string
-    }
-  }
-  mission?: {
-    source: "openspec_compiled_plan"
-    contract: "implementation_spec"
-    approvedAt: number
-    planPath: string
-    artifactPaths: {
-      root: string
-      implementationSpec: string
-      proposal: string
-      spec: string
-      design: string
-      tasks: string
-      handoff: string
-      idef0?: string
-      grafcet?: string
-      c4?: string
-      sequence?: string
-    }
-    artifactIntegrity?: {
-      implementationSpec: string
-      tasks: string
-      handoff: string
-    }
-    beta?: {
-      branchName: string
-      baseBranch: string
-      repoPath?: string
-      mainWorktreePath?: string
-      betaPath: string
-      runtimePolicy?: string
-    }
-    admission?: {
-      betaQuiz?: {
-        status: "pending" | "passed" | "failed"
-        reflectionUsed: boolean
-        passedAt?: number
-        mismatchCount?: number
-        lastMismatches?: Array<{
-          field: string
-          expected: string
-          actual: string
-        }>
-      }
-    }
-    executionReady: boolean
-  }
-}
-
 export type EventSessionCreated = {
   type: "session.created"
   properties: {
@@ -1340,13 +1366,6 @@ export type EventSessionCreated = {
 
 export type EventSessionUpdated = {
   type: "session.updated"
-  properties: {
-    info: Session
-  }
-}
-
-export type EventSessionDeleted = {
-  type: "session.deleted"
   properties: {
     info: Session
   }
@@ -1715,6 +1734,7 @@ export type Event =
   | EventServerConnected
   | EventGlobalDisposed
   | EventKillswitchStatusChanged
+  | EventCodexContinuationInvalidated
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventMessageUpdated
@@ -1733,6 +1753,7 @@ export type Event =
   | EventRatelimitDetected
   | EventRatelimitCleared
   | EventRatelimitAuthFailed
+  | EventSessionDeleted
   | EventLlmError
   | EventRotationExecuted
   | EventLlmPromptTelemetry
@@ -1757,7 +1778,6 @@ export type Event =
   | EventSessionActiveChildUpdated
   | EventSessionCreated
   | EventSessionUpdated
-  | EventSessionDeleted
   | EventSessionDiff
   | EventSessionError
   | EventSessionWorkflowUpdated
@@ -2353,6 +2373,10 @@ export type ProviderConfig = {
       }
     }
   }
+  /**
+   * Provider billing mode authority for prompt-management policy: token, request, or unknown
+   */
+  billingMode?: "token" | "request" | "unknown"
   whitelist?: Array<string>
   blacklist?: Array<string>
   options?: {
@@ -2750,6 +2774,20 @@ export type Config = {
      * Timeout in milliseconds for subagent task execution. Default is 600000 (10 minutes).
      */
     task_timeout?: number
+    lazy_tools?: {
+      /**
+       * Enable lazy tool loading for primary agents (default: true)
+       */
+      enabled?: boolean
+      /**
+       * Heat score threshold for auto-promoting tools to always-present (default: 50)
+       */
+      promotion_threshold?: number
+      /**
+       * Additional tool IDs to always include without needing tool_loader
+       */
+      always_present?: Array<string>
+    }
   }
 }
 
@@ -2872,6 +2910,7 @@ export type Provider = {
   id: string
   name: string
   source: "env" | "config" | "custom" | "api"
+  billingMode?: "token" | "request" | "unknown"
   env: Array<string>
   key?: string
   options: {
@@ -2976,6 +3015,10 @@ export type GlobalSession = {
       }
     }
     lastUpdated: number
+  }
+  planner?: {
+    committedIntent?: "plan_enter" | "plan_exit"
+    updatedAt?: number
   }
   execution?: {
     providerId: string
@@ -3468,6 +3511,37 @@ export type GlobalConfigUpdateResponses = {
 }
 
 export type GlobalConfigUpdateResponse = GlobalConfigUpdateResponses[keyof GlobalConfigUpdateResponses]
+
+export type GlobalConfigProviderDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Provider ID
+     */
+    providerId: string
+  }
+  query?: never
+  url: "/api/v2/global/config/provider/{providerId}"
+}
+
+export type GlobalConfigProviderDeleteErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalConfigProviderDeleteError = GlobalConfigProviderDeleteErrors[keyof GlobalConfigProviderDeleteErrors]
+
+export type GlobalConfigProviderDeleteResponses = {
+  /**
+   * Successfully removed provider from global config
+   */
+  200: Config
+}
+
+export type GlobalConfigProviderDeleteResponse =
+  GlobalConfigProviderDeleteResponses[keyof GlobalConfigProviderDeleteResponses]
 
 export type GlobalWebRestartData = {
   body?: never
@@ -5195,6 +5269,103 @@ export type SessionTodoResponses = {
 
 export type SessionTodoResponse = SessionTodoResponses[keyof SessionTodoResponses]
 
+export type SessionSkillLayerListData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/session/{sessionID}/skill-layer"
+}
+
+export type SessionSkillLayerListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionSkillLayerListError = SessionSkillLayerListErrors[keyof SessionSkillLayerListErrors]
+
+export type SessionSkillLayerListResponses = {
+  /**
+   * Skill layer list
+   */
+  200: Array<{
+    name: string
+    loadedAt: number
+    lastUsedAt: number
+    runtimeState: "active" | "idle" | "sticky" | "summarized" | "unloaded"
+    desiredState: "full" | "summary" | "absent"
+    pinned: boolean
+    lastReason: string
+  }>
+}
+
+export type SessionSkillLayerListResponse = SessionSkillLayerListResponses[keyof SessionSkillLayerListResponses]
+
+export type SessionSkillLayerActionData = {
+  body?: {
+    action: "pin" | "unpin" | "promote" | "demote" | "unload"
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+    /**
+     * Skill name
+     */
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/session/{sessionID}/skill-layer/{name}/action"
+}
+
+export type SessionSkillLayerActionErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionSkillLayerActionError = SessionSkillLayerActionErrors[keyof SessionSkillLayerActionErrors]
+
+export type SessionSkillLayerActionResponses = {
+  /**
+   * Mutation result
+   */
+  200: {
+    ok: boolean
+    entries: Array<{
+      name: string
+      loadedAt: number
+      lastUsedAt: number
+      runtimeState: "active" | "idle" | "sticky" | "summarized" | "unloaded"
+      desiredState: "full" | "summary" | "absent"
+      pinned: boolean
+      lastReason: string
+    }>
+  }
+}
+
+export type SessionSkillLayerActionResponse = SessionSkillLayerActionResponses[keyof SessionSkillLayerActionResponses]
+
 export type SessionAutonomousData = {
   body?: {
     enabled: boolean
@@ -6251,6 +6422,44 @@ export type PermissionRespondResponses = {
 
 export type PermissionRespondResponse = PermissionRespondResponses[keyof PermissionRespondResponses]
 
+export type SessionTranscribeData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/session/{sessionID}/transcribe"
+}
+
+export type SessionTranscribeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionTranscribeError = SessionTranscribeErrors[keyof SessionTranscribeErrors]
+
+export type SessionTranscribeResponses = {
+  /**
+   * Transcription result
+   */
+  200: {
+    text: string
+  }
+}
+
+export type SessionTranscribeResponse = SessionTranscribeResponses[keyof SessionTranscribeResponses]
+
 export type PermissionReplyData = {
   body?: {
     reply: "once" | "always" | "reject"
@@ -6408,70 +6617,7 @@ export type ProviderListResponses = {
    * List of providers
    */
   200: {
-    all: Array<{
-      api?: string
-      name: string
-      env: Array<string>
-      id: string
-      npm?: string
-      models: {
-        [key: string]: {
-          id: string
-          name: string
-          family?: string
-          release_date: string
-          attachment: boolean
-          reasoning: boolean
-          temperature: boolean
-          tool_call: boolean
-          interleaved?:
-            | true
-            | {
-                field: "reasoning_content" | "reasoning_details"
-              }
-          cost?: {
-            input: number
-            output: number
-            reasoning?: number
-            cache_read?: number
-            cache_write?: number
-            context_over_200k?: {
-              input: number
-              output: number
-              reasoning?: number
-              cache_read?: number
-              cache_write?: number
-            }
-          }
-          limit: {
-            context: number
-            input?: number
-            output: number
-          }
-          modalities?: {
-            input: Array<"text" | "audio" | "image" | "video" | "pdf">
-            output: Array<"text" | "audio" | "image" | "video" | "pdf">
-          }
-          experimental?: boolean
-          status?: "alpha" | "beta" | "deprecated"
-          options: {
-            [key: string]: unknown
-          }
-          headers?: {
-            [key: string]: string
-          }
-          provider?: {
-            npm?: string
-            api?: string
-          }
-          variants?: {
-            [key: string]: {
-              [key: string]: unknown
-            }
-          }
-        }
-      }
-    }>
+    all: Array<Provider>
     default: {
       [key: string]: string
     }
@@ -7867,6 +8013,135 @@ export type McpDisconnectResponses = {
 
 export type McpDisconnectResponse = McpDisconnectResponses[keyof McpDisconnectResponses]
 
+export type McpStoreListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/store/apps"
+}
+
+export type McpStoreListResponses = {
+  /**
+   * App list with manifest metadata and tier
+   */
+  200: unknown
+}
+
+export type McpStoreAddData = {
+  body?: {
+    path?: string
+    githubUrl?: string
+    id?: string
+    target?: "system" | "user"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/store/apps"
+}
+
+export type McpStoreAddErrors = {
+  /**
+   * Validation error
+   */
+  400: unknown
+}
+
+export type McpStoreAddResponses = {
+  /**
+   * Registered app manifest
+   */
+  200: unknown
+}
+
+export type McpStorePreviewData = {
+  body?: {
+    path: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/store/apps/preview"
+}
+
+export type McpStorePreviewErrors = {
+  /**
+   * Manifest not found or invalid
+   */
+  400: unknown
+}
+
+export type McpStorePreviewResponses = {
+  /**
+   * Manifest preview
+   */
+  200: unknown
+}
+
+export type McpStoreRemoveData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/store/apps/{id}"
+}
+
+export type McpStoreRemoveResponses = {
+  /**
+   * Removed
+   */
+  200: unknown
+}
+
+export type McpStoreUpdateData = {
+  body?: {
+    enabled: boolean
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/store/apps/{id}"
+}
+
+export type McpStoreUpdateResponses = {
+  /**
+   * Updated
+   */
+  200: unknown
+}
+
+export type McpStoreSetConfigData = {
+  body?: {
+    config: {
+      [key: string]: string | number | boolean
+    }
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/mcp/store/apps/{id}/config"
+}
+
+export type McpStoreSetConfigResponses = {
+  /**
+   * Config updated
+   */
+  200: unknown
+}
+
 export type TuiAppendPromptData = {
   body?: {
     text: string
@@ -8175,6 +8450,7 @@ export type AccountQuotaHintData = {
     modelID?: string
     accountId?: string
     format?: "footer" | "admin"
+    fresh?: string
   }
   url: "/api/v2/account/quota"
 }
@@ -8384,6 +8660,36 @@ export type AccountLoginResponses = {
   200: unknown
 }
 
+export type AccountResetCooldownData = {
+  body?: never
+  path: {
+    family: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/account/{family}/{accountId}/reset-cooldown"
+}
+
+export type AccountResetCooldownErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AccountResetCooldownError = AccountResetCooldownErrors[keyof AccountResetCooldownErrors]
+
+export type AccountResetCooldownResponses = {
+  /**
+   * Cooldown reset successfully
+   */
+  200: boolean
+}
+
+export type AccountResetCooldownResponse = AccountResetCooldownResponses[keyof AccountResetCooldownResponses]
+
 export type AccountRemoveData = {
   body?: never
   path: {
@@ -8477,6 +8783,7 @@ export type AccountQuotaHint2Data = {
     modelID?: string
     accountId?: string
     format?: "footer" | "admin"
+    fresh?: string
   }
   url: "/api/v2/accounts/quota"
 }
@@ -8685,6 +8992,36 @@ export type AccountLogin2Responses = {
    */
   200: unknown
 }
+
+export type AccountResetCooldown2Data = {
+  body?: never
+  path: {
+    family: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/accounts/{family}/{accountId}/reset-cooldown"
+}
+
+export type AccountResetCooldown2Errors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AccountResetCooldown2Error = AccountResetCooldown2Errors[keyof AccountResetCooldown2Errors]
+
+export type AccountResetCooldown2Responses = {
+  /**
+   * Cooldown reset successfully
+   */
+  200: boolean
+}
+
+export type AccountResetCooldown2Response = AccountResetCooldown2Responses[keyof AccountResetCooldown2Responses]
 
 export type AccountRemove2Data = {
   body?: never
@@ -9156,6 +9493,7 @@ export type CronJobsListResponses = {
           kind: "agentTurn"
           message: string
           model?: string
+          accountId?: string
           timeoutSeconds?: number
           lightContext?: boolean
         }
@@ -9185,6 +9523,8 @@ export type CronJobsListResponses = {
       scheduleErrorCount?: number
       lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
       lastDeliveryError?: string
+      lastModel?: string
+      lastAccountId?: string
     }
   }>
 }
@@ -9221,6 +9561,7 @@ export type CronJobsCreateData = {
           kind: "agentTurn"
           message: string
           model?: string
+          accountId?: string
           timeoutSeconds?: number
           lightContext?: boolean
         }
@@ -9289,6 +9630,7 @@ export type CronJobsCreateResponses = {
           kind: "agentTurn"
           message: string
           model?: string
+          accountId?: string
           timeoutSeconds?: number
           lightContext?: boolean
         }
@@ -9318,6 +9660,8 @@ export type CronJobsCreateResponses = {
       scheduleErrorCount?: number
       lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
       lastDeliveryError?: string
+      lastModel?: string
+      lastAccountId?: string
     }
   }
 }
@@ -9410,6 +9754,7 @@ export type CronJobsGetResponses = {
           kind: "agentTurn"
           message: string
           model?: string
+          accountId?: string
           timeoutSeconds?: number
           lightContext?: boolean
         }
@@ -9439,6 +9784,8 @@ export type CronJobsGetResponses = {
       scheduleErrorCount?: number
       lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
       lastDeliveryError?: string
+      lastModel?: string
+      lastAccountId?: string
     }
   }
 }
@@ -9475,6 +9822,7 @@ export type CronJobsUpdateData = {
           kind: "agentTurn"
           message: string
           model?: string
+          accountId?: string
           timeoutSeconds?: number
           lightContext?: boolean
         }
@@ -9549,6 +9897,7 @@ export type CronJobsUpdateResponses = {
           kind: "agentTurn"
           message: string
           model?: string
+          accountId?: string
           timeoutSeconds?: number
           lightContext?: boolean
         }
@@ -9578,6 +9927,8 @@ export type CronJobsUpdateResponses = {
       scheduleErrorCount?: number
       lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
       lastDeliveryError?: string
+      lastModel?: string
+      lastAccountId?: string
     }
   }
 }
@@ -9650,6 +10001,110 @@ export type CronJobsTriggerResponses = {
    */
   200: unknown
 }
+
+export type CronProjectData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/cron/project"
+}
+
+export type CronProjectResponses = {
+  /**
+   * Virtual tasks project directory path
+   */
+  200: {
+    directory: string
+  }
+}
+
+export type CronProjectResponse = CronProjectResponses[keyof CronProjectResponses]
+
+export type GoogleBindingStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/google-binding/status"
+}
+
+export type GoogleBindingStatusResponses = {
+  /**
+   * Binding status
+   */
+  200: {
+    bound: boolean
+    email?: string
+  }
+}
+
+export type GoogleBindingStatusResponse = GoogleBindingStatusResponses[keyof GoogleBindingStatusResponses]
+
+export type GoogleBindingConnectData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/google-binding/connect"
+}
+
+export type GoogleBindingConnectErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GoogleBindingConnectError = GoogleBindingConnectErrors[keyof GoogleBindingConnectErrors]
+
+export type GoogleBindingCallbackData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/google-binding/callback"
+}
+
+export type GoogleBindingCallbackErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GoogleBindingCallbackError = GoogleBindingCallbackErrors[keyof GoogleBindingCallbackErrors]
+
+export type GoogleBindingCallbackResponses = {
+  /**
+   * Binding created, shows success page
+   */
+  200: unknown
+}
+
+export type GoogleBindingUnbindData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/google-binding"
+}
+
+export type GoogleBindingUnbindResponses = {
+  /**
+   * Binding removed
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type GoogleBindingUnbindResponse = GoogleBindingUnbindResponses[keyof GoogleBindingUnbindResponses]
 
 export type FindTextData = {
   body?: never
@@ -10138,6 +10593,38 @@ export type GlobalConfigUpdate2Responses = {
 }
 
 export type GlobalConfigUpdate2Response = GlobalConfigUpdate2Responses[keyof GlobalConfigUpdate2Responses]
+
+export type GlobalConfigProviderDelete2Data = {
+  body?: never
+  path: {
+    /**
+     * Provider ID
+     */
+    providerId: string
+  }
+  query?: never
+  url: "/global/config/provider/{providerId}"
+}
+
+export type GlobalConfigProviderDelete2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GlobalConfigProviderDelete2Error =
+  GlobalConfigProviderDelete2Errors[keyof GlobalConfigProviderDelete2Errors]
+
+export type GlobalConfigProviderDelete2Responses = {
+  /**
+   * Successfully removed provider from global config
+   */
+  200: Config
+}
+
+export type GlobalConfigProviderDelete2Response =
+  GlobalConfigProviderDelete2Responses[keyof GlobalConfigProviderDelete2Responses]
 
 export type GlobalWebRestart2Data = {
   body?: never
@@ -11867,6 +12354,104 @@ export type SessionTodo2Responses = {
 
 export type SessionTodo2Response = SessionTodo2Responses[keyof SessionTodo2Responses]
 
+export type SessionSkillLayerList2Data = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/skill-layer"
+}
+
+export type SessionSkillLayerList2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionSkillLayerList2Error = SessionSkillLayerList2Errors[keyof SessionSkillLayerList2Errors]
+
+export type SessionSkillLayerList2Responses = {
+  /**
+   * Skill layer list
+   */
+  200: Array<{
+    name: string
+    loadedAt: number
+    lastUsedAt: number
+    runtimeState: "active" | "idle" | "sticky" | "summarized" | "unloaded"
+    desiredState: "full" | "summary" | "absent"
+    pinned: boolean
+    lastReason: string
+  }>
+}
+
+export type SessionSkillLayerList2Response = SessionSkillLayerList2Responses[keyof SessionSkillLayerList2Responses]
+
+export type SessionSkillLayerAction2Data = {
+  body?: {
+    action: "pin" | "unpin" | "promote" | "demote" | "unload"
+  }
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+    /**
+     * Skill name
+     */
+    name: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/skill-layer/{name}/action"
+}
+
+export type SessionSkillLayerAction2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionSkillLayerAction2Error = SessionSkillLayerAction2Errors[keyof SessionSkillLayerAction2Errors]
+
+export type SessionSkillLayerAction2Responses = {
+  /**
+   * Mutation result
+   */
+  200: {
+    ok: boolean
+    entries: Array<{
+      name: string
+      loadedAt: number
+      lastUsedAt: number
+      runtimeState: "active" | "idle" | "sticky" | "summarized" | "unloaded"
+      desiredState: "full" | "summary" | "absent"
+      pinned: boolean
+      lastReason: string
+    }>
+  }
+}
+
+export type SessionSkillLayerAction2Response =
+  SessionSkillLayerAction2Responses[keyof SessionSkillLayerAction2Responses]
+
 export type SessionAutonomous2Data = {
   body?: {
     enabled: boolean
@@ -12924,6 +13509,44 @@ export type PermissionRespond2Responses = {
 
 export type PermissionRespond2Response = PermissionRespond2Responses[keyof PermissionRespond2Responses]
 
+export type SessionTranscribe2Data = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/session/{sessionID}/transcribe"
+}
+
+export type SessionTranscribe2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionTranscribe2Error = SessionTranscribe2Errors[keyof SessionTranscribe2Errors]
+
+export type SessionTranscribe2Responses = {
+  /**
+   * Transcription result
+   */
+  200: {
+    text: string
+  }
+}
+
+export type SessionTranscribe2Response = SessionTranscribe2Responses[keyof SessionTranscribe2Responses]
+
 export type PermissionReply2Data = {
   body?: {
     reply: "once" | "always" | "reject"
@@ -13081,70 +13704,7 @@ export type ProviderList2Responses = {
    * List of providers
    */
   200: {
-    all: Array<{
-      api?: string
-      name: string
-      env: Array<string>
-      id: string
-      npm?: string
-      models: {
-        [key: string]: {
-          id: string
-          name: string
-          family?: string
-          release_date: string
-          attachment: boolean
-          reasoning: boolean
-          temperature: boolean
-          tool_call: boolean
-          interleaved?:
-            | true
-            | {
-                field: "reasoning_content" | "reasoning_details"
-              }
-          cost?: {
-            input: number
-            output: number
-            reasoning?: number
-            cache_read?: number
-            cache_write?: number
-            context_over_200k?: {
-              input: number
-              output: number
-              reasoning?: number
-              cache_read?: number
-              cache_write?: number
-            }
-          }
-          limit: {
-            context: number
-            input?: number
-            output: number
-          }
-          modalities?: {
-            input: Array<"text" | "audio" | "image" | "video" | "pdf">
-            output: Array<"text" | "audio" | "image" | "video" | "pdf">
-          }
-          experimental?: boolean
-          status?: "alpha" | "beta" | "deprecated"
-          options: {
-            [key: string]: unknown
-          }
-          headers?: {
-            [key: string]: string
-          }
-          provider?: {
-            npm?: string
-            api?: string
-          }
-          variants?: {
-            [key: string]: {
-              [key: string]: unknown
-            }
-          }
-        }
-      }
-    }>
+    all: Array<Provider>
     default: {
       [key: string]: string
     }
@@ -14540,6 +15100,135 @@ export type McpDisconnect2Responses = {
 
 export type McpDisconnect2Response = McpDisconnect2Responses[keyof McpDisconnect2Responses]
 
+export type McpStoreList2Data = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/store/apps"
+}
+
+export type McpStoreList2Responses = {
+  /**
+   * App list with manifest metadata and tier
+   */
+  200: unknown
+}
+
+export type McpStoreAdd2Data = {
+  body?: {
+    path?: string
+    githubUrl?: string
+    id?: string
+    target?: "system" | "user"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/store/apps"
+}
+
+export type McpStoreAdd2Errors = {
+  /**
+   * Validation error
+   */
+  400: unknown
+}
+
+export type McpStoreAdd2Responses = {
+  /**
+   * Registered app manifest
+   */
+  200: unknown
+}
+
+export type McpStorePreview2Data = {
+  body?: {
+    path: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/store/apps/preview"
+}
+
+export type McpStorePreview2Errors = {
+  /**
+   * Manifest not found or invalid
+   */
+  400: unknown
+}
+
+export type McpStorePreview2Responses = {
+  /**
+   * Manifest preview
+   */
+  200: unknown
+}
+
+export type McpStoreRemove2Data = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/store/apps/{id}"
+}
+
+export type McpStoreRemove2Responses = {
+  /**
+   * Removed
+   */
+  200: unknown
+}
+
+export type McpStoreUpdate2Data = {
+  body?: {
+    enabled: boolean
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/store/apps/{id}"
+}
+
+export type McpStoreUpdate2Responses = {
+  /**
+   * Updated
+   */
+  200: unknown
+}
+
+export type McpStoreSetConfig2Data = {
+  body?: {
+    config: {
+      [key: string]: string | number | boolean
+    }
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/mcp/store/apps/{id}/config"
+}
+
+export type McpStoreSetConfig2Responses = {
+  /**
+   * Config updated
+   */
+  200: unknown
+}
+
 export type TuiAppendPrompt2Data = {
   body?: {
     text: string
@@ -14848,6 +15537,7 @@ export type AccountQuotaHint3Data = {
     modelID?: string
     accountId?: string
     format?: "footer" | "admin"
+    fresh?: string
   }
   url: "/account/quota"
 }
@@ -15057,6 +15747,36 @@ export type AccountLogin3Responses = {
   200: unknown
 }
 
+export type AccountResetCooldown3Data = {
+  body?: never
+  path: {
+    family: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/account/{family}/{accountId}/reset-cooldown"
+}
+
+export type AccountResetCooldown3Errors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AccountResetCooldown3Error = AccountResetCooldown3Errors[keyof AccountResetCooldown3Errors]
+
+export type AccountResetCooldown3Responses = {
+  /**
+   * Cooldown reset successfully
+   */
+  200: boolean
+}
+
+export type AccountResetCooldown3Response = AccountResetCooldown3Responses[keyof AccountResetCooldown3Responses]
+
 export type AccountRemove3Data = {
   body?: never
   path: {
@@ -15150,6 +15870,7 @@ export type AccountQuotaHint4Data = {
     modelID?: string
     accountId?: string
     format?: "footer" | "admin"
+    fresh?: string
   }
   url: "/accounts/quota"
 }
@@ -15358,6 +16079,36 @@ export type AccountLogin4Responses = {
    */
   200: unknown
 }
+
+export type AccountResetCooldown4Data = {
+  body?: never
+  path: {
+    family: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+  }
+  url: "/accounts/{family}/{accountId}/reset-cooldown"
+}
+
+export type AccountResetCooldown4Errors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type AccountResetCooldown4Error = AccountResetCooldown4Errors[keyof AccountResetCooldown4Errors]
+
+export type AccountResetCooldown4Responses = {
+  /**
+   * Cooldown reset successfully
+   */
+  200: boolean
+}
+
+export type AccountResetCooldown4Response = AccountResetCooldown4Responses[keyof AccountResetCooldown4Responses]
 
 export type AccountRemove4Data = {
   body?: never
@@ -15829,6 +16580,7 @@ export type CronJobsList2Responses = {
           kind: "agentTurn"
           message: string
           model?: string
+          accountId?: string
           timeoutSeconds?: number
           lightContext?: boolean
         }
@@ -15858,6 +16610,8 @@ export type CronJobsList2Responses = {
       scheduleErrorCount?: number
       lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
       lastDeliveryError?: string
+      lastModel?: string
+      lastAccountId?: string
     }
   }>
 }
@@ -15894,6 +16648,7 @@ export type CronJobsCreate2Data = {
           kind: "agentTurn"
           message: string
           model?: string
+          accountId?: string
           timeoutSeconds?: number
           lightContext?: boolean
         }
@@ -15962,6 +16717,7 @@ export type CronJobsCreate2Responses = {
           kind: "agentTurn"
           message: string
           model?: string
+          accountId?: string
           timeoutSeconds?: number
           lightContext?: boolean
         }
@@ -15991,6 +16747,8 @@ export type CronJobsCreate2Responses = {
       scheduleErrorCount?: number
       lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
       lastDeliveryError?: string
+      lastModel?: string
+      lastAccountId?: string
     }
   }
 }
@@ -16083,6 +16841,7 @@ export type CronJobsGet2Responses = {
           kind: "agentTurn"
           message: string
           model?: string
+          accountId?: string
           timeoutSeconds?: number
           lightContext?: boolean
         }
@@ -16112,6 +16871,8 @@ export type CronJobsGet2Responses = {
       scheduleErrorCount?: number
       lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
       lastDeliveryError?: string
+      lastModel?: string
+      lastAccountId?: string
     }
   }
 }
@@ -16148,6 +16909,7 @@ export type CronJobsUpdate2Data = {
           kind: "agentTurn"
           message: string
           model?: string
+          accountId?: string
           timeoutSeconds?: number
           lightContext?: boolean
         }
@@ -16222,6 +16984,7 @@ export type CronJobsUpdate2Responses = {
           kind: "agentTurn"
           message: string
           model?: string
+          accountId?: string
           timeoutSeconds?: number
           lightContext?: boolean
         }
@@ -16251,6 +17014,8 @@ export type CronJobsUpdate2Responses = {
       scheduleErrorCount?: number
       lastDeliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested"
       lastDeliveryError?: string
+      lastModel?: string
+      lastAccountId?: string
     }
   }
 }
@@ -16323,6 +17088,110 @@ export type CronJobsTrigger2Responses = {
    */
   200: unknown
 }
+
+export type CronProject2Data = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/cron/project"
+}
+
+export type CronProject2Responses = {
+  /**
+   * Virtual tasks project directory path
+   */
+  200: {
+    directory: string
+  }
+}
+
+export type CronProject2Response = CronProject2Responses[keyof CronProject2Responses]
+
+export type GoogleBindingStatus2Data = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/google-binding/status"
+}
+
+export type GoogleBindingStatus2Responses = {
+  /**
+   * Binding status
+   */
+  200: {
+    bound: boolean
+    email?: string
+  }
+}
+
+export type GoogleBindingStatus2Response = GoogleBindingStatus2Responses[keyof GoogleBindingStatus2Responses]
+
+export type GoogleBindingConnect2Data = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/google-binding/connect"
+}
+
+export type GoogleBindingConnect2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GoogleBindingConnect2Error = GoogleBindingConnect2Errors[keyof GoogleBindingConnect2Errors]
+
+export type GoogleBindingCallback2Data = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/google-binding/callback"
+}
+
+export type GoogleBindingCallback2Errors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type GoogleBindingCallback2Error = GoogleBindingCallback2Errors[keyof GoogleBindingCallback2Errors]
+
+export type GoogleBindingCallback2Responses = {
+  /**
+   * Binding created, shows success page
+   */
+  200: unknown
+}
+
+export type GoogleBindingUnbind2Data = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/google-binding"
+}
+
+export type GoogleBindingUnbind2Responses = {
+  /**
+   * Binding removed
+   */
+  200: {
+    ok: boolean
+  }
+}
+
+export type GoogleBindingUnbind2Response = GoogleBindingUnbind2Responses[keyof GoogleBindingUnbind2Responses]
 
 export type FindText2Data = {
   body?: never
