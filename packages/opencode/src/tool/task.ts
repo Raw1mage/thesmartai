@@ -1765,26 +1765,80 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           unsub()
         }
 
-        // ── Direct completion channel ──────────────────────────────────
-        // Await the worker's done promise directly instead of relying on
-        // the Bus event chain (worker.current id-match → Bus.publish →
-        // subscriber → enqueueParentContinuation).  This is the "主人和
-        // 快遞員直接溝通" fix: the caller holds a direct Promise that
-        // resolves/rejects when the worker stdout reader processes the
-        // "done"/"error"/"canceled"/exit message.
+        // ── Direct completion channel + disk-based fallback ───────────
+        // Primary: await the worker's done promise (resolved by stdout reader).
+        // Fallback: if the child session's last assistant message is terminal
+        // on disk but the done promise hasn't resolved (worker loop hung),
+        // a watchdog timer detects this and unblocks the parent.
+        const DISK_WATCHDOG_INTERVAL_MS = 5_000
+        const DISK_WATCHDOG_GRACE_MS = 60_000
+        const TERMINAL_FINISHES = ["stop", "error", "length", "canceled"]
+
+        let diskWatchdogTimer: ReturnType<typeof setInterval> | undefined
+        const diskCompletion = new Promise<{ ok: boolean; finish: string }>((resolveDisk) => {
+          diskWatchdogTimer = setInterval(async () => {
+            try {
+              const { messages: childMsgs } = await MessageV2.filterCompacted(MessageV2.stream(session.id))
+              const lastAssistant = childMsgs.findLast((m) => m.info.role === "assistant")
+              if (!lastAssistant) return
+              const info = lastAssistant.info as MessageV2.Assistant
+              if (!info.finish || !TERMINAL_FINISHES.includes(info.finish)) return
+              const completedAt = info.time?.completed
+              if (!completedAt) return
+              const elapsed = Date.now() - completedAt
+              if (elapsed < DISK_WATCHDOG_GRACE_MS) return
+              // Child session finished on disk but done promise still pending — worker loop is hung.
+              Log.create({ service: "task" }).warn("disk-based completion fallback triggered", {
+                childSessionID: session.id,
+                parentSessionID: ctx.sessionID,
+                finish: info.finish,
+                completedAt,
+                elapsedMs: elapsed,
+                workerID: assignedWorkerID,
+              })
+              console.error(`[DISK-WATCHDOG] ${session.id} fallback triggered: finish=${info.finish} elapsed=${elapsed}ms`)
+              resolveDisk({ ok: info.finish === "stop", finish: info.finish })
+            } catch {
+              // Non-fatal: retry on next interval
+            }
+          }, DISK_WATCHDOG_INTERVAL_MS)
+        })
+
         let workerOk = true
         let workerError: string | undefined
+        let completionSource: "worker" | "disk" = "worker"
         try {
-          await run.done
-          mark("worker_done_resolved")
+          const outcome = await Promise.race([
+            run.done.then(() => ({ source: "worker" as const })),
+            diskCompletion.then((d) => ({ source: "disk" as const, ...d })),
+          ])
+          completionSource = outcome.source
+          if (outcome.source === "worker") {
+            mark("worker_done_resolved")
+          } else {
+            workerOk = outcome.ok
+            if (!outcome.ok) workerError = `child session finished with: ${outcome.finish}`
+            mark("worker_done_disk_fallback", { finish: outcome.finish, ok: outcome.ok })
+          }
         } catch (err) {
           workerOk = false
           workerError = err instanceof Error ? err.message : String(err)
           mark("worker_done_rejected", { error: workerError })
         } finally {
+          if (diskWatchdogTimer) clearInterval(diskWatchdogTimer)
           // Always clear active child UI state — the floating status bar
           // must disappear regardless of how the worker finishes.
           await SessionActiveChild.set(ctx.sessionID, null).catch(() => undefined)
+        }
+        if (completionSource === "disk") {
+          Log.create({ service: "task" }).warn("disk fallback: attempting to kill hung worker", {
+            childSessionID: session.id,
+            workerID: assignedWorkerID,
+          })
+          const worker = assignedWorkerID ? workers.find((w) => w.id === assignedWorkerID) : undefined
+          if (worker) {
+            try { worker.proc.kill() } catch { /* already dead */ }
+          }
         }
 
         // Reconcile linked todo

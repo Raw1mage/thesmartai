@@ -827,19 +827,18 @@ export namespace SessionPrompt {
     const cachedInstructionPrompts = await InstructionPrompt.system()
     const environmentCache = new Map<string, string[]>()
 
-    // Context Sharing v2: load parent messages once for child sessions.
-    // These form a stable prefix in every LLM call → automatic cache hit.
+    // Context Sharing v3: lightweight parent context for child sessions.
+    // Priority: checkpoint → SharedContext snapshot → last 10 rounds.
+    // Subagents always receive a task instruction, so parent context is
+    // supplementary — full history is wasteful and risks overflow.
+    const PARENT_CONTEXT_MAX_ROUNDS = 10
     let parentMessagePrefix: MessageV2.WithParts[] | undefined
+    let parentContextSource: "checkpoint" | "shared_context" | "recent_history" | "none" = "none"
     if (session.parentID) {
-      const parentFiltered = await MessageV2.filterCompacted(MessageV2.stream(session.parentID))
-      parentMessagePrefix = parentFiltered.messages
-      const fullCount = parentMessagePrefix.length
-
-      // Checkpoint-based reduction: if parent has a rebind checkpoint,
-      // replace full history with [synthetic summary + post-boundary messages].
-      // Reduces ~100K token prefix to ~4K for all providers.
+      // Priority 1: checkpoint-based reduction (~4K tokens)
       const checkpoint = await SessionCompaction.loadRebindCheckpoint(session.parentID)
-      if (checkpoint && parentMessagePrefix.length > 0) {
+      if (checkpoint) {
+        const parentFiltered = await MessageV2.filterCompacted(MessageV2.stream(session.parentID))
         const parentSession = await Session.get(session.parentID).catch(() => undefined)
         const exec = parentSession?.execution
         const stubModel = {
@@ -849,31 +848,91 @@ export namespace SessionPrompt {
         const result = SessionCompaction.applyRebindCheckpoint({
           sessionID: session.parentID,
           checkpoint,
-          messages: parentMessagePrefix,
+          messages: parentFiltered.messages,
           model: stubModel,
         })
         if (result.applied) {
           parentMessagePrefix = result.messages
-          log.info("context sharing: checkpoint reduction applied", {
+          parentContextSource = "checkpoint"
+          log.info("context sharing: checkpoint applied", {
             sessionID,
             parentID: session.parentID,
-            fullCount,
+            fullCount: parentFiltered.messages.length,
             reducedCount: parentMessagePrefix.length,
-            checkpointAge: Date.now() - checkpoint.timestamp,
-          })
-        } else {
-          log.info("context sharing: checkpoint reduction skipped", {
-            sessionID,
-            parentID: session.parentID,
-            reason: result.reason,
-            fullCount,
           })
         }
-      } else {
-        log.info("context sharing: loaded parent messages (no checkpoint)", {
+      }
+
+      // Priority 2: SharedContext snapshot (structured summary, no message history)
+      if (!parentMessagePrefix) {
+        const snap = await SharedContext.snapshot(session.parentID)
+        if (snap) {
+          parentMessagePrefix = [{
+            info: {
+              id: Identifier.ascending("message"),
+              role: "assistant" as const,
+              sessionID: session.parentID,
+              time: { created: Date.now() },
+              summary: true,
+              tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+              cost: 0,
+              modelID: "system",
+              providerId: "system",
+              agent: "system",
+              variant: "normal" as const,
+              path: { cwd: Instance.directory, root: Instance.worktree },
+            } as MessageV2.Assistant,
+            parts: [{
+              id: Identifier.ascending("part"),
+              messageID: "",
+              sessionID: session.parentID,
+              type: "text" as const,
+              text: `<parent_session_context source="shared_context">\n${snap}\n</parent_session_context>`,
+            } as MessageV2.TextPart],
+          }]
+          parentContextSource = "shared_context"
+          log.info("context sharing: SharedContext snapshot used", {
+            sessionID,
+            parentID: session.parentID,
+            snapshotChars: snap.length,
+          })
+        }
+      }
+
+      // Priority 3: last N rounds of parent history (bounded)
+      if (!parentMessagePrefix) {
+        const parentFiltered = await MessageV2.filterCompacted(MessageV2.stream(session.parentID))
+        const allMsgs = parentFiltered.messages
+        if (allMsgs.length > 0) {
+          // Count rounds: each user→assistant pair is one round.
+          // Take the last PARENT_CONTEXT_MAX_ROUNDS rounds from the end.
+          let roundCount = 0
+          let cutoffIndex = allMsgs.length
+          for (let i = allMsgs.length - 1; i >= 0; i--) {
+            if (allMsgs[i].info.role === "user") {
+              roundCount++
+              if (roundCount >= PARENT_CONTEXT_MAX_ROUNDS) {
+                cutoffIndex = i
+                break
+              }
+            }
+          }
+          parentMessagePrefix = cutoffIndex === 0 ? allMsgs : allMsgs.slice(cutoffIndex)
+          parentContextSource = "recent_history"
+          log.info("context sharing: recent history fallback", {
+            sessionID,
+            parentID: session.parentID,
+            fullCount: allMsgs.length,
+            slicedCount: parentMessagePrefix.length,
+            rounds: roundCount,
+          })
+        }
+      }
+
+      if (parentContextSource === "none") {
+        log.info("context sharing: no parent context available", {
           sessionID,
           parentID: session.parentID,
-          parentMessageCount: fullCount,
         })
       }
     }
@@ -885,6 +944,7 @@ export namespace SessionPrompt {
       title: session.title,
     })
     while (true) {
+      console.error(`[LOOP-TOP] ${sessionID} step=${step} abort=${abort.aborted}`)
       SessionStatus.set(sessionID, { type: "busy" })
       log.info("loop", { step, sessionID })
       if (abort.aborted) break
@@ -896,11 +956,15 @@ export namespace SessionPrompt {
       // completion message in this session — we just consume the queue
       // entry so the supervisor doesn't also try to resume us, and set
       // a flag so the break logic below knows not to exit this iteration.
+      console.error(`[LOOP-COLLECT] ${sessionID} step=${step} collectCompletedSubagents start`)
       const hasSubagentCompletion = !!(await collectCompletedSubagents(sessionID))
+      console.error(`[LOOP-COLLECT] ${sessionID} step=${step} collectCompletedSubagents done hasCompletion=${hasSubagentCompletion}`)
       if (hasSubagentCompletion) {
         log.info("loop: subagent completion collected from queue", { sessionID, step })
       }
+      console.error(`[LOOP-FILTER] ${sessionID} step=${step} filterCompacted start`)
       const filteredResult = await MessageV2.filterCompacted(MessageV2.stream(sessionID))
+      console.error(`[LOOP-FILTER] ${sessionID} step=${step} filterCompacted done msgs=${filteredResult.messages.length}`)
       let msgs = filteredResult.messages
       if (filteredResult.stoppedByBudget) {
         log.warn("filterCompacted stopped by token budget guard", { sessionID, messageCount: msgs.length })
@@ -963,6 +1027,7 @@ export namespace SessionPrompt {
         emptyRoundCount = 0
       }
 
+      console.error(`[LOOP-EXIT-CHECK] ${sessionID} step=${step} lastAssistant.finish=${lastAssistant?.finish} lastAssistant.id=${lastAssistant?.id} lastUser.id=${lastUser?.id} hasSubagentCompletion=${hasSubagentCompletion} userBeforeAssistant=${lastUser ? lastUser.id < (lastAssistant?.id ?? "") : "N/A"}`)
       if (
         lastAssistant?.finish &&
         !["tool-calls", "unknown"].includes(lastAssistant.finish) &&
@@ -981,11 +1046,13 @@ export namespace SessionPrompt {
           }).toObject()
           await Session.updateMessage(lastAssistant)
         }
+        console.error(`[LOOP-EXIT] ${sessionID} step=${step} exiting loop`)
         log.info("exiting loop", { sessionID })
         break
       }
 
       step++
+      console.error(`[LOOP-STEP] ${sessionID} step=${step}`)
       if (step === 1)
         ensureTitle({
           session,
@@ -997,10 +1064,13 @@ export namespace SessionPrompt {
       // Respect session's pinned execution identity (set by rotation3d after rate-limit fallback).
       // Without this, each tool-loop iteration re-resolves to the original (rate-limited) model,
       // causing a retry storm as rotation fires on every iteration.
+      console.error(`[LOOP-SESSION-GET] ${sessionID} step=${step} start`)
       const sessionExec = step > 1 ? (await Session.get(sessionID).catch(() => undefined))?.execution : undefined
+      console.error(`[LOOP-SESSION-GET] ${sessionID} step=${step} done`)
       const effectiveProviderId = sessionExec?.providerId ?? lastUser.model.providerId
       const effectiveModelID = sessionExec?.modelID ?? lastUser.model.modelID
       const effectiveAccountId = sessionExec?.accountId ?? lastUser.model.accountId
+      console.error(`[LOOP-MODEL] ${sessionID} step=${step} getModel start`)
       const model = await Provider.getModel(effectiveProviderId, effectiveModelID).catch((e) => {
         if (Provider.ModelNotFoundError.isInstance(e)) {
           const hint = e.data.suggestions?.length ? ` Did you mean: ${e.data.suggestions.join(", ")}?` : ""
@@ -1013,6 +1083,7 @@ export namespace SessionPrompt {
         }
         throw e
       })
+      console.error(`[LOOP-MODEL] ${sessionID} step=${step} getModel done`)
 
       if (step === 1 && !session.parentID) {
         try {
@@ -1071,6 +1142,7 @@ export namespace SessionPrompt {
         }
       }
       const task = tasks.pop()
+      console.error(`[LOOP-TASK] ${sessionID} step=${step} task=${task?.type ?? "none"}`)
       // pending subtask (invocation routed via ToolInvoker)
       if (task?.type === "subtask") {
         const taskTool = await TaskTool.init()
@@ -1372,6 +1444,7 @@ export namespace SessionPrompt {
       }
 
       // normal processing
+      console.error(`[LOOP-NORMAL] ${sessionID} step=${step} entering normal processing`)
       const userMsg = msgs.findLast((m) => m.info.role === "user")
       const imageResolution = await resolveImageRequest({
         model,
@@ -1574,6 +1647,7 @@ export namespace SessionPrompt {
         model: activeModel,
         toolChoice: format.type === "json_schema" ? "required" : undefined,
       })
+      console.error(`[LOOP-PROCESSOR] ${sessionID} step=${step} result=${result} finish=${processor.message.finish}`)
 
       if (structuredOutput !== undefined) {
         processor.message.structured = structuredOutput
@@ -1746,6 +1820,24 @@ export namespace SessionPrompt {
         })
       } else {
         consecutiveCompactions = 0
+      }
+      // Early exit: if the processor completed with a terminal finish, the session
+      // is done. Don't loop back to the top where async ops (filterCompacted,
+      // collectCompletedSubagents) might hang on a dead promise and block forever.
+      // This is the authoritative completion signal — the processor already persisted
+      // the final message with this finish status.
+      if (
+        processor.message.finish &&
+        !["tool-calls", "unknown"].includes(processor.message.finish)
+      ) {
+        log.info("loop: early exit on terminal finish", {
+          sessionID,
+          step,
+          finish: processor.message.finish,
+          result,
+        })
+        console.error(`[LOOP-EARLY-EXIT] ${sessionID} step=${step} finish=${processor.message.finish}`)
+        break
       }
       continue
     }
