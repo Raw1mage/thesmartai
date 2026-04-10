@@ -82,12 +82,6 @@ const TaskListRoute = () => (
   </Suspense>
 )
 
-// Web routes page — content lives in the sidebar panel (WebRouteSidebar)
-const WebRoutesRoute = () => (
-  <div class="size-full flex items-center justify-center text-color-dimmed text-13-medium">
-    Select a published web route from the sidebar
-  </div>
-)
 
 function UiI18nBridge(props: ParentProps) {
   const language = useLanguage()
@@ -271,7 +265,6 @@ export function AppInterface(props: { defaultUrl?: string; children?: JSX.Elemen
                 >
                   <Route path="/" component={HomeRoute} />
                   <Route path="/system/tasks/:jobId?" component={TaskListRoute} />
-                  <Route path="/system/web-routes" component={WebRoutesRoute} />
                   <Route path="/:dir" component={DirectoryLayout}>
                     <Route path="/" component={SessionIndexRoute} />
                     <Route path="/session/:id?" component={SessionRoute} />

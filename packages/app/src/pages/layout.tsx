@@ -78,7 +78,7 @@ import {
 } from "./layout/sidebar-workspace"
 import { workspaceOpenState } from "./layout/sidebar-workspace-helpers"
 import { TaskSidebar } from "./task-list/task-sidebar"
-import { WebRouteSidebar } from "./web-routes/web-route-sidebar"
+import { DialogPublishedWeb } from "@/components/dialog-published-web"
 import { ProjectDragOverlay, SortableProject, type ProjectSidebarContext } from "./layout/sidebar-project"
 import { SidebarContent } from "./layout/sidebar-shell"
 
@@ -129,7 +129,6 @@ export default function Layout(props: ParentProps) {
   const location = useLocation()
   const currentDir = createMemo(() => decode64(params.dir) ?? "")
   const isTasksRoute = createMemo(() => location.pathname.startsWith("/system/tasks"))
-  const isWebRoutesRoute = createMemo(() => location.pathname.startsWith("/system/web-routes"))
 
   const [state, setState] = createStore({
     autoselect: !initialDirectory,
@@ -1077,13 +1076,7 @@ export default function Layout(props: ParentProps) {
   }
 
   function openWebRoutes() {
-    if (isWebRoutesRoute()) {
-      layout.sidebar.toggle()
-    } else {
-      navigate("/system/web-routes")
-      layout.sidebar.open()
-    }
-    layout.mobileSidebar.hide()
+    dialog.show(() => <DialogPublishedWeb />)
   }
 
   async function navigateToProject(directory: string | undefined) {
@@ -2040,15 +2033,13 @@ export default function Layout(props: ParentProps) {
                   logoutLabel={() => "Logout"}
                   onLogout={logout}
                   renderPanel={() => (
-                    <Show when={isTasksRoute() || isWebRoutesRoute()} fallback={
+                    <Show when={isTasksRoute()} fallback={
                       <Show when={currentProject()} keyed>
                         {(project) => <SidebarPanel project={project} />}
                       </Show>
                     }>
                       <div class="flex-1 min-w-0 bg-background-stronger border border-b-0 border-border-weak-base flex flex-col">
-                        <Show when={isWebRoutesRoute()} fallback={<TaskSidebar />}>
-                          <WebRouteSidebar />
-                        </Show>
+                        <TaskSidebar />
                       </div>
                     </Show>
                   )}
@@ -2056,17 +2047,15 @@ export default function Layout(props: ParentProps) {
               </div>
             </nav>
             {/* Push sidebar — project session list OR task list (inline flex, pushes main content) */}
-            <Show when={layout.sidebar.opened() && (desktopOverlayProject() || isTasksRoute() || isWebRoutesRoute())}>
+            <Show when={layout.sidebar.opened() && (desktopOverlayProject() || isTasksRoute())}>
               <div class="shrink-0 h-full flex relative" style={{ width: `${layout.sidebar.width()}px` }}>
-                <Show when={isTasksRoute() || isWebRoutesRoute()} fallback={
+                <Show when={isTasksRoute()} fallback={
                   <Show when={desktopOverlayProject()} keyed>
                     {(project) => <SidebarPanel project={project} />}
                   </Show>
                 }>
                   <div class="flex-1 min-w-0 bg-background-stronger border border-b-0 border-border-weak-base flex flex-col">
-                    <Show when={isWebRoutesRoute()} fallback={<TaskSidebar />}>
-                      <WebRouteSidebar />
-                    </Show>
+                    <TaskSidebar />
                   </div>
                 </Show>
                 <ResizeHandle
@@ -2138,8 +2127,6 @@ export default function Layout(props: ParentProps) {
               onLogout={logout}
               renderPanel={() => isTasksRoute()
                 ? <div class="flex-1 min-w-0 bg-background-stronger flex flex-col"><TaskSidebar /></div>
-                : isWebRoutesRoute()
-                ? <div class="flex-1 min-w-0 bg-background-stronger flex flex-col"><WebRouteSidebar /></div>
                 : <SidebarPanel project={currentProject()} mobile />
               }
             />
