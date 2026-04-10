@@ -1,0 +1,109 @@
+{
+  "diagram_title": "Published Web Sidebar — Functional Decomposition",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "List User Web Routes",
+      "description": "Retrieve and display published web routes belonging to the current user",
+      "decomposition": null
+    },
+    {
+      "id": "A2",
+      "title": "Open Web Route",
+      "description": "Navigate to the published web app URL in a new browser tab",
+      "decomposition": null
+    },
+    {
+      "id": "A3",
+      "title": "Remove Web Route",
+      "description": "Unregister a published web route from the gateway with user confirmation",
+      "decomposition": null
+    },
+    {
+      "id": "A4",
+      "title": "Proxy Gateway Protocol",
+      "description": "Bridge frontend HTTP requests to the gateway Unix socket control protocol",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    {
+      "id": "AR1",
+      "source": "EXTERNAL",
+      "target": "A1:input",
+      "label": "User opens sidebar panel",
+      "type": "input"
+    },
+    {
+      "id": "AR2",
+      "source": "A4:output",
+      "target": "A1:input",
+      "label": "Filtered route list",
+      "type": "input"
+    },
+    {
+      "id": "AR3",
+      "source": "EXTERNAL",
+      "target": "A4:input",
+      "label": "ctl.sock JSON commands",
+      "type": "input"
+    },
+    {
+      "id": "AR4",
+      "source": "EXTERNAL",
+      "target": "A4:control",
+      "label": "User UID (process.getuid)",
+      "type": "control"
+    },
+    {
+      "id": "AR5",
+      "source": "A1:output",
+      "target": "A2:input",
+      "label": "Selected route URL",
+      "type": "input"
+    },
+    {
+      "id": "AR6",
+      "source": "A1:output",
+      "target": "A3:input",
+      "label": "Route prefix to remove",
+      "type": "input"
+    },
+    {
+      "id": "AR7",
+      "source": "A2:output",
+      "target": "EXTERNAL",
+      "label": "New browser tab with route URL",
+      "type": "output"
+    },
+    {
+      "id": "AR8",
+      "source": "A3:output",
+      "target": "A4:input",
+      "label": "Remove command",
+      "type": "input"
+    },
+    {
+      "id": "AR9",
+      "source": "EXTERNAL",
+      "target": "A1:mechanism",
+      "label": "SolidJS sidebar + Hono backend",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR10",
+      "source": "EXTERNAL",
+      "target": "A4:mechanism",
+      "label": "Node net.createConnection + ctl.sock",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR11",
+      "source": "EXTERNAL",
+      "target": "A3:control",
+      "label": "User confirmation (confirm dialog)",
+      "type": "control"
+    }
+  ]
+}

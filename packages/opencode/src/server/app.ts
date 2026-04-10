@@ -44,6 +44,7 @@ import { ModelRoutes } from "./routes/model"
 import { KillSwitchRoutes } from "./routes/killswitch"
 import { CronRoutes } from "./routes/cron"
 import { GoogleBindingRoutes } from "./routes/google-binding"
+import { WebRouteRoutes } from "./routes/web-route"
 import { Env } from "@/env"
 import { ActivityBeacon } from "@/util/activity-beacon"
 import { WebAuth } from "./web-auth"
@@ -393,6 +394,7 @@ export function createApp(app: Hono): Hono {
 api.route("/admin/kill-switch", KillSwitchRoutes())
   api.route("/cron", CronRoutes())
   api.route("/google-binding", GoogleBindingRoutes())
+  api.route("/web-route", WebRouteRoutes())
   api.route("/", FileRoutes())
 
   api.post(

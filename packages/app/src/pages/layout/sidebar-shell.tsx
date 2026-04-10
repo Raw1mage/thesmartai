@@ -35,6 +35,8 @@ export const SidebarContent = (props: {
   settingsLabel: Accessor<string>
   settingsKeybind: Accessor<string | undefined>
   onOpenSettings: () => void
+  webRoutesLabel: Accessor<string>
+  onOpenWebRoutes: () => void
   logoutLabel: Accessor<string>
   onLogout: () => void
   renderPanel: () => JSX.Element
@@ -103,6 +105,15 @@ export const SidebarContent = (props: {
                     size="large"
                     onClick={props.onOpenMarket}
                     aria-label={props.marketLabel()}
+                  />
+                </Tooltip>
+                <Tooltip placement={placement()} value={props.webRoutesLabel()}>
+                  <IconButton
+                    icon="globe"
+                    variant="ghost"
+                    size="large"
+                    onClick={props.onOpenWebRoutes}
+                    aria-label={props.webRoutesLabel()}
                   />
                 </Tooltip>
                 <TooltipKeybind
