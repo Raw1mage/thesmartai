@@ -1,7 +1,6 @@
 import { $ } from "bun"
 import { Env } from "@/env"
 import { platform, release } from "os"
-import clipboardy from "clipboardy"
 import { lazy } from "../../../../util/lazy.js"
 import { debugCheckpoint } from "../../../../util/debug"
 import { tmpdir } from "os"
@@ -155,6 +154,44 @@ function writeOsc52(text: string): void {
   process.stdout.write(sequence)
 }
 
+async function readClipboardText(): Promise<string | undefined> {
+  const os = platform()
+  try {
+    if (os === "darwin" && Bun.which("pbpaste")) {
+      const result = await $`pbpaste`.nothrow().quiet()
+      const text = result.stdout.toString().trim()
+      if (text) return text
+    }
+    if (os === "linux") {
+      if (Env.get("WAYLAND_DISPLAY") && Bun.which("wl-paste")) {
+        const result = await $`wl-paste --no-newline`.nothrow().quiet()
+        const text = result.stdout.toString().trim()
+        if (text) return text
+      }
+      if (Bun.which("xclip")) {
+        const result = await $`xclip -selection clipboard -o`.nothrow().quiet()
+        const text = result.stdout.toString().trim()
+        if (text) return text
+      }
+      if (Bun.which("xsel")) {
+        const result = await $`xsel --clipboard --output`.nothrow().quiet()
+        const text = result.stdout.toString().trim()
+        if (text) return text
+      }
+    }
+    if (os === "win32" || (isWsl() && hasWslInterop())) {
+      if (Bun.which("powershell.exe")) {
+        const result = await $`powershell.exe -NonInteractive -NoProfile -Command Get-Clipboard`.nothrow().quiet()
+        const text = result.stdout.toString().trim()
+        if (text) return text
+      }
+    }
+  } catch {
+    // clipboard access failed silently
+  }
+  return undefined
+}
+
 export namespace Clipboard {
   export interface Content {
     data: string
@@ -305,7 +342,7 @@ export namespace Clipboard {
       }
     }
 
-    const text = await clipboardy.read().catch(() => {})
+    const text = await readClipboardText()
     if (text) {
       debugCheckpoint("clipboard", "read:text", { mime: "text/plain", dataLength: text.length })
       return { data: text, mime: "text/plain" }
@@ -382,9 +419,8 @@ export namespace Clipboard {
       }
     }
 
-    return async (text: string) => {
-      await clipboardy.write(text).catch(() => {})
-    }
+    // No native clipboard tool found; OSC52 (written in copy()) is the only fallback
+    return async (_text: string) => {}
   })
 
   export async function copy(text: string): Promise<void> {
