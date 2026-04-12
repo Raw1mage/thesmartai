@@ -68,13 +68,6 @@ export { selectBestAccount, sortByLruWithHealth } from "./account-selector"
 export { isRateLimitError, isAuthError, extractRateLimitDetails } from "./error-classifier"
 
 // ============================================================================
-// Model Health Registry (DEPRECATED — Phase 4 removal)
-// ============================================================================
-
-// ModelHealthRegistry — REMOVED in Phase 4 (@event_20260216_rotation_split)
-// Was dead code: nobody wrote to it, all consumers now use RateLimitTracker.getSnapshot3D()
-
-// ============================================================================
 // Global Singletons
 // ============================================================================
 

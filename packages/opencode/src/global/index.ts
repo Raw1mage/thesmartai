@@ -1,8 +1,12 @@
 import fs from "fs/promises"
 import fsSync, { constants as fsConstants } from "fs"
-import { xdgData, xdgCache, xdgConfig, xdgState } from "xdg-basedir"
 import path from "path"
 import os from "os"
+
+const xdgData = process.env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local/share")
+const xdgCache = process.env.XDG_CACHE_HOME ?? path.join(os.homedir(), ".cache")
+const xdgConfig = process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config")
+const xdgState = process.env.XDG_STATE_HOME ?? path.join(os.homedir(), ".local/state")
 import { isDirectory, installBundledSkills } from "./bundled-skills"
 // FIX: Use process.env directly to avoid circular dependency
 // Env → Instance → Log → debug.ts → Global → Env (@event_20260209_circular_dep)

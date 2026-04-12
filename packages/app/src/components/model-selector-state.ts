@@ -162,9 +162,6 @@ export function normalizeProviderKey(id: string): string | undefined {
   return undefined
 }
 
-/** @deprecated Use normalizeProviderKey instead */
-export const normalizeProviderFamily = normalizeProviderKey
-
 export function buildProviderRows(input: {
   providers: ProviderListItem[]
   accountFamilies?: AccountFamilyMap

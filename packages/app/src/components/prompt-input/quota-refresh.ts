@@ -13,6 +13,3 @@ export function shouldRefreshProviderQuota(input: {
   const minIntervalMs = input.minIntervalMs ?? 60_000
   return now - input.lastRefreshAt >= minIntervalMs
 }
-
-/** @deprecated Use isPromptQuotaProviderKey instead */
-export const isPromptQuotaProviderFamily = isPromptQuotaProviderKey

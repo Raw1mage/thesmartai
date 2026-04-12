@@ -232,8 +232,6 @@ export const GithubInstallCommand = cmd({
 
           const provider = await promptProvider()
           const model = await promptModel()
-          //const key = await promptKey()
-
           await addWorkflowFiles()
           printNextSteps()
 
