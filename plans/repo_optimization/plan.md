@@ -17,7 +17,19 @@
 - [x] **Phase 2.4** — clipboardy → native clipboard text reading（pbpaste/wl-paste/xclip/xsel/powershell）
 - [x] **Phase 3.4** — disabled test suites 審查：刪除 2 個 enabled_providers dead tests，re-enable unicode snapshot test（通過），保留 3 個 env-flaky tests
 - [x] **Phase 4** — refs/ 全部保留（使用者決定）
-- [x] **Phase 6.2** — 記錄 3 個非穩定依賴：@solidjs/start(PR-preview), nitro(alpha), @clack/prompts(alpha)，待上游穩定後更新
+- [x] **Phase 6.2** — @clack/prompts alpha→1.2.0, open 10→11 已升級；安全 patch/minor 30+ 套件已升級
+- [x] **Phase 7** — 移除 4 個零 import 依賴（minimatch, partial-json, @standard-schema/spec, opentui-spinner）
+
+### 暫不升級（需獨立 plan）
+
+| 套件 | 現版 → 最新 | 原因 |
+|------|-------------|------|
+| `ai` + `@ai-sdk/*` | 5→6 | 核心 LLM 框架，大量客製 fetch interceptor/rotation/transport，需搭配 codex-refactor Phase 2 |
+| `@openauthjs/openauth` | preview→0.4 | Auth 流程深度綁定，API 差異不明 |
+| `sst` | 3→4 | Infra config migration，可獨立做但非緊急 |
+| `typescript` | 5.8→6.0 | Dev tooling，可試跑但非緊急 |
+| `@solidjs/start` | PR-preview | 等上游 stable release |
+| `nitro` | alpha | 等上游 stable release |
 
 ---
 
