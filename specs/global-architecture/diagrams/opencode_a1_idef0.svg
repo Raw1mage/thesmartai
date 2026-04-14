@@ -1,77 +1,74 @@
-<svg width="1474.0" height="1035.8" viewBox="-104.0 -260.0 1474.0 1035.8" xmlns="http://www.w3.org/2000/svg">
+<svg width="1260.0" height="900.0" viewBox="-54.0 -250.0 1260.0 900.0" xmlns="http://www.w3.org/2000/svg">
 <defs>
 <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="black" /></marker>
 <marker id="call_arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 M 0 2 L 6 5 L 0 8" fill="none" stroke="black" stroke-width="1" /></marker>
 </defs>
-<rect x="-104.0" y="-260.0" width="1474.0" height="1035.8" fill="white" />
-<rect x="130.0" y="120.0" width="200.0" height="130.0" stroke="black" fill="white" stroke-width="1.5" data-id="A11" />
-<text x="230.0" y="171.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A11" >A11</text>
-<text x="230.0" y="201.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A11" >渲染 TUI</text>
-<rect x="450.0" y="120.0" width="200.0" height="130.0" stroke="black" fill="white" stroke-width="1.5" data-id="A12" />
-<text x="550.0" y="171.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A12" >A12</text>
-<text x="550.0" y="201.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A12" >提供 WEB APP</text>
-<rect x="770.0" y="120.0" width="200.0" height="130.0" stroke="black" fill="white" stroke-width="1.5" data-id="A13" />
-<text x="870.0" y="156.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A13" >A13</text>
-<text x="870.0" y="186.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A13" >運行 DESKTOP</text>
-<text x="870.0" y="216.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A13" >殼</text>
-<rect x="130.0" y="330.0" width="200.0" height="130.0" stroke="black" fill="white" stroke-width="1.5" data-id="A14" />
-<text x="230.0" y="381.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A14" >A14</text>
-<text x="230.0" y="411.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A14" >執行 CLI 命令</text>
-<rect x="450.0" y="330.0" width="200.0" height="130.0" stroke="black" fill="white" stroke-width="1.5" data-id="A15" />
-<text x="550.0" y="366.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A15" >A15</text>
-<text x="550.0" y="396.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A15" >分派 ADMIN</text>
-<text x="550.0" y="426.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A15" >操作</text>
-<path d="M 330.0 395.0 L 450.0 395.0" stroke="black" stroke-width="1.2" data-arrow-id="F1" data-waypoints="330.0,395.0 450.0,395.0" marker-end="url(#arrow)" fill="none" />
-<path d="M 330.0 206.7 L 360.0 206.7 Q 370.0 206.7 370.0 216.7 L 370.0 352.5 Q 370.0 362.5 380.0 362.5 L 450.0 362.5" stroke="black" stroke-width="1.2" data-arrow-id="F2" data-waypoints="330.0,206.7 370.0,206.7 370.0,362.5 450.0,362.5" marker-end="url(#arrow)" fill="none" />
-<path d="M -10.0 185.0 L 130.0 185.0" stroke="black" stroke-width="1.2" data-arrow-id="I1" data-waypoints="-10.0,185.0 130.0,185.0" marker-end="url(#arrow)" fill="none" />
-<path d="M -10.0 292.9 L 400.0 292.9 Q 410.0 292.9 410.0 282.9 L 410.0 195.0 Q 410.0 185.0 420.0 185.0 L 450.0 185.0" stroke="black" stroke-width="1.2" data-arrow-id="I2" data-waypoints="-10.0,292.9 410.0,292.9 410.0,185.0 450.0,185.0" marker-end="url(#arrow)" fill="none" />
-<path d="M -10.0 78.2 L 720.0 78.2 Q 730.0 78.2 730.0 88.2 L 730.0 175.0 Q 730.0 185.0 740.0 185.0 L 770.0 185.0" stroke="black" stroke-width="1.2" data-arrow-id="I3" data-waypoints="-10.0,78.2 730.0,78.2 730.0,185.0 770.0,185.0" marker-end="url(#arrow)" fill="none" />
-<path d="M -10.0 395.0 L 130.0 395.0" stroke="black" stroke-width="1.2" data-arrow-id="I4" data-waypoints="-10.0,395.0 130.0,395.0" marker-end="url(#arrow)" fill="none" />
-<path d="M 330.0 163.3 L 360.0 163.3 Q 370.0 163.3 370.0 153.3 L 370.0 50.0 Q 370.0 40.0 380.0 40.0 L 1110.0 40.0" stroke="black" stroke-width="1.2" data-arrow-id="O1" data-waypoints="330.0,163.3 370.0,163.3 370.0,40.0 1110.0,40.0" marker-end="url(#arrow)" fill="none" />
-<path d="M 650.0 185.0 L 680.0 185.0 Q 690.0 185.0 690.0 195.0 L 690.0 282.9 Q 690.0 292.9 700.0 292.9 L 1110.0 292.9" stroke="black" stroke-width="1.2" data-arrow-id="O2" data-waypoints="650.0,185.0 690.0,185.0 690.0,292.9 1110.0,292.9" marker-end="url(#arrow)" fill="none" />
-<path d="M 970.0 185.0 L 1110.0 185.0" stroke="black" stroke-width="1.2" data-arrow-id="O3" data-waypoints="970.0,185.0 1110.0,185.0" marker-end="url(#arrow)" fill="none" />
-<path d="M 330.0 427.5 L 360.0 427.5 Q 370.0 427.5 370.0 437.5 L 370.0 556.7 Q 370.0 566.7 380.0 566.7 L 1110.0 566.7" stroke="black" stroke-width="1.2" data-arrow-id="O4" data-waypoints="330.0,427.5 370.0,427.5 370.0,566.7 1110.0,566.7" marker-end="url(#arrow)" fill="none" />
-<path d="M 650.0 395.0 L 1110.0 395.0" stroke="black" stroke-width="1.2" data-arrow-id="O5" data-waypoints="650.0,395.0 1110.0,395.0" marker-end="url(#arrow)" fill="none" />
+<rect x="-54.0" y="-250.0" width="1260.0" height="900.0" fill="white" />
+<rect x="130.0" y="120.0" width="200.0" height="160.0" stroke="black" fill="white" stroke-width="1.5" data-id="A11" />
+<text x="230.0" y="186.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A11" >A11</text>
+<text x="230.0" y="216.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A11" >渲染 TUI</text>
+<rect x="450.0" y="120.0" width="200.0" height="160.0" stroke="black" fill="white" stroke-width="1.5" data-id="A12" />
+<text x="550.0" y="186.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A12" >A12</text>
+<text x="550.0" y="216.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A12" >提供 WEB APP</text>
+<rect x="770.0" y="120.0" width="200.0" height="160.0" stroke="black" fill="white" stroke-width="1.5" data-id="A13" />
+<text x="870.0" y="186.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A13" >A13</text>
+<text x="870.0" y="216.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A13" >運行 DESKTOP 殼</text>
+<rect x="130.0" y="360.0" width="200.0" height="160.0" stroke="black" fill="white" stroke-width="1.5" data-id="A14" />
+<text x="230.0" y="426.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A14" >A14</text>
+<text x="230.0" y="456.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A14" >執行 CLI 命令</text>
+<rect x="450.0" y="360.0" width="200.0" height="160.0" stroke="black" fill="white" stroke-width="1.5" data-id="A15" />
+<text x="550.0" y="426.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A15" >A15</text>
+<text x="550.0" y="456.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A15" >分派 ADMIN 操作</text>
+<path d="M 330.0 440.0 L 450.0 440.0" stroke="black" stroke-width="1.2" data-arrow-id="F1" data-waypoints="330.0,440.0 450.0,440.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 330.0 226.7 L 360.0 226.7 Q 370.0 226.7 370.0 236.7 L 370.0 390.0 Q 370.0 400.0 380.0 400.0 L 450.0 400.0" stroke="black" stroke-width="1.2" data-arrow-id="F2" data-waypoints="330.0,226.7 370.0,226.7 370.0,400.0 450.0,400.0" marker-end="url(#arrow)" fill="none" />
+<path d="M -10.0 200.0 L 130.0 200.0" stroke="black" stroke-width="1.2" data-arrow-id="I1" data-waypoints="-10.0,200.0 130.0,200.0" marker-end="url(#arrow)" fill="none" />
+<path d="M -10.0 321.8 L 400.0 321.8 Q 410.0 321.8 410.0 311.8 L 410.0 210.0 Q 410.0 200.0 420.0 200.0 L 450.0 200.0" stroke="black" stroke-width="1.2" data-arrow-id="I2" data-waypoints="-10.0,321.8 410.0,321.8 410.0,200.0 450.0,200.0" marker-end="url(#arrow)" fill="none" />
+<path d="M -10.0 78.2 L 720.0 78.2 Q 730.0 78.2 730.0 88.2 L 730.0 190.0 Q 730.0 200.0 740.0 200.0 L 770.0 200.0" stroke="black" stroke-width="1.2" data-arrow-id="I3" data-waypoints="-10.0,78.2 730.0,78.2 730.0,200.0 770.0,200.0" marker-end="url(#arrow)" fill="none" />
+<path d="M -10.0 440.0 L 130.0 440.0" stroke="black" stroke-width="1.2" data-arrow-id="I4" data-waypoints="-10.0,440.0 130.0,440.0" marker-end="url(#arrow)" fill="none" />
 <path d="M 230.0 84.2 L 230.0 120.0" stroke="black" stroke-width="1.2" data-arrow-id="C1" data-waypoints="230.0,84.2 230.0,120.0" marker-end="url(#arrow)" fill="none" />
-<text x="224.0" y="115.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="end" data-arrow-id="C1" >Standalone</text>
-<text x="236.0" y="115.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="start" data-arrow-id="C1" >或 Attach 模式</text>
 <path d="M 550.0 84.2 L 550.0 120.0" stroke="black" stroke-width="1.2" data-arrow-id="C2" data-waypoints="550.0,84.2 550.0,120.0" marker-end="url(#arrow)" fill="none" />
-<text x="544.0" y="115.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="end" data-arrow-id="C2" >webctl.sh</text>
-<text x="556.0" y="115.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="start" data-arrow-id="C2" >啟動設定</text>
-<path d="M 230.0 285.8 L 230.0 250.0" stroke="black" stroke-width="1.2" data-arrow-id="M1" data-waypoints="230.0,285.8 230.0,250.0" marker-end="url(#arrow)" fill="none" />
-<text x="224.0" y="266.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="end" data-arrow-id="M1" >opentui/</text>
-<text x="236.0" y="266.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="start" data-arrow-id="M1" >solid TUI 框架</text>
-<path d="M 550.0 285.8 L 550.0 250.0" stroke="black" stroke-width="1.2" data-arrow-id="M2" data-waypoints="550.0,285.8 550.0,250.0" marker-end="url(#arrow)" fill="none" />
-<text x="544.0" y="266.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="end" data-arrow-id="M2" >SolidJS</text>
-<text x="556.0" y="266.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="start" data-arrow-id="M2" >與 Vite</text>
-<path d="M 870.0 285.8 L 870.0 250.0" stroke="black" stroke-width="1.2" data-arrow-id="M3" data-waypoints="870.0,285.8 870.0,250.0" marker-end="url(#arrow)" fill="none" />
-<text x="864.0" y="266.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="end" data-arrow-id="M3" >Tauri</text>
-<text x="876.0" y="266.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="start" data-arrow-id="M3" >2.x 執行環境</text>
-<path d="M 230.0 495.8 L 230.0 460.0" stroke="black" stroke-width="1.2" data-arrow-id="M4" data-waypoints="230.0,495.8 230.0,460.0" marker-end="url(#arrow)" fill="none" />
-<text x="224.0" y="476.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="end" data-arrow-id="M4" >Yargs</text>
-<text x="236.0" y="476.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="start" data-arrow-id="M4" >CLI 解析器</text>
-<rect x="70.0" y="-20.0" width="960.0" height="646.7" stroke="black" fill="none" stroke-width="2" />
+<path d="M 230.0 315.8 L 230.0 280.0" stroke="black" stroke-width="1.2" data-arrow-id="M1" data-waypoints="230.0,315.8 230.0,280.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 550.0 315.8 L 550.0 280.0" stroke="black" stroke-width="1.2" data-arrow-id="M2" data-waypoints="550.0,315.8 550.0,280.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 870.0 315.8 L 870.0 280.0" stroke="black" stroke-width="1.2" data-arrow-id="M3" data-waypoints="870.0,315.8 870.0,280.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 230.0 555.8 L 230.0 520.0" stroke="black" stroke-width="1.2" data-arrow-id="M4" data-waypoints="230.0,555.8 230.0,520.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 330.0 173.3 L 360.0 173.3 Q 370.0 173.3 370.0 163.3 L 370.0 50.0 Q 370.0 40.0 380.0 40.0 L 1110.0 40.0" stroke="black" stroke-width="1.2" data-arrow-id="O1" data-waypoints="330.0,173.3 370.0,173.3 370.0,40.0 1110.0,40.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 650.0 200.0 L 680.0 200.0 Q 690.0 200.0 690.0 210.0 L 690.0 311.8 Q 690.0 321.8 700.0 321.8 L 1110.0 321.8" stroke="black" stroke-width="1.2" data-arrow-id="O2" data-waypoints="650.0,200.0 690.0,200.0 690.0,321.8 1110.0,321.8" marker-end="url(#arrow)" fill="none" />
+<path d="M 970.0 200.0 L 1110.0 200.0" stroke="black" stroke-width="1.2" data-arrow-id="O3" data-waypoints="970.0,200.0 1110.0,200.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 330.0 480.0 L 360.0 480.0 Q 370.0 480.0 370.0 490.0 L 370.0 550.0 Q 370.0 560.0 380.0 560.0 L 1110.0 560.0" stroke="black" stroke-width="1.2" data-arrow-id="O4" data-waypoints="330.0,480.0 370.0,480.0 370.0,560.0 1110.0,560.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 650.0 440.0 L 1110.0 440.0" stroke="black" stroke-width="1.2" data-arrow-id="O5" data-waypoints="650.0,440.0 1110.0,440.0" marker-end="url(#arrow)" fill="none" />
+<rect x="70.0" y="-20.0" width="960.0" height="640.0" stroke="black" fill="none" stroke-width="2" />
 <rect x="430.0" y="-220.0" width="240.0" height="110.0" stroke="black" fill="white" stroke-width="1.5" data-id="A1" />
 <text x="550.0" y="-179.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A1" >A1</text>
 <text x="550.0" y="-149.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A1" >A1 — 管理使用者介面</text>
 <line x1="430.0" y1="-220.0" x2="70.0" y2="-20.0" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
 <line x1="670.0" y1="-220.0" x2="1030.0" y2="-20.0" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
-<line x1="430.0" y1="-110.0" x2="70.0" y2="626.7" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
-<line x1="670.0" y1="-110.0" x2="1030.0" y2="626.7" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
-<text x="390.0" y="392.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F1">Admin</text>
-<text x="390.0" y="416.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F1">子命令</text>
-<text x="410.0" y="354.5" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F2" >/admin TUI 導覽</text>
-<text x="66.0" y="177.0" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I1" >鍵盤輸入</text>
-<text x="66.0" y="281.9" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I2">瀏覽器</text>
-<text x="66.0" y="305.9" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I2">HTTP 請求</text>
+<line x1="430.0" y1="-110.0" x2="70.0" y2="620.0" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<line x1="670.0" y1="-110.0" x2="1030.0" y2="620.0" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<text x="224.0" y="115.0" font-size="14" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="C1">Standalone</text>
+<text x="236.0" y="115.0" font-size="14" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="C1">Attach 模式</text>
+<text x="544.0" y="115.0" font-size="14" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="C2">webctl.sh</text>
+<text x="556.0" y="115.0" font-size="14" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="C2">啟動設定</text>
+<text x="224.0" y="296.0" font-size="14" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="M1">opentui</text>
+<text x="236.0" y="296.0" font-size="14" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="M1">solid TUI 框架</text>
+<text x="550.0" y="331.8" font-size="14" text-anchor="middle" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="M2">SolidJS 與 Vite</text>
+<text x="864.0" y="296.0" font-size="14" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="M3">Tauri</text>
+<text x="876.0" y="296.0" font-size="14" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="M3">2.x 執行環境</text>
+<text x="230.0" y="571.8" font-size="14" text-anchor="middle" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="M4">Yargs CLI 解析器</text>
+<text x="390.0" y="435.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F1">Admin</text>
+<text x="390.0" y="452.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F1">子命令</text>
+<text x="366.0" y="310.4" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F2" >/admin TUI 導覽</text>
+<text x="66.0" y="192.0" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I1" >鍵盤輸入</text>
+<text x="66.0" y="316.8" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I2">瀏覽器</text>
+<text x="66.0" y="333.8" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I2">HTTP 請求</text>
 <text x="66.0" y="70.2" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I3" >桌面視窗事件</text>
-<text x="66.0" y="387.0" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I4" >CLI 參數</text>
+<text x="66.0" y="432.0" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I4" >CLI 參數</text>
 <text x="1034.0" y="32.0" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O1" >終端渲染輸出</text>
-<text x="1034.0" y="281.9" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O2">含 SSE</text>
-<text x="1034.0" y="305.9" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O2">更新的網頁</text>
-<text x="1040.0" y="177.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O3" >原生視窗顯示</text>
-<text x="1034.0" y="555.7" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O4">CLI</text>
-<text x="1034.0" y="579.7" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O4">stdout 與結束碼</text>
-<text x="1034.0" y="384.0" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O5">Provider/</text>
-<text x="1034.0" y="408.0" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O5">Account/Model 異動</text>
+<text x="1034.0" y="316.8" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O2">含 SSE</text>
+<text x="1034.0" y="333.8" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O2">更新的網頁</text>
+<text x="1034.0" y="192.0" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O3" >原生視窗顯示</text>
+<text x="1034.0" y="555.0" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O4">CLI</text>
+<text x="1034.0" y="572.0" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O4">stdout 與結束碼</text>
+<text x="1034.0" y="435.0" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O5">Provider/</text>
+<text x="1034.0" y="452.0" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O5">Account/Model 異動</text>
+<path d="M 348.3,296.4 Q 348.3,266.4 370.0,266.4" stroke="red" stroke-width="0.8" fill="none" opacity="0.5" />
 </svg>
