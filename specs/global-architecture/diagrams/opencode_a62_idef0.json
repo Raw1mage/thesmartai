@@ -1,0 +1,56 @@
+{
+  "diagram_title": "A62 — 管理 Per-User Daemon",
+  "node_reference": "A62",
+  "activities": [
+    {
+      "id": "A621",
+      "title": "取得 Gateway 鎖",
+      "description": "寫入 PID 至 daemon.pid，確保每用戶唯一 daemon 實例。Spawn-first-wins 競爭模型。",
+      "decomposition": null
+    },
+    {
+      "id": "A622",
+      "title": "註冊信號處理",
+      "description": "綁定 SIGTERM（graceful shutdown）、SIGINT（立即停止）、SIGUSR1（restart trigger）。路由至對應狀態機。",
+      "decomposition": null
+    },
+    {
+      "id": "A623",
+      "title": "管理命令車道",
+      "description": "Per-workspace 並行佇列。車道分級：critical (max 4)、normal (max 3)、background (max 1)。FIFO 調度。",
+      "decomposition": null
+    },
+    {
+      "id": "A624",
+      "title": "執行排水狀態機",
+      "description": "Drain 模式：停止接受新請求，等待進行中車道 idle（5s timeout），完成後釋放資源。",
+      "decomposition": null
+    },
+    {
+      "id": "A625",
+      "title": "協調重啟序列",
+      "description": "SIGUSR1 觸發 restart：drain → release lock → re-acquire → re-init。Generation 遞增防止 stale 引用。",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    { "id": "I1", "source": "EXTERNAL", "target": "A621:input", "label": "Daemon 啟動請求 (fork+setuid)", "type": "input" },
+    { "id": "I2", "source": "EXTERNAL", "target": "A621:input", "label": "經 Gateway 代理的入站命令", "type": "input" },
+    { "id": "I3", "source": "EXTERNAL", "target": "A622:input", "label": "Unix 信號 (SIGTERM/SIGINT/SIGUSR1)", "type": "input" },
+    { "id": "C1", "source": "EXTERNAL", "target": "A621:control", "label": "XDG_RUNTIME_DIR 探索規則", "type": "control" },
+    { "id": "C2", "source": "EXTERNAL", "target": "A623:control", "label": "車道容量與優先級設定", "type": "control" },
+    { "id": "C3", "source": "EXTERNAL", "target": "A624:control", "label": "Drain timeout (5s)", "type": "control" },
+    { "id": "M1", "source": "EXTERNAL", "target": "A621:mechanism", "label": "daemon.pid / daemon.json", "type": "mechanism" },
+    { "id": "M2", "source": "EXTERNAL", "target": "A623:mechanism", "label": "daemon.sock + Per-workspace 工作佇列", "type": "mechanism" },
+    { "id": "F1", "source": "A621:output", "target": "A622:input", "label": "鎖已取得，Daemon PID 已寫入", "type": "input" },
+    { "id": "F2", "source": "A622:output", "target": "A623:input", "label": "信號路由就緒，開始接受命令", "type": "input" },
+    { "id": "F7", "source": "A621:output", "target": "A623:input", "label": "經 socket 到達的已認證命令", "type": "input" },
+    { "id": "F3", "source": "A622:output", "target": "A624:input", "label": "SIGTERM 觸發排水", "type": "input" },
+    { "id": "F4", "source": "A622:output", "target": "A625:input", "label": "SIGUSR1 觸發重啟", "type": "input" },
+    { "id": "F5", "source": "A624:output", "target": "A621:input", "label": "鎖釋放（重啟流程）", "type": "input" },
+    { "id": "F6", "source": "A625:output", "target": "A621:input", "label": "重新取得鎖（generation+1）", "type": "input" },
+    { "id": "O1", "source": "A623:output", "target": "EXTERNAL", "label": "命令執行結果", "type": "output" },
+    { "id": "O2", "source": "A624:output", "target": "EXTERNAL", "label": "Daemon 已完全停止", "type": "output" },
+    { "id": "O3", "source": "A625:output", "target": "EXTERNAL", "label": "Daemon 重啟完成事件", "type": "output" }
+  ]
+}

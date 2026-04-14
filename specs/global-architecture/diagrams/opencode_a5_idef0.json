@@ -1,0 +1,50 @@
+{
+  "diagram_title": "A5 — 編排自主工作流",
+  "node_reference": "A5",
+  "activities": [
+    {
+      "id": "A51",
+      "title": "偵測 Dialog 觸發",
+      "description": "Rule-first 確定性觸發偵測，於 round 邊界執行：plan_enter、replan、approval。Dirty-flag 延遲至下一輪。"
+    },
+    {
+      "id": "A52",
+      "title": "管理規劃模式",
+      "description": "plan_enter 進入規劃、question-driven 釐清需求、產出 plan + IDEF0/Grafcet artifacts。plan_exit 交接至建構。"
+    },
+    {
+      "id": "A53",
+      "title": "評估 Smart Runner Governor",
+      "description": "Per-turn 決策引擎：continue、replan、ask_user、request_approval、pause_for_risk、pause、complete。Bounded adoption。"
+    },
+    {
+      "id": "A54",
+      "title": "運行工作流編排",
+      "description": "管理自主執行流程：continuation queue、blocker detection、supervisor lease/heartbeat、build validation。",
+      "decomposition": "A54"
+    },
+    {
+      "id": "A55",
+      "title": "執行 Builder 入場審核",
+      "description": "機器可驗證的 quiz guard。Mission metadata 編譯、校準驗證、reflection-based retry。"
+    }
+  ],
+  "arrows": [
+    { "id": "I1", "source": "EXTERNAL", "target": "A51:input", "label": "Turn 完成事件", "type": "input" },
+    { "id": "I2", "source": "EXTERNAL", "target": "A52:input", "label": "需規劃的請求", "type": "input" },
+    { "id": "I3", "source": "EXTERNAL", "target": "A55:input", "label": "建構模式進入請求", "type": "input" },
+    { "id": "C1", "source": "EXTERNAL", "target": "A53:control", "label": "採納策略", "type": "control" },
+    { "id": "C2", "source": "EXTERNAL", "target": "A54:control", "label": "Mission 合約與 Todos", "type": "control" },
+    { "id": "C3", "source": "EXTERNAL", "target": "A55:control", "label": "Quiz 答案與校準資料", "type": "control" },
+    { "id": "M1", "source": "EXTERNAL", "target": "A52:mechanism", "label": "Plan 儲存 (plans/)", "type": "mechanism" },
+    { "id": "M2", "source": "EXTERNAL", "target": "A54:mechanism", "label": "Continuation Queue", "type": "mechanism" },
+    { "id": "F1", "source": "A51:output", "target": "A52:input", "label": "plan_enter 觸發", "type": "input" },
+    { "id": "F2", "source": "A51:output", "target": "A53:input", "label": "replan 或 approval 觸發", "type": "input" },
+    { "id": "F3", "source": "A52:output", "target": "A54:input", "label": "含 Todos 與停止閘門的計畫", "type": "input" },
+    { "id": "F4", "source": "A53:output", "target": "A54:control", "label": "Governor 決策與敘述", "type": "control" },
+    { "id": "F5", "source": "A55:output", "target": "A54:input", "label": "已通過審核的 Mission 合約", "type": "input" },
+    { "id": "O1", "source": "A53:output", "target": "EXTERNAL", "label": "決策 (繼續/暫停/重規劃/完成)", "type": "output" },
+    { "id": "O2", "source": "A54:output", "target": "EXTERNAL", "label": "工作流狀態更新 (SSE)", "type": "output" },
+    { "id": "O3", "source": "A52:output", "target": "EXTERNAL", "label": "規劃產出物 (plan.md + IDEF0 + Grafcet)", "type": "output" }
+  ]
+}

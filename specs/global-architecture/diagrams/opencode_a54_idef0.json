@@ -1,0 +1,53 @@
+{
+  "diagram_title": "A54 — 運行工作流編排",
+  "node_reference": "A54",
+  "activities": [
+    {
+      "id": "A541",
+      "title": "評估觸發閘門",
+      "description": "檢查 CONTINUATION_GATE_POLICY 與 API_GATE_POLICY。評估 workflow state、autonomous policy、mission contract 條件。",
+      "decomposition": null
+    },
+    {
+      "id": "A542",
+      "title": "分派至並行車道",
+      "description": "將請求映射至 Lane：critical (max 4)、normal (max 3)、background (max 1)。檢查車道容量。",
+      "decomposition": null
+    },
+    {
+      "id": "A543",
+      "title": "注入自主繼續訊息",
+      "description": "Plan-trusting 模式下注入 AUTONOMOUS_CONTINUE_TEXT/PROGRESS_TEXT，驅動下一 turn 自動執行。",
+      "decomposition": null
+    },
+    {
+      "id": "A544",
+      "title": "偵測阻斷條件",
+      "description": "檢查 blocker：todos 全完成、plan 缺失、risk threshold 超過。更新 workflow state 為 blocked/waiting_user。",
+      "decomposition": null
+    },
+    {
+      "id": "A545",
+      "title": "協調排水關閉",
+      "description": "Drain 模式：等待所有車道 idle，timeout 後強制結束。更新 workflow state 為 completed。",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    { "id": "I1", "source": "EXTERNAL", "target": "A541:input", "label": "Turn 完成事件", "type": "input" },
+    { "id": "I2", "source": "EXTERNAL", "target": "A543:input", "label": "Governor 決策 (continue)", "type": "input" },
+    { "id": "C1", "source": "EXTERNAL", "target": "A541:control", "label": "Mission 合約與 AutonomousPolicy", "type": "control" },
+    { "id": "C2", "source": "EXTERNAL", "target": "A542:control", "label": "車道容量設定", "type": "control" },
+    { "id": "C3", "source": "EXTERNAL", "target": "A544:control", "label": "Todo 清單與 Plan 狀態", "type": "control" },
+    { "id": "M1", "source": "EXTERNAL", "target": "A542:mechanism", "label": "RunQueue (Continuation Queue)", "type": "mechanism" },
+    { "id": "M2", "source": "EXTERNAL", "target": "A545:mechanism", "label": "Daemon Drain 協調器", "type": "mechanism" },
+    { "id": "F1", "source": "A541:output", "target": "A542:input", "label": "已通過閘門的觸發請求", "type": "input" },
+    { "id": "F2", "source": "A542:output", "target": "A543:input", "label": "已入列的 Session 執行槽", "type": "input" },
+    { "id": "F3", "source": "A543:output", "target": "A544:input", "label": "已注入 continuation 的 Turn", "type": "input" },
+    { "id": "F4", "source": "A544:output", "target": "A545:input", "label": "全部 Todos 完成 (drain 觸發)", "type": "input" },
+    { "id": "F5", "source": "A544:output", "target": "A541:input", "label": "未阻斷 → 繼續迴圈", "type": "input" },
+    { "id": "O1", "source": "A543:output", "target": "EXTERNAL", "label": "自主 Turn 請求 (continuation)", "type": "output" },
+    { "id": "O2", "source": "A544:output", "target": "EXTERNAL", "label": "工作流狀態更新 (blocked/waiting)", "type": "output" },
+    { "id": "O3", "source": "A545:output", "target": "EXTERNAL", "label": "工作流完成通知 (SSE/Bus)", "type": "output" }
+  ]
+}

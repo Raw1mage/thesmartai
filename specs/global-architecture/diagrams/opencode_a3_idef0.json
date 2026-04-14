@@ -1,0 +1,49 @@
+{
+  "diagram_title": "A3 — 路由 Provider 與帳號",
+  "node_reference": "A3",
+  "activities": [
+    {
+      "id": "A31",
+      "title": "組裝 Provider 註冊表",
+      "description": "載入 models.dev + snapshot，合併 config、env/auth、account overlays、plugin loaders。固定組裝順序。"
+    },
+    {
+      "id": "A32",
+      "title": "解析 Canonical 身分",
+      "description": "透過 canonical resolver 映射 provider key。去重帳號，處理 legacy alias（anthropic → claude-cli）。"
+    },
+    {
+      "id": "A33",
+      "title": "管理帳號生命週期",
+      "description": "三層帳號管理：Storage（accounts.json）、Auth Service（OAuth/API key）、Presentation（TUI/Web）。"
+    },
+    {
+      "id": "A34",
+      "title": "執行 Rotation3D Fallback",
+      "description": "Provider/Account/Model 三維路由。Rate limit、配額不足或模型不可用時，確定性 fallback。",
+      "decomposition": "A34"
+    },
+    {
+      "id": "A35",
+      "title": "監控 Provider 健康度",
+      "description": "追蹤 per-model 可用性、rate limit 時間窗、冷卻期。Error 分類：auth、quota、rate-limit、model-unavailable。"
+    }
+  ],
+  "arrows": [
+    { "id": "I1", "source": "EXTERNAL", "target": "A31:input", "label": "模型 Metadata (models.dev)", "type": "input" },
+    { "id": "I2", "source": "EXTERNAL", "target": "A33:input", "label": "帳號 CRUD 操作", "type": "input" },
+    { "id": "I3", "source": "EXTERNAL", "target": "A34:input", "label": "Provider 選擇請求", "type": "input" },
+    { "id": "C1", "source": "EXTERNAL", "target": "A31:control", "label": "Provider 設定與 disabled_providers", "type": "control" },
+    { "id": "C2", "source": "EXTERNAL", "target": "A34:control", "label": "Rate Limit 策略與冷卻規則", "type": "control" },
+    { "id": "M1", "source": "EXTERNAL", "target": "A33:mechanism", "label": "accounts.json (XDG)", "type": "mechanism" },
+    { "id": "M2", "source": "EXTERNAL", "target": "A32:mechanism", "label": "Supported Provider Registry", "type": "mechanism" },
+    { "id": "M3", "source": "EXTERNAL", "target": "A33:mechanism", "label": "OAuth Token 儲存", "type": "mechanism" },
+    { "id": "F1", "source": "A31:output", "target": "A32:input", "label": "原始 Provider 與模型清單", "type": "input" },
+    { "id": "F2", "source": "A32:output", "target": "A33:input", "label": "Canonical Provider Keys", "type": "input" },
+    { "id": "F3", "source": "A33:output", "target": "A34:input", "label": "各 Provider 的活躍帳號", "type": "input" },
+    { "id": "F4", "source": "A35:output", "target": "A34:control", "label": "健康狀態與冷卻狀態", "type": "control" },
+    { "id": "F5", "source": "A34:output", "target": "A35:input", "label": "路由結果（成功/失敗）", "type": "input" },
+    { "id": "O1", "source": "A34:output", "target": "EXTERNAL", "label": "選定的 Provider/帳號/模型", "type": "output" },
+    { "id": "O2", "source": "A35:output", "target": "EXTERNAL", "label": "Provider 健康報告", "type": "output" }
+  ]
+}

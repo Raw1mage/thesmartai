@@ -1,0 +1,49 @@
+{
+  "title": "OpenCode Source Inventory",
+  "generated": "2026-04-14",
+  "description": "Catalogues primary source directories and their architectural role.",
+  "packages": [
+    { "path": "packages/opencode/", "role": "Core engine: CLI, session, providers, tools, daemon, bus", "language": "TypeScript (Bun)" },
+    { "path": "packages/app/", "role": "Web/Desktop frontend (SolidJS + Solid Start)", "language": "TypeScript/TSX" },
+    { "path": "packages/desktop/", "role": "Desktop shell (Tauri 2.x)", "language": "TypeScript + Rust" },
+    { "path": "packages/web/", "role": "Documentation website (Astro)", "language": "TypeScript/MDX" },
+    { "path": "packages/sdk/", "role": "TypeScript SDK for external integrations", "language": "TypeScript" },
+    { "path": "packages/opencode-claude-provider/", "role": "Claude API provider adapter", "language": "TypeScript" },
+    { "path": "packages/opencode-codex-provider/", "role": "Codex provider adapter", "language": "TypeScript" },
+    { "path": "packages/ui/", "role": "Shared UI component library", "language": "TypeScript/TSX" },
+    { "path": "packages/plugin/", "role": "Plugin system package", "language": "TypeScript" },
+    { "path": "packages/mcp/", "role": "MCP server implementations", "language": "TypeScript" },
+    { "path": "packages/enterprise/", "role": "Enterprise features", "language": "TypeScript" },
+    { "path": "packages/identity/", "role": "Identity/auth management", "language": "TypeScript" }
+  ],
+  "core_modules": [
+    { "path": "src/session/", "files": 70, "role": "Session lifecycle, LLM interaction, prompt assembly, compaction, workflow" },
+    { "path": "src/provider/", "files": 20, "role": "Provider registry, model resolution, rotation3d, health tracking" },
+    { "path": "src/account/", "files": 8, "role": "Account CRUD, rate-limit judge, quota tracking, rotation" },
+    { "path": "src/tool/", "files": 28, "role": "Built-in tools (edit, bash, read, write, grep, glob), task dispatch" },
+    { "path": "src/mcp/", "files": 6, "role": "MCP app lifecycle, managed apps, OAuth callback" },
+    { "path": "src/bus/", "files": 5, "role": "Event bus: pub/sub, global/instance scoping, secret sanitization" },
+    { "path": "src/daemon/", "files": 4, "role": "Per-user daemon: lock, signals, lanes, drain, restart" },
+    { "path": "src/server/", "files": 25, "role": "HTTP server (Hono), routes, daemon discovery, web auth" },
+    { "path": "src/cli/", "files": 30, "role": "CLI commands, TUI, bootstrap, network" },
+    { "path": "src/process/", "files": 3, "role": "Process supervisor: child lifecycle, stall detection" },
+    { "path": "src/config/", "files": 2, "role": "Configuration schema (71KB config.ts)" },
+    { "path": "src/skill/", "files": 3, "role": "Skill discovery and loading" },
+    { "path": "src/project/", "files": 6, "role": "Project management, workspace, instance context" }
+  ],
+  "gateway": {
+    "path": "daemon/opencode-gateway.c",
+    "role": "Root-privilege C gateway: TCP :1080, epoll, PAM, JWT, splice proxy",
+    "language": "C"
+  },
+  "templates": {
+    "path": "templates/",
+    "role": "XDG deployment templates: prompts, skills, config, system services",
+    "key_files": [
+      "templates/prompts/SYSTEM.md",
+      "templates/prompts/enablement.json",
+      "templates/AGENTS.md",
+      "templates/system/opencode.cfg"
+    ]
+  }
+}

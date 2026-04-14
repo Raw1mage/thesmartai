@@ -1,0 +1,110 @@
+[
+  {
+    "StepNumber": 0,
+    "ModuleRef": "A21",
+    "StepType": "initial",
+    "StepAction": "建立或載入 session，綁定工作目錄，載入歷史",
+    "LinkInputType": [],
+    "LinkInputNumber": [],
+    "LinkOutputNumber": [1],
+    "LinkOutputType": "track",
+    "Condition": ["session 就緒，歷史已載入"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 1,
+    "ModuleRef": "A22",
+    "StepType": "normal",
+    "StepAction": "解析系統提示詞：規劃狀態、enablement flags、skill metadata",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [0],
+    "LinkOutputNumber": [2],
+    "LinkOutputType": "track",
+    "Condition": ["prompt 與工具表面已組裝"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 2,
+    "ModuleRef": "A23",
+    "StepType": "normal",
+    "StepAction": "呼叫 AI SDK generateText，傳入 provider、模型、工具、訊息",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [3, 4],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["回應含工具呼叫", "回應為純文字（turn 完成）"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 3,
+    "ModuleRef": "A24",
+    "StepType": "normal",
+    "StepAction": "分派工具呼叫至 built-in/MCP/managed-app 執行器，擷取結果，迴圈回 AI",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [2],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["工具結果已擷取，重新進入 prompt 迴圈"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 4,
+    "ModuleRef": "A25",
+    "StepType": "normal",
+    "StepAction": "檢查 context overflow，必要時壓縮，持久化 session 狀態",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [2],
+    "LinkOutputNumber": [5, 6],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["自主模式啟用中", "互動模式：等待使用者輸入"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 5,
+    "ModuleRef": "A53",
+    "StepType": "normal",
+    "StepAction": "Smart Runner Governor 評估決策：繼續、重規劃、詢問、暫停、完成",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [4],
+    "LinkOutputNumber": [7, 8],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["決策=繼續：下一自主 turn", "決策=暫停/完成：停止"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 6,
+    "ModuleRef": "A26",
+    "StepType": "normal",
+    "StepAction": "透過 Bus 發布 MessageAdded，渲染至 TUI/Web，等待下一則使用者訊息",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [4],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["session 閒置，等待使用者"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 7,
+    "ModuleRef": "A54",
+    "StepType": "normal",
+    "StepAction": "Workflow Runner 排入 continuation，重新進入 prompt 迴圈執行下一 turn",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [5],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["continuation 已排入，下一 turn 開始"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 8,
+    "ModuleRef": "A54",
+    "StepType": "normal",
+    "StepAction": "工作流暫停或完成，更新狀態，透過 SSE/Bus 通知 UI",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [5],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["工作流狀態已更新，等待操作者動作"],
+    "SubGrafcet": []
+  }
+]

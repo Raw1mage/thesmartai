@@ -1,0 +1,74 @@
+[
+  {
+    "StepNumber": 0,
+    "ModuleRef": "A42",
+    "StepType": "initial",
+    "StepAction": "Session 新 round：解析 tool surface (built-in + MCP + skill)",
+    "LinkInputType": [],
+    "LinkInputNumber": [],
+    "LinkOutputNumber": [1],
+    "LinkOutputType": "track",
+    "Condition": ["工具表面已組裝 (dirty flag 已清除)"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 1,
+    "ModuleRef": "A43",
+    "StepType": "normal",
+    "StepAction": "分派 toolCall 至 handler (built-in/MCP/subagent)，執行並收集結果",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [0],
+    "LinkOutputNumber": [2, 3],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["AI 要求更多 toolCalls（繼續迴圈）", "無更多 toolCalls（turn 完成）"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 2,
+    "ModuleRef": "A43",
+    "StepType": "normal",
+    "StepAction": "將工具結果回饋至訊息鏈，觸發下一輪 AI 推論",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["AI 回應已接收，重新進入 S1 分派"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 3,
+    "ModuleRef": "A43",
+    "StepType": "normal",
+    "StepAction": "Turn 完成：DOOM_LOOP 檢查 (< 3 連續錯誤)，發布遙測",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [4, 5],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["DOOM_LOOP 通過，正常完成", "DOOM_LOOP 觸發，連續錯誤過多"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 4,
+    "ModuleRef": "A42",
+    "StepType": "normal",
+    "StepAction": "更新 SharedContext，檢查 dirty flag，準備下一 round",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [3],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["下一 round 開始，回到 S0"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 5,
+    "ModuleRef": "A43",
+    "StepType": "normal",
+    "StepAction": "DOOM_LOOP 觸發：停止工具迴圈，回報連續失敗",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [3],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["錯誤已回報，turn 強制結束"],
+    "SubGrafcet": []
+  }
+]

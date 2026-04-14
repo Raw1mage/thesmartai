@@ -1,0 +1,115 @@
+{
+  "title": "OpenCode IDEF0-GRAFCET Traceability Matrix",
+  "generated": "2026-04-14",
+  "description": "Maps every GRAFCET module to its IDEF0 activity, with source evidence.",
+  "matrix": [
+    {
+      "grafcet_file": "opencode_session_grafcet.json",
+      "scope": "AI Session Processing Loop",
+      "mappings": [
+        { "StepNumber": 0, "ModuleRef": "A21", "idef0_title": "建立與載入 Session", "evidence": "session/index.ts: Session.create(), Session.get()" },
+        { "StepNumber": 1, "ModuleRef": "A22", "idef0_title": "解析 Session Prompt", "evidence": "session/prompt-runtime.ts, session/system.ts" },
+        { "StepNumber": 2, "ModuleRef": "A23", "idef0_title": "生成 AI 回應", "evidence": "session/llm.ts: LLM.stream()" },
+        { "StepNumber": 3, "ModuleRef": "A24", "idef0_title": "執行工具呼叫", "evidence": "session/tool-invoker.ts, tool/tool.ts" },
+        { "StepNumber": 4, "ModuleRef": "A25", "idef0_title": "壓縮上下文", "evidence": "session/compaction.ts" },
+        { "StepNumber": 5, "ModuleRef": "A53", "idef0_title": "評估 Smart Runner Governor", "evidence": "session/trigger.ts" },
+        { "StepNumber": 6, "ModuleRef": "A26", "idef0_title": "持久化 Session 狀態", "evidence": "storage/, session/status.ts" },
+        { "StepNumber": 7, "ModuleRef": "A54", "idef0_title": "運行工作流編排", "evidence": "session/workflow-runner.ts" },
+        { "StepNumber": 8, "ModuleRef": "A54", "idef0_title": "運行工作流編排", "evidence": "session/workflow-runner.ts" }
+      ]
+    },
+    {
+      "grafcet_file": "opencode_gateway_grafcet.json",
+      "scope": "C Gateway TCP Connection Handling",
+      "mappings": [
+        { "StepNumber": 0, "ModuleRef": "A61", "idef0_title": "運作 C Gateway", "evidence": "daemon/opencode-gateway.c: main(), epoll_wait loop" },
+        { "StepNumber": 1, "ModuleRef": "A61", "idef0_title": "運作 C Gateway", "evidence": "daemon/opencode-gateway.c: handle_read()" },
+        { "StepNumber": 2, "ModuleRef": "A61", "idef0_title": "運作 C Gateway", "evidence": "daemon/opencode-gateway.c: pam_authenticate()" },
+        { "StepNumber": 3, "ModuleRef": "A61", "idef0_title": "運作 C Gateway", "evidence": "daemon/opencode-gateway.c: verify_jwt()" },
+        { "StepNumber": 4, "ModuleRef": "A61", "idef0_title": "運作 C Gateway", "evidence": "daemon/opencode-gateway.c: issue_jwt()" },
+        { "StepNumber": 5, "ModuleRef": "A61", "idef0_title": "運作 C Gateway", "evidence": "daemon/opencode-gateway.c: send_error()" },
+        { "StepNumber": 6, "ModuleRef": "A62", "idef0_title": "管理 Per-User Daemon", "evidence": "daemon/opencode-gateway.c: adopt_or_spawn_daemon()" },
+        { "StepNumber": 7, "ModuleRef": "A61", "idef0_title": "運作 C Gateway", "evidence": "daemon/opencode-gateway.c: redirect_to_login()" },
+        { "StepNumber": 8, "ModuleRef": "A61", "idef0_title": "運作 C Gateway", "evidence": "daemon/opencode-gateway.c: setup_splice_proxy()" },
+        { "StepNumber": 9, "ModuleRef": "A62", "idef0_title": "管理 Per-User Daemon", "evidence": "daemon/opencode-gateway.c: daemon_unavailable_error()" },
+        { "StepNumber": 10, "ModuleRef": "A61", "idef0_title": "運作 C Gateway", "evidence": "daemon/opencode-gateway.c: cleanup_connection()" }
+      ]
+    },
+    {
+      "grafcet_file": "opencode_daemon_grafcet.json",
+      "scope": "Per-User Daemon Lifecycle",
+      "mappings": [
+        { "StepNumber": 0, "ModuleRef": "A621", "idef0_title": "取得 Gateway 鎖", "evidence": "daemon/index.ts: GatewayLock, daemon.pid" },
+        { "StepNumber": 1, "ModuleRef": "A622", "idef0_title": "註冊信號處理", "evidence": "daemon/index.ts: Signals (SIGTERM/SIGINT/SIGUSR1)" },
+        { "StepNumber": 2, "ModuleRef": "A621", "idef0_title": "取得 Gateway 鎖", "evidence": "daemon/index.ts: lock conflict handling" },
+        { "StepNumber": 3, "ModuleRef": "A623", "idef0_title": "管理命令車道", "evidence": "daemon/index.ts: Lanes, CommandQueue" },
+        { "StepNumber": 4, "ModuleRef": "A624", "idef0_title": "執行排水狀態機", "evidence": "daemon/index.ts: Drain.enter()" },
+        { "StepNumber": 5, "ModuleRef": "A625", "idef0_title": "協調重啟序列", "evidence": "daemon/index.ts: Restart coordination" },
+        { "StepNumber": 6, "ModuleRef": "A624", "idef0_title": "執行排水狀態機", "evidence": "daemon/index.ts: SIGINT immediate stop" },
+        { "StepNumber": 7, "ModuleRef": "A621", "idef0_title": "取得 Gateway 鎖", "evidence": "daemon/index.ts: lock release, cleanup" },
+        { "StepNumber": 8, "ModuleRef": "A624", "idef0_title": "執行排水狀態機", "evidence": "daemon/index.ts: drain timeout forced stop" }
+      ]
+    },
+    {
+      "grafcet_file": "opencode_mcp_grafcet.json",
+      "scope": "MCP App State Machine",
+      "mappings": [
+        { "StepNumber": 0, "ModuleRef": "A441", "idef0_title": "探索 MCP App 清單", "evidence": "mcp/app-store.ts, mcp/manifest.ts" },
+        { "StepNumber": 1, "ModuleRef": "A442", "idef0_title": "安裝 MCP App", "evidence": "mcp/app-registry.ts" },
+        { "StepNumber": 2, "ModuleRef": "A443", "idef0_title": "設定 MCP App 組態", "evidence": "mcp/app-registry.ts: pending_config" },
+        { "StepNumber": 3, "ModuleRef": "A444", "idef0_title": "執行 OAuth 認證", "evidence": "mcp/auth.ts, mcp/oauth-callback.ts" },
+        { "StepNumber": 4, "ModuleRef": "A445", "idef0_title": "連線 MCP 傳輸層", "evidence": "mcp/index.ts: MCP.connect()" },
+        { "StepNumber": 5, "ModuleRef": "A443", "idef0_title": "設定 MCP App 組態", "evidence": "mcp/auth.ts: OAuth failure retry" },
+        { "StepNumber": 6, "ModuleRef": "A445", "idef0_title": "連線 MCP 傳輸層", "evidence": "mcp/index.ts: MCP.status(), ToolsChanged" },
+        { "StepNumber": 7, "ModuleRef": "A445", "idef0_title": "連線 MCP 傳輸層", "evidence": "mcp/index.ts: connection failure" },
+        { "StepNumber": 8, "ModuleRef": "A445", "idef0_title": "連線 MCP 傳輸層", "evidence": "session/resolve-tools.ts: AUTO_MCP_IDLE_MS" }
+      ]
+    },
+    {
+      "grafcet_file": "opencode_rotation_grafcet.json",
+      "scope": "Rotation3D Fallback Loop",
+      "mappings": [
+        { "StepNumber": 0, "ModuleRef": "A231", "idef0_title": "解析執行身分", "evidence": "session/llm.ts: account resolution chain" },
+        { "StepNumber": 1, "ModuleRef": "A232", "idef0_title": "評估速率限制", "evidence": "session/llm.ts: isVectorRateLimited" },
+        { "StepNumber": 2, "ModuleRef": "A233", "idef0_title": "串流 AI 推論", "evidence": "session/llm.ts: streamText call" },
+        { "StepNumber": 3, "ModuleRef": "A341", "idef0_title": "建構模型向量", "evidence": "provider/rotation3d.ts" },
+        { "StepNumber": 4, "ModuleRef": "A233", "idef0_title": "串流 AI 推論", "evidence": "session/llm.ts: successful return" },
+        { "StepNumber": 5, "ModuleRef": "A234", "idef0_title": "分類回應錯誤", "evidence": "session/llm.ts: isRateLimitError, isAuthError" },
+        { "StepNumber": 6, "ModuleRef": "A345", "idef0_title": "套用遞補決策", "evidence": "provider/rotation3d.ts: findFallback()" },
+        { "StepNumber": 7, "ModuleRef": "A234", "idef0_title": "分類回應錯誤", "evidence": "session/llm.ts: permanent error escalation" },
+        { "StepNumber": 8, "ModuleRef": "A235", "idef0_title": "執行遞補輪替", "evidence": "session/llm.ts: RotationExecutedEvent" },
+        { "StepNumber": 9, "ModuleRef": "A235", "idef0_title": "執行遞補輪替", "evidence": "session/llm.ts: exhaustion handling" },
+        { "StepNumber": 10, "ModuleRef": "A235", "idef0_title": "執行遞補輪替", "evidence": "session/llm.ts: RateLimitEscalationEvent" }
+      ]
+    },
+    {
+      "grafcet_file": "opencode_workflow_grafcet.json",
+      "scope": "Workflow Runner Continuation",
+      "mappings": [
+        { "StepNumber": 0, "ModuleRef": "A541", "idef0_title": "評估觸發閘門", "evidence": "session/workflow-runner.ts: evaluateGates()" },
+        { "StepNumber": 1, "ModuleRef": "A542", "idef0_title": "分派至並行車道", "evidence": "session/workflow-runner.ts: RunQueue, Lanes" },
+        { "StepNumber": 2, "ModuleRef": "A541", "idef0_title": "評估觸發閘門", "evidence": "session/workflow-runner.ts: waiting_user" },
+        { "StepNumber": 3, "ModuleRef": "A543", "idef0_title": "注入自主繼續訊息", "evidence": "session/workflow-runner.ts: AUTONOMOUS_CONTINUE_TEXT" },
+        { "StepNumber": 4, "ModuleRef": "A542", "idef0_title": "分派至並行車道", "evidence": "session/workflow-runner.ts: queue waiting" },
+        { "StepNumber": 5, "ModuleRef": "A544", "idef0_title": "偵測阻斷條件", "evidence": "session/workflow-runner.ts: isPlanTrusting()" },
+        { "StepNumber": 6, "ModuleRef": "A544", "idef0_title": "偵測阻斷條件", "evidence": "session/workflow-runner.ts: blocked state" },
+        { "StepNumber": 7, "ModuleRef": "A545", "idef0_title": "協調排水關閉", "evidence": "session/workflow-runner.ts: drain()" }
+      ]
+    },
+    {
+      "grafcet_file": "opencode_tool_grafcet.json",
+      "scope": "Tool Execution Loop",
+      "mappings": [
+        { "StepNumber": 0, "ModuleRef": "A42", "idef0_title": "解析每輪工具表面", "evidence": "session/resolve-tools.ts: buildCatalog()" },
+        { "StepNumber": 1, "ModuleRef": "A43", "idef0_title": "分派工具執行", "evidence": "session/tool-invoker.ts, tool/tool.ts" },
+        { "StepNumber": 2, "ModuleRef": "A43", "idef0_title": "分派工具執行", "evidence": "tool/bash.ts, tool/edit.ts, tool/read.ts, etc." },
+        { "StepNumber": 3, "ModuleRef": "A43", "idef0_title": "分派工具執行", "evidence": "mcp/index.ts: MCP.callTool()" },
+        { "StepNumber": 4, "ModuleRef": "A43", "idef0_title": "分派工具執行", "evidence": "tool/task.ts: subagent spawn" },
+        { "StepNumber": 5, "ModuleRef": "A43", "idef0_title": "分派工具執行", "evidence": "session/processor.ts: result collection" },
+        { "StepNumber": 6, "ModuleRef": "A43", "idef0_title": "分派工具執行", "evidence": "session/processor.ts: re-stream loop" },
+        { "StepNumber": 7, "ModuleRef": "A43", "idef0_title": "分派工具執行", "evidence": "session/processor.ts: SessionRoundTelemetryEvent" },
+        { "StepNumber": 8, "ModuleRef": "A42", "idef0_title": "解析每輪工具表面", "evidence": "session/resolve-tools.ts: dirty flag check" }
+      ]
+    }
+  ]
+}

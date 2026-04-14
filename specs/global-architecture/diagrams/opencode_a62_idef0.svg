@@ -1,0 +1,78 @@
+<svg width="1556.0" height="1225.1" viewBox="-266.0 -221.8 1556.0 1225.1" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="black" /></marker>
+<marker id="call_arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 M 0 2 L 6 5 L 0 8" fill="none" stroke="black" stroke-width="1" /></marker>
+</defs>
+<rect x="-266.0" y="-221.8" width="1556.0" height="1225.1" fill="white" />
+<rect x="130.0" y="120.0" width="200.0" height="200.0" stroke="black" fill="white" stroke-width="1.5" data-id="A621" />
+<text x="230.0" y="191.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A621" >A621</text>
+<text x="230.0" y="221.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A621" >取得 GATEWAY</text>
+<text x="230.0" y="251.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A621" >鎖</text>
+<rect x="450.0" y="120.0" width="200.0" height="200.0" stroke="black" fill="white" stroke-width="1.5" data-id="A622" />
+<text x="550.0" y="206.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A622" >A622</text>
+<text x="550.0" y="236.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A622" >註冊信號處理</text>
+<rect x="810.0" y="120.0" width="200.0" height="200.0" stroke="black" fill="white" stroke-width="1.5" data-id="A623" />
+<text x="910.0" y="206.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A623" >A623</text>
+<text x="910.0" y="236.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A623" >管理命令車道</text>
+<rect x="130.0" y="560.0" width="200.0" height="200.0" stroke="black" fill="white" stroke-width="1.5" data-id="A624" />
+<text x="230.0" y="646.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A624" >A624</text>
+<text x="230.0" y="676.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A624" >執行排水狀態機</text>
+<rect x="450.0" y="560.0" width="200.0" height="200.0" stroke="black" fill="white" stroke-width="1.5" data-id="A625" />
+<text x="550.0" y="646.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A625" >A625</text>
+<text x="550.0" y="676.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A625" >協調重啟序列</text>
+<text x="224.0" y="115.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="end" data-arrow-id="C1" >XDG_RUNTIME_DIR</text>
+<text x="236.0" y="115.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="start" data-arrow-id="C1" >探索規則</text>
+<text x="904.0" y="115.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="end" data-arrow-id="C2" >車道容量與</text>
+<text x="916.0" y="115.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="start" data-arrow-id="C2" >優先級設定</text>
+<text x="224.0" y="555.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="end" data-arrow-id="C3" >Drain</text>
+<text x="236.0" y="555.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="start" data-arrow-id="C3" >timeout (5s)</text>
+<text x="224.0" y="336.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="end" data-arrow-id="M1" >daemon.pid /</text>
+<text x="236.0" y="336.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="start" data-arrow-id="M1" >daemon.json</text>
+<text x="904.0" y="336.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="end" data-arrow-id="M2" >daemon.sock +</text>
+<text x="916.0" y="336.0" font-size="14" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" text-anchor="start" data-arrow-id="M2" >Per-workspace 工作佇列</text>
+<rect x="10.0" y="18.2" width="1060.0" height="905.1" stroke="black" fill="none" stroke-width="2" />
+<rect x="401.5" y="-181.8" width="277.0" height="110.0" stroke="black" fill="white" stroke-width="1.5" data-id="A62" />
+<text x="540.0" y="-155.8" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A62" >A62</text>
+<text x="540.0" y="-125.8" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A62" >A62 — 管理 PER-</text>
+<text x="540.0" y="-95.8" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-id="A62" >USER DAEMON</text>
+<line x1="401.5" y1="-181.8" x2="10.0" y2="18.2" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<line x1="678.5" y1="-181.8" x2="1070.0" y2="18.2" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<line x1="401.5" y1="-71.8" x2="10.0" y2="923.3" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<line x1="678.5" y1="-71.8" x2="1070.0" y2="923.3" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<path d="M 330.0 253.3 L 450.0 253.3" stroke="black" stroke-width="1.2" data-arrow-id="F1" data-waypoints="330.0,253.3 450.0,253.3" marker-end="url(#arrow)" fill="none" />
+<path d="M 650.0 170.0 L 810.0 170.0" stroke="black" stroke-width="1.2" data-arrow-id="F2" data-waypoints="650.0,170.0 810.0,170.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 330.0 186.7 L 360.0 186.7 Q 370.0 186.7 370.0 196.7 L 370.0 355.0 Q 370.0 365.0 380.0 365.0 L 720.0 365.0 Q 730.0 365.0 730.0 355.0 L 730.0 263.3 Q 730.0 253.3 740.0 253.3 L 810.0 253.3" stroke="black" stroke-width="1.2" data-arrow-id="F7" data-waypoints="330.0,186.7 370.0,186.7 370.0,365.0 730.0,365.0 730.0,253.3 810.0,253.3" marker-end="url(#arrow)" fill="none" />
+<path d="M 650.0 270.0 L 680.0 270.0 Q 690.0 270.0 690.0 280.0 L 690.0 475.0 Q 690.0 485.0 680.0 485.0 L 100.0 485.0 Q 90.0 485.0 90.0 495.0 L 90.0 650.0 Q 90.0 660.0 100.0 660.0 L 130.0 660.0" stroke="black" stroke-width="1.2" data-arrow-id="F3" data-waypoints="650.0,270.0 690.0,270.0 690.0,485.0 90.0,485.0 90.0,660.0 130.0,660.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 650.0 626.7 L 720.0 626.7 Q 730.0 626.7 730.0 616.7 L 730.0 405.0 Q 730.0 395.0 720.0 395.0 L 100.0 395.0 Q 90.0 395.0 90.0 385.0 L 90.0 290.0 Q 90.0 280.0 100.0 280.0 L 130.0 280.0" stroke="black" stroke-width="1.2" data-arrow-id="F6" data-waypoints="650.0,626.7 730.0,626.7 730.0,395.0 90.0,395.0 90.0,280.0 130.0,280.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 650.0 220.0 L 760.0 220.0 Q 770.0 220.0 770.0 230.0 L 770.0 505.0 Q 770.0 515.0 760.0 515.0 L 420.0 515.0 Q 410.0 515.0 410.0 525.0 L 410.0 650.0 Q 410.0 660.0 420.0 660.0 L 450.0 660.0" stroke="black" stroke-width="1.2" data-arrow-id="F4" data-waypoints="650.0,220.0 770.0,220.0 770.0,515.0 410.0,515.0 410.0,660.0 450.0,660.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 330.0 626.7 L 360.0 626.7 Q 370.0 626.7 370.0 616.7 L 370.0 450.0 Q 370.0 440.0 360.0 440.0 L 60.0 440.0 Q 50.0 440.0 50.0 430.0 L 50.0 250.0 Q 50.0 240.0 60.0 240.0 L 130.0 240.0" stroke="black" stroke-width="1.2" data-arrow-id="F5" data-waypoints="330.0,626.7 370.0,626.7 370.0,440.0 50.0,440.0 50.0,240.0 130.0,240.0" marker-end="url(#arrow)" fill="none" />
+<path d="M -90.0 160.0 L 130.0 160.0" stroke="black" stroke-width="1.2" data-arrow-id="I1" data-waypoints="-90.0,160.0 130.0,160.0" marker-end="url(#arrow)" fill="none" />
+<path d="M -90.0 200.0 L 130.0 200.0" stroke="black" stroke-width="1.2" data-arrow-id="I2" data-waypoints="-90.0,200.0 130.0,200.0" marker-end="url(#arrow)" fill="none" />
+<path d="M -90.0 78.2 L 400.0 78.2 Q 410.0 78.2 410.0 88.2 L 410.0 176.7 Q 410.0 186.7 420.0 186.7 L 450.0 186.7" stroke="black" stroke-width="1.2" data-arrow-id="I3" data-waypoints="-90.0,78.2 410.0,78.2 410.0,186.7 450.0,186.7" marker-end="url(#arrow)" fill="none" />
+<path d="M 230.0 84.2 L 230.0 120.0" stroke="black" stroke-width="1.2" data-arrow-id="C1" data-waypoints="230.0,84.2 230.0,120.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 910.0 84.2 L 910.0 120.0" stroke="black" stroke-width="1.2" data-arrow-id="C2" data-waypoints="910.0,84.2 910.0,120.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 230.0 524.2 L 230.0 560.0" stroke="black" stroke-width="1.2" data-arrow-id="C3" data-waypoints="230.0,524.2 230.0,560.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 230.0 355.8 L 230.0 320.0" stroke="black" stroke-width="1.2" data-arrow-id="M1" data-waypoints="230.0,355.8 230.0,320.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 910.0 355.8 L 910.0 320.0" stroke="black" stroke-width="1.2" data-arrow-id="M2" data-waypoints="910.0,355.8 910.0,320.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 1010.0 220.0 L 1150.0 220.0" stroke="black" stroke-width="1.2" data-arrow-id="O1" data-waypoints="1010.0,220.0 1150.0,220.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 330.0 693.3 L 360.0 693.3 Q 370.0 693.3 370.0 703.3 L 370.0 853.3 Q 370.0 863.3 380.0 863.3 L 1150.0 863.3" stroke="black" stroke-width="1.2" data-arrow-id="O2" data-waypoints="330.0,693.3 370.0,693.3 370.0,863.3 1150.0,863.3" marker-end="url(#arrow)" fill="none" />
+<path d="M 650.0 693.3 L 1150.0 693.3" stroke="black" stroke-width="1.2" data-arrow-id="O3" data-waypoints="650.0,693.3 1150.0,693.3" marker-end="url(#arrow)" fill="none" />
+<text x="424.3" y="253.3" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F1"><tspan x="424.3" dy="0">鎖已取得</tspan><tspan x="424.3" dy="16.0">Daemon PID</tspan><tspan x="424.3" dy="16.0">已寫入</tspan></text>
+<text x="730.0" y="167.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F2">信號路由就緒</text>
+<text x="730.0" y="191.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F2">開始接受命令</text>
+<text x="550.0" y="357.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F7" >經 socket 到達的已認證命令</text>
+<text x="550.0" y="477.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F3" >SIGTERM 觸發排水</text>
+<text x="550.0" y="413.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F6" >重新取得鎖（generation+1）</text>
+<text x="550.0" y="533.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F4" >SIGUSR1 觸發重啟</text>
+<text x="230.0" y="432.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="F5" >鎖釋放（重啟流程）</text>
+<text x="6.0" y="149.0" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I1">Daemon 啟動請求</text>
+<text x="6.0" y="173.0" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I1">(fork+setuid)</text>
+<text x="6.0" y="192.0" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I2" >經 Gateway 代理的入站命令</text>
+<text x="6.0" y="67.2" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I3">Unix 信號 (SIGTERM/</text>
+<text x="6.0" y="91.2" font-size="14" font-weight="bold" fill="black" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="I3">SIGINT/SIGUSR1)</text>
+<text x="1074.0" y="212.0" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O1" >命令執行結果</text>
+<text x="1074.0" y="852.3" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O2">Daemon</text>
+<text x="1074.0" y="876.3" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O2">已完全停止</text>
+<text x="1074.0" y="682.3" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O3">Daemon</text>
+<text x="1074.0" y="706.3" font-size="14" font-weight="bold" fill="black" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '标楷体', serif" data-arrow-id="O3">重啟完成事件</text>
+</svg>

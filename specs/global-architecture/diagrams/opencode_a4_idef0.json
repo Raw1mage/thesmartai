@@ -1,0 +1,49 @@
+{
+  "diagram_title": "A4 — 執行工具與 MCP",
+  "node_reference": "A4",
+  "activities": [
+    {
+      "id": "A41",
+      "title": "註冊內建工具",
+      "description": "載入核心工具：edit、bash、read、write、grep、glob、apply_patch。依 session 權限過濾。"
+    },
+    {
+      "id": "A42",
+      "title": "解析每輪工具表面",
+      "description": "Dirty-flag 模式：capability 變更時，在下一輪邊界重建工具清單。合併 built-in、MCP、skill、managed app 工具。"
+    },
+    {
+      "id": "A43",
+      "title": "分派工具執行",
+      "description": "路由工具呼叫至對應執行器：built-in handler、MCP server 或 managed app。擷取 stdout/stderr 與結構化輸出。"
+    },
+    {
+      "id": "A44",
+      "title": "管理 MCP App 生命週期",
+      "description": "狀態機：available → installed → pending_config → pending_auth → ready。處理 Gmail/Calendar 的 OAuth 流程。",
+      "decomposition": "A44"
+    },
+    {
+      "id": "A45",
+      "title": "轉換 MCP 為 AI SDK 格式",
+      "description": "MCP tool definitions ↔ Vercel AI SDK tool format 雙向轉換，維護結果映射。"
+    }
+  ],
+  "arrows": [
+    { "id": "I1", "source": "EXTERNAL", "target": "A41:input", "label": "工具定義（內建）", "type": "input" },
+    { "id": "I2", "source": "EXTERNAL", "target": "A43:input", "label": "AI 回應中的工具呼叫", "type": "input" },
+    { "id": "I3", "source": "EXTERNAL", "target": "A44:input", "label": "MCP App 安裝/設定請求", "type": "input" },
+    { "id": "C1", "source": "EXTERNAL", "target": "A42:control", "label": "Session 權限等級", "type": "control" },
+    { "id": "C2", "source": "EXTERNAL", "target": "A42:control", "label": "Dirty Flag (mcp.tools.changed)", "type": "control" },
+    { "id": "M1", "source": "EXTERNAL", "target": "A43:mechanism", "label": "Shell 與檔案系統", "type": "mechanism" },
+    { "id": "M2", "source": "EXTERNAL", "target": "A44:mechanism", "label": "managed-apps.json 與 gauth.json", "type": "mechanism" },
+    { "id": "M3", "source": "EXTERNAL", "target": "A44:mechanism", "label": "MCP 伺服器程序", "type": "mechanism" },
+    { "id": "F1", "source": "A41:output", "target": "A42:input", "label": "內建工具註冊表", "type": "input" },
+    { "id": "F2", "source": "A44:output", "target": "A42:input", "label": "MCP 工具定義", "type": "input" },
+    { "id": "F3", "source": "A42:output", "target": "A43:control", "label": "已解析的工具表面", "type": "control" },
+    { "id": "F4", "source": "A44:output", "target": "A45:input", "label": "原始 MCP 工具 Schema", "type": "input" },
+    { "id": "F5", "source": "A45:output", "target": "A42:input", "label": "AI SDK 相容工具", "type": "input" },
+    { "id": "O1", "source": "A43:output", "target": "EXTERNAL", "label": "工具執行結果", "type": "output" },
+    { "id": "O2", "source": "A43:output", "target": "EXTERNAL", "label": "檔案異動與 Shell 輸出", "type": "output" }
+  ]
+}

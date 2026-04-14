@@ -1,0 +1,52 @@
+{
+  "diagram_title": "A44 — 管理 MCP App 生命週期",
+  "node_reference": "A44",
+  "activities": [
+    {
+      "id": "A441",
+      "title": "探索 MCP App 清單",
+      "description": "從 enablement.json + config 掃描可用 MCP apps。比對 McpAppManifest 定義，列出可安裝項目。",
+      "decomposition": null
+    },
+    {
+      "id": "A442",
+      "title": "安裝 MCP App",
+      "description": "將選定 app 註冊至 managed-apps.json，狀態從 available 轉為 installed。建立組態骨架。",
+      "decomposition": null
+    },
+    {
+      "id": "A443",
+      "title": "設定 MCP App 組態",
+      "description": "填入必要組態欄位（API keys, endpoints）。狀態從 installed 轉為 pending_config → pending_auth。",
+      "decomposition": null
+    },
+    {
+      "id": "A444",
+      "title": "執行 OAuth 認證",
+      "description": "啟動瀏覽器 OAuth 流程（Google Calendar/Gmail），處理 redirect callback，儲存 token 至 gauth.json。",
+      "decomposition": null
+    },
+    {
+      "id": "A445",
+      "title": "連線 MCP 傳輸層",
+      "description": "依 manifest 選擇 stdio/SSE/HTTP 傳輸協定，建立連線，發現工具定義，狀態轉為 ready。",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    { "id": "I1", "source": "EXTERNAL", "target": "A441:input", "label": "使用者安裝/查詢請求", "type": "input" },
+    { "id": "I2", "source": "EXTERNAL", "target": "A444:input", "label": "OAuth redirect callback", "type": "input" },
+    { "id": "C1", "source": "EXTERNAL", "target": "A441:control", "label": "enablement.json App 定義", "type": "control" },
+    { "id": "C2", "source": "EXTERNAL", "target": "A443:control", "label": "App 組態 Schema (manifest)", "type": "control" },
+    { "id": "M1", "source": "EXTERNAL", "target": "A442:mechanism", "label": "managed-apps.json (XDG)", "type": "mechanism" },
+    { "id": "M2", "source": "EXTERNAL", "target": "A444:mechanism", "label": "gauth.json (共用 Google OAuth)", "type": "mechanism" },
+    { "id": "M3", "source": "EXTERNAL", "target": "A445:mechanism", "label": "MCP SDK (stdio/SSE/HTTP Client)", "type": "mechanism" },
+    { "id": "F1", "source": "A441:output", "target": "A442:input", "label": "選定的 McpAppManifest", "type": "input" },
+    { "id": "F2", "source": "A442:output", "target": "A443:input", "label": "已安裝但待設定的 App", "type": "input" },
+    { "id": "F3", "source": "A443:output", "target": "A444:input", "label": "待 OAuth 認證的 App", "type": "input" },
+    { "id": "F4", "source": "A444:output", "target": "A445:input", "label": "已認證的 App", "type": "input" },
+    { "id": "F5", "source": "A445:output", "target": "A441:input", "label": "工具變更通知 (dirty flag)", "type": "input" },
+    { "id": "O1", "source": "A445:output", "target": "EXTERNAL", "label": "就緒的 MCP 工具定義", "type": "output" },
+    { "id": "O2", "source": "A445:output", "target": "EXTERNAL", "label": "MCP.ToolsChanged Bus 事件", "type": "output" }
+  ]
+}

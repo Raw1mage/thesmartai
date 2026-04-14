@@ -1,0 +1,54 @@
+{
+  "diagram_title": "A2 — 處理 AI Session",
+  "node_reference": "A2",
+  "activities": [
+    {
+      "id": "A21",
+      "title": "建立與載入 Session",
+      "description": "初始化 session 容器，綁定工作目錄，從 XDG storage 載入持久化歷史。"
+    },
+    {
+      "id": "A22",
+      "title": "解析 Session Prompt",
+      "description": "組裝系統提示詞：規劃狀態、enablement flags、smart runner reminders、skill metadata。"
+    },
+    {
+      "id": "A23",
+      "title": "生成 AI 回應",
+      "description": "呼叫 AI SDK generateText，傳入已解析的 provider、模型、工具與訊息歷史，串流回應 tokens。",
+      "decomposition": "A23"
+    },
+    {
+      "id": "A24",
+      "title": "執行工具呼叫",
+      "description": "分派 AI 回應中的工具呼叫，擷取輸出，將結果回饋至訊息迴圈。"
+    },
+    {
+      "id": "A25",
+      "title": "壓縮上下文",
+      "description": "偵測 context overflow，壓縮先前訊息以降低 token 使用量，保留必要資訊。"
+    },
+    {
+      "id": "A26",
+      "title": "持久化 Session 狀態",
+      "description": "儲存訊息、工具結果、工作流狀態與 metadata 至持久化 session storage。"
+    }
+  ],
+  "arrows": [
+    { "id": "I1", "source": "EXTERNAL", "target": "A21:input", "label": "使用者訊息或恢復請求", "type": "input" },
+    { "id": "C1", "source": "EXTERNAL", "target": "A22:control", "label": "規劃狀態與 Enablement Flags", "type": "control" },
+    { "id": "C2", "source": "EXTERNAL", "target": "A23:control", "label": "Governor 決策 (繼續/暫停)", "type": "control" },
+    { "id": "M1", "source": "EXTERNAL", "target": "A23:mechanism", "label": "AI SDK (Vercel AI)", "type": "mechanism" },
+    { "id": "M2", "source": "EXTERNAL", "target": "A26:mechanism", "label": "XDG Session 儲存", "type": "mechanism" },
+    { "id": "F1", "source": "A21:output", "target": "A22:input", "label": "含歷史的 Session", "type": "input" },
+    { "id": "F2", "source": "A22:output", "target": "A23:input", "label": "已組裝的 Prompt 與工具", "type": "input" },
+    { "id": "F3", "source": "A23:output", "target": "A24:input", "label": "AI 回應中的工具呼叫", "type": "input" },
+    { "id": "F4", "source": "A24:output", "target": "A23:input", "label": "供下一輪使用的工具結果", "type": "input" },
+    { "id": "F5", "source": "A23:output", "target": "A25:input", "label": "持續增長的訊息歷史", "type": "input" },
+    { "id": "F6", "source": "A25:output", "target": "A23:input", "label": "已壓縮的訊息", "type": "input" },
+    { "id": "F7", "source": "A23:output", "target": "A26:input", "label": "已完成的 Turn 資料", "type": "input" },
+    { "id": "O1", "source": "A23:output", "target": "EXTERNAL", "label": "串流 AI 回應", "type": "output" },
+    { "id": "O2", "source": "A24:output", "target": "EXTERNAL", "label": "檔案變更與 Shell 輸出", "type": "output" },
+    { "id": "O3", "source": "A26:output", "target": "EXTERNAL", "label": "已持久化的 Session 紀錄", "type": "output" }
+  ]
+}

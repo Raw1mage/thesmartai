@@ -1,0 +1,50 @@
+{
+  "diagram_title": "A1 — 管理使用者介面",
+  "node_reference": "A1",
+  "activities": [
+    {
+      "id": "A11",
+      "title": "渲染 TUI",
+      "description": "互動式終端介面，支援 standalone/attach 雙模式、/admin 控制平面、鍵盤驅動導覽。"
+    },
+    {
+      "id": "A12",
+      "title": "提供 Web App",
+      "description": "SolidJS + Solid Start 網頁應用，event-sourced stores，rich rendering（Markdown、Mermaid、SVG cards）。"
+    },
+    {
+      "id": "A13",
+      "title": "運行 Desktop 殼",
+      "description": "Tauri 2.x 原生桌面封裝，內嵌 Web App，支援系統匣、原生選單、檔案對話框。"
+    },
+    {
+      "id": "A14",
+      "title": "執行 CLI 命令",
+      "description": "Yargs 命令分派：run、auth、accounts、models、mcp、session、agent、cron、github、killswitch。"
+    },
+    {
+      "id": "A15",
+      "title": "分派 Admin 操作",
+      "description": "管理面板：Provider/Account/Model CRUD、診斷、顯示/隱藏切換、健康監控。"
+    }
+  ],
+  "arrows": [
+    { "id": "I1", "source": "EXTERNAL", "target": "A11:input", "label": "鍵盤輸入", "type": "input" },
+    { "id": "I2", "source": "EXTERNAL", "target": "A12:input", "label": "瀏覽器 HTTP 請求", "type": "input" },
+    { "id": "I3", "source": "EXTERNAL", "target": "A13:input", "label": "桌面視窗事件", "type": "input" },
+    { "id": "I4", "source": "EXTERNAL", "target": "A14:input", "label": "CLI 參數", "type": "input" },
+    { "id": "C1", "source": "EXTERNAL", "target": "A11:control", "label": "Standalone 或 Attach 模式", "type": "control" },
+    { "id": "C2", "source": "EXTERNAL", "target": "A12:control", "label": "webctl.sh 啟動設定", "type": "control" },
+    { "id": "M1", "source": "EXTERNAL", "target": "A11:mechanism", "label": "opentui/solid TUI 框架", "type": "mechanism" },
+    { "id": "M2", "source": "EXTERNAL", "target": "A12:mechanism", "label": "SolidJS 與 Vite", "type": "mechanism" },
+    { "id": "M3", "source": "EXTERNAL", "target": "A13:mechanism", "label": "Tauri 2.x 執行環境", "type": "mechanism" },
+    { "id": "M4", "source": "EXTERNAL", "target": "A14:mechanism", "label": "Yargs CLI 解析器", "type": "mechanism" },
+    { "id": "F1", "source": "A14:output", "target": "A15:input", "label": "Admin 子命令", "type": "input" },
+    { "id": "F2", "source": "A11:output", "target": "A15:input", "label": "/admin TUI 導覽", "type": "input" },
+    { "id": "O1", "source": "A11:output", "target": "EXTERNAL", "label": "終端渲染輸出", "type": "output" },
+    { "id": "O2", "source": "A12:output", "target": "EXTERNAL", "label": "含 SSE 更新的網頁", "type": "output" },
+    { "id": "O3", "source": "A13:output", "target": "EXTERNAL", "label": "原生視窗顯示", "type": "output" },
+    { "id": "O4", "source": "A14:output", "target": "EXTERNAL", "label": "CLI stdout 與結束碼", "type": "output" },
+    { "id": "O5", "source": "A15:output", "target": "EXTERNAL", "label": "Provider/Account/Model 異動", "type": "output" }
+  ]
+}

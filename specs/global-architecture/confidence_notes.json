@@ -1,0 +1,58 @@
+{
+  "title": "OpenCode Architecture Reverse Engineering — Confidence Notes",
+  "generated": "2026-04-14",
+  "overall_confidence": "high",
+  "notes": [
+    {
+      "area": "A1 (User Interfaces)",
+      "confidence": "high",
+      "rationale": "CLI entry (yargs), Web (SolidJS), Desktop (Tauri) entrypoints clearly separated in packages/. Admin routes well-documented in server/routes/."
+    },
+    {
+      "area": "A2 (AI Session Processing)",
+      "confidence": "high",
+      "rationale": "Session lifecycle thoroughly documented in architecture.md. session/llm.ts, processor.ts, compaction.ts read in detail. Rotation fallback loop verified against source."
+    },
+    {
+      "area": "A3 (Provider & Account Routing)",
+      "confidence": "high",
+      "rationale": "Rotation3D three-dimensional fallback is a key differentiator. ModelVector, FallbackCandidate, FallbackStrategy structures verified from rotation3d.ts. Account resolution chain confirmed from llm.ts."
+    },
+    {
+      "area": "A4 (Tools & MCP)",
+      "confidence": "high",
+      "rationale": "Tool registry (28 built-in tools), dirty-flag pattern, MCP state machine (available→ready) verified from tool-loader.ts and mcp/app-registry.ts."
+    },
+    {
+      "area": "A5 (Autonomous Workflow)",
+      "confidence": "medium-high",
+      "rationale": "workflow-runner.ts confirms RunQueue, Lanes, continuation gates, isPlanTrusting. Governor evaluation (trigger.ts) logic confirmed. Builder quiz (A55) less directly verified — based on architecture.md description + buildBetaAdmissionPrompt function presence."
+    },
+    {
+      "area": "A6 (System Infrastructure)",
+      "confidence": "high",
+      "rationale": "C gateway (opencode-gateway.c) extensively analyzed. Daemon lifecycle (index.ts) state machine verified: GatewayLock, Signals, Lanes, Drain, Restart. Bus (global.ts) pub/sub confirmed."
+    },
+    {
+      "area": "L2 Decompositions",
+      "confidence": "high",
+      "rationale": "All L2 activities (A231-A235, A341-A345, A441-A445, A541-A545, A621-A625) directly mapped to identified functions, exports, and state patterns in source code."
+    }
+  ],
+  "assumptions": [
+    "Provider list in A31 may grow as new AI SDK providers are added; current list reflects snapshot at analysis time.",
+    "MCP transport modes (stdio/SSE/HTTP) coverage may vary per app — specific apps may only support a subset.",
+    "Drain timeout (5s) for daemon may be configurable via tweaks.cfg; analyzed as hardcoded default.",
+    "Workflow runner Lane capacities (critical:4, normal:3, background:1) may be configurable; analyzed as defaults.",
+    "A55 Builder Quiz gate is structurally modeled from architecture.md + function signatures; exact quiz protocol may evolve."
+  ],
+  "decision_trace": [
+    "Chose to decompose A23 (not A21/A22/A24) because rotation3d fallback is the most complex subsystem within A2.",
+    "Chose to decompose A34 (not A31/A32/A33/A35) because Rotation3D is the core algorithmic differentiator of provider routing.",
+    "Chose to decompose A44 (not A41/A42/A43/A45) because MCP app state machine has the richest lifecycle.",
+    "Chose to decompose A54 (not A51/A52/A53/A55) because workflow orchestration combines trigger gates, lanes, and drain — crossing multiple concerns.",
+    "Chose to decompose A62 (not A61/A63-A66) because per-user daemon has explicit state machine (lock→signal→lanes→drain→restart).",
+    "GRAFCET rotation model spans A23 and A34 IDEF0 boundaries to capture the full retry loop faithfully — this is valid per traceability spec (each Step's ModuleRef is valid).",
+    "Tool execution GRAFCET uses A42/A43 ModuleRefs reflecting the two-phase pattern: resolve surface (A42) then dispatch (A43)."
+  ]
+}

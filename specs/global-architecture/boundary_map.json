@@ -1,0 +1,67 @@
+{
+  "title": "OpenCode System Boundary Map",
+  "generated": "2026-04-14",
+  "description": "Identifies architectural boundaries by type: user-facing, API, persistence, provider/infrastructure.",
+  "boundaries": [
+    {
+      "type": "user_facing",
+      "name": "UI Entry Points",
+      "components": [
+        { "id": "A11", "name": "TUI", "entry": "cli/cmd/tui.ts", "protocol": "stdin/stdout + terminal escape" },
+        { "id": "A12", "name": "Web App", "entry": "packages/app/src/entry.tsx", "protocol": "HTTP + SSE/WebSocket" },
+        { "id": "A13", "name": "Desktop Shell", "entry": "packages/desktop/ (Tauri 2.x)", "protocol": "IPC bridge" },
+        { "id": "A14", "name": "CLI Commands", "entry": "cli/cmd/*.ts via yargs", "protocol": "argv + stdout" },
+        { "id": "A15", "name": "Admin Panel", "entry": "server/routes/*.ts (account, provider, model)", "protocol": "REST API" }
+      ]
+    },
+    {
+      "type": "api",
+      "name": "Server Route Surface",
+      "components": [
+        { "module": "session", "path": "server/routes/session.ts", "protocol": "REST + SSE streaming" },
+        { "module": "global", "path": "server/routes/global.ts", "protocol": "REST" },
+        { "module": "mcp", "path": "server/routes/mcp.ts", "protocol": "REST" },
+        { "module": "killswitch", "path": "server/routes/killswitch.ts", "protocol": "REST" },
+        { "module": "web-route", "path": "server/routes/web-route.ts", "protocol": "Unix socket (ctl.sock)" },
+        { "module": "pty", "path": "server/routes/pty.ts", "protocol": "WebSocket" }
+      ]
+    },
+    {
+      "type": "persistence",
+      "name": "XDG Storage",
+      "components": [
+        { "file": "accounts.json", "path": "~/.config/opencode/accounts.json", "owner": "A33" },
+        { "file": "managed-apps.json", "path": "~/.config/opencode/managed-apps.json", "owner": "A44" },
+        { "file": "gauth.json", "path": "~/.config/opencode/gauth.json", "owner": "A444" },
+        { "file": "sessions/", "path": "~/.local/share/opencode/sessions/", "owner": "A26" },
+        { "file": "jobs.json", "path": "~/.local/share/opencode/jobs.json", "owner": "A64" },
+        { "file": "daemon.json", "path": "$XDG_RUNTIME_DIR/opencode/daemon.json", "owner": "A621" },
+        { "file": "daemon.pid", "path": "$XDG_RUNTIME_DIR/opencode/daemon.pid", "owner": "A621" },
+        { "file": "daemon.sock", "path": "$XDG_RUNTIME_DIR/opencode/daemon.sock", "owner": "A62" }
+      ]
+    },
+    {
+      "type": "provider_infrastructure",
+      "name": "LLM Provider Boundary",
+      "components": [
+        { "provider": "anthropic", "sdk": "AI SDK @ai-sdk/anthropic", "auth": "API key / OAuth", "owner": "A31" },
+        { "provider": "openai", "sdk": "AI SDK @ai-sdk/openai", "auth": "API key", "owner": "A31" },
+        { "provider": "google", "sdk": "AI SDK @ai-sdk/google", "auth": "API key / OAuth (google-api)", "owner": "A31" },
+        { "provider": "gemini-cli", "sdk": "plugin/gemini-cli/", "auth": "OAuth (gcloud CLI)", "owner": "A31" },
+        { "provider": "codex", "sdk": "opencode-codex-provider", "auth": "OAuth (codex-auth.ts)", "owner": "A31" },
+        { "provider": "copilot", "sdk": "provider/sdk/copilot/", "auth": "GitHub Copilot token", "owner": "A31" }
+      ]
+    },
+    {
+      "type": "infrastructure",
+      "name": "System Infrastructure",
+      "components": [
+        { "id": "A61", "name": "C Gateway", "entry": "daemon/opencode-gateway.c", "protocol": "TCP :1080, epoll, PAM, JWT" },
+        { "id": "A62", "name": "Per-User Daemon", "entry": "daemon/index.ts", "protocol": "Unix socket, fork+setuid" },
+        { "id": "A63", "name": "Event Bus", "entry": "bus/global.ts", "protocol": "In-process pub/sub + SSE broadcast" },
+        { "id": "A64", "name": "Durable Scheduler", "entry": "scheduler/", "protocol": "jobs.json + heartbeat" },
+        { "id": "A66", "name": "Kill-Switch", "entry": "server/killswitch/", "protocol": "REST trigger/status/cancel" }
+      ]
+    }
+  ]
+}

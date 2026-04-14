@@ -1,0 +1,98 @@
+[
+  {
+    "StepNumber": 0,
+    "ModuleRef": "A541",
+    "StepType": "initial",
+    "StepAction": "接收 Turn 完成事件，評估 Trigger Gate (continuation / API)",
+    "LinkInputType": [],
+    "LinkInputNumber": [],
+    "LinkOutputNumber": [1, 2],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["閘門通過：繼續工作流", "閘門拒絕：互動模式等待"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 1,
+    "ModuleRef": "A542",
+    "StepType": "normal",
+    "StepAction": "分派至 Lane：檢查車道容量 (critical/normal/background)，入列",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [0],
+    "LinkOutputNumber": [3, 4],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["車道有容量，已入列", "車道滿載，排隊等待"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 2,
+    "ModuleRef": "A541",
+    "StepType": "normal",
+    "StepAction": "互動模式：更新 workflow state 為 waiting_user",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [0],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["等待使用者發送新訊息，重新評估閘門"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 3,
+    "ModuleRef": "A543",
+    "StepType": "normal",
+    "StepAction": "注入 AUTONOMOUS_CONTINUE_TEXT，啟動 session prompt 迴圈",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [5],
+    "LinkOutputType": "track",
+    "Condition": ["Turn 執行完成，進入阻斷檢查"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 4,
+    "ModuleRef": "A542",
+    "StepType": "normal",
+    "StepAction": "車道排隊等待：等待 slot 釋放，FIFO 調度",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["slot 釋放後出列，進入 S3 執行"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 5,
+    "ModuleRef": "A544",
+    "StepType": "normal",
+    "StepAction": "偵測阻斷條件：todos 完成度、plan 存在性、risk threshold",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [3],
+    "LinkOutputNumber": [6, 7],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["未阻斷 → 繼續迴圈（回 S0 評估）", "全部完成或阻斷 → 停止"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 6,
+    "ModuleRef": "A544",
+    "StepType": "normal",
+    "StepAction": "未阻斷：發布繼續信號，回到閘門評估",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [5],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["回到 S0 重新評估 Trigger Gate"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 7,
+    "ModuleRef": "A545",
+    "StepType": "normal",
+    "StepAction": "工作流完成或阻斷：drain 車道，更新 state 為 completed/blocked",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [5],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["工作流狀態已更新，通知使用者"],
+    "SubGrafcet": []
+  }
+]

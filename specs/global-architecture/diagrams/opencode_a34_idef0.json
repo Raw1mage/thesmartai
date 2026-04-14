@@ -1,0 +1,51 @@
+{
+  "diagram_title": "A34 — 執行 Rotation3D Fallback",
+  "node_reference": "A34",
+  "activities": [
+    {
+      "id": "A341",
+      "title": "建構模型向量",
+      "description": "從當前請求組裝 ModelVector 三元組 (providerId, accountId, modelID)，作為路由單元。",
+      "decomposition": null
+    },
+    {
+      "id": "A342",
+      "title": "收集遞補候選",
+      "description": "掃描所有可用 Provider × Account × Model 組合，排除已知不可用與永久錯誤的向量。",
+      "decomposition": null
+    },
+    {
+      "id": "A343",
+      "title": "評分候選健康度",
+      "description": "為每個 FallbackCandidate 計算 healthScore、isRateLimited、waitTimeMs。HealthTracker 追蹤歷史可用性。",
+      "decomposition": null
+    },
+    {
+      "id": "A344",
+      "title": "選擇遞補策略",
+      "description": "依 RotationPurpose 選擇策略：account-first（同 provider 換帳號）、model-first（換模型）、provider-first（換 provider）。",
+      "decomposition": null
+    },
+    {
+      "id": "A345",
+      "title": "套用遞補決策",
+      "description": "將最佳候選設為新的 ModelVector，發布 RotationExecutedEvent。若無可用候選，回報路由失敗。",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    { "id": "I1", "source": "EXTERNAL", "target": "A341:input", "label": "來源 ModelVector (失敗的)", "type": "input" },
+    { "id": "I2", "source": "EXTERNAL", "target": "A342:input", "label": "全域 Provider/Account 註冊表", "type": "input" },
+    { "id": "C1", "source": "EXTERNAL", "target": "A344:control", "label": "RotationPurpose (coding/reasoning/image/...)", "type": "control" },
+    { "id": "C2", "source": "EXTERNAL", "target": "A344:control", "label": "FallbackStrategy 偏好", "type": "control" },
+    { "id": "C3", "source": "EXTERNAL", "target": "A343:control", "label": "冷卻規則與最低健康閾值", "type": "control" },
+    { "id": "M1", "source": "EXTERNAL", "target": "A343:mechanism", "label": "HealthTracker 持久化狀態", "type": "mechanism" },
+    { "id": "M2", "source": "EXTERNAL", "target": "A343:mechanism", "label": "RateLimitJudge 分類器", "type": "mechanism" },
+    { "id": "F1", "source": "A341:output", "target": "A342:input", "label": "待遞補的 ModelVector", "type": "input" },
+    { "id": "F2", "source": "A342:output", "target": "A343:input", "label": "候選 ModelVector 清單", "type": "input" },
+    { "id": "F3", "source": "A343:output", "target": "A344:input", "label": "含健康評分的候選清單", "type": "input" },
+    { "id": "F4", "source": "A344:output", "target": "A345:input", "label": "策略排序後的最佳候選", "type": "input" },
+    { "id": "O1", "source": "A345:output", "target": "EXTERNAL", "label": "遞補 ModelVector 或路由失敗", "type": "output" },
+    { "id": "O2", "source": "A345:output", "target": "EXTERNAL", "label": "RotationExecutedEvent", "type": "output" }
+  ]
+}

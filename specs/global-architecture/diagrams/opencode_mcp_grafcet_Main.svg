@@ -1,0 +1,100 @@
+<svg width="1245" height="1160" viewBox="-120.0 -16.0 1245.0 1160.0" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="black" /></marker></defs>
+<rect x="-120.0" y="-16.0" width="1245.0" height="1160.0" fill="white" />
+<rect x="360.0" y="80.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<rect x="365.0" y="85.0" width="70.0" height="50.0" stroke="black" stroke-width="1" fill="none" />
+<text x="400" y="115.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">0</text>
+<line x1="440" y1="110.0" x2="480.0" y2="110.0" stroke="black" />
+<rect x="480.0" y="64.0" width="160" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="560.0" y="90.0" text-anchor="middle" font-family="Arial" font-size="11">MCP App 處於</text>
+<text x="560.0" y="114.0" text-anchor="middle" font-family="Arial" font-size="11">available</text>
+<text x="560.0" y="138.0" text-anchor="middle" font-family="Arial" font-size="11">狀態，等待安裝請求</text>
+<line x1="400" y1="140.0" x2="400" y2="220" stroke="black" />
+<line x1="380" y1="180.0" x2="420" y2="180.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="184.0" font-style="italic" font-size="11" text-anchor="start">使用者發出安裝請求</text>
+<rect x="360.0" y="220.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="255.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">1</text>
+<line x1="440" y1="250.0" x2="480.0" y2="250.0" stroke="black" />
+<rect x="480.0" y="192.0" width="160" height="116.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="560.0" y="218.0" text-anchor="middle" font-family="Arial" font-size="11">註冊 App 至</text>
+<text x="560.0" y="241.99999999999997" text-anchor="middle" font-family="Arial" font-size="11">managed-</text>
+<text x="560.0" y="266.0" text-anchor="middle" font-family="Arial" font-size="11">apps.json，狀態轉為</text>
+<text x="560.0" y="290.0" text-anchor="middle" font-family="Arial" font-size="11">installed</text>
+<line x1="400" y1="280.0" x2="400" y2="360" stroke="black" />
+<line x1="380" y1="320.0" x2="420" y2="320.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="324.0" font-style="italic" font-size="11" text-anchor="start">App 已註冊</text>
+<rect x="360.0" y="360.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="395.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">2</text>
+<line x1="440" y1="390.0" x2="480.0" y2="390.0" stroke="black" />
+<rect x="480.0" y="344.0" width="170.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="565.0" y="370.0" text-anchor="middle" font-family="Arial" font-size="11">檢查並填入組態（pending</text>
+<text x="565.0" y="394.0" text-anchor="middle" font-family="Arial" font-size="11">_config），等待必要欄位</text>
+<text x="565.0" y="418.0" text-anchor="middle" font-family="Arial" font-size="11">完備</text>
+<line x1="400" y1="420.0" x2="400" y2="500" stroke="black" />
+<line x1="380" y1="460.0" x2="420" y2="460.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="464.0" font-style="italic" font-size="11" text-anchor="start">組態完備，進入認證</text>
+<rect x="360.0" y="500.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="535.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">3</text>
+<line x1="440" y1="530.0" x2="480.0" y2="530.0" stroke="black" />
+<rect x="480.0" y="472.0" width="170.0" height="116.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="565.0" y="498.0" text-anchor="middle" font-family="Arial" font-size="11">pending_auth：啟動</text>
+<text x="565.0" y="522.0" text-anchor="middle" font-family="Arial" font-size="11">OAuth 瀏覽器流程，等待</text>
+<text x="565.0" y="546.0" text-anchor="middle" font-family="Arial" font-size="11">redirect</text>
+<text x="565.0" y="570.0" text-anchor="middle" font-family="Arial" font-size="11">callback</text>
+<line x1="400" y1="560" x2="400" y2="600" stroke="black" />
+<line x1="160.0" y1="600" x2="845.0" y2="600" stroke="black" stroke-width="1.5" />
+<line x1="200.0" y1="600" x2="200.0" y2="640" stroke="black" />
+<line x1="180.0" y1="640" x2="220.0" y2="640" stroke="black" stroke-width="2" />
+<text x="176.0" y="644" font-style="italic" font-size="11" text-anchor="end">OAuth 成功，token 已儲存至 gauth.json</text>
+<line x1="200.0" y1="640" x2="200.0" y2="680" stroke="black" marker-end="url(#arrow)" />
+<line x1="805.0" y1="600" x2="805.0" y2="640" stroke="black" />
+<line x1="785.0" y1="640" x2="825.0" y2="640" stroke="black" stroke-width="2" />
+<text x="829.0" y="644" font-style="italic" font-size="11" text-anchor="start">OAuth 失敗或使用者取消</text>
+<line x1="805.0" y1="640" x2="805.0" y2="680" stroke="black" marker-end="url(#arrow)" />
+<rect x="160.0" y="680.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="200.0" y="715.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">4</text>
+<line x1="240.0" y1="710.0" x2="280.0" y2="710.0" stroke="black" />
+<rect x="280.0" y="664.0" width="170.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="365.0" y="690.0" text-anchor="middle" font-family="Arial" font-size="11">建立 MCP 傳輸連線 (st</text>
+<text x="365.0" y="714.0" text-anchor="middle" font-family="Arial" font-size="11">dio/SSE/HTTP)，發</text>
+<text x="365.0" y="737.9999999999999" text-anchor="middle" font-family="Arial" font-size="11">現工具定義</text>
+<line x1="200.0" y1="740" x2="200.0" y2="780" stroke="black" />
+<line x1="-40.0" y1="780" x2="445.0" y2="780" stroke="black" stroke-width="1.5" />
+<line x1="0.0" y1="780" x2="0.0" y2="820" stroke="black" />
+<line x1="-20.0" y1="820" x2="20.0" y2="820" stroke="black" stroke-width="2" />
+<text x="-24.0" y="824" font-style="italic" font-size="11" text-anchor="end">連線成功，工具已載入，狀態=ready</text>
+<line x1="0.0" y1="820" x2="0.0" y2="860" stroke="black" marker-end="url(#arrow)" />
+<line x1="405.0" y1="780" x2="405.0" y2="820" stroke="black" />
+<line x1="385.0" y1="820" x2="425.0" y2="820" stroke="black" stroke-width="2" />
+<text x="429.0" y="824" font-style="italic" font-size="11" text-anchor="start">連線失敗或 transport 錯誤</text>
+<line x1="405.0" y1="820" x2="405.0" y2="860" stroke="black" marker-end="url(#arrow)" />
+<rect x="-40.0" y="860.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="0.0" y="895.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">6</text>
+<line x1="40.0" y1="890.0" x2="80.0" y2="890.0" stroke="black" />
+<rect x="80.0" y="844.0" width="170.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="165.0" y="870.0" text-anchor="middle" font-family="Arial" font-size="11">App ready：提供工具至</text>
+<text x="165.0" y="894.0" text-anchor="middle" font-family="Arial" font-size="11">tool surface，發布</text>
+<text x="165.0" y="917.9999999999999" text-anchor="middle" font-family="Arial" font-size="11">ToolsChanged 事件</text>
+<line x1="0.0" y1="920.0" x2="0.0" y2="1000" stroke="black" />
+<line x1="-20.0" y1="960.0" x2="20.0" y2="960.0" stroke="black" stroke-width="2" />
+<text x="24.0" y="964.0" font-style="italic" font-size="11" text-anchor="start">AUTO_MCP_IDLE_MS (10min) 超時無活動</text>
+<rect x="-40.0" y="1000.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="0.0" y="1035.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">8</text>
+<line x1="40.0" y1="1030.0" x2="80.0" y2="1030.0" stroke="black" />
+<rect x="80.0" y="996.0" width="160" height="68.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="160.0" y="1022.0" text-anchor="middle" font-family="Arial" font-size="11">自動斷線 idle</text>
+<text x="160.0" y="1046.0" text-anchor="middle" font-family="Arial" font-size="11">MCP，釋放資源，按需重連</text>
+<rect x="365.0" y="860.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="405.0" y="895.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">7</text>
+<line x1="445.0" y1="890.0" x2="485.0" y2="890.0" stroke="black" />
+<rect x="485.0" y="856.0" width="160" height="68.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="565.0" y="882.0" text-anchor="middle" font-family="Arial" font-size="11">記錄連線失敗，狀態設為</text>
+<text x="565.0" y="906.0" text-anchor="middle" font-family="Arial" font-size="11">failed，可手動重試</text>
+<rect x="765.0" y="680.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="805.0" y="715.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">5</text>
+<line x1="845.0" y1="710.0" x2="885.0" y2="710.0" stroke="black" />
+<rect x="885.0" y="664.0" width="160" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="965.0" y="690.0" text-anchor="middle" font-family="Arial" font-size="11">記錄認證失敗，App 維持</text>
+<text x="965.0" y="714.0" text-anchor="middle" font-family="Arial" font-size="11">pending_auth</text>
+<text x="965.0" y="737.9999999999999" text-anchor="middle" font-family="Arial" font-size="11">可重試</text>
+</svg>

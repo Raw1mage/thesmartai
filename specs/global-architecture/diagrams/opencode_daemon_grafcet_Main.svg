@@ -1,0 +1,110 @@
+<svg width="2090" height="944" viewBox="-540.0 -16.0 2090.0 944.0" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="black" /></marker></defs>
+<rect x="-540.0" y="-16.0" width="2090.0" height="944.0" fill="white" />
+<rect x="360.0" y="80.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<rect x="365.0" y="85.0" width="70.0" height="50.0" stroke="black" stroke-width="1" fill="none" />
+<text x="400" y="115.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">0</text>
+<line x1="440" y1="110.0" x2="480.0" y2="110.0" stroke="black" />
+<rect x="480.0" y="64.0" width="170.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="565.0" y="90.0" text-anchor="middle" font-family="Arial" font-size="11">Daemon 初始化，嘗試取得</text>
+<text x="565.0" y="114.0" text-anchor="middle" font-family="Arial" font-size="11">GatewayLock (寫入</text>
+<text x="565.0" y="138.0" text-anchor="middle" font-family="Arial" font-size="11">daemon.pid)</text>
+<line x1="400" y1="140" x2="400" y2="180" stroke="black" />
+<line x1="155.0" y1="180" x2="1260.0" y2="180" stroke="black" stroke-width="1.5" />
+<line x1="195.0" y1="180" x2="195.0" y2="220" stroke="black" />
+<line x1="175.0" y1="220" x2="215.0" y2="220" stroke="black" stroke-width="2" />
+<text x="171.0" y="224" font-style="italic" font-size="11" text-anchor="end">PID 鎖取得成功</text>
+<line x1="195.0" y1="220" x2="195.0" y2="260" stroke="black" marker-end="url(#arrow)" />
+<line x1="1220.0" y1="180" x2="1220.0" y2="220" stroke="black" />
+<line x1="1200.0" y1="220" x2="1240.0" y2="220" stroke="black" stroke-width="2" />
+<text x="1244.0" y="224" font-style="italic" font-size="11" text-anchor="start">PID 鎖已被佔用（另一 daemon 存在）</text>
+<line x1="1220.0" y1="220" x2="1220.0" y2="260" stroke="black" marker-end="url(#arrow)" />
+<rect x="155.0" y="260.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="195.0" y="295.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">1</text>
+<line x1="235.0" y1="290.0" x2="275.0" y2="290.0" stroke="black" />
+<rect x="275.0" y="232.0" width="170.0" height="116.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="360.0" y="258.0" text-anchor="middle" font-family="Arial" font-size="11">註冊信號處理器：SIGTERM</text>
+<text x="360.0" y="282.0" text-anchor="middle" font-family="Arial" font-size="11">→drain, SIGINT→</text>
+<text x="360.0" y="306.0" text-anchor="middle" font-family="Arial" font-size="11">immediate,</text>
+<text x="360.0" y="329.99999999999994" text-anchor="middle" font-family="Arial" font-size="11">SIGUSR1→restart</text>
+<line x1="195.0" y1="320.0" x2="195.0" y2="400" stroke="black" />
+<line x1="175.0" y1="360.0" x2="215.0" y2="360.0" stroke="black" stroke-width="2" />
+<text x="219.0" y="364.0" font-style="italic" font-size="11" text-anchor="start">信號路由就緒，初始化完成</text>
+<rect x="155.0" y="400.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="195.0" y="435.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">3</text>
+<line x1="235.0" y1="430.0" x2="275.0" y2="430.0" stroke="black" />
+<rect x="275.0" y="372.0" width="170.0" height="116.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="360.0" y="398.0" text-anchor="middle" font-family="Arial" font-size="11">Daemon</text>
+<text x="360.0" y="422.0" text-anchor="middle" font-family="Arial" font-size="11">running：監聽 Unix</text>
+<text x="360.0" y="445.99999999999994" text-anchor="middle" font-family="Arial" font-size="11">socket，接受命令，分派至</text>
+<text x="360.0" y="469.99999999999994" text-anchor="middle" font-family="Arial" font-size="11">Lane 佇列</text>
+<line x1="195.0" y1="460" x2="195.0" y2="500" stroke="black" />
+<line x1="-255.0" y1="500" x2="850.0" y2="500" stroke="black" stroke-width="1.5" />
+<line x1="-215.0" y1="500" x2="-215.0" y2="540" stroke="black" />
+<line x1="-235.0" y1="540" x2="-195.0" y2="540" stroke="black" stroke-width="2" />
+<text x="-239.0" y="544" font-style="italic" font-size="11" text-anchor="end">收到 SIGTERM（graceful drain）</text>
+<line x1="-215.0" y1="540" x2="-215.0" y2="580" stroke="black" marker-end="url(#arrow)" />
+<line x1="400.0" y1="500" x2="400.0" y2="540" stroke="black" />
+<line x1="380.0" y1="540" x2="420.0" y2="540" stroke="black" stroke-width="2" />
+<text x="424.0" y="544" font-style="italic" font-size="11" text-anchor="start">收到 SIGUSR1（restart）</text>
+<line x1="400.0" y1="540" x2="400.0" y2="580" stroke="black" marker-end="url(#arrow)" />
+<line x1="810.0" y1="500" x2="810.0" y2="540" stroke="black" />
+<line x1="790.0" y1="540" x2="830.0" y2="540" stroke="black" stroke-width="2" />
+<text x="834.0" y="544" font-style="italic" font-size="11" text-anchor="start">收到 SIGINT（force stop）</text>
+<line x1="810.0" y1="540" x2="810.0" y2="580" stroke="black" marker-end="url(#arrow)" />
+<rect x="-255.0" y="580.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="-215.0" y="615.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">4</text>
+<line x1="-175.0" y1="610.0" x2="-135.0" y2="610.0" stroke="black" />
+<rect x="-135.0" y="564.0" width="170.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="-50.0" y="590.0" text-anchor="middle" font-family="Arial" font-size="11">進入 drain 模式：停止接</text>
+<text x="-50.0" y="614.0" text-anchor="middle" font-family="Arial" font-size="11">受新請求，等待所有車道</text>
+<text x="-50.0" y="638.0" text-anchor="middle" font-family="Arial" font-size="11">idle</text>
+<line x1="-215.0" y1="640" x2="-215.0" y2="680" stroke="black" />
+<line x1="-460.0" y1="680" x2="30.0" y2="680" stroke="black" stroke-width="1.5" />
+<line x1="-420.0" y1="680" x2="-420.0" y2="720" stroke="black" />
+<line x1="-440.0" y1="720" x2="-400.0" y2="720" stroke="black" stroke-width="2" />
+<text x="-444.0" y="724" font-style="italic" font-size="11" text-anchor="end">所有車道 idle（graceful 完成）</text>
+<line x1="-420.0" y1="720" x2="-420.0" y2="760" stroke="black" marker-end="url(#arrow)" />
+<line x1="-10.0" y1="680" x2="-10.0" y2="720" stroke="black" />
+<line x1="-30.0" y1="720" x2="10.0" y2="720" stroke="black" stroke-width="2" />
+<text x="14.0" y="724" font-style="italic" font-size="11" text-anchor="start">drain timeout 5s 到期</text>
+<line x1="-10.0" y1="720" x2="-10.0" y2="760" stroke="black" marker-end="url(#arrow)" />
+<rect x="-460.0" y="760.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="-420.0" y="795.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">7</text>
+<line x1="-380.0" y1="790.0" x2="-340.0" y2="790.0" stroke="black" />
+<rect x="-340.0" y="732.0" width="170.0" height="116.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="-255.0" y="758.0" text-anchor="middle" font-family="Arial" font-size="11">Graceful 完成：釋放</text>
+<text x="-255.0" y="782.0000000000001" text-anchor="middle" font-family="Arial" font-size="11">GatewayLock，清理 </text>
+<text x="-255.0" y="806.0" text-anchor="middle" font-family="Arial" font-size="11">daemon.pid/json</text>
+<text x="-255.0" y="830.0000000000001" text-anchor="middle" font-family="Arial" font-size="11">，退出</text>
+<rect x="-50.0" y="760.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="-10.0" y="795.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">8</text>
+<line x1="30.0" y1="790.0" x2="70.0" y2="790.0" stroke="black" />
+<rect x="70.0" y="744.0" width="170.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="155.0" y="770.0" text-anchor="middle" font-family="Arial" font-size="11">Drain timeout 到</text>
+<text x="155.0" y="794.0" text-anchor="middle" font-family="Arial" font-size="11">期：強制停止剩餘車道，釋放鎖，</text>
+<text x="155.0" y="817.9999999999999" text-anchor="middle" font-family="Arial" font-size="11">退出</text>
+<rect x="360.0" y="580.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400.0" y="615.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">5</text>
+<line x1="440.0" y1="610.0" x2="480.0" y2="610.0" stroke="black" />
+<rect x="480.0" y="528.0" width="170.0" height="164.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="565.0" y="554.0" text-anchor="middle" font-family="Arial" font-size="11">Restart</text>
+<text x="565.0" y="578.0" text-anchor="middle" font-family="Arial" font-size="11">序列：drain →</text>
+<text x="565.0" y="602.0" text-anchor="middle" font-family="Arial" font-size="11">release lock →</text>
+<text x="565.0" y="626.0" text-anchor="middle" font-family="Arial" font-size="11">re-acquire →</text>
+<text x="565.0" y="650.0" text-anchor="middle" font-family="Arial" font-size="11">re-init，generat</text>
+<text x="565.0" y="674.0" text-anchor="middle" font-family="Arial" font-size="11">ion+1</text>
+<rect x="770.0" y="580.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="810.0" y="615.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">6</text>
+<line x1="850.0" y1="610.0" x2="890.0" y2="610.0" stroke="black" />
+<rect x="890.0" y="564.0" width="170.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="975.0" y="590.0" text-anchor="middle" font-family="Arial" font-size="11">SIGINT：強制終止所有 p</text>
+<text x="975.0" y="614.0" text-anchor="middle" font-family="Arial" font-size="11">rocess，立即釋放鎖，清理</text>
+<text x="975.0" y="638.0" text-anchor="middle" font-family="Arial" font-size="11">退出</text>
+<rect x="1180.0" y="260.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="1220.0" y="295.0" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="14">2</text>
+<line x1="1260.0" y1="290.0" x2="1300.0" y2="290.0" stroke="black" />
+<rect x="1300.0" y="256.0" width="170.0" height="68.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="1385.0" y="282.0" text-anchor="middle" font-family="Arial" font-size="11">記錄鎖衝突，回報啟動失敗，pr</text>
+<text x="1385.0" y="306.0" text-anchor="middle" font-family="Arial" font-size="11">ocess 結束</text>
+</svg>

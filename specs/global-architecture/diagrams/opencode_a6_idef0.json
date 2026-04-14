@@ -1,0 +1,59 @@
+{
+  "diagram_title": "A6 — 管理系統基礎設施",
+  "node_reference": "A6",
+  "activities": [
+    {
+      "id": "A61",
+      "title": "運作 C Gateway",
+      "description": "Root 特權 TCP listener，port 1080。Non-blocking epoll 事件迴圈、PAM pthread 認證、JWT session 管理。"
+    },
+    {
+      "id": "A62",
+      "title": "管理 Per-User Daemon",
+      "description": "fork+setuid+execvp 產生 per-user TypeScript daemon（Unix socket）。Discovery file、readiness probing、SIGCHLD cleanup。",
+      "decomposition": "A62"
+    },
+    {
+      "id": "A63",
+      "title": "協調 Event Bus",
+      "description": "全域 pub/sub：Bus.publish/subscribeGlobal。Module-scope 與 instance-scope subscriptions。發布前 secret sanitization。"
+    },
+    {
+      "id": "A64",
+      "title": "運行 Durable Scheduler",
+      "description": "持久化排程 job 於 jobs.json。Boot recovery：stale 週期性任務跳到下一觸發時間，stale 一次性任務自動停用。"
+    },
+    {
+      "id": "A65",
+      "title": "持久化 XDG 儲存",
+      "description": "JSON 原子寫入含備份。accounts.json、managed-apps.json、gauth.json、sessions/。XDG 相容路徑。"
+    },
+    {
+      "id": "A66",
+      "title": "執行 Kill-Switch",
+      "description": "Soft-pause 送出優雅停止信號。Hard-kill 逾時後強制終止。完整的 trigger/status/cancel API。"
+    }
+  ],
+  "arrows": [
+    { "id": "I1", "source": "EXTERNAL", "target": "A61:input", "label": "入站 TCP 連線", "type": "input" },
+    { "id": "I2", "source": "EXTERNAL", "target": "A64:input", "label": "Cron Job 定義", "type": "input" },
+    { "id": "I3", "source": "EXTERNAL", "target": "A66:input", "label": "Kill-Switch 命令", "type": "input" },
+    { "id": "C1", "source": "EXTERNAL", "target": "A61:control", "label": "opencode.cfg (host/port/TLS)", "type": "control" },
+    { "id": "C2", "source": "EXTERNAL", "target": "A62:control", "label": "XDG Runtime Dir 探索規則", "type": "control" },
+    { "id": "C3", "source": "EXTERNAL", "target": "A64:control", "label": "心跳間隔 (1 分鐘)", "type": "control" },
+    { "id": "M1", "source": "EXTERNAL", "target": "A61:mechanism", "label": "epoll/splice 核心 API", "type": "mechanism" },
+    { "id": "M2", "source": "EXTERNAL", "target": "A61:mechanism", "label": "PAM 服務與 JWT Secret 檔", "type": "mechanism" },
+    { "id": "M3", "source": "EXTERNAL", "target": "A65:mechanism", "label": "XDG Base Directories", "type": "mechanism" },
+    { "id": "F1", "source": "A61:output", "target": "A62:input", "label": "已認證的 UID + splice 代理命令", "type": "input" },
+    { "id": "F2", "source": "A62:output", "target": "A61:input", "label": "就緒的 Daemon Socket 路徑", "type": "input" },
+    { "id": "F3", "source": "A63:output", "target": "A64:input", "label": "cron.delivery.announce 事件", "type": "input" },
+    { "id": "F4", "source": "A63:output", "target": "A66:input", "label": "Kill-Switch Bus 事件", "type": "input" },
+    { "id": "F5", "source": "A62:output", "target": "A65:input", "label": "Daemon 狀態（供持久化）", "type": "input" },
+    { "id": "F6", "source": "A62:output", "target": "A63:input", "label": "模組生命週期事件", "type": "input" },
+    { "id": "F7", "source": "A65:output", "target": "A62:input", "label": "已持久化的狀態檔案", "type": "input" },
+    { "id": "O1", "source": "A61:output", "target": "EXTERNAL", "label": "代理至 Per-User Daemon 的 HTTP/WS", "type": "output" },
+    { "id": "O2", "source": "A63:output", "target": "EXTERNAL", "label": "已發布事件 (SSE/WS)", "type": "output" },
+    { "id": "O3", "source": "A64:output", "target": "EXTERNAL", "label": "排程 Job 執行", "type": "output" },
+    { "id": "O4", "source": "A66:output", "target": "EXTERNAL", "label": "執行終止確認", "type": "output" }
+  ]
+}

@@ -1,0 +1,110 @@
+[
+  {
+    "StepNumber": 0,
+    "ModuleRef": "A621",
+    "StepType": "initial",
+    "StepAction": "Daemon 初始化，嘗試取得 GatewayLock (寫入 daemon.pid)",
+    "LinkInputType": [],
+    "LinkInputNumber": [],
+    "LinkOutputNumber": [1, 2],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["PID 鎖取得成功", "PID 鎖已被佔用（另一 daemon 存在）"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 1,
+    "ModuleRef": "A622",
+    "StepType": "normal",
+    "StepAction": "註冊信號處理器：SIGTERM→drain, SIGINT→immediate, SIGUSR1→restart",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [0],
+    "LinkOutputNumber": [3],
+    "LinkOutputType": "track",
+    "Condition": ["信號路由就緒，初始化完成"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 2,
+    "ModuleRef": "A621",
+    "StepType": "normal",
+    "StepAction": "記錄鎖衝突，回報啟動失敗，process 結束",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [0],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["錯誤已記錄，daemon 結束"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 3,
+    "ModuleRef": "A623",
+    "StepType": "normal",
+    "StepAction": "Daemon running：監聽 Unix socket，接受命令，分派至 Lane 佇列",
+    "LinkInputType": ["track"],
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [4, 5, 6],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["收到 SIGTERM（graceful drain）", "收到 SIGUSR1（restart）", "收到 SIGINT（force stop）"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 4,
+    "ModuleRef": "A624",
+    "StepType": "normal",
+    "StepAction": "進入 drain 模式：停止接受新請求，等待所有車道 idle",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [3],
+    "LinkOutputNumber": [7, 8],
+    "LinkOutputType": "divergence_or",
+    "Condition": ["所有車道 idle（graceful 完成）", "drain timeout 5s 到期"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 5,
+    "ModuleRef": "A625",
+    "StepType": "normal",
+    "StepAction": "Restart 序列：drain → release lock → re-acquire → re-init，generation+1",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [3],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["restart 完成，重新進入 S0 初始化"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 6,
+    "ModuleRef": "A624",
+    "StepType": "normal",
+    "StepAction": "SIGINT：強制終止所有 process，立即釋放鎖，清理退出",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [3],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["所有 process 已終止，daemon 退出"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 7,
+    "ModuleRef": "A621",
+    "StepType": "normal",
+    "StepAction": "Graceful 完成：釋放 GatewayLock，清理 daemon.pid/json，退出",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [4],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["所有資源已釋放，process exit"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 8,
+    "ModuleRef": "A624",
+    "StepType": "normal",
+    "StepAction": "Drain timeout 到期：強制停止剩餘車道，釋放鎖，退出",
+    "LinkInputType": ["divergence_or"],
+    "LinkInputNumber": [4],
+    "LinkOutputNumber": [],
+    "LinkOutputType": "track",
+    "Condition": ["強制清理完成，daemon 退出"],
+    "SubGrafcet": []
+  }
+]

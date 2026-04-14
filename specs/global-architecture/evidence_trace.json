@@ -1,0 +1,128 @@
+{
+  "title": "OpenCode Reverse Engineering Evidence Trace",
+  "generated": "2026-04-14",
+  "description": "Documents evidence sources for each IDEF0 top-level activity and its decomposition.",
+  "evidence": [
+    {
+      "idef0_id": "A0",
+      "title": "OpenCode CMS — 多介面 AI 代理控制平面",
+      "primary_evidence": ["README.md", "specs/architecture.md", "AGENTS.md"],
+      "confidence": "high"
+    },
+    {
+      "idef0_id": "A1",
+      "title": "管理使用者介面",
+      "primary_evidence": ["packages/app/src/", "cli/cmd/tui.ts", "packages/desktop/", "cli/cmd/*.ts", "server/routes/account.ts"],
+      "decomposition_evidence": {
+        "A11": "cli/cmd/tui.ts — TUI 入口",
+        "A12": "packages/app/src/entry.tsx — SolidJS Web App",
+        "A13": "packages/desktop/ — Tauri 2.x shell",
+        "A14": "packages/opencode/src/index.ts — yargs CLI 入口",
+        "A15": "server/routes/account.ts, provider.ts, model.ts — Admin CRUD"
+      },
+      "confidence": "high"
+    },
+    {
+      "idef0_id": "A2",
+      "title": "處理 AI Session",
+      "primary_evidence": ["session/index.ts", "session/llm.ts", "session/processor.ts", "session/compaction.ts"],
+      "decomposition_evidence": {
+        "A21": "session/index.ts: Session.create(), Session.get()",
+        "A22": "session/prompt-runtime.ts, session/system.ts",
+        "A23": "session/llm.ts: LLM.stream() — 含 rotation fallback loop",
+        "A24": "session/tool-invoker.ts, tool/tool.ts",
+        "A25": "session/compaction.ts: SessionCompaction",
+        "A26": "storage/, session/status.ts"
+      },
+      "L2_evidence": {
+        "A231": "session/llm.ts: account resolution chain (explicit → pinned → global-active)",
+        "A232": "session/llm.ts: isVectorRateLimited preflight",
+        "A233": "session/llm.ts: AI SDK streamText call",
+        "A234": "session/llm.ts: isRateLimitError(), isAuthError(), permanent vs temporary",
+        "A235": "session/llm.ts: rotation retry loop (max 8), RateLimitEscalationEvent"
+      },
+      "confidence": "high"
+    },
+    {
+      "idef0_id": "A3",
+      "title": "路由 Provider 與帳號",
+      "primary_evidence": ["provider/supported-provider-registry.ts", "provider/models.ts", "account/index.ts"],
+      "decomposition_evidence": {
+        "A31": "provider/supported-provider-registry.ts, provider/models.ts",
+        "A32": "provider/canonical-family-source.ts",
+        "A33": "account/index.ts: three-tier (Storage, Auth, Presentation)",
+        "A34": "account/rotation/ or provider/rotation3d.ts: findFallback()",
+        "A35": "provider/health.ts, account/rate-limit-judge.ts"
+      },
+      "L2_evidence": {
+        "A341": "provider/rotation3d.ts: ModelVector construction",
+        "A342": "provider/rotation3d.ts: candidate collection",
+        "A343": "provider/health.ts: healthScore, account/rate-limit-judge.ts",
+        "A344": "provider/rotation3d.ts: FallbackStrategy selection",
+        "A345": "provider/rotation3d.ts: RotationExecutedEvent"
+      },
+      "confidence": "high"
+    },
+    {
+      "idef0_id": "A4",
+      "title": "執行工具與 MCP",
+      "primary_evidence": ["tool/tool-loader.ts", "tool/tool.ts", "mcp/index.ts", "mcp/app-registry.ts"],
+      "decomposition_evidence": {
+        "A41": "tool/*.ts (bash, edit, read, write, grep, glob, apply_patch)",
+        "A42": "session/resolve-tools.ts: buildCatalog(), dirty-flag",
+        "A43": "session/tool-invoker.ts, tool/tool.ts",
+        "A44": "mcp/app-registry.ts, mcp/app-store.ts: state machine",
+        "A45": "mcp/index.ts: MCP tool ↔ AI SDK conversion"
+      },
+      "L2_evidence": {
+        "A441": "mcp/app-store.ts, mcp/manifest.ts: catalog scan",
+        "A442": "mcp/app-registry.ts: install to managed-apps.json",
+        "A443": "mcp/app-registry.ts: pending_config handling",
+        "A444": "mcp/auth.ts, mcp/oauth-callback.ts: OAuth browser flow",
+        "A445": "mcp/index.ts: MCP.connect() with stdio/SSE/HTTP"
+      },
+      "confidence": "high"
+    },
+    {
+      "idef0_id": "A5",
+      "title": "編排自主工作流",
+      "primary_evidence": ["session/trigger.ts", "session/workflow-runner.ts", "session/subagent-workflow.ts"],
+      "decomposition_evidence": {
+        "A51": "session/trigger.ts: dialog trigger detection",
+        "A52": "session/planner-layout.ts: plan mode management",
+        "A53": "session/trigger.ts: governor evaluation",
+        "A54": "session/workflow-runner.ts: RunQueue, Lanes, continuation",
+        "A55": "session/workflow-runner.ts: buildBetaAdmissionPrompt()"
+      },
+      "L2_evidence": {
+        "A541": "session/workflow-runner.ts: evaluateGates(), CONTINUATION_GATE_POLICY",
+        "A542": "session/workflow-runner.ts: Lanes (critical/normal/background)",
+        "A543": "session/workflow-runner.ts: AUTONOMOUS_CONTINUE_TEXT injection",
+        "A544": "session/workflow-runner.ts: isPlanTrusting(), blocker detection",
+        "A545": "session/workflow-runner.ts: drain(), completion"
+      },
+      "confidence": "high"
+    },
+    {
+      "idef0_id": "A6",
+      "title": "管理系統基礎設施",
+      "primary_evidence": ["daemon/opencode-gateway.c", "daemon/index.ts", "bus/global.ts", "scheduler/", "storage/"],
+      "decomposition_evidence": {
+        "A61": "daemon/opencode-gateway.c: epoll, PAM, JWT, splice proxy",
+        "A62": "daemon/index.ts: fork+setuid, discovery file, singleton lock",
+        "A63": "bus/global.ts: Bus.publish/subscribe, secret sanitization",
+        "A64": "scheduler/: jobs.json, boot recovery",
+        "A65": "storage/: atomic JSON writes, XDG paths",
+        "A66": "server/killswitch/: soft-pause, hard-kill"
+      },
+      "L2_evidence": {
+        "A621": "daemon/index.ts: GatewayLock, daemon.pid",
+        "A622": "daemon/index.ts: SIGTERM/SIGINT/SIGUSR1 signal routing",
+        "A623": "daemon/index.ts: Lanes, per-workspace queues",
+        "A624": "daemon/index.ts: Drain state machine (5s timeout)",
+        "A625": "daemon/index.ts: restart coordination, generation numbering"
+      },
+      "confidence": "high"
+    }
+  ]
+}

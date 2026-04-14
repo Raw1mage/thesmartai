@@ -1,0 +1,66 @@
+{
+  "diagram_title": "OpenCode CMS — 多介面 AI 代理控制平面",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "管理使用者介面",
+      "description": "提供 TUI、Web App、Desktop、CLI 四種介面入口，供使用者互動、管理與視覺化 session。",
+      "decomposition": "A1"
+    },
+    {
+      "id": "A2",
+      "title": "處理 AI Session",
+      "description": "管理對話生命週期：建立 session、處理訊息、解析 prompt、壓縮上下文、持久化歷史。",
+      "decomposition": "A2"
+    },
+    {
+      "id": "A3",
+      "title": "路由 Provider 與帳號",
+      "description": "組裝 provider 註冊表、解析 canonical 身分、執行 Rotation3D 三維 fallback。",
+      "decomposition": "A3"
+    },
+    {
+      "id": "A4",
+      "title": "執行工具與 MCP",
+      "description": "註冊與分派內建工具及 MCP managed apps，轉換工具格式供 AI SDK 使用。",
+      "decomposition": "A4"
+    },
+    {
+      "id": "A5",
+      "title": "編排自主工作流",
+      "description": "驅動規劃模式、Smart Runner Governor 決策、Workflow Runner 編排、Dialog Trigger 偵測。",
+      "decomposition": "A5"
+    },
+    {
+      "id": "A6",
+      "title": "管理系統基礎設施",
+      "description": "運作 C Gateway、Per-user Daemon、Event Bus、Durable Scheduler、XDG 儲存、Kill-Switch。",
+      "decomposition": "A6"
+    }
+  ],
+  "arrows": [
+    { "id": "I1", "source": "EXTERNAL", "target": "A1:input", "label": "使用者命令與查詢", "type": "input" },
+    { "id": "I2", "source": "EXTERNAL", "target": "A6:input", "label": "TCP 連線與 PAM 憑證", "type": "input" },
+    { "id": "C1", "source": "EXTERNAL", "target": "A1:control", "label": "UI 模式選擇 (TUI/Web/Desktop/CLI)", "type": "control" },
+    { "id": "C2", "source": "EXTERNAL", "target": "A3:control", "label": "Provider 設定與停用清單", "type": "control" },
+    { "id": "C3", "source": "EXTERNAL", "target": "A5:control", "label": "採納策略與風險規則", "type": "control" },
+    { "id": "C4", "source": "EXTERNAL", "target": "A6:control", "label": "系統設定 (opencode.cfg)", "type": "control" },
+    { "id": "M1", "source": "EXTERNAL", "target": "A2:mechanism", "label": "AI SDK (Vercel AI)", "type": "mechanism" },
+    { "id": "M2", "source": "EXTERNAL", "target": "A3:mechanism", "label": "accounts.json 與 OAuth Token", "type": "mechanism" },
+    { "id": "M3", "source": "EXTERNAL", "target": "A4:mechanism", "label": "MCP 伺服器與 Managed Apps", "type": "mechanism" },
+    { "id": "M4", "source": "EXTERNAL", "target": "A6:mechanism", "label": "核心 API (epoll/splice/fork)", "type": "mechanism" },
+    { "id": "F1", "source": "A1:output", "target": "A2:input", "label": "Session 請求與訊息", "type": "input" },
+    { "id": "F2", "source": "A2:output", "target": "A3:input", "label": "Provider 選擇請求", "type": "input" },
+    { "id": "F3", "source": "A3:output", "target": "A2:input", "label": "已解析的 Provider 與模型", "type": "input" },
+    { "id": "F4", "source": "A2:output", "target": "A4:input", "label": "工具呼叫請求", "type": "input" },
+    { "id": "F5", "source": "A4:output", "target": "A2:input", "label": "工具執行結果", "type": "input" },
+    { "id": "F6", "source": "A2:output", "target": "A5:input", "label": "Turn 完成事件", "type": "input" },
+    { "id": "F7", "source": "A5:output", "target": "A2:control", "label": "Governor 決策 (繼續/暫停/重規劃)", "type": "control" },
+    { "id": "F8", "source": "A6:output", "target": "A1:input", "label": "已認證的 Session 上下文", "type": "input" },
+    { "id": "F9", "source": "A6:output", "target": "A2:mechanism", "label": "Event Bus 與儲存服務", "type": "mechanism" },
+    { "id": "O1", "source": "A1:output", "target": "EXTERNAL", "label": "渲染後的 UI (TUI/Web/Desktop)", "type": "output" },
+    { "id": "O2", "source": "A2:output", "target": "EXTERNAL", "label": "AI 回應與 Session 歷史", "type": "output" },
+    { "id": "O3", "source": "A4:output", "target": "EXTERNAL", "label": "檔案變更與 Shell 輸出", "type": "output" }
+  ]
+}

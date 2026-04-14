@@ -1,0 +1,52 @@
+{
+  "diagram_title": "A23 — 生成 AI 回應",
+  "node_reference": "A23",
+  "activities": [
+    {
+      "id": "A231",
+      "title": "解析執行身分",
+      "description": "Preflight 帳號解析鏈：explicit accountId → session-pinned → global-active。首次呼叫時 pin 至 session，防止 global-active 漂移。",
+      "decomposition": null
+    },
+    {
+      "id": "A232",
+      "title": "評估速率限制",
+      "description": "檢查 ModelVector (providerId, accountId, modelID) 是否被 rate-limited。查詢 rotation3d.isVectorRateLimited 與冷卻期。",
+      "decomposition": null
+    },
+    {
+      "id": "A233",
+      "title": "串流 AI 推論",
+      "description": "呼叫 AI SDK streamText，傳入已組裝的 provider、model、system prompt、messages、tools。串流接收 tokens。",
+      "decomposition": null
+    },
+    {
+      "id": "A234",
+      "title": "分類回應錯誤",
+      "description": "區分暫時性錯誤（429/5xx/quota exceeded）與永久性錯誤（404/not found/invalid model）。Auth 錯誤獨立分類。",
+      "decomposition": null
+    },
+    {
+      "id": "A235",
+      "title": "執行遞補輪替",
+      "description": "暫時性錯誤觸發 Rotation3D fallback 搜尋。子 session 禁止自行輪替，改發 RateLimitEscalationEvent 至父 session。最多 8 次重試。",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    { "id": "I1", "source": "EXTERNAL", "target": "A231:input", "label": "StreamInput (user, sessionID, model, accountId)", "type": "input" },
+    { "id": "I2", "source": "EXTERNAL", "target": "A233:input", "label": "已組裝的 Prompt 與工具", "type": "input" },
+    { "id": "C1", "source": "EXTERNAL", "target": "A231:control", "label": "Session 已 pin 的 ExecutionIdentity", "type": "control" },
+    { "id": "C2", "source": "EXTERNAL", "target": "A235:control", "label": "子 session 限制 (禁止自行輪替)", "type": "control" },
+    { "id": "M1", "source": "EXTERNAL", "target": "A233:mechanism", "label": "AI SDK (Vercel AI streamText)", "type": "mechanism" },
+    { "id": "M2", "source": "EXTERNAL", "target": "A232:mechanism", "label": "Rotation3D Rate Limit 判定器", "type": "mechanism" },
+    { "id": "F1", "source": "A231:output", "target": "A232:input", "label": "已解析的 ModelVector", "type": "input" },
+    { "id": "F2", "source": "A232:output", "target": "A233:input", "label": "已通過限制檢查的 ModelVector", "type": "input" },
+    { "id": "F3", "source": "A233:output", "target": "A234:input", "label": "串流錯誤或例外", "type": "input" },
+    { "id": "F4", "source": "A234:output", "target": "A235:input", "label": "暫時性錯誤（需遞補）", "type": "input" },
+    { "id": "F5", "source": "A235:output", "target": "A231:input", "label": "遞補 ModelVector（重試迴圈）", "type": "input" },
+    { "id": "O1", "source": "A233:output", "target": "EXTERNAL", "label": "StreamTextResult (tokens + toolCalls)", "type": "output" },
+    { "id": "O2", "source": "A234:output", "target": "EXTERNAL", "label": "永久性錯誤（終止）", "type": "output" },
+    { "id": "O3", "source": "A235:output", "target": "EXTERNAL", "label": "RotationExecutedEvent / RateLimitEscalationEvent", "type": "output" }
+  ]
+}
