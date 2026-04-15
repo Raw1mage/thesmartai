@@ -62,19 +62,25 @@ export namespace Plugin {
       hooks.push(init)
     }
 
-    const plugins = [...(config.plugin ?? [])]
+    const SUPERSEDED_PLUGINS = [
+      "opencode-openai-codex-auth",
+      "opencode-copilot-auth",
+      "opencode-anthropic-auth",
+      "opencode-gitlab-auth",
+      "opencode-gemini-auth",
+    ]
+    const rawPlugins = [...(config.plugin ?? [])]
+    const plugins: string[] = []
+    for (const p of rawPlugins) {
+      if (SUPERSEDED_PLUGINS.some((s) => p.includes(s))) {
+        log.warn("skipping legacy plugin — now handled by built-in auth; remove from config to avoid unnecessary bun install on startup", { plugin: p })
+        continue
+      }
+      plugins.push(p)
+    }
     if (plugins.length) await Config.waitForDependencies()
 
     for (let plugin of plugins) {
-      // Skip plugins that are now handled internally
-      if (
-        plugin.includes("opencode-openai-codex-auth") ||
-        plugin.includes("opencode-copilot-auth") ||
-        plugin.includes("opencode-anthropic-auth") ||
-        plugin.includes("opencode-gitlab-auth") ||
-        plugin.includes("opencode-gemini-auth")
-      )
-        continue
       log.info("loading plugin", { path: plugin })
       if (!plugin.startsWith("file://")) {
         const lastAtIndex = plugin.lastIndexOf("@")

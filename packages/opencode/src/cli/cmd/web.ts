@@ -53,7 +53,8 @@ export const WebCommand = cmd({
   describe: "start opencode server and open web interface",
   handler: async (args) => {
     const launchMode = process.env.OPENCODE_LAUNCH_MODE
-    if (launchMode !== "webctl" && launchMode !== "systemd") {
+    const isGatewayChild = process.env.OPENCODE_USER_DAEMON_MODE === "1"
+    if (launchMode !== "webctl" && launchMode !== "systemd" && !isGatewayChild) {
       UI.println(
         UI.Style.TEXT_WARNING_BOLD +
           "x  " +

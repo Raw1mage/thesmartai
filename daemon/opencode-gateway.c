@@ -1535,6 +1535,7 @@ static int ensure_daemon_running(DaemonInfo *d) {
                 setenv("XDG_RUNTIME_DIR", rtdir, 1);
             }
             setenv("OPENCODE_USER_DAEMON_MODE", "1", 1);
+            setenv("OPENCODE_LAUNCH_MODE", "systemd", 1);
 
             /* Forward env vars the daemon needs from gateway's env */
             const char *fpath = getenv("OPENCODE_FRONTEND_PATH");
