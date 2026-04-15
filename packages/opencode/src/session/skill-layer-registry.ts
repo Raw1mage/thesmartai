@@ -41,9 +41,14 @@ const SessionDeletedEvent = BusEvent.define(
   }),
 )
 
-Bus.subscribe(SessionDeletedEvent, (evt) => {
-  SkillLayerRegistry.clear(evt.properties.info.id)
-})
+let _subscribed = false
+function ensureSubscribed() {
+  if (_subscribed) return
+  _subscribed = true
+  Bus.subscribe(SessionDeletedEvent, (evt) => {
+    SkillLayerRegistry.clear(evt.properties.info.id)
+  })
+}
 
 export namespace SkillLayerRegistry {
   function requireSessionRegistry(sessionID: string) {
@@ -73,6 +78,7 @@ export namespace SkillLayerRegistry {
       now?: number
     },
   ) {
+    ensureSubscribed()
     const now = input.now ?? Date.now()
     let sessionRegistry = registry.get(sessionID)
     if (!sessionRegistry) {

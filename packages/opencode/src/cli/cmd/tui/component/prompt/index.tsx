@@ -11,7 +11,7 @@ import {
   Match,
   createResource,
 } from "solid-js"
-import "opentui-spinner/solid"
+
 import { useLocal } from "@tui/context/local"
 import { useTheme } from "@tui/context/theme"
 import { EmptyBorder } from "@tui/component/border"

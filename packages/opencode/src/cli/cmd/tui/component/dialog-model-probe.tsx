@@ -1,4 +1,4 @@
-import "opentui-spinner/solid"
+
 import { TextAttributes } from "@opentui/core"
 import { useTheme } from "@tui/context/theme"
 

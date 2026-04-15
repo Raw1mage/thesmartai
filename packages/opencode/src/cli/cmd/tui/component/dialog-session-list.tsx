@@ -12,7 +12,7 @@ import { DialogSessionRename } from "./dialog-session-rename"
 import { useKV } from "../context/kv"
 import { createDebouncedSignal } from "../util/signal"
 import path from "path"
-import "opentui-spinner/solid"
+
 
 export function DialogSessionList() {
   const dialog = useDialog()
