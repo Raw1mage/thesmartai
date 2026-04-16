@@ -397,10 +397,11 @@ export const ApplyPatchTool = Tool.define("apply_patch", {
         output,
       }
     } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
       reportMetadata({
         metadata: {
           phase: "failed",
-          error: error instanceof Error ? error.message : String(error),
+          error: msg,
         },
       })
       throw error

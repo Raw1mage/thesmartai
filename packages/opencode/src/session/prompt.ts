@@ -1451,12 +1451,21 @@ export namespace SessionPrompt {
           const overflowConfig = await Config.get()
           if (overflowConfig.compaction?.sharedContext !== false) {
             const snap = await SharedContext.snapshot(sessionID)
-            if (snap) {
+            // Snapshot must fit within ~30% of the target model's context to
+            // leave room for system prompt + new conversation. Without this
+            // check, switching from a large-context model to a small one
+            // produces a snapshot that is itself bigger than the new model's
+            // context window, making conversation impossible.
+            const snapTokenEstimate = snap ? Math.ceil(snap.length / 4) : 0
+            const snapBudget = Math.floor((model.limit.context || 0) * 0.3)
+            if (snap && snapTokenEstimate <= snapBudget) {
               debugCheckpoint("prompt", "loop:compaction_snapshot_selected", {
                 sessionID,
                 step,
                 source: "shared-context",
                 snapshotChars: snap.length,
+                snapTokenEstimate,
+                snapBudget,
               })
               await SessionCompaction.compactWithSharedContext({
                 sessionID,
@@ -1465,6 +1474,16 @@ export namespace SessionPrompt {
                 auto: true,
               })
               continue
+            }
+            if (snap) {
+              debugCheckpoint("prompt", "loop:compaction_snapshot_too_large", {
+                sessionID,
+                step,
+                snapTokenEstimate,
+                snapBudget,
+                modelContext: model.limit.context,
+              })
+              // Fall through to LLM compaction which truncates properly
             }
           }
         }

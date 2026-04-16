@@ -956,7 +956,7 @@ export namespace LLM {
         if (input.lazyTools?.has(failed.toolCall.toolName)) {
           const { UnlockedTools: UnlockedToolsMod } = await import("@/session/unlocked-tools")
           UnlockedToolsMod.unlock(input.sessionID, [failed.toolCall.toolName])
-          // Add lazy tool to active tools so it can be called
+          // Add lazy tool to active tools so it can be called on NEXT attempt
           const lazyTool = input.lazyTools.get(failed.toolCall.toolName)
           if (lazyTool) {
             tools[failed.toolCall.toolName] = lazyTool
@@ -965,17 +965,18 @@ export namespace LLM {
               toolID: failed.toolCall.toolName,
             })
 
-            // Try to repair mismatched arguments using the now-known schema.
-            // LLMs calling deferred tools often guess parameter names wrong
-            // because the lazy catalog only shows summaries, not schemas.
-            const repairedInput = tryRepairToolArgs(
-              failed.toolCall.toolName,
-              failed.toolCall.input,
-              failed.inputSchema,
-            )
+            // Don't execute the LLM's first call — it was constructed from a
+            // 200-char summary without the full schema/description. Redirect
+            // to `invalid` with a short retry signal. The tool is now in the
+            // active set, so the LLM will see the full schema on its next turn
+            // and can construct a correct call.
             return {
               ...failed.toolCall,
-              ...(repairedInput !== undefined ? { input: repairedInput } : {}),
+              input: JSON.stringify({
+                tool: failed.toolCall.toolName,
+                error: `Tool "${failed.toolCall.toolName}" loaded. Retry — full schema is now available.`,
+              }),
+              toolName: "invalid",
             }
           }
         }

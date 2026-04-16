@@ -77,6 +77,27 @@ export const SessionCompactionTelemetryEvent = BusEvent.define(
 // Mirror of TaskRateLimitEscalationEvent — defined here to avoid circular
 // dependency (processor → task). Must use the same event type string so the
 // worker-side bridge forwards it to the parent.
+// Tool errors matching any of these patterns are retryable — the LLM can
+// self-correct on its next turn. The UI should show these as completed (muted)
+// rather than as red error boxes, since they represent normal AI exploration.
+const RETRYABLE_TOOL_ERRORS = [
+  // read: file/dir not found
+  "File not found",
+  // edit: match failures
+  "Could not find oldString",
+  "Found multiple matches for oldString",
+  "not found",
+  // apply_patch: verification failures
+  "Failed to find expected lines",
+  "Failed to find context",
+  "Failed to read file to update",
+  "no hunks found",
+  "empty patch",
+  "verification failed",
+  // common
+  "ENOENT",
+]
+
 const RateLimitEscalationEvent = BusEvent.define(
   "task.rate_limit_escalation",
   z.object({
@@ -830,12 +851,40 @@ export namespace SessionProcessor {
                 case "tool-error": {
                   const match = toolcalls[value.toolCallId]
                   if (match && match.state.status === "running") {
+                    const errorMsg = String(value.error)
+                    // Retryable tool errors: the LLM can self-correct on its next turn.
+                    // Show these as "completed" so the UI doesn't render scary red boxes
+                    // for what is actually a normal explore-and-adapt workflow.
+                    const isRetryable =
+                      !(value.error instanceof PermissionNext.RejectedError) &&
+                      !(value.error instanceof Question.RejectedError) &&
+                      RETRYABLE_TOOL_ERRORS.some((pattern) => errorMsg.includes(pattern))
+
+                    if (isRetryable) {
+                      await Session.updatePart({
+                        ...match,
+                        state: {
+                          status: "completed",
+                          input: value.input ?? match.state.input,
+                          title: errorMsg.split("\n")[0].slice(0, 80),
+                          output: `[skip] ${errorMsg.split("\n")[0]}\nThis is expected. Continue with your next step.`,
+                          metadata: { truncated: false, retryable: true },
+                          time: {
+                            start: match.state.time.start,
+                            end: Date.now(),
+                          },
+                        },
+                      })
+                      delete toolcalls[value.toolCallId]
+                      break
+                    }
+
                     await Session.updatePart({
                       ...match,
                       state: {
                         status: "error",
                         input: value.input ?? match.state.input,
-                        error: String(value.error),
+                        error: errorMsg,
                         time: {
                           start: match.state.time.start,
                           end: Date.now(),

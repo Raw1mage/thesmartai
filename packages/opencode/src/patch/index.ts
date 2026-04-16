@@ -343,6 +343,62 @@ export namespace Patch {
     }
   }
 
+  /**
+   * Find the line in originalLines whose trimmed content is most similar to the first old_line.
+   * Returns the best matching line number and a similarity score (0-1), or null if nothing is close.
+   */
+  function findBestApproxMatch(
+    originalLines: string[],
+    oldLines: string[],
+    startIndex: number,
+  ): { lineNum: number; score: number } | null {
+    if (oldLines.length === 0) return null
+    const needle = normalizeUnicode(oldLines[0].trim())
+    if (needle.length === 0) return null
+
+    let bestIdx = -1
+    let bestScore = 0
+
+    for (let i = startIndex; i < originalLines.length; i++) {
+      const hay = normalizeUnicode(originalLines[i].trim())
+      if (hay.length === 0) continue
+
+      // Substring containment — strong signal
+      if (hay.includes(needle) || needle.includes(hay)) {
+        const score = Math.min(hay.length, needle.length) / Math.max(hay.length, needle.length)
+        if (score > bestScore) {
+          bestScore = score
+          bestIdx = i
+        }
+        continue
+      }
+
+      // Bigram similarity for partial matches
+      const score = bigramSimilarity(hay, needle)
+      if (score > bestScore) {
+        bestScore = score
+        bestIdx = i
+      }
+    }
+
+    // Only return if similarity is meaningful (> 0.3)
+    if (bestIdx === -1 || bestScore < 0.3) return null
+    return { lineNum: bestIdx, score: bestScore }
+  }
+
+  function bigramSimilarity(a: string, b: string): number {
+    if (a.length < 2 || b.length < 2) return a === b ? 1 : 0
+    const bigramsA = new Set<string>()
+    for (let i = 0; i < a.length - 1; i++) bigramsA.add(a.slice(i, i + 2))
+    let matches = 0
+    let totalB = 0
+    for (let i = 0; i < b.length - 1; i++) {
+      totalB++
+      if (bigramsA.has(b.slice(i, i + 2))) matches++
+    }
+    return (2 * matches) / (bigramsA.size + totalB)
+  }
+
   function computeReplacements(
     originalLines: string[],
     filePath: string,
@@ -389,7 +445,17 @@ export namespace Patch {
         replacements.push([found, pattern.length, newSlice])
         lineIndex = found + pattern.length
       } else {
-        throw new Error(`Failed to find expected lines in ${filePath}:\n${chunk.old_lines.join("\n")}`)
+        // Log for server-side RCA; keep error message minimal for LLM
+        const hint = findBestApproxMatch(originalLines, chunk.old_lines, lineIndex)
+        log.warn("patch match failed", {
+          file: filePath,
+          searchFrom: lineIndex,
+          oldLinesCount: chunk.old_lines.length,
+          firstOldLine: chunk.old_lines[0]?.slice(0, 120),
+          bestMatchLine: hint?.lineNum,
+          bestMatchScore: hint?.score,
+        })
+        throw new Error(`Failed to find expected lines in ${filePath}:\n${chunk.old_lines[0]}`)
       }
     }
 
