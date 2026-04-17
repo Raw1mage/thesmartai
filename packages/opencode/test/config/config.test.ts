@@ -193,6 +193,11 @@ test("handles file inclusion substitution", async () => {
   })
 })
 
+async function clearLkgSnapshot() {
+  const snapshotPath = path.join(Global.Path.state, "config-lkg.json")
+  await fs.rm(snapshotPath, { force: true })
+}
+
 test("validates config schema and throws on invalid fields", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -202,10 +207,11 @@ test("validates config schema and throws on invalid fields", async () => {
       })
     },
   })
+  await clearLkgSnapshot()
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      // Strict schema should throw an error for invalid fields
+      // Strict schema should throw an error for invalid fields when no lkg snapshot is available
       await expect(Config.get()).rejects.toThrow()
     },
   })
@@ -217,10 +223,88 @@ test("throws error for invalid JSON", async () => {
       await Bun.write(path.join(dir, "opencode.json"), "{ invalid json }")
     },
   })
+  await clearLkgSnapshot()
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       await expect(Config.get()).rejects.toThrow()
+    },
+  })
+})
+
+test("JsonError payload is structured and does not dump the full config file", async () => {
+  // Lines 1-3 are the baseline with a sensitive value that must never leak;
+  // line 5 contains the trailing garbage that triggers the parse error.
+  const source =
+    `{\n` +
+    `  "$schema": "https://opencode.ai/config.json",\n` +
+    `  "username": "SECRET_ON_UNRELATED_LINE"\n` +
+    `}\n` +
+    `stray-trailing-garbage`
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(path.join(dir, "opencode.json"), source)
+    },
+  })
+  await clearLkgSnapshot()
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const err = await Config.get()
+        .then(() => undefined)
+        .catch((e) => e)
+      expect(err).toBeDefined()
+      expect(Config.JsonError.isInstance(err)).toBe(true)
+      const data = (err as any).data
+      expect(typeof data.line).toBe("number")
+      expect(typeof data.column).toBe("number")
+      expect(typeof data.code).toBe("string")
+      // message is only a short summary ("code at line X, column Y"); never the raw file
+      expect((data.message ?? "").length).toBeLessThan(200)
+      // Unrelated lines (like the username on line 3) must never appear in the
+      // thrown payload — only the single problem line is surfaced.
+      const payload = JSON.stringify((err as any).toObject())
+      expect(payload).not.toContain("SECRET_ON_UNRELATED_LINE")
+      expect(payload.length).toBeLessThan(1024)
+    },
+  })
+})
+
+test("LKG snapshot lets Config.get() survive a corrupted opencode.json", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        username: "lkg-user",
+      })
+    },
+  })
+  await clearLkgSnapshot()
+
+  // First load primes the lkg snapshot.
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect(config.username).toBe("lkg-user")
+    },
+  })
+
+  // Give the fire-and-forget lkg write a moment to land on disk.
+  for (let i = 0; i < 20; i++) {
+    if (await Bun.file(path.join(Global.Path.state, "config-lkg.json")).exists()) break
+    await Bun.sleep(25)
+  }
+  const lkgExists = await Bun.file(path.join(Global.Path.state, "config-lkg.json")).exists()
+  expect(lkgExists).toBe(true)
+
+  // Corrupt the config. Next Config.get() must survive via lkg.
+  await Bun.write(path.join(tmp.path, "opencode.json"), "{ broken json ")
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect(config.username).toBe("lkg-user")
     },
   })
 })

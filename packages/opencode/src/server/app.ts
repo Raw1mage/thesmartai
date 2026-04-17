@@ -32,6 +32,7 @@ import { ExperimentalRoutes } from "./routes/experimental"
 import { ProviderRoutes } from "./routes/provider"
 import { InstanceBootstrap } from "../project/bootstrap"
 import { Storage } from "../storage/storage"
+import { Config } from "@/config/config"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 import { HTTPException } from "hono/http-exception"
 import { errors } from "./error"
@@ -85,6 +86,13 @@ export function createApp(app: Hono): Hono {
       if (err instanceof Storage.NotFoundError) status = 404
       else if (err instanceof Provider.ModelNotFoundError) status = 400
       else if (err.name.startsWith("Worktree")) status = 400
+      // Config parse / schema errors: the daemon itself is up but the operator's
+      // config is temporarily unusable. 503 conveys "service unavailable, try again
+      // after the config is fixed"; the body carries only structured fields so raw
+      // config text never leaks to the UI.
+      else if (Config.JsonError.isInstance(err)) status = 503
+      else if (Config.InvalidError.isInstance(err)) status = 503
+      else if (Config.ConfigDirectoryTypoError.isInstance(err)) status = 503
       else status = 500
       return c.json(err.toObject(), { status })
     }

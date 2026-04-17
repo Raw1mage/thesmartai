@@ -7,24 +7,68 @@ export type ConfigInvalidError = {
   }
 }
 
+export type ConfigJsonError = {
+  name: "ConfigJsonError"
+  data: {
+    path?: string
+    message?: string
+    line?: number
+    column?: number
+    code?: string
+    problemLine?: string
+    hint?: string
+  }
+}
+
+// Guard against older daemon payloads that may still carry a large `message`
+// blob (pre-2026-04-17 behaviour). Truncating keeps toast/UI sane even if the
+// daemon has not been upgraded yet.
+const MAX_INLINE_TEXT = 500
+
+function truncate(text: string | undefined | null): string {
+  if (!text) return ""
+  const trimmed = text.trim()
+  if (trimmed.length <= MAX_INLINE_TEXT) return trimmed
+  return `${trimmed.slice(0, MAX_INLINE_TEXT)}\n[truncated]`
+}
+
 function isConfigInvalidErrorLike(error: unknown): error is ConfigInvalidError {
   if (typeof error !== "object" || error === null) return false
   const obj = error as Record<string, unknown>
   return obj.name === "ConfigInvalidError" && typeof obj.data === "object" && obj.data !== null
 }
 
+function isConfigJsonErrorLike(error: unknown): error is ConfigJsonError {
+  if (typeof error !== "object" || error === null) return false
+  const obj = error as Record<string, unknown>
+  return obj.name === "ConfigJsonError" && typeof obj.data === "object" && obj.data !== null
+}
+
 export function formatReadableConfigInvalidError(error: ConfigInvalidError) {
   const head = "Invalid configuration"
   const file = error.data.path && error.data.path !== "config" ? error.data.path : ""
-  const detail = error.data.message?.trim() ?? ""
+  const detail = truncate(error.data.message)
   const issues = (error.data.issues ?? []).map((issue) => `${issue.path.join(".")}: ${issue.message}`)
   if (issues.length) return [head, file, ...issues].filter(Boolean).join("\n")
   return [head, file, detail].filter(Boolean).join("\n")
 }
 
+export function formatReadableConfigJsonError(error: ConfigJsonError) {
+  const head = "Config file is not valid JSON(C)"
+  const file = error.data.path ?? ""
+  const hint = error.data.hint ?? error.data.message ?? ""
+  const location =
+    typeof error.data.line === "number" && typeof error.data.column === "number"
+      ? `Line ${error.data.line}, column ${error.data.column}`
+      : ""
+  const sample = error.data.problemLine ? `    ${error.data.problemLine.slice(0, 200)}` : ""
+  return [head, file, location, truncate(hint), sample].filter(Boolean).join("\n")
+}
+
 export function formatServerError(error: unknown) {
+  if (isConfigJsonErrorLike(error)) return formatReadableConfigJsonError(error)
   if (isConfigInvalidErrorLike(error)) return formatReadableConfigInvalidError(error)
-  if (error instanceof Error && error.message) return error.message
-  if (typeof error === "string" && error) return error
+  if (error instanceof Error && error.message) return truncate(error.message)
+  if (typeof error === "string" && error) return truncate(error)
   return "Unknown error"
 }
