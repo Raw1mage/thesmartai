@@ -169,6 +169,8 @@ const fallbackEntries: TemplateManifestEntry[] = [
   { path: ".gitignore", target: "data" },
   { path: "AGENTS.md", target: "config" },
   { path: "opencode.json", target: "config" },
+  { path: "providers.json", target: "config" },
+  { path: "mcp.json", target: "config" },
   { path: "CONFIG-README.md", target: "config" },
 ]
 

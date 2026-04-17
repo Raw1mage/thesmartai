@@ -223,7 +223,85 @@ export namespace Config {
     }
   }
 
+  const LKG_FILE = "config-lkg.json"
+
+  function lkgPath() {
+    return path.join(Global.Path.state, LKG_FILE)
+  }
+
+  type LkgSnapshot = {
+    writtenAt: number
+    directories: string[]
+    config: Info
+  }
+
+  async function readLkgSnapshot(): Promise<LkgSnapshot | undefined> {
+    try {
+      const raw = await Bun.file(lkgPath()).text()
+      const parsed = JSON.parse(raw) as LkgSnapshot
+      if (!parsed || typeof parsed !== "object" || !parsed.config) return
+      return parsed
+    } catch (err: any) {
+      if (err?.code === "ENOENT") return
+      log.warn("failed to read last-known-good config", { path: lkgPath(), error: err?.message })
+      return
+    }
+  }
+
+  async function writeLkgSnapshot(snapshot: LkgSnapshot): Promise<void> {
+    const target = lkgPath()
+    const tmp = `${target}.${process.pid}.tmp`
+    try {
+      await fs.mkdir(path.dirname(target), { recursive: true })
+      await Bun.write(tmp, JSON.stringify(snapshot))
+      await fs.rename(tmp, target)
+    } catch (err: any) {
+      log.warn("failed to write last-known-good config", { path: target, error: err?.message })
+      await fs.rm(tmp, { force: true }).catch(() => {})
+    }
+  }
+
+  function isConfigParseError(err: unknown): boolean {
+    return JsonError.isInstance(err) || InvalidError.isInstance(err) || ConfigDirectoryTypoError.isInstance(err)
+  }
+
   async function createState() {
+    try {
+      const result = await createStateInner()
+      // Fire-and-forget lkg write on success so future parse failures can fall back.
+      // AGENTS.md rule #1: any fallback path must log; the read path below logs explicitly.
+      void writeLkgSnapshot({
+        writtenAt: Date.now(),
+        directories: result.directories,
+        config: result.config,
+      })
+      return result
+    } catch (err) {
+      if (!isConfigParseError(err)) throw err
+      const snapshot = await readLkgSnapshot()
+      if (!snapshot) {
+        log.warn("config parse failed and no last-known-good snapshot available; propagating error", {
+          error: (err as any)?.data ?? String(err),
+        })
+        throw err
+      }
+      const errData = (err as any)?.data ?? {}
+      log.warn("config parse failed — serving last-known-good snapshot", {
+        failedPath: errData.path,
+        line: errData.line,
+        hint: errData.hint,
+        lkgWrittenAt: new Date(snapshot.writtenAt).toISOString(),
+      })
+      return {
+        config: snapshot.config,
+        directories: snapshot.directories,
+        deps: [] as Promise<void>[],
+        configStale: true,
+      }
+    }
+  }
+
+  async function createStateInner() {
     const auth = await Auth.all()
 
     // Load remote/well-known config first as the base layer (lowest precedence)
@@ -279,6 +357,18 @@ export namespace Config {
           result = mergeConfigConcatArrays(result, await loadFile(resolved))
         }
       }
+      // @plans/config-restructure Phase 3: project-level split files load too,
+      // but with section-level isolation so a broken sub-file does not abort
+      // daemon boot.
+      for (const [subFile, section] of [
+        ["providers.json", "providers"],
+        ["mcp.json", "mcp"],
+      ] as const) {
+        const found = await Filesystem.findUp(subFile, Instance.directory, projectConfigStop)
+        for (const resolved of found.toReversed()) {
+          result = mergeConfigConcatArrays(result, await loadSectionFile(resolved, section))
+        }
+      }
     }
 
     result.agent = result.agent || {}
@@ -315,6 +405,22 @@ export namespace Config {
           log.debug(`loading config from ${path.join(dir, file)}`)
           result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
           // to satisfy the type checker
+          result.agent ??= {}
+          result.mode ??= {}
+          result.plugin ??= []
+        }
+        // @plans/config-restructure Phase 3: opencode.json is for boot-critical
+        // low-frequency keys ($schema, plugin, permissionMode). Providers and
+        // MCP live in their own files; a parse failure in either only skips
+        // that section (see loadSectionFile). Either file is optional — the
+        // legacy all-in-one opencode.json format still works unchanged.
+        for (const [subFile, section] of [
+          ["providers.json", "providers"],
+          ["mcp.json", "mcp"],
+        ] as const) {
+          const subPath = path.join(dir, subFile)
+          const subData = await loadSectionFile(subPath, section)
+          result = mergeConfigConcatArrays(result, subData)
           result.agent ??= {}
           result.mode ??= {}
           result.plugin ??= []
@@ -420,8 +526,8 @@ export namespace Config {
     }
   }
 
-  let stateGetter: (() => Promise<{ config: Info; directories: string[]; deps: Promise<void>[] }>) | undefined
-  let fallbackState: Promise<{ config: Info; directories: string[]; deps: Promise<void>[] }> | undefined
+  let stateGetter: (() => Promise<{ config: Info; directories: string[]; deps: Promise<void>[]; configStale?: boolean }>) | undefined
+  let fallbackState: Promise<{ config: Info; directories: string[]; deps: Promise<void>[]; configStale?: boolean }> | undefined
 
   export function state() {
     if (typeof Instance.state === "function") {
@@ -1580,6 +1686,32 @@ export namespace Config {
     return load(text, filepath)
   }
 
+  /**
+   * @plans/config-restructure Phase 3: section-isolated loader for
+   * sub-config files (providers.json, mcp.json). Unlike the main
+   * opencode.json, a parse/schema failure in a sub-file does NOT abort
+   * daemon boot — we log.warn and return empty so the remaining sections
+   * still load. AGENTS.md rule #1: the log line identifies which section
+   * was skipped and why.
+   */
+  async function loadSectionFile(filepath: string, section: string): Promise<Info> {
+    try {
+      return await loadFile(filepath)
+    } catch (err) {
+      if (JsonError.isInstance(err) || InvalidError.isInstance(err)) {
+        const data = (err as any).data ?? {}
+        log.warn(`${section} section failed to parse — skipping this section`, {
+          path: data.path ?? filepath,
+          line: data.line,
+          column: data.column,
+          hint: data.hint,
+        })
+        return {}
+      }
+      throw err
+    }
+  }
+
   async function load(text: string, configFilepath: string) {
     const original = text
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
@@ -1626,25 +1758,9 @@ export namespace Config {
     const errors: JsoncParseError[] = []
     const data = parseJsonc(text, errors, { allowTrailingComma: true })
     if (errors.length) {
-      const lines = text.split("\n")
-      const errorDetails = errors
-        .map((e) => {
-          const beforeOffset = text.substring(0, e.offset).split("\n")
-          const line = beforeOffset.length
-          const column = beforeOffset[beforeOffset.length - 1].length + 1
-          const problemLine = lines[line - 1]
-
-          const error = `${printParseErrorCode(e.error)} at line ${line}, column ${column}`
-          if (!problemLine) return error
-
-          return `${error}\n   Line ${line}: ${problemLine}\n${"".padStart(column + 9)}^`
-        })
-        .join("\n")
-
-      throw new JsonError({
-        path: configFilepath,
-        message: `\n--- JSONC Input ---\n${text}\n--- Errors ---\n${errorDetails}\n--- End ---`,
-      })
+      const { payload, debugSnippet, extraCount } = buildJsoncParsePayload(text, configFilepath, errors)
+      log.error("config parse failed", { path: configFilepath, snippet: debugSnippet, extra: extraCount })
+      throw new JsonError(payload)
     }
 
     const parsed = Info.safeParse(data)
@@ -1687,8 +1803,49 @@ export namespace Config {
     z.object({
       path: z.string(),
       message: z.string().optional(),
+      line: z.number().optional(),
+      column: z.number().optional(),
+      code: z.string().optional(),
+      problemLine: z.string().optional(),
+      hint: z.string().optional(),
     }),
   )
+
+  function buildJsoncParsePayload(text: string, filepath: string, errors: JsoncParseError[]) {
+    const lines = text.split("\n")
+    const first = errors[0]
+    const beforeOffset = text.substring(0, first.offset).split("\n")
+    const line = beforeOffset.length
+    const column = beforeOffset[beforeOffset.length - 1].length + 1
+    const code = printParseErrorCode(first.error)
+    const problemLine = (lines[line - 1] ?? "").slice(0, 200)
+    const hint = `${code} at line ${line}, column ${column}`
+
+    const ctxStart = Math.max(0, line - 4)
+    const ctxEnd = Math.min(lines.length, line + 3)
+    const snippet = lines
+      .slice(ctxStart, ctxEnd)
+      .map((l, i) => {
+        const n = ctxStart + i + 1
+        const marker = n === line ? ">" : " "
+        return `${marker} ${String(n).padStart(4)}: ${l.slice(0, 200)}`
+      })
+      .join("\n")
+
+    return {
+      payload: {
+        path: filepath,
+        message: hint,
+        line,
+        column,
+        code,
+        problemLine,
+        hint,
+      },
+      debugSnippet: `${hint}\n${snippet}`,
+      extraCount: errors.length - 1,
+    }
+  }
 
   export const ConfigDirectoryTypoError = NamedError.create(
     "ConfigDirectoryTypoError",
@@ -1770,25 +1927,9 @@ export namespace Config {
     const errors: JsoncParseError[] = []
     const data = parseJsonc(text, errors, { allowTrailingComma: true })
     if (errors.length) {
-      const lines = text.split("\n")
-      const errorDetails = errors
-        .map((e) => {
-          const beforeOffset = text.substring(0, e.offset).split("\n")
-          const line = beforeOffset.length
-          const column = beforeOffset[beforeOffset.length - 1].length + 1
-          const problemLine = lines[line - 1]
-
-          const error = `${printParseErrorCode(e.error)} at line ${line}, column ${column}`
-          if (!problemLine) return error
-
-          return `${error}\n   Line ${line}: ${problemLine}\n${"".padStart(column + 9)}^`
-        })
-        .join("\n")
-
-      throw new JsonError({
-        path: filepath,
-        message: `\n--- JSONC Input ---\n${text}\n--- Errors ---\n${errorDetails}\n--- End ---`,
-      })
+      const { payload, debugSnippet, extraCount } = buildJsoncParsePayload(text, filepath, errors)
+      log.error("config parse failed", { path: filepath, snippet: debugSnippet, extra: extraCount })
+      throw new JsonError(payload)
     }
 
     const parsed = Info.safeParse(data)
