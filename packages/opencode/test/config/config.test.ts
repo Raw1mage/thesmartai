@@ -1990,3 +1990,195 @@ describe("OPENCODE_CONFIG_CONTENT token substitution", () => {
     }
   })
 })
+
+// @plans/config-restructure Phase 3: split files (providers.json / mcp.json)
+
+// Test provider id that never appears in templates/opencode.json so sub-file
+// test expectations are not clobbered by the global template install step.
+const TEST_PROVIDER = "phase3-isolated-provider"
+
+test("split config — providers.json contributes provider section", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({ $schema: "https://opencode.ai/config.json", permissionMode: "auto" }),
+      )
+      await Bun.write(
+        path.join(dir, "providers.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          provider: { [TEST_PROVIDER]: { options: { apiKey: "from-providers-file" } } },
+          disabled_providers: ["bedrock-phase3-test-only"],
+        }),
+      )
+    },
+  })
+  await clearLkgSnapshot()
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect((config.provider as any)?.[TEST_PROVIDER]?.options?.apiKey).toBe("from-providers-file")
+      expect(config.disabled_providers).toContain("bedrock-phase3-test-only")
+      expect(config.permissionMode).toBe("auto")
+    },
+  })
+})
+
+test("split config — mcp.json contributes mcp section", async () => {
+  const MCP_KEY = "phase3-test-tool"
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({ $schema: "https://opencode.ai/config.json" }),
+      )
+      await Bun.write(
+        path.join(dir, "mcp.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          mcp: { [MCP_KEY]: { type: "local", command: ["bun", "x"], enabled: false } },
+        }),
+      )
+    },
+  })
+  await clearLkgSnapshot()
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect((config.mcp as any)?.[MCP_KEY]?.type).toBe("local")
+    },
+  })
+})
+
+test("split config — broken providers.json is section-isolated and does not abort boot", async () => {
+  const MCP_KEY = "phase3-still-works"
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          permissionMode: "auto",
+        }),
+      )
+      await Bun.write(path.join(dir, "providers.json"), "{ broken ")
+      await Bun.write(
+        path.join(dir, "mcp.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          mcp: { [MCP_KEY]: { type: "local", command: ["x"], enabled: false } },
+        }),
+      )
+    },
+  })
+  await clearLkgSnapshot()
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      // Broken providers.json is skipped; the rest must still load.
+      const config = await Config.get()
+      expect(config.permissionMode).toBe("auto")
+      expect((config.mcp as any)?.[MCP_KEY]?.type).toBe("local")
+    },
+  })
+})
+
+test("split config — broken mcp.json is section-isolated; providers still load", async () => {
+  const OPENAI_MARKER_DISABLED = "phase3-broken-mcp-override"
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({ $schema: "https://opencode.ai/config.json" }),
+      )
+      await Bun.write(
+        path.join(dir, "providers.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+          provider: { [TEST_PROVIDER]: { options: { apiKey: "still-loaded" } } },
+          disabled_providers: [OPENAI_MARKER_DISABLED],
+        }),
+      )
+      await Bun.write(path.join(dir, "mcp.json"), "not json at all")
+    },
+  })
+  await clearLkgSnapshot()
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect((config.provider as any)?.[TEST_PROVIDER]?.options?.apiKey).toBe("still-loaded")
+      expect(config.disabled_providers).toContain(OPENAI_MARKER_DISABLED)
+    },
+  })
+})
+
+test("split config — three-file merge carries sub-file keys that legacy did too", async () => {
+  const MCP_KEY = "phase3-equiv-alpha"
+  const legacyContent = {
+    $schema: "https://opencode.ai/config.json",
+    permissionMode: "auto" as const,
+    provider: { [TEST_PROVIDER]: { options: { apiKey: "equiv-key" } } },
+    disabled_providers: ["bedrock-phase3-equiv"],
+    mcp: { [MCP_KEY]: { type: "local", command: ["bun", "x"], enabled: false } },
+  }
+
+  // Legacy single-file reference
+  await using tmpLegacy = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(path.join(dir, "opencode.json"), JSON.stringify(legacyContent))
+    },
+  })
+  await clearLkgSnapshot()
+  const legacySummary = await Instance.provide({
+    directory: tmpLegacy.path,
+    fn: async () => {
+      const c = await Config.get()
+      return {
+        permissionMode: c.permissionMode,
+        testProviderApiKey: (c.provider as any)?.[TEST_PROVIDER]?.options?.apiKey,
+        disabled: c.disabled_providers,
+        mcpType: (c.mcp as any)?.[MCP_KEY]?.type,
+      }
+    },
+  })
+
+  await using tmpSplit = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({ $schema: legacyContent.$schema, permissionMode: legacyContent.permissionMode }),
+      )
+      await Bun.write(
+        path.join(dir, "providers.json"),
+        JSON.stringify({
+          $schema: legacyContent.$schema,
+          provider: legacyContent.provider,
+          disabled_providers: legacyContent.disabled_providers,
+        }),
+      )
+      await Bun.write(
+        path.join(dir, "mcp.json"),
+        JSON.stringify({ $schema: legacyContent.$schema, mcp: legacyContent.mcp }),
+      )
+    },
+  })
+  await clearLkgSnapshot()
+  const splitSummary = await Instance.provide({
+    directory: tmpSplit.path,
+    fn: async () => {
+      const c = await Config.get()
+      return {
+        permissionMode: c.permissionMode,
+        testProviderApiKey: (c.provider as any)?.[TEST_PROVIDER]?.options?.apiKey,
+        disabled: c.disabled_providers,
+        mcpType: (c.mcp as any)?.[MCP_KEY]?.type,
+      }
+    },
+  })
+
+  expect(splitSummary).toEqual(legacySummary)
+})

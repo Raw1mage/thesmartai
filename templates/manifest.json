@@ -44,6 +44,16 @@
       "target": "config"
     },
     {
+      "path": "providers.json",
+      "description": "Phase 3 拆檔：provider 覆寫檔。單檔 parse 失敗只影響 provider section，daemon 仍可啟動",
+      "target": "config"
+    },
+    {
+      "path": "mcp.json",
+      "description": "Phase 3 拆檔：MCP server 定義檔。單檔 parse 失敗只停用 MCP subsystem，主 UI 仍活",
+      "target": "config"
+    },
+    {
       "path": "CONFIG-README.md",
       "description": "內含設定檔範例與說明",
       "target": "config"

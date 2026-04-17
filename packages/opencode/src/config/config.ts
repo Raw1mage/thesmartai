@@ -357,6 +357,18 @@ export namespace Config {
           result = mergeConfigConcatArrays(result, await loadFile(resolved))
         }
       }
+      // @plans/config-restructure Phase 3: project-level split files load too,
+      // but with section-level isolation so a broken sub-file does not abort
+      // daemon boot.
+      for (const [subFile, section] of [
+        ["providers.json", "providers"],
+        ["mcp.json", "mcp"],
+      ] as const) {
+        const found = await Filesystem.findUp(subFile, Instance.directory, projectConfigStop)
+        for (const resolved of found.toReversed()) {
+          result = mergeConfigConcatArrays(result, await loadSectionFile(resolved, section))
+        }
+      }
     }
 
     result.agent = result.agent || {}
@@ -393,6 +405,22 @@ export namespace Config {
           log.debug(`loading config from ${path.join(dir, file)}`)
           result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
           // to satisfy the type checker
+          result.agent ??= {}
+          result.mode ??= {}
+          result.plugin ??= []
+        }
+        // @plans/config-restructure Phase 3: opencode.json is for boot-critical
+        // low-frequency keys ($schema, plugin, permissionMode). Providers and
+        // MCP live in their own files; a parse failure in either only skips
+        // that section (see loadSectionFile). Either file is optional — the
+        // legacy all-in-one opencode.json format still works unchanged.
+        for (const [subFile, section] of [
+          ["providers.json", "providers"],
+          ["mcp.json", "mcp"],
+        ] as const) {
+          const subPath = path.join(dir, subFile)
+          const subData = await loadSectionFile(subPath, section)
+          result = mergeConfigConcatArrays(result, subData)
           result.agent ??= {}
           result.mode ??= {}
           result.plugin ??= []
@@ -1656,6 +1684,32 @@ export namespace Config {
     })
     if (!text) return {}
     return load(text, filepath)
+  }
+
+  /**
+   * @plans/config-restructure Phase 3: section-isolated loader for
+   * sub-config files (providers.json, mcp.json). Unlike the main
+   * opencode.json, a parse/schema failure in a sub-file does NOT abort
+   * daemon boot — we log.warn and return empty so the remaining sections
+   * still load. AGENTS.md rule #1: the log line identifies which section
+   * was skipped and why.
+   */
+  async function loadSectionFile(filepath: string, section: string): Promise<Info> {
+    try {
+      return await loadFile(filepath)
+    } catch (err) {
+      if (JsonError.isInstance(err) || InvalidError.isInstance(err)) {
+        const data = (err as any).data ?? {}
+        log.warn(`${section} section failed to parse — skipping this section`, {
+          path: data.path ?? filepath,
+          line: data.line,
+          column: data.column,
+          hint: data.hint,
+        })
+        return {}
+      }
+      throw err
+    }
   }
 
   async function load(text: string, configFilepath: string) {
