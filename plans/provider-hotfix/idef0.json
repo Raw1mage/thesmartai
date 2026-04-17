@@ -1,0 +1,178 @@
+{
+  "diagram_title": "Provider Hotfix — Functional Decomposition",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Revoke Codex OAuth Token On Logout",
+      "description": "Before local account teardown, POST refresh token to upstream revoke endpoint; fail-closed on any error so local state never detaches from upstream",
+      "decomposition": null
+    },
+    {
+      "id": "A2",
+      "title": "Emit Codex Context Window Headers",
+      "description": "Attach x-codex-window-id (per-session UUID), x-codex-parent-thread-id (from Session.parentID), and x-openai-subagent (from agent lineage) on every Responses API request",
+      "decomposition": null
+    },
+    {
+      "id": "A3",
+      "title": "Surface Anthropic xhigh Effort For Opus 4.7",
+      "description": "Extend anthropic effort-variant transform with xhigh budget for Opus 4.7+ models, gated by model id or release_date",
+      "decomposition": null
+    },
+    {
+      "id": "A4",
+      "title": "Narrow disabled_providers To Auto Only",
+      "description": "Keep providers[id] populated when id is disabled; mark as auto-hidden; let explicit getModel resolve; auto pickers filter via the flag",
+      "decomposition": null
+    },
+    {
+      "id": "A5",
+      "title": "Bump Refs Pointers And Record Incident",
+      "description": "Advance refs/claude-code + refs/codex submodule pointers to the analysis HEADs and write the docs/events entry describing all phases",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    {
+      "id": "AR1",
+      "source": "EXTERNAL",
+      "target": "A1:input",
+      "label": "Account Remove Request",
+      "type": "input"
+    },
+    {
+      "id": "AR2",
+      "source": "EXTERNAL",
+      "target": "A1:control",
+      "label": "AGENTS.md Fail Closed Rule",
+      "type": "control"
+    },
+    {
+      "id": "AR3",
+      "source": "A1:output",
+      "target": "EXTERNAL",
+      "label": "Revoked Account Or Error",
+      "type": "output"
+    },
+    {
+      "id": "AR4",
+      "source": "EXTERNAL",
+      "target": "A1:mechanism",
+      "label": "CodexAuth Revoke Helper",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR5",
+      "source": "EXTERNAL",
+      "target": "A2:input",
+      "label": "Outbound Responses Request",
+      "type": "input"
+    },
+    {
+      "id": "AR6",
+      "source": "EXTERNAL",
+      "target": "A2:control",
+      "label": "Upstream 2026-04 Baseline",
+      "type": "control"
+    },
+    {
+      "id": "AR7",
+      "source": "A2:output",
+      "target": "EXTERNAL",
+      "label": "Headered Request To Codex API",
+      "type": "output"
+    },
+    {
+      "id": "AR8",
+      "source": "EXTERNAL",
+      "target": "A2:mechanism",
+      "label": "Openai Quota Fetch Interceptor",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR9",
+      "source": "EXTERNAL",
+      "target": "A3:input",
+      "label": "Anthropic Model Metadata",
+      "type": "input"
+    },
+    {
+      "id": "AR10",
+      "source": "EXTERNAL",
+      "target": "A3:control",
+      "label": "Opus 4.7 Launch Gate",
+      "type": "control"
+    },
+    {
+      "id": "AR11",
+      "source": "A3:output",
+      "target": "EXTERNAL",
+      "label": "Variant Map With xhigh",
+      "type": "output"
+    },
+    {
+      "id": "AR12",
+      "source": "EXTERNAL",
+      "target": "A3:mechanism",
+      "label": "Transform Anthropic Branch",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR13",
+      "source": "EXTERNAL",
+      "target": "A4:input",
+      "label": "Config disabled_providers List",
+      "type": "input"
+    },
+    {
+      "id": "AR14",
+      "source": "EXTERNAL",
+      "target": "A4:control",
+      "label": "Auto vs Explicit Gate Policy",
+      "type": "control"
+    },
+    {
+      "id": "AR15",
+      "source": "A4:output",
+      "target": "EXTERNAL",
+      "label": "Provider Universe With Auto Hidden Flag",
+      "type": "output"
+    },
+    {
+      "id": "AR16",
+      "source": "EXTERNAL",
+      "target": "A4:mechanism",
+      "label": "Provider Post Processing Loop",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR17",
+      "source": "EXTERNAL",
+      "target": "A5:input",
+      "label": "Analysis Baseline SHAs",
+      "type": "input"
+    },
+    {
+      "id": "AR18",
+      "source": "EXTERNAL",
+      "target": "A5:control",
+      "label": "Release Checklist",
+      "type": "control"
+    },
+    {
+      "id": "AR19",
+      "source": "A5:output",
+      "target": "EXTERNAL",
+      "label": "Super Repo Commit And Event Record",
+      "type": "output"
+    },
+    {
+      "id": "AR20",
+      "source": "EXTERNAL",
+      "target": "A5:mechanism",
+      "label": "Git Submodule Bump",
+      "type": "mechanism"
+    }
+  ]
+}

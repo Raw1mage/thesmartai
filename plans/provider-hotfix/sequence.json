@@ -1,0 +1,277 @@
+[
+  {
+    "diagram_title": "Codex Logout With Upstream Revoke",
+    "scenario": "Operator triggers Account.remove for a codex-subscription account; daemon revokes upstream before clearing local state; fail-closed on error",
+    "moduleRef": "A1",
+    "participants": [
+      {
+        "id": "P1",
+        "name": "Operator",
+        "type": "actor",
+        "componentRef": "SYS1"
+      },
+      {
+        "id": "P2",
+        "name": "Account.remove",
+        "type": "component",
+        "componentRef": "C2"
+      },
+      {
+        "id": "P3",
+        "name": "CodexAuth.logout",
+        "type": "component",
+        "componentRef": "C1"
+      },
+      {
+        "id": "P4",
+        "name": "OpenAI OAuth Edge",
+        "type": "system",
+        "componentRef": "SYS2"
+      }
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "P1",
+        "to": "P2",
+        "label": "remove(codex, accountId)",
+        "type": "sync",
+        "order": 1
+      },
+      {
+        "id": "MSG2",
+        "from": "P2",
+        "to": "P3",
+        "label": "logout(accountId)",
+        "type": "sync",
+        "order": 2
+      },
+      {
+        "id": "MSG3",
+        "from": "P3",
+        "to": "P4",
+        "label": "POST /oauth/revoke token_type_hint=refresh_token",
+        "type": "sync",
+        "order": 3
+      },
+      {
+        "id": "MSG4",
+        "from": "P4",
+        "to": "P3",
+        "label": "2xx OR non-2xx",
+        "type": "return",
+        "order": 4
+      },
+      {
+        "id": "MSG5",
+        "from": "P3",
+        "to": "P2",
+        "label": "resolve OR throw RevokeError",
+        "type": "return",
+        "order": 5
+      },
+      {
+        "id": "MSG6",
+        "from": "P2",
+        "to": "P2",
+        "label": "clear local entry IF resolved else preserve",
+        "type": "sync",
+        "order": 6
+      },
+      {
+        "id": "MSG7",
+        "from": "P2",
+        "to": "P1",
+        "label": "success OR surfaced error",
+        "type": "return",
+        "order": 7
+      }
+    ],
+    "fragments": [
+      {
+        "id": "FRAG1",
+        "type": "alt",
+        "label": "revoke_ok vs revoke_failed (fail-closed)",
+        "messageRefs": ["MSG4", "MSG5", "MSG6"]
+      }
+    ]
+  },
+  {
+    "diagram_title": "Codex LLM Request With Context Window Headers",
+    "scenario": "Session sends /responses request; fetch interceptor injects x-codex-window-id, x-codex-parent-thread-id, x-openai-subagent",
+    "moduleRef": "A2",
+    "participants": [
+      {
+        "id": "P1",
+        "name": "LLM.stream",
+        "type": "component",
+        "componentRef": "CT2"
+      },
+      {
+        "id": "P2",
+        "name": "FetchInterceptor",
+        "type": "component",
+        "componentRef": "C3"
+      },
+      {
+        "id": "P3",
+        "name": "SessionWindowIdRegistry",
+        "type": "component",
+        "componentRef": "C4"
+      },
+      {
+        "id": "P4",
+        "name": "Codex Responses API",
+        "type": "system",
+        "componentRef": "SYS3"
+      }
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "P1",
+        "to": "P2",
+        "label": "prepare request for sessionID",
+        "type": "sync",
+        "order": 1
+      },
+      {
+        "id": "MSG2",
+        "from": "P2",
+        "to": "P3",
+        "label": "getOrCreateWindowId(sessionID)",
+        "type": "sync",
+        "order": 2
+      },
+      {
+        "id": "MSG3",
+        "from": "P3",
+        "to": "P2",
+        "label": "UUID v4 cached per session",
+        "type": "return",
+        "order": 3
+      },
+      {
+        "id": "MSG4",
+        "from": "P2",
+        "to": "P2",
+        "label": "attach ChatGPT-Account-Id + x-codex-window-id + x-codex-parent-thread-id + x-openai-subagent",
+        "type": "sync",
+        "order": 4
+      },
+      {
+        "id": "MSG5",
+        "from": "P2",
+        "to": "P4",
+        "label": "POST /responses with full header set",
+        "type": "sync",
+        "order": 5
+      },
+      {
+        "id": "MSG6",
+        "from": "P4",
+        "to": "P1",
+        "label": "SSE response stream",
+        "type": "return",
+        "order": 6
+      }
+    ],
+    "fragments": [
+      {
+        "id": "FRAG1",
+        "type": "opt",
+        "label": "parent-thread-id present only for subagent sessions",
+        "messageRefs": ["MSG4"]
+      }
+    ]
+  },
+  {
+    "diagram_title": "Explicit Provider Selection Bypasses disabled_providers",
+    "scenario": "Operator has openai in disabled_providers but explicitly picks openai/gpt-5.4-mini; daemon resolves despite the auto-gate",
+    "moduleRef": "A4",
+    "participants": [
+      {
+        "id": "P1",
+        "name": "Operator TUI",
+        "type": "actor",
+        "componentRef": "SYS1"
+      },
+      {
+        "id": "P2",
+        "name": "Provider.getModel",
+        "type": "component",
+        "componentRef": "CT2"
+      },
+      {
+        "id": "P3",
+        "name": "PostProcessingAutoHide",
+        "type": "component",
+        "componentRef": "C6"
+      },
+      {
+        "id": "P4",
+        "name": "ProviderRegistry",
+        "type": "component",
+        "componentRef": "CT2"
+      }
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "P3",
+        "to": "P4",
+        "label": "mark openai autoHidden=true (do NOT delete)",
+        "type": "sync",
+        "order": 1
+      },
+      {
+        "id": "MSG2",
+        "from": "P1",
+        "to": "P2",
+        "label": "getModel(openai, gpt-5.4-mini)",
+        "type": "sync",
+        "order": 2
+      },
+      {
+        "id": "MSG3",
+        "from": "P2",
+        "to": "P4",
+        "label": "lookup providers[openai]",
+        "type": "sync",
+        "order": 3
+      },
+      {
+        "id": "MSG4",
+        "from": "P4",
+        "to": "P2",
+        "label": "provider entry present (autoHidden flag ignored on explicit path)",
+        "type": "return",
+        "order": 4
+      },
+      {
+        "id": "MSG5",
+        "from": "P2",
+        "to": "P2",
+        "label": "log.info 'explicit use of auto-disabled provider openai'",
+        "type": "sync",
+        "order": 5
+      },
+      {
+        "id": "MSG6",
+        "from": "P2",
+        "to": "P1",
+        "label": "resolved model",
+        "type": "return",
+        "order": 6
+      }
+    ],
+    "fragments": [
+      {
+        "id": "FRAG1",
+        "type": "critical",
+        "label": "explicit path MUST bypass the auto-hidden filter (AGENTS.md 第一條)",
+        "messageRefs": ["MSG4", "MSG5"]
+      }
+    ]
+  }
+]

@@ -1,0 +1,215 @@
+{
+  "diagram_title": "Provider Hotfix — C4 Component Diagram",
+  "diagram_level": "component",
+  "systems": [
+    {
+      "id": "SYS1",
+      "name": "opencode Daemon",
+      "description": "Main backend serving HTTP + provider + session",
+      "external": false
+    },
+    {
+      "id": "SYS2",
+      "name": "OpenAI OAuth Edge",
+      "description": "auth.openai.com endpoints for token revocation and refresh",
+      "external": true
+    },
+    {
+      "id": "SYS3",
+      "name": "Codex Responses API",
+      "description": "chatgpt.com/backend-api endpoints consuming context-window headers",
+      "external": true
+    },
+    {
+      "id": "SYS4",
+      "name": "Anthropic API",
+      "description": "Upstream Anthropic Messages endpoint consuming thinking budget",
+      "external": true
+    }
+  ],
+  "containers": [
+    {
+      "id": "CT1",
+      "name": "Plugin Layer",
+      "description": "Provider-specific plugins (codex-auth, anthropic, copilot, etc.)",
+      "technology": "TypeScript",
+      "systemRef": "SYS1"
+    },
+    {
+      "id": "CT2",
+      "name": "Provider Subsystem",
+      "description": "Provider lifecycle, transform, availability, post-processing filters",
+      "technology": "TypeScript",
+      "systemRef": "SYS1"
+    },
+    {
+      "id": "CT3",
+      "name": "Account Subsystem",
+      "description": "Account storage, quota, fetch interceptors, rotation",
+      "technology": "TypeScript",
+      "systemRef": "SYS1"
+    },
+    {
+      "id": "CT4",
+      "name": "Vendored Refs",
+      "description": "refs/claude-code + refs/codex submodules — analysis baseline",
+      "technology": "Git submodules",
+      "systemRef": "SYS1"
+    }
+  ],
+  "components": [
+    {
+      "id": "C1",
+      "name": "CodexAuthRevoke",
+      "description": "New revoke helper + logout entrypoint; fail-closed on revoke error",
+      "technology": "TypeScript module",
+      "containerRef": "CT1",
+      "moduleRef": "A1",
+      "filePath": "packages/opencode/src/plugin/codex-auth.ts"
+    },
+    {
+      "id": "C2",
+      "name": "AccountRemoveHook",
+      "description": "Account.remove calls CodexAuth.logout before clearing local entries for codex family",
+      "technology": "TypeScript module",
+      "containerRef": "CT3",
+      "moduleRef": "A1",
+      "filePath": "packages/opencode/src/account/index.ts"
+    },
+    {
+      "id": "C3",
+      "name": "ChatGPTHeaderInterceptor",
+      "description": "Request fetch interceptor emitting ChatGPT-Account-Id + the three new context-window headers",
+      "technology": "TypeScript module",
+      "containerRef": "CT3",
+      "moduleRef": "A2",
+      "filePath": "packages/opencode/src/account/quota/openai.ts"
+    },
+    {
+      "id": "C4",
+      "name": "SessionWindowIdRegistry",
+      "description": "Stable-per-session UUID cache for x-codex-window-id",
+      "technology": "TypeScript module",
+      "containerRef": "CT3",
+      "moduleRef": "A2",
+      "filePath": "packages/opencode/src/account/quota/openai.ts"
+    },
+    {
+      "id": "C5",
+      "name": "AnthropicTransformXhigh",
+      "description": "Anthropic effort branch extended with xhigh variant gated by Opus 4.7 release date",
+      "technology": "TypeScript module",
+      "containerRef": "CT2",
+      "moduleRef": "A3",
+      "filePath": "packages/opencode/src/provider/transform.ts"
+    },
+    {
+      "id": "C6",
+      "name": "ProviderPostProcessingAutoHide",
+      "description": "Post-processing loop marks disabled providers as auto-hidden instead of deleting them",
+      "technology": "TypeScript module",
+      "containerRef": "CT2",
+      "moduleRef": "A4",
+      "filePath": "packages/opencode/src/provider/provider.ts"
+    },
+    {
+      "id": "C7",
+      "name": "AutoPickerFilter",
+      "description": "default-model + subscription selector skip providers flagged autoHidden",
+      "technology": "TypeScript module",
+      "containerRef": "CT2",
+      "moduleRef": "A4",
+      "filePath": "packages/opencode/src/provider/default-model.ts"
+    },
+    {
+      "id": "C8",
+      "name": "RefsSubmodulePointer",
+      "description": "Git submodule SHAs for refs/claude-code (2b53fac) and refs/codex (d0eff70383)",
+      "technology": "Git submodules",
+      "containerRef": "CT4",
+      "moduleRef": "A5",
+      "filePath": ".gitmodules"
+    },
+    {
+      "id": "C9",
+      "name": "IncidentRecord",
+      "description": "docs/events entry describing all phases of the hotfix",
+      "technology": "Markdown",
+      "containerRef": "CT1",
+      "moduleRef": "A5",
+      "filePath": "docs/events/event_2026-04-18_provider_hotfix.md"
+    }
+  ],
+  "relationships": [
+    {
+      "id": "REL1",
+      "source": "C2",
+      "target": "C1",
+      "description": "Account.remove delegates to CodexAuth.logout for codex family",
+      "technology": "function call"
+    },
+    {
+      "id": "REL2",
+      "source": "C1",
+      "target": "SYS2",
+      "description": "POST refresh token to auth.openai.com/oauth/revoke",
+      "technology": "HTTPS POST"
+    },
+    {
+      "id": "REL3",
+      "source": "C3",
+      "target": "C4",
+      "description": "Header interceptor reads stable window id per session",
+      "technology": "function call"
+    },
+    {
+      "id": "REL4",
+      "source": "C3",
+      "target": "SYS3",
+      "description": "Outbound Responses API request with context-window headers",
+      "technology": "HTTPS POST"
+    },
+    {
+      "id": "REL5",
+      "source": "C5",
+      "target": "SYS4",
+      "description": "Anthropic provider applies xhigh thinking budget on outbound request",
+      "technology": "HTTPS POST"
+    },
+    {
+      "id": "REL6",
+      "source": "C6",
+      "target": "C7",
+      "description": "Post-processing sets autoHidden flag; auto picker consults it",
+      "technology": "shared state"
+    },
+    {
+      "id": "REL7",
+      "source": "CT2",
+      "target": "C6",
+      "description": "Provider subsystem invokes post-processing during initState",
+      "technology": "function call"
+    },
+    {
+      "id": "REL8",
+      "source": "CT4",
+      "target": "C8",
+      "description": "Super repo records the submodule SHAs as the analysis baseline",
+      "technology": "git submodule"
+    },
+    {
+      "id": "REL9",
+      "source": "C9",
+      "target": "CT1",
+      "description": "Incident record cross-links plugin changes for Phase 1",
+      "technology": "markdown reference"
+    },
+    {
+      "id": "REL10",
+      "source": "C9",
+      "target": "CT2",
+      "description": "Incident record cross-links provider changes for Phase 3 + 4",
+      "technology": "markdown reference"
+    }
+  ]
+}
