@@ -397,6 +397,37 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const [quotaHint, setQuotaHint] = createSignal<string | undefined>()
   let quotaHintRequestVersion = 0
   let prevQuotaAccountId: string | undefined
+  // Consumed once by the main quota-load effect to force a fresh upstream read
+  // after a runloop ends (webapp footer then reflects the usage consumed by the
+  // turn that just finished, instead of waiting up to 60 s for the cache TTL).
+  let pendingFreshQuotaLoad = false
+
+  // Runloop end → invalidate cached hint + schedule a fresh load.
+  // working() is true while the session status is not "idle"; the transition
+  // true → false is the signal that one turn (user prompt → assistant stop)
+  // has completed.
+  let prevWorking = false
+  createEffect(() => {
+    const isWorking = working()
+    if (prevWorking && !isWorking && params.id) {
+      const model = currentModel()
+      if (model) {
+        const providerId = effectiveProviderKey() ?? model.provider.id
+        const modelID = model.id
+        const accountId = local.model.selection(params.id)?.accountID
+        invalidateQuotaHint({
+          baseURL: globalSDK.url,
+          providerId,
+          accountId,
+          modelID,
+          format: "footer" as const,
+        })
+        pendingFreshQuotaLoad = true
+        setQuotaRefresh((v) => v + 1)
+      }
+    }
+    prevWorking = isWorking
+  })
 
   createEffect(() => {
     const model = currentModel()
@@ -422,13 +453,19 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       invalidateQuotaHint(cacheInput)
     }
 
+    // Consume the one-shot "runloop just ended" signal. Captured synchronously
+    // so a re-entry caused by the later setQuotaRefresh() inside this effect
+    // cannot double-fire an upstream poll.
+    const forceFresh = pendingFreshQuotaLoad
+    pendingFreshQuotaLoad = false
+
     const cached = peekQuotaHint(cacheInput)
     setQuotaHint(cached.hint)
-    if (!cached.stale && !accountSwitched) return
+    if (!cached.stale && !accountSwitched && !forceFresh) return
 
     void (async () => {
       const hint = await loadQuotaHint((input) => globalSDK.fetch(input), cacheInput, {
-        fresh: accountSwitched,
+        fresh: accountSwitched || forceFresh,
       })
       if (requestVersion !== quotaHintRequestVersion) return
       setQuotaHint(hint)
