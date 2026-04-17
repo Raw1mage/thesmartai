@@ -315,6 +315,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!shouldRefreshProviderQuota({ providerKey, lastRefreshAt: lastQuotaRefreshAt() })) return
     setLastQuotaRefreshMarker(marker)
     setLastQuotaRefreshAt(Date.now())
+    // Invalidate the frontend cache and request a fresh upstream read so the
+    // footer reflects the usage consumed by the turn that just ended. Without
+    // this the main quota-load effect would still hit the 60 s peekQuotaHint
+    // TTL and the ?fresh=1 path on the backend.
+    if (model && providerKey && params.id) {
+      const accountId = local.model.selection(params.id)?.accountID
+      invalidateQuotaHint({
+        baseURL: globalSDK.url,
+        providerId: providerKey,
+        accountId,
+        modelID: model.id,
+        format: "footer" as const,
+      })
+      pendingFreshQuotaLoad = true
+    }
     setQuotaRefresh((value) => value + 1)
   })
 
@@ -398,36 +413,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   let quotaHintRequestVersion = 0
   let prevQuotaAccountId: string | undefined
   // Consumed once by the main quota-load effect to force a fresh upstream read
-  // after a runloop ends (webapp footer then reflects the usage consumed by the
-  // turn that just finished, instead of waiting up to 60 s for the cache TTL).
+  // after an assistant turn finishes (footer reflects the usage the turn just
+  // consumed, instead of waiting up to 60 s for the frontend / backend caches).
   let pendingFreshQuotaLoad = false
-
-  // Runloop end → invalidate cached hint + schedule a fresh load.
-  // working() is true while the session status is not "idle"; the transition
-  // true → false is the signal that one turn (user prompt → assistant stop)
-  // has completed.
-  let prevWorking = false
-  createEffect(() => {
-    const isWorking = working()
-    if (prevWorking && !isWorking && params.id) {
-      const model = currentModel()
-      if (model) {
-        const providerId = effectiveProviderKey() ?? model.provider.id
-        const modelID = model.id
-        const accountId = local.model.selection(params.id)?.accountID
-        invalidateQuotaHint({
-          baseURL: globalSDK.url,
-          providerId,
-          accountId,
-          modelID,
-          format: "footer" as const,
-        })
-        pendingFreshQuotaLoad = true
-        setQuotaRefresh((v) => v + 1)
-      }
-    }
-    prevWorking = isWorking
-  })
 
   createEffect(() => {
     const model = currentModel()
