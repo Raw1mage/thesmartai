@@ -14,8 +14,14 @@
 #   stop              Stop active dev / production server(s)
 #   flush             Clean orphaned webctl/opencode bun process trees
 #   reload            Rebuild + kill daemons (gateway untouched; dev & prod)
-#   restart           reload + gateway restart
-#   dev-refresh       Build frontend + restart dev server
+#                       Per-layer smart skip: frontend / binary / install / deploy /
+#                       MCP recompile / daemon kill each compare content fingerprint
+#                       against a stamp and no-op when unchanged.
+#                       --force  bypass every stamp and rebuild/reinstall everything
+#   restart           reload + gateway auto-detect restart
+#                       --force           bypass every stamp (like reload --force)
+#                       --force-gateway   also restart gateway service
+#   dev-refresh       alias for restart (accepts same flags)
 #   web-start         Start production systemd service
 #   web-stop          Stop production systemd service
 #   web-restart       Restart production systemd service
@@ -1474,11 +1480,15 @@ do_dev_restart() {
 
 do_restart() {
     local FORCE_GATEWAY_RESTART=0
+    local FORCE_REBUILD=0
 
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --force-gateway)
                 FORCE_GATEWAY_RESTART=1
+                ;;
+            --force)
+                FORCE_REBUILD=1
                 ;;
             *)
                 log_warn "Unknown restart option: $1"
@@ -1489,12 +1499,19 @@ do_restart() {
 
     load_server_cfg
 
-    log_info "Restarting (reload + gateway auto-detect)..."
+    log_info "Restarting (rebuild + reinstall + respawn; smart-skip via content fingerprint)..."
 
-    # 1. Reload daemons (build + kill — gateway untouched by reload)
-    # Note: no --force here — let _frontend_needs_build decide whether to rebuild.
-    # Use `restart --force-gateway` only for gateway binary, not frontend.
-    do_reload
+    # 1. Reload. do_reload goes through _frontend_needs_build /
+    #    _binary_needs_build (both content-fingerprint based now) so every
+    #    layer — frontend build, binary build, binary install, frontend
+    #    deploy, MCP recompile, daemon kill — is attempted and skipped per
+    #    layer only when content truly hasn't changed. --force here means
+    #    "also ignore the content stamps", rarely needed.
+    if [ "${FORCE_REBUILD}" -eq 1 ]; then
+        do_reload --force
+    else
+        do_reload
+    fi
 
     # 2. Detect whether gateway needs restart
     #    Reasons: binary source changed, config changed, or explicit --force-gateway
@@ -1637,8 +1654,9 @@ do_restart_worker() {
 # refresh helpers
 # ---------------------------------------------------------------------------
 do_dev_refresh() {
-    # Unified: delegate to do_restart which handles both modes
-    do_restart
+    # Unified: delegate to do_restart which handles both modes.
+    # Forward all args so `dev-refresh --force` etc. work.
+    do_restart "$@"
 }
 
 sync_frontend_dist_if_needed() {
@@ -1831,35 +1849,43 @@ do_logs() {
 # ---------------------------------------------------------------------------
 # build-frontend
 # ---------------------------------------------------------------------------
+_frontend_source_fingerprint() {
+    # Content-based fingerprint of the source tree that feeds the frontend
+    # build. mtime was unreliable because dist mtime is set on every build,
+    # even when earlier runs already produced a newer dist from stale
+    # content. Using git tree hashes + dirty-file list catches both
+    # committed and uncommitted changes.
+    cd "${PROJECT_ROOT}"
+    local parts=""
+    for dir in packages/app packages/ui packages/theme; do
+        [ -d "${dir}" ] || continue
+        parts="${parts}$(git rev-parse HEAD:"${dir}" 2>/dev/null || echo dirty)"
+    done
+    parts="${parts}$(git diff --name-only HEAD -- packages/app packages/ui packages/theme 2>/dev/null)"
+    parts="${parts}$(git ls-files --others --exclude-standard -- packages/app packages/ui packages/theme 2>/dev/null)"
+    echo "${parts}" | sha256sum | cut -d' ' -f1
+}
+
+FRONTEND_BUILD_STAMP_FILE="${PROJECT_ROOT}/packages/app/dist/.source-stamp"
+
 _frontend_needs_build() {
-    # Returns 0 (true) if frontend source is newer than dist, 1 otherwise.
+    # Returns 0 (true) if frontend source content differs from the last
+    # successful build, 1 otherwise.
     local app_dir="${PROJECT_ROOT}/packages/app"
     local dist_marker="${app_dir}/dist/index.html"
 
-    # No dist at all → must build
     [ ! -f "${dist_marker}" ] && return 0
+    [ ! -f "${FRONTEND_BUILD_STAMP_FILE}" ] && return 0
 
-    local dist_ts
-    dist_ts=$(stat -c '%Y' "${dist_marker}" 2>/dev/null) || return 0
+    local current stamped
+    current="$(_frontend_source_fingerprint)"
+    stamped="$(cat "${FRONTEND_BUILD_STAMP_FILE}" 2>/dev/null)"
+    [ "${current}" != "${stamped}" ]
+}
 
-    # Check if any source file is newer than dist
-    # Covers: src/, index.html, vite.config, tsconfig, package.json
-    local newer
-    newer=$(find "${app_dir}/src" "${app_dir}/index.html" \
-        "${app_dir}/vite.config"* "${app_dir}/tsconfig"* \
-        "${app_dir}/package.json" \
-        -newer "${dist_marker}" -print -quit 2>/dev/null)
-    [ -n "${newer}" ] && return 0
-
-    # Also check shared packages that feed into the frontend build
-    for dep_dir in "${PROJECT_ROOT}/packages/ui/src" "${PROJECT_ROOT}/packages/theme/src"; do
-        if [ -d "${dep_dir}" ]; then
-            newer=$(find "${dep_dir}" -newer "${dist_marker}" -print -quit 2>/dev/null)
-            [ -n "${newer}" ] && return 0
-        fi
-    done
-
-    return 1
+_write_frontend_build_stamp() {
+    mkdir -p "$(dirname "${FRONTEND_BUILD_STAMP_FILE}")" 2>/dev/null || true
+    _frontend_source_fingerprint > "${FRONTEND_BUILD_STAMP_FILE}"
 }
 
 do_build_frontend() {
@@ -1868,9 +1894,11 @@ do_build_frontend() {
         exit 1
     fi
 
-    # Skip build if source unchanged (unless --force)
+    # Skip build if source content unchanged (unless --force). The fingerprint
+    # stamp is content-based (git tree hash + dirty files) so a rebuild is
+    # triggered even when dist mtime happens to be newer than source mtime.
     if [ "${1:-}" != "--force" ] && ! _frontend_needs_build; then
-        log_info "Frontend source unchanged since last build — skipping. (Use build-frontend --force to override)"
+        log_info "Frontend source content unchanged since last build — skipping. (Use build-frontend --force to override)"
         return 0
     fi
 
@@ -1888,6 +1916,7 @@ do_build_frontend() {
 
     "${BUN_BIN}" run build 2>&1 | tail -1
 
+    _write_frontend_build_stamp
     log_success "Frontend built: ${FRONTEND_DIST}"
 }
 
@@ -2717,8 +2746,10 @@ do_help() {
     echo "  dev-stop, dev-down Stop the development server"
     echo "  stop              Stop active dev / production server(s)"
     echo "  flush             Clean stale interactive opencode/MCP process trees"
-    echo "  restart           Refresh active dev / production server(s)"
-    echo "  dev-refresh       Build frontend + restart dev server"
+    echo "  restart           Rebuild + reinstall + respawn (per-layer smart skip)"
+    echo "                    Options: --force (bypass content stamps)"
+    echo "                             --force-gateway (also restart gateway service)"
+    echo "  dev-refresh       alias for restart (forwards same flags)"
     echo "  web-start         Start production systemd service"
     echo "  web-stop          Stop production systemd service"
     echo "  web-restart       Restart production systemd service"
@@ -2739,8 +2770,7 @@ do_help() {
     echo "  daemon-kill <user> Stop a specific user's daemon"
     echo "  daemon-killall    Stop all per-user daemons"
     echo "  reload            Rebuild + kill daemons; gateway untouched (dev & prod)"
-    echo "                    Options: --force (rebuild everything)"
-    echo "  restart           reload + gateway restart"
+    echo "                    Options: --force (bypass content stamps)"
     echo "  help              Show this help message"
     echo ""
     echo "Environment Variables:"
@@ -2801,7 +2831,7 @@ case "${1:-}" in
     dev-stop|dev-down)      do_dev_stop       ;;
     stop)                   do_stop           ;;
     flush)                  do_flush "${@:2}" ;;
-    dev-refresh)            do_dev_refresh    ;;
+    dev-refresh)            do_dev_refresh "${@:2}" ;;
     web-start)              do_web_start      ;;
     web-stop)               do_web_stop       ;;
     web-restart)            do_web_restart    ;;
