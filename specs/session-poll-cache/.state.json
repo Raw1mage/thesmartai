@@ -42,6 +42,35 @@
       "reason": "post-task sync, clean",
       "result": "clean",
       "commit": "e0784efda7c9f8add8450584c09a5df38068f840"
+    },
+    {
+      "at": "2026-04-18T17:54:52.688Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "drift detected: packages/opencode/test/config/tweaks.test.ts",
+      "result": "warned",
+      "drift": [
+        "packages/opencode/test/config/tweaks.test.ts"
+      ],
+      "commit": "b7ce10542495918df8b0b62aadd2ba0bd1bf6a94"
+    },
+    {
+      "at": "2026-04-18T19:50:55.992Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "drift detected: packages/opencode/src/account/rotation/coalesce.test.ts, packages/opencode/src/account/rotation/coalesce.ts, packages/opencode/src/index.ts, packages/opencode/src/session/llm.ts, packages/opencode/src/session/prompt.ts, packages/opencode/src/tool/read.ts, packages/opencode/test/server/session-cache.test.ts, packages/opencode/test/tool/read.test.ts",
+      "result": "warned",
+      "drift": [
+        "packages/opencode/src/account/rotation/coalesce.test.ts",
+        "packages/opencode/src/account/rotation/coalesce.ts",
+        "packages/opencode/src/index.ts",
+        "packages/opencode/src/session/llm.ts",
+        "packages/opencode/src/session/prompt.ts",
+        "packages/opencode/src/tool/read.ts",
+        "packages/opencode/test/server/session-cache.test.ts",
+        "packages/opencode/test/tool/read.test.ts"
+      ],
+      "commit": "6c621b8d8fd98d2000c337cc86f5de0eedf6bc28"
     }
   ]
 }

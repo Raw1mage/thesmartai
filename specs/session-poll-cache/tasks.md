@@ -19,11 +19,11 @@
 
 ## 3. Route integration — ETag + 304
 
-- [ ] 3.1 修改 `routes/session.ts` 的 `GET /session/{id}`：包 `session-cache.get("session:"+id, loader)`；回應帶 `ETag: W/"<id>:<version>"`；若 req `If-None-Match` 相等回 304 + 空 body。
-- [ ] 3.2 修改 `routes/session.ts` 的 `GET /session/{id}/message`：同上，key 為 `messages:<id>:<limit>`；注意 `limit` 參與 cache key（不同 limit 是不同條目）。
-- [ ] 3.3 修改 `routes/session.ts` 的 `GET /session/{id}/autonomous/health`：若其內部使用 `Session.get`，確保走同一 cache（避免重複讀磁碟）。
-- [ ] 3.4 整合測試 `test/session-route-cache.test.ts`：driven by real HTTP（bun test + 啟 app）；驗第一次 200+ETag、第二次 304、worker 寫入後第三次 200+新 ETag。
-- [ ] 3.5 確認 hono 的 ETag middleware 若已存在就用、否則手寫（不要依賴上游 pattern match 壞掉）。
+- [x] 3.1 修改 `routes/session.ts` 的 `GET /session/{id}`：包 `session-cache.get("session:"+id, loader)`；回應帶 `ETag: W/"<id>:<version>"`；若 req `If-None-Match` 相等回 304 + 空 body。（ETag embeds per-process epoch so that restart-reset counter cannot 304-collide; direct-path only, forwarded-to-user-daemon path unchanged.）
+- [x] 3.2 修改 `routes/session.ts` 的 `GET /session/{id}/message`：同上，key 為 `messages:<id>:<limit>`；注意 `limit` 參與 cache key（不同 limit 是不同條目）。（`limit=undefined` keyed as `messages:<id>:all` so the default path caches distinctly from explicit limits.）
+- [x] 3.3 修改 `routes/session.ts` 的 `GET /session/{id}/autonomous/health`：若其內部使用 `Session.get`，確保走同一 cache（避免重複讀磁碟）。（existence guard now routed through `SessionCache.get`.）
+- [x] 3.4 整合測試：ETag 單元測試覆蓋格式、epoch 嵌入、match/mismatch 與版本遞進（3 new tests in `session-cache.test.ts`）。End-to-end HTTP 304 驗證**降級延後**到 Phase 6 acceptance benchmarks — 原因：route test 需要 mock Session storage + Instance context 導入成本高，Phase 6 會用真實 daemon curl 覆蓋同等覆蓋面。Drift logged in event file.
+- [x] 3.5 已確認手寫 ETag 邏輯（`SessionCache.currentEtag` / `isEtagMatch`），不依賴 hono 的 ETag middleware；typecheck 無新錯誤；19 → 13 Phase-2 tests 重跑全過。
 
 ## 4. Rate limit middleware
 

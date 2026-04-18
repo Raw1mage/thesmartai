@@ -68,6 +68,23 @@ export namespace SessionCache {
   let unsubscribers: Array<() => void> = []
 
   /**
+   * Per-process-lifetime epoch — embedded in ETag so that clients holding
+   * a stale ETag after a daemon restart (which resets the version counter
+   * to 0) cannot accidentally 304-match against a re-created session at
+   * the same numeric version.
+   */
+  const EPOCH = Date.now().toString(36)
+
+  export function currentEtag(sessionID: string): string {
+    return `W/"${sessionID}:${getVersion(sessionID)}:${EPOCH}"`
+  }
+
+  export function isEtagMatch(sessionID: string, header: string | null | undefined): boolean {
+    if (!header) return false
+    return header.trim() === currentEtag(sessionID)
+  }
+
+  /**
    * Extract the sessionID prefix from a cache key.
    * session:<id>         → <id>
    * messages:<id>:<limit>  → <id>

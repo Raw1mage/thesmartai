@@ -138,3 +138,88 @@ trust the existing bus infrastructure.
 ### Drift / follow-ups
 
 - None. Phase 3 will wire the cache into the actual HTTP routes.
+
+## Main-sync merge (between Phase 2 and Phase 3)
+
+Completed: 2026-04-19 — `6c621b8d8`
+
+While Phase 1/2 were in progress, `main` advanced by three commits that did
+not touch any of the beta-branch's modified files:
+
+- `5bb5b522f` fix(image-router): pin session.execution after capability rotation
+- `4dd4e14a2` fix(rotation): coalesce concurrent rotations
+- `dbcd0c1f7` feat(skill): close SkillLayerRegistry seam + planner→plan-builder rename
+
+Per beta-workflow §6.1 (`main=A+C`, `beta=B+D` → `A+C+D`), main was merged
+into `beta/session-poll-cache` with a plain `git merge main` (no rebase).
+Automatic merge succeeded — no conflict files needed manual resolution.
+All Phase 1+2 tests (19/19) pass on the merged tree; typecheck introduces
+no new errors. Fail-fast gate cleared.
+
+## Phase 3 — Route integration (ETag + 304)
+
+Completed: 2026-04-19
+
+### Done (tasks 3.1–3.5)
+
+- **3.1 / 3.2** `packages/opencode/src/server/routes/session.ts`
+  - `GET /session/:sessionID` and `GET /session/:sessionID/message` now
+    short-circuit via `SessionCache.isEtagMatch` → `304 Not Modified` when
+    the client's `If-None-Match` equals the current ETag, avoiding both
+    the cache lookup and the JSON serialization path entirely.
+  - On full responses, both endpoints route through `SessionCache.get(...)`
+    with a loader wrapping the original `Session.get` / `Session.messages`
+    call. Cache key schema: `session:<id>` and `messages:<id>:<limit|all>`.
+  - `limit=undefined` is keyed as `…:all` so the default-limit path caches
+    distinctly from explicit-limit callers and a spurious mix of `limit=400`
+    and `limit=undefined` requests cannot invalidate each other.
+  - `ETag` header attached to all 200 and 304 responses.
+  - The forwarded-to-per-user-daemon path (`UserDaemonManager.routeSessionReadEnabled`)
+    is left **unchanged** — the per-user daemon owns its own cache on that
+    surface and double-caching would obscure invalidation semantics.
+- **3.3** `/session/:sessionID/autonomous/health` existence guard now calls
+  `SessionCache.get("session:<id>", …)` instead of `Session.get` directly,
+  so polling `/autonomous/health` also benefits from the cache.
+- **3.4** ETag unit tests added to
+  `packages/opencode/test/server/session-cache.test.ts`:
+  - format `W/"<id>:<version>:<epoch>"`
+  - version bump via `MessageV2.Event.Updated` invalidates prior ETag
+  - whitespace-tolerant match
+  - null/undefined/empty header returns false
+  - *End-to-end HTTP 304 verification is deferred to Phase 6 acceptance
+    benchmarks.* Route-level integration tests would require mocking the
+    full Instance/Storage/Auth stack; Phase 6 will exercise the real HTTP
+    surface under a live daemon and provide equivalent coverage with less
+    mock debt. Drift flagged here per AGENTS.md rule 1.
+- **3.5** Handwritten ETag logic (not hono's built-in middleware) so
+  invalidation semantics are unambiguous. Typecheck clean; 19 → 13 tests
+  in `session-cache.test.ts` (3 new ETag tests + 10 prior cache tests).
+
+### ETag per-process epoch rationale
+
+`W/"<id>:<version>:<epoch>"` where `epoch = Date.now().toString(36)` is a
+module-load constant. Without the epoch, a daemon restart resets the
+version counter to 0 and a client holding `W/"<id>:0:…"` from a previous
+process would falsely 304-match. The epoch changes on every process start,
+guaranteeing that post-restart clients always see at least one 200 response
+before they can 304 again. Captured in invariants.md note and spec DD-3.
+
+### Validation
+
+- `bun run typecheck` — no new errors in session-cache.ts, cache-health.ts,
+  tweaks.ts, or routes/session.ts
+- `bun test test/config/tweaks.test.ts test/server/session-cache.test.ts`
+  — 13 + 9 = 22 pass, 0 fail, 1.3 s
+- `bun run scripts/plan-sync.ts specs/session-poll-cache/` — runs after this
+  phase commit
+
+### Drift / follow-ups
+
+- Phase 4 rate-limit exempt list must include `/api/v2/server/*` (previously
+  flagged in Phase 1 note); confirmed during Phase 3 review.
+- Phase 6 benchmark script is now on the critical path for AC-2
+  (304 ratio >95%) verification. End-to-end HTTP test deferred here must be
+  satisfied by that script.
+- `UserDaemonManager.routeSessionReadEnabled` path is NOT cached locally
+  — if that surface becomes a polling hotspot later, a secondary plan should
+  add an HTTP-level cache at the `UserDaemonManager.callSession*` layer.

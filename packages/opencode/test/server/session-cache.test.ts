@@ -193,6 +193,34 @@ describe("SessionCache.get", () => {
     expect(SessionCache.stats().entries).toBe(0)
   })
 
+  test("currentEtag format is W/\"<id>:<version>:<epoch>\"", async () => {
+    await withDefaultsAlive()
+    const etag = SessionCache.currentEtag("ses_TagA")
+    expect(etag).toMatch(/^W\/"ses_TagA:\d+:[a-z0-9]+"$/)
+  })
+
+  test("isEtagMatch ignores whitespace and matches only the current version", async () => {
+    await withDefaultsAlive()
+    SessionCache.registerInvalidationSubscriber()
+    const etag0 = SessionCache.currentEtag("ses_TagB")
+    expect(SessionCache.isEtagMatch("ses_TagB", etag0)).toBe(true)
+    expect(SessionCache.isEtagMatch("ses_TagB", "  " + etag0 + "\n")).toBe(true)
+    // A write bumps the version → prior ETag must no longer match.
+    await Bus.publish(MessageV2.Event.Updated, {
+      info: { id: "m1", sessionID: "ses_TagB", role: "user", time: { created: 0 } } as any,
+    })
+    expect(SessionCache.isEtagMatch("ses_TagB", etag0)).toBe(false)
+    const etag1 = SessionCache.currentEtag("ses_TagB")
+    expect(SessionCache.isEtagMatch("ses_TagB", etag1)).toBe(true)
+  })
+
+  test("isEtagMatch returns false for missing / empty header", async () => {
+    await withDefaultsAlive()
+    expect(SessionCache.isEtagMatch("ses_TagC", undefined)).toBe(false)
+    expect(SessionCache.isEtagMatch("ses_TagC", null)).toBe(false)
+    expect(SessionCache.isEtagMatch("ses_TagC", "")).toBe(false)
+  })
+
   test("cache disabled in tweaks → every call is a miss", async () => {
     writeTweaks("session_cache_enabled=0")
     SessionCache.setSubscriptionAliveForTesting(true)
