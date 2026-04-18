@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "planned",
+  "state": "implementing",
   "profile": [],
   "history": [
     {
@@ -26,6 +26,22 @@
       "by": "pkcs12",
       "mode": "promote",
       "reason": "tasks + handoff + errors + observability + test vectors ready"
+    },
+    {
+      "from": "planned",
+      "to": "implementing",
+      "at": "2026-04-18T17:49:10.641Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "Phase 1 tasks 1.1-1.5 complete: tweaks.cfg loader, template, cache-health route, mount, tests"
+    },
+    {
+      "at": "2026-04-18T17:49:10.686Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "e0784efda7c9f8add8450584c09a5df38068f840"
     }
   ]
 }

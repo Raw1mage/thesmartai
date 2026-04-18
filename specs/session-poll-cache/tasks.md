@@ -2,11 +2,11 @@
 
 ## 1. Foundation — tweaks.cfg loader + health endpoint
 
-- [ ] 1.1 建立 `packages/opencode/src/config/tweaks.ts`：讀 `/etc/opencode/tweaks.cfg`（`key=value` 格式，`#` 註解），export `getSessionCacheConfig()` / `getRateLimitConfig()`。檔案不存在用 defaults 並 `log.info`；格式錯誤用 `log.warn` 退回 default（R-5、AGENTS.md 第一條）。
-- [ ] 1.2 建立 `templates/etc/tweaks.cfg` 模板，列出全部 key 的 default 與註解。
-- [ ] 1.3 建立 `packages/opencode/src/server/routes/cache-health.ts`，註冊 `GET /api/v2/server/cache/health`，暫時回硬編碼空值（phase 2 接上真實統計）。
-- [ ] 1.4 在 `app.ts` 或 routes 註冊點掛上 `/cache/health`；確認它不走 rate-limit middleware（DD-7）。
-- [ ] 1.5 單元測試 `config/tweaks.test.ts`：覆蓋「檔案缺」「格式錯」「完整讀取」三情境；驗 log 輸出。
+- [x] 1.1 建立 `packages/opencode/src/config/tweaks.ts`：讀 `/etc/opencode/tweaks.cfg`（`key=value` 格式，`#` 註解），export `getSessionCacheConfig()` / `getRateLimitConfig()`。檔案不存在用 defaults 並 `log.info`；格式錯誤用 `log.warn` 退回 default（R-5、AGENTS.md 第一條）。
+- [x] 1.2 建立 `templates/etc/tweaks.cfg` 模板，列出全部 key 的 default 與註解。（placed at `templates/system/tweaks.cfg` alongside existing `opencode.cfg`）
+- [x] 1.3 建立 `packages/opencode/src/server/routes/cache-health.ts`，註冊 `GET /api/v2/server/cache/health`，暫時回硬編碼空值（phase 2 接上真實統計）。
+- [x] 1.4 在 `app.ts` 或 routes 註冊點掛上 `/cache/health`；確認它不走 rate-limit middleware（DD-7）。（mount point `api.route("/server", ServerRoutes())`; rate-limit middleware not yet introduced — Phase 4 must exempt `/api/v2/server/*` and `/api/v2/global/health`.）
+- [x] 1.5 單元測試 `config/tweaks.test.ts`：覆蓋「檔案缺」「格式錯」「完整讀取」三情境；驗 log 輸出。（9 passing tests.）
 
 ## 2. Session read cache
 
