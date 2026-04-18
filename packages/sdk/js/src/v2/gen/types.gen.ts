@@ -1316,6 +1316,17 @@ export type EventTaskWorkerRemoved = {
   }
 }
 
+export type EventTaskWorkerOrphanRecovered = {
+  type: "task.worker.orphan_recovered"
+  properties: {
+    sessionID: string
+    parentSessionID: string
+    parentMessageID: string
+    toolCallID: string
+    partID: string
+  }
+}
+
 export type EventSessionActiveChildUpdated = {
   type: "session.active-child.updated"
   properties: {
@@ -1775,6 +1786,7 @@ export type Event =
   | EventTaskWorkerDone
   | EventTaskWorkerFailed
   | EventTaskWorkerRemoved
+  | EventTaskWorkerOrphanRecovered
   | EventSessionActiveChildUpdated
   | EventSessionCreated
   | EventSessionUpdated
@@ -2371,12 +2383,24 @@ export type ProviderConfig = {
           [key: string]: unknown | boolean | undefined
         }
       }
+      /**
+       * System prompt directive injected when no variant is selected (e.g. '/no_think' for Qwen3 models)
+       */
+      defaultSystemDirective?: string
     }
   }
   /**
    * Provider billing mode authority for prompt-management policy: token, request, or unknown
    */
   billingMode?: "token" | "request" | "unknown"
+  /**
+   * Mark this provider as usable without any configured account; UI should label it as FreeToUse
+   */
+  freeToUse?: boolean
+  /**
+   * Lite mode for small local models. Bypasses tool calls, MCP, agents, enablement, and heavy system prompts. Only injects a minimal system prompt suitable for simple Q&A tasks.
+   */
+  lite?: boolean
   whitelist?: Array<string>
   blacklist?: Array<string>
   options?: {
@@ -10180,6 +10204,59 @@ export type WebRouteRemoveResponses = {
 
 export type WebRouteRemoveResponse = WebRouteRemoveResponses[keyof WebRouteRemoveResponses]
 
+export type WebRouteHealthData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/web-route/health"
+}
+
+export type WebRouteHealthResponses = {
+  /**
+   * Health status map
+   */
+  200: {
+    ok: boolean
+    status: {
+      [key: string]: {
+        alive: boolean
+        host: string
+        port: number
+        webctlPath: string
+      }
+    }
+  }
+}
+
+export type WebRouteHealthResponse = WebRouteHealthResponses[keyof WebRouteHealthResponses]
+
+export type WebRouteToggleData = {
+  body: {
+    entryName: string
+    action: "start" | "stop"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/api/v2/web-route/toggle"
+}
+
+export type WebRouteToggleResponses = {
+  /**
+   * Toggle result
+   */
+  200: {
+    ok: boolean
+    output?: string
+    error?: string
+  }
+}
+
+export type WebRouteToggleResponse = WebRouteToggleResponses[keyof WebRouteToggleResponses]
+
 export type FindTextData = {
   body?: never
   path?: never
@@ -17340,6 +17417,59 @@ export type WebRouteRemove2Responses = {
 }
 
 export type WebRouteRemove2Response = WebRouteRemove2Responses[keyof WebRouteRemove2Responses]
+
+export type WebRouteHealth2Data = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/web-route/health"
+}
+
+export type WebRouteHealth2Responses = {
+  /**
+   * Health status map
+   */
+  200: {
+    ok: boolean
+    status: {
+      [key: string]: {
+        alive: boolean
+        host: string
+        port: number
+        webctlPath: string
+      }
+    }
+  }
+}
+
+export type WebRouteHealth2Response = WebRouteHealth2Responses[keyof WebRouteHealth2Responses]
+
+export type WebRouteToggle2Data = {
+  body: {
+    entryName: string
+    action: "start" | "stop"
+  }
+  path?: never
+  query?: {
+    directory?: string
+  }
+  url: "/web-route/toggle"
+}
+
+export type WebRouteToggle2Responses = {
+  /**
+   * Toggle result
+   */
+  200: {
+    ok: boolean
+    output?: string
+    error?: string
+  }
+}
+
+export type WebRouteToggle2Response = WebRouteToggle2Responses[keyof WebRouteToggle2Responses]
 
 export type FindText2Data = {
   body?: never

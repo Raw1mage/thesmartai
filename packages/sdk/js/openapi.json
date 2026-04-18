@@ -18044,6 +18044,141 @@
         }
       }
     },
+    "/api/v2/web-route/health": {
+      "get": {
+        "operationId": "webRoute.health",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Health-check all registered web services",
+        "description": "TCP-probes each entry in web_registry.json and returns alive/dead status.",
+        "responses": {
+          "200": {
+            "description": "Health status map",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "alive": {
+                            "type": "boolean"
+                          },
+                          "host": {
+                            "type": "string"
+                          },
+                          "port": {
+                            "type": "number"
+                          },
+                          "webctlPath": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "alive",
+                          "host",
+                          "port",
+                          "webctlPath"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "status"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/web-route/toggle": {
+      "post": {
+        "operationId": "webRoute.toggle",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Start or stop a registered web service",
+        "description": "Invokes the service's webctl.sh with start or stop.",
+        "responses": {
+          "200": {
+            "description": "Toggle result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "output": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "entryName": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "start",
+                      "stop"
+                    ]
+                  }
+                },
+                "required": [
+                  "entryName",
+                  "action"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/find": {
       "get": {
         "operationId": "find.text",
@@ -36771,6 +36906,141 @@
         }
       }
     },
+    "/web-route/health": {
+      "get": {
+        "operationId": "webRoute.health",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Health-check all registered web services",
+        "description": "TCP-probes each entry in web_registry.json and returns alive/dead status.",
+        "responses": {
+          "200": {
+            "description": "Health status map",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                          "alive": {
+                            "type": "boolean"
+                          },
+                          "host": {
+                            "type": "string"
+                          },
+                          "port": {
+                            "type": "number"
+                          },
+                          "webctlPath": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "alive",
+                          "host",
+                          "port",
+                          "webctlPath"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "status"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/web-route/toggle": {
+      "post": {
+        "operationId": "webRoute.toggle",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Start or stop a registered web service",
+        "description": "Invokes the service's webctl.sh with start or stop.",
+        "responses": {
+          "200": {
+            "description": "Toggle result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "output": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "entryName": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "start",
+                      "stop"
+                    ]
+                  }
+                },
+                "required": [
+                  "entryName",
+                  "action"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/find": {
       "get": {
         "operationId": "find.text",
@@ -42136,6 +42406,46 @@
           "properties"
         ]
       },
+      "Event.task.worker.orphan_recovered": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "task.worker.orphan_recovered"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "parentSessionID": {
+                "type": "string"
+              },
+              "parentMessageID": {
+                "type": "string"
+              },
+              "toolCallID": {
+                "type": "string"
+              },
+              "partID": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sessionID",
+              "parentSessionID",
+              "parentMessageID",
+              "toolCallID",
+              "partID"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "properties"
+        ]
+      },
       "Event.session.active-child.updated": {
         "type": "object",
         "properties": {
@@ -44169,6 +44479,9 @@
             "$ref": "#/components/schemas/Event.task.worker.removed"
           },
           {
+            "$ref": "#/components/schemas/Event.task.worker.orphan_recovered"
+          },
+          {
             "$ref": "#/components/schemas/Event.session.active-child.updated"
           },
           {
@@ -45166,6 +45479,10 @@
                     },
                     "additionalProperties": {}
                   }
+                },
+                "defaultSystemDirective": {
+                  "description": "System prompt directive injected when no variant is selected (e.g. '/no_think' for Qwen3 models)",
+                  "type": "string"
                 }
               }
             }
@@ -45178,6 +45495,14 @@
               "request",
               "unknown"
             ]
+          },
+          "freeToUse": {
+            "description": "Mark this provider as usable without any configured account; UI should label it as FreeToUse",
+            "type": "boolean"
+          },
+          "lite": {
+            "description": "Lite mode for small local models. Bypasses tool calls, MCP, agents, enablement, and heavy system prompts. Only injects a minimal system prompt suitable for simple Q&A tasks.",
+            "type": "boolean"
           },
           "whitelist": {
             "type": "array",

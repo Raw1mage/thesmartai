@@ -537,12 +537,16 @@ import type {
   TuiSubmitPromptResponses,
   VcsGet2Responses,
   VcsGetResponses,
+  WebRouteHealth2Responses,
+  WebRouteHealthResponses,
   WebRouteList2Responses,
   WebRouteListResponses,
   WebRoutePublish2Responses,
   WebRoutePublishResponses,
   WebRouteRemove2Responses,
   WebRouteRemoveResponses,
+  WebRouteToggle2Responses,
+  WebRouteToggleResponses,
   WorkspaceActive2Errors,
   WorkspaceActive2Responses,
   WorkspaceActiveErrors,
@@ -11353,6 +11357,62 @@ export class WebRoute extends HeyApiClient {
   }
 
   /**
+   * Health-check all registered web services
+   *
+   * TCP-probes each entry in web_registry.json and returns alive/dead status.
+   */
+  public health<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<WebRouteHealthResponses, unknown, ThrowOnError>({
+      url: "/api/v2/web-route/health",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Start or stop a registered web service
+   *
+   * Invokes the service's webctl.sh with start or stop.
+   */
+  public toggle<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      entryName?: string
+      action?: "start" | "stop"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "entryName" },
+            { in: "body", key: "action" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WebRouteToggleResponses, unknown, ThrowOnError>({
+      url: "/api/v2/web-route/toggle",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * List web routes
    *
    * List all published web routes for the current user.
@@ -11435,6 +11495,62 @@ export class WebRoute extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<WebRouteRemove2Responses, unknown, ThrowOnError>({
       url: "/web-route/remove",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Health-check all registered web services
+   *
+   * TCP-probes each entry in web_registry.json and returns alive/dead status.
+   */
+  public health2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<WebRouteHealth2Responses, unknown, ThrowOnError>({
+      url: "/web-route/health",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Start or stop a registered web service
+   *
+   * Invokes the service's webctl.sh with start or stop.
+   */
+  public toggle2<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      entryName?: string
+      action?: "start" | "stop"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "entryName" },
+            { in: "body", key: "action" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WebRouteToggle2Responses, unknown, ThrowOnError>({
+      url: "/web-route/toggle",
       ...options,
       ...params,
       headers: {
