@@ -27,11 +27,11 @@
 
 ## 4. Rate limit middleware
 
-- [ ] 4.1 建立 `packages/opencode/src/server/rate-limit.ts`：token bucket，key = `${username}:${method}:${routePattern}`，用 hono 的 `c.req.routePath` 或等價 API 拿 pattern。
-- [ ] 4.2 設計豁免清單：`opencode.internal` hostname、`/log`、`/api/v2/server/cache/health`、`/api/v2/server/health`。放在 module 頂部 const array，易於 review。
-- [ ] 4.3 於 `app.ts` 在 request-log middleware **之後**掛入 rate-limit middleware；被拒時 `return c.json({code:"RATE_LIMIT", message, path, retryAfterSec}, 429, {"Retry-After": String(sec)})`，並 `log.warn("rate-limit throttled", ...)`。
-- [ ] 4.4 `ratelimit_enabled=0` 時 middleware short-circuit；啟動時 `log.info("rate-limit disabled via tweaks")`。
-- [ ] 4.5 單元測試 `server/rate-limit.test.ts`：quota 內放行、耗盡回 429、Retry-After 合理、豁免路徑不計次、disable 時全放行。
+- [x] 4.1 建立 `packages/opencode/src/server/rate-limit.ts`：token bucket，key = `${username}:${method}:${routePattern}`，用 hono 的 `c.req.routePath` 或等價 API 拿 pattern。（`routePath` isn't available at middleware time in hono 5; used `normalizeRoutePattern(c.req.path)` — regex-collapses opencode ID segments `<prefix>_<20+chars>` to `:id` so per-session URLs share a bucket.）
+- [x] 4.2 設計豁免清單：`opencode.internal` hostname、`/log`、`/api/v2/server/cache/health`、`/api/v2/server/health`。放在 module 頂部 const array，易於 review。（`EXEMPT_PATH_PREFIXES` const; `hostname === "opencode.internal"` bypass.）
+- [x] 4.3 於 `app.ts` 在 request-log middleware **之後**掛入 rate-limit middleware；被拒時 `return c.json({code:"RATE_LIMIT", message, path, retryAfterSec}, 429, {"Retry-After": String(sec)})`，並 `log.warn("rate-limit throttled", ...)`。
+- [x] 4.4 `ratelimit_enabled=0` 時 middleware short-circuit；啟動時 `log.info("rate-limit disabled via tweaks")`。（`RateLimit.logStartup` invoked from `src/index.ts`.）
+- [x] 4.5 單元測試 `server/rate-limit.test.ts`：quota 內放行、耗盡回 429、Retry-After 合理、豁免路徑不計次、disable 時全放行。（12 passing tests including normalize, multi-user bucket isolation, and E-RATE-002 no-username bypass.）
 
 ## 5. Health endpoint wiring
 

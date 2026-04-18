@@ -223,3 +223,65 @@ before they can 304 again. Captured in invariants.md note and spec DD-3.
 - `UserDaemonManager.routeSessionReadEnabled` path is NOT cached locally
   — if that surface becomes a polling hotspot later, a secondary plan should
   add an HTTP-level cache at the `UserDaemonManager.callSession*` layer.
+
+## Phase 4 — Rate limit middleware
+
+Completed: 2026-04-19
+
+### Done (tasks 4.1–4.5)
+
+- **4.1** `packages/opencode/src/server/rate-limit.ts` (`RateLimit` namespace)
+  - Token bucket per `${username}:${method}:${routePattern}`
+  - `normalizeRoutePattern(path)` collapses opencode ID segments (regex
+    `^(ses|msg|per|que|usr|prt|pty|tool)_[A-Za-z0-9]{20,}$`) to `:id`, so
+    per-session URLs share one bucket rather than fragmenting the limiter.
+  - Refill rate + capacity from `ratelimit_qps_per_user_per_path` +
+    `ratelimit_burst` tweaks.
+  - Bus events: `rate-limit.allowed|throttled`.
+- **4.2** `EXEMPT_PATH_PREFIXES` const at module top: `/log`,
+  `/api/v2/global/health`, `/api/v2/global/log`,
+  `/api/v2/server/cache/health`, `/api/v2/server/`. Hostname
+  `opencode.internal` bypassed unconditionally.
+- **4.3** Mounted in `server/app.ts` between the request-log middleware
+  and the directory/Instance middleware, so 429 responses are still
+  logged. Response format: `{ code: "RATE_LIMIT", message, path,
+  retryAfterSec }` with `Retry-After: <ceil(secs-to-refill-1)>`.
+- **4.4** `ratelimit_enabled=0` short-circuits the middleware; startup
+  emits a single `rate-limit disabled via tweaks` info line.
+  `RateLimit.logStartup()` is invoked from `src/index.ts` right after
+  `SessionCache.registerInvalidationSubscriber()`; it also registers
+  the stats provider with `/cache/health`.
+- **4.5** `packages/opencode/test/server/rate-limit.test.ts` — 12
+  passing tests: normalize happy/edge cases, under-burst allow,
+  429+Retry-After on exhaust, pattern-scoped bucket isolation, session
+  IDs collapse into one bucket for the same pattern, per-user bucket
+  isolation, exempt paths, internal hostname bypass, disabled-tweaks
+  pass-through, no-username E-RATE-002 warn-bypass.
+
+### Implementation notes
+
+- hono's `c.req.routePath` is only populated after route matching, which
+  happens after middleware. We use `c.req.path` (raw URL) and normalize
+  it in the middleware itself.
+- Cumulative counters only — a 5-min sliding-window aggregation is
+  deferred to Phase 5 / follow-up plan (see spec R-4 note). Cumulative
+  data is already useful for ops.
+- `E-RATE-002` (no-username bypass with warn) preserves the invariant
+  that unattributed traffic is never silently throttled.
+
+### Validation
+
+- `bun run typecheck` — no new errors in rate-limit.ts, session-cache.ts,
+  cache-health.ts, tweaks.ts
+- Combined test run (`tweaks + session-cache + rate-limit`): 34 pass,
+  0 fail, 1.2 s
+- `bun run scripts/plan-sync.ts specs/session-poll-cache/` — runs after
+  this phase commit
+
+### Drift / follow-ups
+
+- **Sliding-window stats deferred to Phase 5.** Current implementation
+  exposes cumulative counts via `/cache/health`. Spec R-4 said "過去 5
+  分鐘" — this is a partial fulfillment. Acceptable for Phase 5 to ship
+  cumulative and layer the ring buffer as a separate follow-up plan if
+  ops feedback needs it.
