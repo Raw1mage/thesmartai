@@ -597,7 +597,9 @@ describe("Session workflow runner", () => {
     expect(decision.reason).toBe("todo_in_progress")
   })
 
-  it("marks workflow complete when no actionable todos remain", () => {
+  it("marks workflow complete after verify round when no actionable todos remain", () => {
+    // roundCount=1 means the D1 completion-verify round already fired and the
+    // model did not add new todos. Second call should stop for real.
     const decision = evaluateAutonomousContinuation({
       session: {
         parentID: undefined,
@@ -613,7 +615,7 @@ describe("Session workflow runner", () => {
         time: { created: 1, updated: 1 },
       },
       todos: [{ id: "a", content: "done", status: "completed", priority: "high" }],
-      roundCount: 0,
+      roundCount: 1,
     })
 
     expect(decision).toEqual({ continue: false, reason: "todo_complete" })
@@ -1799,6 +1801,80 @@ describe("Session workflow runner", () => {
     })
 
     expect(picked.map((item) => item.pending.sessionID)).toEqual(["session_healthy"])
+  })
+
+  it("injects completion-verify round when roundCount=0 and every todo is completed", () => {
+    const action = planAutonomousNextAction({
+      session: {
+        parentID: undefined,
+        workflow: {
+          ...Session.defaultWorkflow(1),
+          autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
+          state: "running",
+        },
+        time: { created: 1, updated: 1 },
+      },
+      todos: [{ id: "a", content: "done task", status: "completed", priority: "high" }],
+      roundCount: 0,
+    })
+    expect(action.type).toBe("continue")
+    if (action.type === "continue") {
+      expect(action.reason).toBe("completion_verify")
+      expect(action.text).toContain("final inventory")
+      expect(action.text).toContain("TodoWrite")
+      expect(action.todo.id).toBe("_runner_completion_verify")
+    }
+  })
+
+  it("stops with todo_complete after verify round when model added no new todos (roundCount=1)", () => {
+    const action = planAutonomousNextAction({
+      session: {
+        parentID: undefined,
+        workflow: {
+          ...Session.defaultWorkflow(1),
+          autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
+          state: "running",
+        },
+        time: { created: 1, updated: 1 },
+      },
+      todos: [{ id: "a", content: "done task", status: "completed", priority: "high" }],
+      roundCount: 1,
+    })
+    expect(action).toEqual({ type: "stop", reason: "todo_complete" })
+  })
+
+  it("skips completion-verify when autonomous is disabled", () => {
+    const action = planAutonomousNextAction({
+      session: {
+        parentID: undefined,
+        workflow: {
+          ...Session.defaultWorkflow(1),
+          autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: false },
+          state: "waiting_user",
+        },
+        time: { created: 1, updated: 1 },
+      },
+      todos: [{ id: "a", content: "done task", status: "completed", priority: "high" }],
+      roundCount: 0,
+    })
+    expect(action).toEqual({ type: "stop", reason: "todo_complete" })
+  })
+
+  it("skips completion-verify for chat sessions that never used todos", () => {
+    const action = planAutonomousNextAction({
+      session: {
+        parentID: undefined,
+        workflow: {
+          ...Session.defaultWorkflow(1),
+          autonomous: { ...Session.defaultWorkflow(1).autonomous, enabled: true },
+          state: "running",
+        },
+        time: { created: 1, updated: 1 },
+      },
+      todos: [],
+      roundCount: 0,
+    })
+    expect(action).toEqual({ type: "stop", reason: "todo_complete" })
   })
 })
 
