@@ -1919,37 +1919,70 @@ export const TaskTool = Tool.define("task", async (ctx) => {
 
         // ── Direct completion channel + disk-based fallback ───────────
         // Primary: await the worker's done promise (resolved by stdout reader).
-        // Fallback: if the child session's last assistant message is terminal
-        // on disk but the done promise hasn't resolved (worker loop hung),
-        // a watchdog timer detects this and unblocks the parent.
+        // Two fallback paths cover hang scenarios:
+        //   1. Disk terminal finish — child wrote a terminal finish but the
+        //      done promise is stuck (worker post-loop cleanup hung).
+        //   2. No-progress timeout (Fix C) — worker is alive but not
+        //      producing events: neither terminal finish on disk nor
+        //      stdout bridge activity. Covers stream-stalled scenarios
+        //      (server accepted request but sent no body) even when the
+        //      child-side idle watchdog does not rescue itself.
         const DISK_WATCHDOG_INTERVAL_MS = 5_000
         const DISK_WATCHDOG_GRACE_MS = 60_000
+        const NO_PROGRESS_TIMEOUT_MS = 180_000
         const TERMINAL_FINISHES = ["stop", "error", "length", "canceled"]
 
         let diskWatchdogTimer: ReturnType<typeof setInterval> | undefined
         const diskCompletion = new Promise<{ ok: boolean; finish: string }>((resolveDisk) => {
           diskWatchdogTimer = setInterval(async () => {
             try {
+              // Path 1: terminal finish on disk past grace window.
               const { messages: childMsgs } = await MessageV2.filterCompacted(MessageV2.stream(session.id))
               const lastAssistant = childMsgs.findLast((m) => m.info.role === "assistant")
-              if (!lastAssistant) return
-              const info = lastAssistant.info as MessageV2.Assistant
-              if (!info.finish || !TERMINAL_FINISHES.includes(info.finish)) return
-              const completedAt = info.time?.completed
-              if (!completedAt) return
-              const elapsed = Date.now() - completedAt
-              if (elapsed < DISK_WATCHDOG_GRACE_MS) return
-              // Child session finished on disk but done promise still pending — worker loop is hung.
-              Log.create({ service: "task" }).warn("disk-based completion fallback triggered", {
-                childSessionID: session.id,
-                parentSessionID: ctx.sessionID,
-                finish: info.finish,
-                completedAt,
-                elapsedMs: elapsed,
-                workerID: assignedWorkerID,
-              })
-              console.error(`[DISK-WATCHDOG] ${session.id} fallback triggered: finish=${info.finish} elapsed=${elapsed}ms`)
-              resolveDisk({ ok: info.finish === "stop", finish: info.finish })
+              if (lastAssistant) {
+                const info = lastAssistant.info as MessageV2.Assistant
+                if (info.finish && TERMINAL_FINISHES.includes(info.finish)) {
+                  const completedAt = info.time?.completed
+                  if (completedAt) {
+                    const elapsed = Date.now() - completedAt
+                    if (elapsed >= DISK_WATCHDOG_GRACE_MS) {
+                      Log.create({ service: "task" }).warn("disk-based completion fallback triggered", {
+                        childSessionID: session.id,
+                        parentSessionID: ctx.sessionID,
+                        finish: info.finish,
+                        completedAt,
+                        elapsedMs: elapsed,
+                        workerID: assignedWorkerID,
+                      })
+                      console.error(`[DISK-WATCHDOG] ${session.id} fallback triggered: finish=${info.finish} elapsed=${elapsed}ms`)
+                      resolveDisk({ ok: info.finish === "stop", finish: info.finish })
+                      return
+                    }
+                  }
+                }
+              }
+
+              // Path 2 (Fix C): worker has been silent too long.
+              const worker = assignedWorkerID ? workers.find((w) => w.id === assignedWorkerID) : undefined
+              if (worker?.current && worker.current.sessionID === session.id) {
+                const lastMark =
+                  worker.current.lastEventAt ??
+                  worker.current.firstEventAt ??
+                  worker.current.dispatchedAt ??
+                  worker.current.createdAt
+                const elapsedSinceEvent = Date.now() - lastMark
+                if (elapsedSinceEvent >= NO_PROGRESS_TIMEOUT_MS) {
+                  Log.create({ service: "task" }).warn("no-progress watchdog fallback triggered", {
+                    childSessionID: session.id,
+                    parentSessionID: ctx.sessionID,
+                    elapsedSinceLastEventMs: elapsedSinceEvent,
+                    eventCount: worker.current.eventCount,
+                    workerID: assignedWorkerID,
+                  })
+                  console.error(`[DISK-WATCHDOG] ${session.id} no-progress fallback: elapsed=${elapsedSinceEvent}ms events=${worker.current.eventCount}`)
+                  resolveDisk({ ok: false, finish: "no_progress_timeout" })
+                }
+              }
             } catch {
               // Non-fatal: retry on next interval
             }
