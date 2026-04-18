@@ -79,3 +79,62 @@ Completed: 2026-04-19
 Starting immediately per plan-builder §16.5 (phase boundary is a checkpoint,
 not a pause). First task: inventory all bus-event-emitting write paths to
 confirm cache coverage.
+
+## Phase 2 — Session read cache
+
+Completed: 2026-04-19
+
+### Stop-gate #1 (handoff): bus bridge coverage audit
+
+Grep over `packages/opencode/src/**` for `Bus.publish(MessageV2.Event.*)` and
+`Bus.publish(Session.Event.Updated|Created|Deleted)` found 12 publish sites.
+All 7 subscriber-relevant types are covered:
+
+| Event type | Publisher(s) | Process | Daemon delivery path |
+|---|---|---|---|
+| `MessageV2.Event.Updated` | `session/index.ts:832`, `session/message-v2.ts:1313` | worker/daemon | direct or via `publishBridgedEvent` (task.ts:375) |
+| `MessageV2.Event.Removed` | `session/index.ts:857`, `session/message-v2.ts:1335`, `session/revert.ts:101` | worker/daemon | direct or bridged (task.ts:378) |
+| `MessageV2.Event.PartUpdated` | `session/index.ts:926/932`, `session/message-v2.ts:1322` | worker/daemon | direct or bridged (task.ts:381) |
+| `MessageV2.Event.PartRemoved` | `session/index.ts:873`, `session/revert.ts:110` | worker/daemon | direct or bridged (task.ts:384) |
+| `Session.Event.Created` | `session/index.ts:477` | daemon | direct |
+| `Session.Event.Updated` | `session/index.ts:491/560`, also bridged (task.ts:387) | daemon/worker | direct or bridged |
+| `Session.Event.Deleted` | `session/index.ts:812` | daemon | direct |
+
+No gaps found. Stop-gate #1 **passes** without remediation — the cache can
+trust the existing bus infrastructure.
+
+### Done (tasks 2.1–2.6)
+
+- **2.2** `packages/opencode/src/server/session-cache.ts` (`SessionCache` namespace)
+  - In-process LRU using `Map<key, Entry>` insertion-order semantics
+  - Keys: `session:<id>`, `messages:<id>:<limit>`
+  - Per-session monotonic version counter (I-4); bumped on every
+    MessageV2.Event / Session.Event.Created|Updated, cleared on Deleted
+  - `get(key, sessionID, loader)` with TTL + LRU enforcement
+  - Bus events emitted: `session-cache.hit|miss|invalidated|evicted`
+  - Registers itself as stats provider via `registerCacheStatsProvider`
+  - `resetForTesting` + `setSubscriptionAliveForTesting` for clean unit tests
+- **2.3** Subscribers registered at daemon startup in `src/index.ts` after
+  existing `registerDebugWriter` / `registerTelemetryRuntimePersistence` /
+  `registerTaskWorkerContinuationSubscriber` calls
+- **2.4** Subscription registration wrapped in try/catch; failure path sets
+  `subscriptionAlive=false`, issues `log.warn`, and still registers the
+  stats provider so `/cache/health` can surface the degraded state
+- **2.5** `Session.Event.Deleted` subscriber calls `forgetSession` which both
+  drops cache keys and clears the per-session version counter (I-4 cleanup)
+- **2.6** `packages/opencode/test/server/session-cache.test.ts` — 10 passing
+  tests: miss-then-hit, loader skip, invalidate, bus-event-driven
+  invalidation for `MessageV2.Event.Updated` and `PartUpdated`,
+  `Session.Event.Deleted` counter cleanup, TTL expiry (ttlSec=0 edge),
+  LRU eviction under max=2, subscriptionAlive=false never memoizes,
+  cache-disabled tweaks short-circuit
+
+### Validation
+
+- `bun run typecheck` — no new errors
+- `bun test test/server/session-cache.test.ts` — 10 pass, 0 fail, 1.2 s
+- `bun run scripts/plan-sync.ts specs/session-poll-cache/` — clean (no drift)
+
+### Drift / follow-ups
+
+- None. Phase 3 will wire the cache into the actual HTTP routes.

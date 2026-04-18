@@ -10,12 +10,12 @@
 
 ## 2. Session read cache
 
-- [ ] 2.1 盤點所有會寫入 `message:*` / `session:*` 的路徑，列成清單：`session/index.ts`、`message-v2.ts`、`revert.ts`、`task.ts:publishBridgedEvent`。確認每條路徑都有對應 bus event 發佈（不然 cache 會 stale，屬 R-1）；若缺，補進 bridge。
-- [ ] 2.2 建立 `packages/opencode/src/server/session-cache.ts`：in-process LRU，keyed by `session:<id>` / `messages:<id>:<limit>`；export `get<T>(key, loader)` 與 `invalidate(sessionID)` 與 `stats()`。loader 簽名需回傳 `{ data, version }`。
-- [ ] 2.3 於 cache 模組初始化時 `Bus.subscribeGlobal` 訂閱 `MessageV2.Event.Updated/Removed/PartUpdated/PartRemoved`、`Session.Event.Updated/Deleted/Created`；每個 event 取 `sessionID` 呼叫 `invalidate(sessionID)` 並 bump version counter。
-- [ ] 2.4 訂閱失敗（subscribeGlobal throw 或 return null）必須 `log.warn` 並把 `subscriptionAlive=false`；後續 cache operations 一律 miss 但仍讀原始資料（不靜默退回舊值）。
-- [ ] 2.5 `Session.Event.Deleted` 時額外清除 version counter。
-- [ ] 2.6 單元測試 `server/session-cache.test.ts`：hit、miss、TTL expiry、LRU evict、invalidate、訂閱失敗路徑。
+- [x] 2.1 盤點所有會寫入 `message:*` / `session:*` 的路徑，列成清單：`session/index.ts`、`message-v2.ts`、`revert.ts`、`task.ts:publishBridgedEvent`。確認每條路徑都有對應 bus event 發佈（不然 cache 會 stale，屬 R-1）；若缺，補進 bridge。（Inventory clean — all 12 publish sites covered, worker bridge already relays all 4 MessageV2.Event.* + Session.Event.Updated; stop-gate #1 passes.）
+- [x] 2.2 建立 `packages/opencode/src/server/session-cache.ts`：in-process LRU，keyed by `session:<id>` / `messages:<id>:<limit>`；export `get<T>(key, loader)` 與 `invalidate(sessionID)` 與 `stats()`。loader 簽名需回傳 `{ data, version }`。
+- [x] 2.3 於 cache 模組初始化時 `Bus.subscribeGlobal` 訂閱 `MessageV2.Event.Updated/Removed/PartUpdated/PartRemoved`、`Session.Event.Updated/Deleted/Created`；每個 event 取 `sessionID` 呼叫 `invalidate(sessionID)` 並 bump version counter。（Registered in `src/index.ts` after existing subscribers.）
+- [x] 2.4 訂閱失敗（subscribeGlobal throw 或 return null）必須 `log.warn` 並把 `subscriptionAlive=false`；後續 cache operations 一律 miss 但仍讀原始資料（不靜默退回舊值）。
+- [x] 2.5 `Session.Event.Deleted` 時額外清除 version counter。（`forgetSession` path.）
+- [x] 2.6 單元測試 `server/session-cache.test.ts`：hit、miss、TTL expiry、LRU evict、invalidate、訂閱失敗路徑。（10 passing tests.）
 
 ## 3. Route integration — ETag + 304
 
