@@ -33,7 +33,13 @@ import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import { debugCheckpoint } from "@/util/debug"
-import { RateLimitJudge, isRateLimitError, isAuthError, formatRateLimitReason } from "@/account/rate-limit-judge"
+import {
+  RateLimitJudge,
+  isRateLimitError,
+  isAuthError,
+  formatRateLimitReason,
+  CodexFamilyExhausted,
+} from "@/account/rate-limit-judge"
 
 import { RequestMonitor } from "@/account/monitor"
 import ENABLEMENT from "./prompt/enablement.json"
@@ -1253,6 +1259,22 @@ export namespace LLM {
         triedVectorCount: triedVectors.size,
         note: "all candidates exhausted or rate-limited",
       })
+      // @plans/codex-rotation-hotfix Phase 3 — codex family is same-provider-only
+      // by design. When the pool is empty AND we came in on codex, it means every
+      // codex subscription account is out of 5H / weekly quota. Surface this as a
+      // codex-specific error so the operator gets an actionable message instead
+      // of the generic "all accounts rate-limited" fallback downstream.
+      if (currentModel.providerId === "codex") {
+        throw new CodexFamilyExhausted({
+          providerId: currentModel.providerId,
+          accountId: currentAccountId,
+          modelId: currentModel.id,
+          triedCount: triedVectors.size,
+          message:
+            "All codex subscription accounts have exhausted their 5H/weekly quota. " +
+            "Wait for the next 5H reset or switch provider manually.",
+        })
+      }
       return null
     }
 
