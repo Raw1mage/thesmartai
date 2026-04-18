@@ -29,6 +29,7 @@ import { Token } from "@/util/token"
 
 import z from "zod"
 import { findFallback, type ModelVector, type FallbackStrategy, isVectorRateLimited } from "@/account/rotation3d"
+import { withRotationCoalesce } from "@/account/rotation/coalesce"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { TuiEvent } from "@/cli/cmd/tui/event"
@@ -1234,6 +1235,20 @@ export namespace LLM {
     const currentAccountId = currentAccountIdInput ?? (await Account.getActive(providerKey))
     if (!currentAccountId) return null
 
+    // === Rotation storm prevention ===
+    // Eligibility: only "first-time" rotation attempts (no prior triedVectors)
+    // coalesce across concurrent callers. Retry attempts keep per-caller
+    // triedVectors semantics and bypass cache/in-flight sharing, but still
+    // honor the min-interval anti-cascade guard inside the wrapper.
+    const coalesceKey = `${currentModel.providerId}:${currentAccountId}:${currentModel.id}`
+    const eligibleForCoalesce = triedVectors.size === 0
+
+    return withRotationCoalesce({
+      coalesceKey,
+      providerId: currentModel.providerId,
+      eligibleForCoalesce,
+      shouldCache: (r) => r !== null,
+      work: async () => {
     // Build current vector key and add to tried set
     const currentVectorKey = `${currentModel.providerId}:${currentAccountId}:${currentModel.id}`
     triedVectors.add(currentVectorKey)
@@ -1466,6 +1481,8 @@ export namespace LLM {
     }
 
     return { model: fallbackModel, accountId: fallback.accountId }
+      },
+    })
   }
 
   // formatRateLimitReason moved to @/account/rate-limit-judge.ts

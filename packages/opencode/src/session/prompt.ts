@@ -1470,6 +1470,26 @@ export namespace SessionPrompt {
           }
           await Session.updateMessage(updatedInfo)
         }
+
+        // SSOT: pin session execution to the image-capable model so UI (footer,
+        // selector, quota) reflects what the next LLM call will actually use.
+        // Without this, processor's preflight pin is skipped (session already
+        // has an account pinned) and UI shows the pre-rotation model.
+        await Session.pinExecutionIdentity({
+          sessionID,
+          model: {
+            providerId: activeModel.providerId,
+            modelID: activeModel.id,
+            accountId: lastUser?.model.accountId,
+          },
+        }).catch((err) => {
+          log.warn("image-router: failed to pin execution identity", {
+            sessionID,
+            providerId: activeModel.providerId,
+            modelID: activeModel.id,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        })
       }
       const agent = await Agent.get(lastUser.agent)
       const maxSteps = agent.steps ?? Infinity
