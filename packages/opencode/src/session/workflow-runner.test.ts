@@ -523,7 +523,7 @@ describe("Session workflow runner", () => {
 
   // autonomous_disabled test removed — autonomous is always-on
 
-  it("stops when autonomous runner has no approved mission contract", () => {
+  it("continues on pending todos even without a mission (mission gate removed 2026-04-18)", () => {
     const decision = evaluateAutonomousContinuation({
       session: {
         parentID: undefined,
@@ -541,7 +541,8 @@ describe("Session workflow runner", () => {
       roundCount: 0,
     })
 
-    expect(decision).toEqual({ continue: false, reason: "mission_not_approved" })
+    expect(decision.continue).toBe(true)
+    if (decision.continue) expect(decision.reason).toBe("todo_pending")
   })
 
   it("continues when autonomous runner has an approved mission contract", () => {
@@ -1967,7 +1968,7 @@ describe("plan-trusting mode: max_continuous_rounds bypass", () => {
       roundCount: 5,
     })
     expect(decision.type).toBe("stop")
-    expect(decision.reason).toBe("mission_not_approved")
+    expect(decision.reason).toBe("max_continuous_rounds")
   })
 
   it("still stops for real blockers even in plan-trusting mode", () => {
@@ -2131,7 +2132,7 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
       expect(result).toEqual({ pass: false, reason: "blocked" })
     })
 
-    it("blocks when mission not approved", () => {
+    it("passes when mission is absent (mission gate removed 2026-04-18)", () => {
       const trigger = buildApiTrigger({ source: "test", text: "go" })
       const session = baseSession()
       session.mission = undefined as any
@@ -2141,7 +2142,7 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
         todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
         roundCount: 0,
       })
-      expect(result).toEqual({ pass: false, reason: "mission_not_approved" })
+      expect(result.pass).toBe(true)
     })
 
     it("blocks for pending approvals", () => {
@@ -2202,8 +2203,8 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
         todos: [todo],
         roundCount: 5,
       })
-      // executionReady=false → not plan-trusting → mission_not_approved check fires first
-      expect(result).toEqual({ pass: false, reason: "mission_not_approved" })
+      // executionReady=false → not plan-trusting → max_continuous_rounds fires
+      expect(result).toEqual({ pass: false, reason: "max_continuous_rounds" })
     })
 
     it("passes all gates for valid api trigger", () => {
@@ -2233,18 +2234,8 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
     })
 
     // autonomous_disabled test removed — autonomous is always-on
-
-    it("mission_not_approved: stops when no approved mission", () => {
-      const session = baseSession()
-      session.mission = undefined as any
-      expect(
-        planAutonomousNextAction({
-          session,
-          todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
-          roundCount: 0,
-        }).reason,
-      ).toBe("mission_not_approved")
-    })
+    // mission_not_approved test removed — mission gate removed 2026-04-18
+    // (Session.setMission had no caller since plan_enter ripped out 2026-04-09)
 
     it("blocked: stops when workflow state is blocked", () => {
       const session = baseSession()
@@ -2356,7 +2347,7 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
           todos: [{ id: "a", content: "x", status: "pending", priority: "high" }],
           roundCount: 5,
         }).reason,
-      ).toBe("mission_not_approved")
+      ).toBe("max_continuous_rounds")
     })
 
     it("todo_in_progress: continues with in-progress todo", () => {
@@ -2381,15 +2372,13 @@ describe("RunTrigger and TriggerEvaluator (Phase 5B)", () => {
   })
 
   describe("gate policy differences between continuation and api triggers", () => {
-    it("continuation gatePolicy requires mission and respects max rounds", () => {
-      expect(CONTINUATION_GATE_POLICY.requireApprovedMission).toBe(true)
+    it("continuation gatePolicy respects max rounds and checks approvals", () => {
       expect(CONTINUATION_GATE_POLICY.respectMaxRounds).toBe(true)
       expect(CONTINUATION_GATE_POLICY.checkApprovalGates).toBe(true)
       expect(CONTINUATION_GATE_POLICY.checkStructuredStops).toBe(true)
     })
 
-    it("api gatePolicy requires mission but ignores max rounds", () => {
-      expect(API_GATE_POLICY.requireApprovedMission).toBe(true)
+    it("api gatePolicy ignores max rounds but checks approvals", () => {
       expect(API_GATE_POLICY.respectMaxRounds).toBe(false)
       expect(API_GATE_POLICY.checkApprovalGates).toBe(true)
       expect(API_GATE_POLICY.checkStructuredStops).toBe(true)
