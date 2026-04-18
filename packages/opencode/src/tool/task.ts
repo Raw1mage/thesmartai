@@ -12,6 +12,7 @@ import { defer } from "@/util/defer"
 import { Config } from "../config/config"
 import { PermissionNext } from "@/permission/next"
 import { Provider } from "../provider/provider"
+import { LLM } from "../session/llm"
 import { Log } from "@/util/log"
 import { debugCheckpoint } from "@/util/debug"
 import { fileURLToPath } from "url"
@@ -416,7 +417,17 @@ async function publishBridgedEvent(event: { type: string; properties: any }) {
 
 /**
  * Handle a rate-limit escalation from a child session.
- * Read the parent's current execution identity and push it to the worker.
+ *
+ * Fix B1 (2026-04-18): run proper rotation3d on the parent side using the
+ * child's triedVectors. Previously this just echoed parent.execution back to
+ * the worker, which—when parent and child shared a rate-limited account—looped
+ * the child through the same vector until either side timed out. Now we:
+ *   1. Resolve the child's current Provider.Model and ask rotation3d
+ *      for a fresh vector excluding triedVectors.
+ *   2. If a fallback exists, push it to the worker via stdin model_update.
+ *   3. If no fallback exists, do NOT push parent.execution (that would just
+ *      re-hit the same 429). Let ModelUpdateSignal.wait() expire (30s) so
+ *      the child fails fast with a clear error.
  */
 async function handleRateLimitEscalation(props: {
   sessionID: string
@@ -441,24 +452,74 @@ async function handleRateLimitEscalation(props: {
     return
   }
 
-  // Read parent session's execution identity to determine what model to use
+  // Read parent session's execution identity for sessionIdentity hint only.
   const parentSession = await Session.get(parentSessionID).catch(() => undefined)
-  if (!parentSession?.execution) {
-    log.warn("Escalation: parent session has no execution identity", { parentSessionID, childSessionID })
+
+  // Resolve child's current Provider.Model (needed for rotation3d input).
+  let currentProviderModel: Provider.Model | undefined
+  try {
+    currentProviderModel = await Provider.getModel(
+      props.currentModel.providerId,
+      props.currentModel.modelID,
+    )
+  } catch (err) {
+    log.error("Escalation: cannot resolve child's current model for rotation", {
+      childSessionID,
+      providerId: props.currentModel.providerId,
+      modelID: props.currentModel.modelID,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return
+  }
+
+  const triedSet = new Set(props.triedVectors)
+  const sessionIdentity =
+    parentSession?.execution
+      ? { providerId: parentSession.execution.providerId, accountId: parentSession.execution.accountId }
+      : undefined
+  const fallback = await LLM.handleRateLimitFallback(
+    currentProviderModel,
+    "account-first",
+    triedSet,
+    new Error(props.error),
+    props.currentModel.accountId,
+    sessionIdentity,
+    { silent: true },
+  ).catch((err) => {
+    log.warn("Escalation: rotation3d threw", {
+      childSessionID,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null
+  })
+
+  if (!fallback) {
+    log.warn("Escalation: no rotation fallback available — letting child ModelUpdateSignal timeout", {
+      childSessionID,
+      parentSessionID,
+      childCurrentModel: props.currentModel,
+      triedVectors: props.triedVectors,
+    })
+    debugCheckpoint("syslog.rotation", "parent escalation: no fallback — child will timeout", {
+      parentSessionID,
+      childSessionID,
+      triedVectors: props.triedVectors,
+    })
     return
   }
 
   const newModel = {
-    providerId: parentSession.execution.providerId,
-    modelID: parentSession.execution.modelID,
-    accountId: parentSession.execution.accountId,
+    providerId: fallback.model.providerId,
+    modelID: fallback.model.id,
+    accountId: fallback.accountId,
   }
 
-  debugCheckpoint("syslog.rotation", "parent handling child escalation — sending model_update", {
+  debugCheckpoint("syslog.rotation", "parent handling child escalation — rotation3d found fallback", {
     parentSessionID,
     childSessionID,
-    parentModel: newModel,
+    rotationPicked: newModel,
     childCurrentModel: props.currentModel,
+    triedVectorCount: triedSet.size,
   })
 
   // Send model_update command to worker via stdin
