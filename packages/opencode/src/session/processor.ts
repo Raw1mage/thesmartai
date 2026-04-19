@@ -97,6 +97,10 @@ const RETRYABLE_TOOL_ERRORS = [
   "verification failed",
   // common
   "ENOENT",
+  // tool schema self-heal: tools emit "[schema-miss:<tool>]" via
+  // formatValidationError so the UI mutes the call and the LLM retries
+  // with the schema template on the next turn (no red error surfaced).
+  "[schema-miss:",
 ]
 
 const RateLimitEscalationEvent = BusEvent.define(
