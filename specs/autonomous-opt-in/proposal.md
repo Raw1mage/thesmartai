@@ -2,18 +2,18 @@
 
 ## Why
 
-The runloop's autonomous-continuation layer is currently hardcoded to `always-on` at three sites ([workflow-runner.ts:313, :648, and the body of `planAutonomousNextAction`](../../packages/opencode/src/session/workflow-runner.ts)), with no session-scoped enable flag. Every turn-end — regardless of whether the user is chatting, asking a question, or executing a plan — fires the drain-check path, which injects a synthetic user message ("Continuation Gate") and consumes one full LLM round (~30 seconds of observed latency) just to confirm the AI has nothing more to say.
+The runloop's autonomous-continuation layer was hardcoded to `always-on` at three sites in `workflow-runner.ts`, with no session-scoped enable flag. Every turn-end — regardless of whether the user was chatting, asking a question, or executing a plan — could fire a drain-check path that injected a synthetic continuation round and consumed one full LLM round (~30 seconds of observed latency) just to confirm the AI had nothing more to say.
 
 This has produced a visible design spiral:
 
-| Layer | Intent | Side effect |
-|---|---|---|
-| L1 | "todolist presence = continue signal" | In chat (no todolist), runloop has no break condition |
-| L2 | "When todolist is empty, nudge AI to produce one" | AI hallucinates todos, infinite loop |
-| L3 | "AI self-checks a Continuation Gate before continuing" | ~30s gate-check round on every turn-end, even in chat |
-| L4 (this spec) | "Read plan `.state.json` to decide whether to pump at all" | — |
+| Layer          | Intent                                                     | Side effect                                           |
+| -------------- | ---------------------------------------------------------- | ----------------------------------------------------- |
+| L1             | "todolist presence = continue signal"                      | In chat (no todolist), runloop has no break condition |
+| L2             | "When todolist is empty, nudge AI to produce one"          | AI hallucinates todos, infinite loop                  |
+| L3             | "AI self-checks a Continuation Gate before continuing"     | ~30s gate-check round on every turn-end, even in chat |
+| L4 (this spec) | "Read plan `.state.json` to decide whether to pump at all" | —                                                     |
 
-The root cause: L1 conflates *execution state* (is there a todolist?) with *execution intent* (does the user want autonomous execution?). Each subsequent layer patches over that conflation. This spec replaces L1-L3 with an explicit opt-in signal sourced from the plan lifecycle and user intent — making autorun a **transient elevation** from the default idle state, not a default pumping loop.
+The root cause: L1 conflates _execution state_ (is there a todolist?) with _execution intent_ (does the user want autonomous execution?). Each subsequent layer patches over that conflation. This spec replaces L1-L3 with an explicit opt-in signal sourced from the plan lifecycle and user intent — making autorun a **transient elevation** from the default idle state, not a default pumping loop.
 
 **Design principle agreed with user**: autorun capability is intentionally coupled to plan-builder artifact state. Without a well-formed plan there is no sensible basis for autonomous execution, so requiring a validated plan as the pre-condition is a natural invariant, not an accidental dependency.
 
@@ -47,8 +47,9 @@ Recorded from conversation 2026-04-19:
 **R2 — Arm condition: unfinished todolist.** `Todo.nextActionableTodo(sessionID) !== null` at arm time.
 
 **R3 — Arm condition: explicit trigger.** One of the following must fire:
-  - **R3a — verbal trigger:** a user message matches any phrase in the trigger list (source: `/etc/opencode/tweaks.cfg` key `autorun.trigger_phrases`)
-  - **R3b — question-based trigger:** plan-builder's promote script (to `planned` or `implementing`) uses the MCP `question` tool to ask "start building now?"; user answering yes arms autorun
+
+- **R3a — verbal trigger:** a user message matches any phrase in the trigger list (source: `/etc/opencode/tweaks.cfg` key `autorun.trigger_phrases`)
+- **R3b — question-based trigger:** plan-builder's promote script (to `planned` or `implementing`) uses the MCP `question` tool to ask "start building now?"; user answering yes arms autorun
 
 **R4 — Continuation refill.** While armed, when the todolist drains, the runtime pulls the next phase/section of unchecked items from `tasks.md` into TodoWrite and continues. Refill continues only while R1 still holds. If the plan is fully drained (no more unchecked tasks), autorun ends and the state may be promoted to `verified` by the usual plan-builder gate.
 
@@ -60,7 +61,7 @@ Recorded from conversation 2026-04-19:
 
 ### IN
 
-- **Runtime**: collapse the three `autonomous is always-on` sites in `workflow-runner.ts` into a single gate `isAutorunArmed(sessionID)` that checks R0-R3 live; remove L2 (empty-todolist nudge production) and L3 (Continuation Gate synthetic round); short-circuit `planAutonomousNextAction` when disarmed
+- **Runtime**: collapse the three `autonomous is always-on` sites in `workflow-runner.ts` into a single gate `isAutorunArmed(sessionID)` that checks R0-R3 live; remove L2 (empty-todolist nudge production) and L3 (prompt-level continuation self-check round); short-circuit `planAutonomousNextAction` when disarmed
 - **Storage**: new Storage key namespace `["session_active_spec", sessionID]` mapping session → spec slug; `["autorun_armed", sessionID]` boolean flag with history entry
 - **plan-builder scripts**: `plan-promote.ts` accepts `--session <id>` (or reads `OPENCODE_SESSION_ID`) to set the binding; upon promotion to `planned` or `implementing`, invokes the MCP `question` tool per R3b
 - **Plan-edit detection**: hook into plan-builder's write scripts (`amend`/`revise`/`extend`/`refactor`/`sync`) to apply R6 demotion + disarm when fired while `state === "implementing"`; optional file-watcher layer as second safety net
@@ -93,7 +94,7 @@ Recorded from conversation 2026-04-19:
 ## What Changes
 
 - **Default behavior**: every session starts with autorun disabled. Pumping continuations requires explicit arming.
-- **Continuation Gate prompt**: the current `runner.txt` if/else gate remains (for when autorun IS armed), but is no longer consulted when disarmed — the runtime short-circuits before the LLM round.
+- **Continuation prompt contract**: do not retain a dedicated `runner.txt` gate. When autorun is armed, runtime may enqueue only a minimal synthetic resume signal; stop/continue semantics remain owned by runtime gate checks and existing todo state.
 - **Plan lifecycle integration**: `.state.json` becomes the authoritative "is this session in build mode" source, not a reference document.
 - **User UX**: chat and single-turn tasks end cleanly at turn boundary (no 30s gate-check round). Multi-turn autonomous execution requires deliberate action (promote spec + answer arming question OR type a trigger phrase).
 

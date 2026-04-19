@@ -17,21 +17,15 @@ import { debugCheckpoint } from "@/util/debug"
 import { Log } from "@/util/log"
 
 const log = Log.create({ service: "workflow-runner" })
-import RUNNER_CONTRACT from "./prompt/runner.txt"
-import {
-  type RunTrigger,
-  buildContinuationTrigger,
-  buildApiTrigger,
-} from "./trigger"
+import { type RunTrigger, buildContinuationTrigger, buildApiTrigger } from "./trigger"
 import { RunQueue, type QueueEntry } from "./queue"
 import { type Lane, LANES_BY_PRIORITY, LANE_CONFIGS } from "./lane-policy"
 import { KillSwitchService } from "@/server/killswitch/service"
 
-// Single continuation message sent on every autonomous pump.
-// The if/else gate in runner.txt tells the AI when to continue vs silently
-// end; per-scenario bodies (pending/in-progress/drain) were removed because
-// the AI can already see todo state in its context.
-export const RUNNER_CONTINUATION_TEXT = RUNNER_CONTRACT.trim()
+// Minimal continuation signal for autonomous pump rounds.
+// The runner must not hardcode instructions telling the AI to create/update
+// todo items; todo evolution is decided by the AI's normal execution flow.
+export const AUTONOMOUS_RESUME_TEXT = "Continue with the current work based on the existing session context."
 
 export type HardBlocker = "abort_signal" | "kill_switch_active" | "user_message_pending"
 
@@ -50,20 +44,20 @@ export async function checkHardBlockers(sessionID: string, abort: AbortSignal): 
 // The runner itself never synthesises stop conditions — the AI decides all
 // blocking/approval/question behaviour via its normal tool calls.
 export type ContinuationDecisionReason =
+  | "not_armed"
   | "subagent_session"
   | "todo_complete"
   | "todo_in_progress"
   | "todo_pending"
-  | "completion_verify"
 
 export type AutonomousNextAction =
   | {
       type: "stop"
-      reason: Exclude<ContinuationDecisionReason, "todo_pending" | "todo_in_progress" | "completion_verify">
+      reason: Exclude<ContinuationDecisionReason, "todo_pending" | "todo_in_progress">
     }
   | {
       type: "continue"
-      reason: "todo_pending" | "todo_in_progress" | "completion_verify"
+      reason: "todo_pending" | "todo_in_progress"
       text: string
       todo: Todo.Info
     }
@@ -309,8 +303,8 @@ export function inspectPendingContinuationResumability(input: {
   if (input.status.type === "busy") blockedReasons.push("status_busy")
   if (input.status.type === "retry") blockedReasons.push("status_retry")
 
-  const workflow = input.session.workflow
-  // autonomous is always-on — no enabled check
+  const workflow = input.session.workflow ?? Session.defaultWorkflow()
+  if (workflow.autonomous.enabled === false) blockedReasons.push("autonomous_disabled")
 
   const health = input.health ?? summarizeAutonomousWorkflowHealth({ workflow })
   if (health.state === "blocked") blockedReasons.push("workflow_blocked")
@@ -573,33 +567,19 @@ export function planAutonomousNextAction(input: {
     return { type: "stop", reason: "subagent_session" }
   }
 
+  const workflow = input.session.workflow ?? Session.defaultWorkflow()
+  if (workflow.autonomous.enabled === false) {
+    return { type: "stop", reason: "not_armed" }
+  }
+
   const current = Todo.nextActionableTodo(input.todos)
   const trigger = buildContinuationTrigger({
     todo: current,
-    textForPending: RUNNER_CONTINUATION_TEXT,
-    textForInProgress: RUNNER_CONTINUATION_TEXT,
+    textForPending: AUTONOMOUS_RESUME_TEXT,
+    textForInProgress: AUTONOMOUS_RESUME_TEXT,
   })
 
-  // No actionable todo → send "update the todolist" nudge once.
-  // If AI already got nudged (lastDecisionReason === completion_verify) and
-  // still did not update the todo list, treat as genuine completion and stop.
   if (!trigger) {
-    const alreadyVerified = input.lastDecisionReason === "completion_verify"
-    if (!alreadyVerified) {
-      const verifyTodo: Todo.Info = {
-        id: "_runner_completion_verify",
-        content: "[runner] update the todolist",
-        status: "pending",
-        priority: "high",
-        action: { kind: "decision", risk: "low", needsApproval: false, canDelegate: false },
-      }
-      return {
-        type: "continue",
-        reason: "completion_verify",
-        text: RUNNER_CONTINUATION_TEXT,
-        todo: verifyTodo,
-      }
-    }
     return { type: "stop", reason: "todo_complete" }
   }
 
@@ -617,9 +597,6 @@ export function planAutonomousNextAction(input: {
 
 export function describeAutonomousNextAction(action: AutonomousNextAction): AutonomousNarration {
   if (action.type === "continue") {
-    if (action.reason === "completion_verify") {
-      return { kind: "continue", text: "Runner verifying completion before stopping." }
-    }
     return {
       kind: "continue",
       text:
@@ -634,6 +611,8 @@ export function describeAutonomousNextAction(action: AutonomousNextAction): Auto
       return { kind: "complete", text: "Runner complete: the current planned todo set is done." }
     case "subagent_session":
       return { kind: "pause", text: "Autonomous continuation only runs for root sessions." }
+    case "not_armed":
+      return { kind: "pause", text: "Autonomous continuation is not armed for this session." }
   }
 }
 
@@ -645,7 +624,8 @@ export function shouldInterruptAutonomousRun(input: {
 }) {
   if (input.status.type !== "busy") return false
   if (input.session.parentID) return false
-  // autonomous is always-on
+  const workflow = input.session.workflow ?? Session.defaultWorkflow()
+  if (workflow.autonomous.enabled === false) return false
   return input.lastUserSynthetic || input.hasPendingContinuation
 }
 
@@ -717,7 +697,7 @@ export async function getPendingContinuationQueueInspection(
   const pending = await getPendingContinuation(sessionID)
   const status = SessionStatus.get(sessionID)
   const inFlightSince = resumeInFlight.get(sessionID)
-  const inFlight = inFlightSince !== undefined && (Date.now() - inFlightSince) < RESUME_IN_FLIGHT_TIMEOUT_MS
+  const inFlight = inFlightSince !== undefined && Date.now() - inFlightSince < RESUME_IN_FLIGHT_TIMEOUT_MS
   const events = await RuntimeEventService.list(sessionID, { limit: 20 }).catch(() => [])
   const health = summarizeAutonomousWorkflowHealth({
     workflow: session.workflow,
@@ -855,7 +835,10 @@ export async function enqueuePendingContinuation(
 export async function resumePendingContinuations(input?: { maxCount?: number; preferredSessionID?: string }) {
   using _lock = await Lock.write(RESUME_LOCK)
 
-  log.info("resumePendingContinuations: start", { maxCount: input?.maxCount, preferredSessionID: input?.preferredSessionID })
+  log.info("resumePendingContinuations: start", {
+    maxCount: input?.maxCount,
+    preferredSessionID: input?.preferredSessionID,
+  })
 
   // Kill-switch gate: if active, skip all resume attempts (Slice 3: kill-switch blocks dequeue)
   const { KillSwitchService } = await import("@/server/killswitch/service")
@@ -866,11 +849,14 @@ export async function resumePendingContinuations(input?: { maxCount?: number; pr
   }
 
   const items = await listPendingContinuations()
-  log.info("resumePendingContinuations: pending items", { count: items.length, sessionIDs: items.map((i) => i.sessionID) })
+  log.info("resumePendingContinuations: pending items", {
+    count: items.length,
+    sessionIDs: items.map((i) => i.sessionID),
+  })
   const resumable: ResumeCandidate[] = []
   for (const item of items) {
     const inFlightSince = resumeInFlight.get(item.sessionID)
-    const inFlight = inFlightSince !== undefined && (Date.now() - inFlightSince) < RESUME_IN_FLIGHT_TIMEOUT_MS
+    const inFlight = inFlightSince !== undefined && Date.now() - inFlightSince < RESUME_IN_FLIGHT_TIMEOUT_MS
     if (inFlightSince !== undefined && !inFlight) {
       log.warn("resumePendingContinuations: clearing stale in-flight entry", {
         sessionID: item.sessionID,
@@ -910,13 +896,19 @@ export async function resumePendingContinuations(input?: { maxCount?: number; pr
   }
 
   const maxCount = input?.maxCount ?? 1
-  log.info("resumePendingContinuations: resumable", { count: resumable.length, sessionIDs: resumable.map((r) => r.pending.sessionID) })
+  log.info("resumePendingContinuations: resumable", {
+    count: resumable.length,
+    sessionIDs: resumable.map((r) => r.pending.sessionID),
+  })
   const selected = pickPendingContinuationsForResume({
     items: resumable,
     maxCount,
     preferredSessionID: input?.preferredSessionID,
   })
-  log.info("resumePendingContinuations: selected", { count: selected.length, sessionIDs: selected.map((s) => s.pending.sessionID) })
+  log.info("resumePendingContinuations: selected", {
+    count: selected.length,
+    sessionIDs: selected.map((s) => s.pending.sessionID),
+  })
 
   for (const item of selected) {
     const sessionID = item.pending.sessionID
@@ -1047,7 +1039,7 @@ export async function enqueueAutonomousContinue(input: {
 }) {
   const now = Date.now()
   const session = await Session.get(input.sessionID)
-  const text = input.text ?? RUNNER_CONTINUATION_TEXT
+  const text = input.text ?? AUTONOMOUS_RESUME_TEXT
   const pinnedModel = session.execution
     ? {
         providerId: session.execution.providerId,

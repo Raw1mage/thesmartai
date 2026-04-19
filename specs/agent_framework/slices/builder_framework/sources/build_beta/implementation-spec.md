@@ -59,7 +59,7 @@
 - packages/opencode/src/session/beta-bootstrap.ts
 - packages/opencode/src/session/index.ts
 - packages/opencode/src/session/workflow-runner.ts
-- packages/opencode/src/session/prompt/runner.txt
+- packages/opencode/src/session/workflow-runner.ts
 - packages/opencode/src/session/prompt.ts
 - packages/mcp/branch-cicd/src/beta-tool.ts
 - packages/mcp/branch-cicd/src/context.ts

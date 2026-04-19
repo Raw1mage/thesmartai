@@ -4,7 +4,7 @@
 
 - `packages/opencode/src/tool/plan.ts` already acts as the hardcoded build-entry gate by validating artifacts, materializing todos, persisting mission metadata, and injecting a synthetic build-mode handoff.
 - `packages/opencode/src/session/index.ts` and `packages/opencode/src/session/workflow-runner.ts` already form the runtime control plane for build-mode continuation, pause conditions, and mission consumption.
-- `packages/opencode/src/session/prompt/runner.txt` provides the generic build-mode execution contract, but it does not currently encode beta lifecycle guidance.
+- `packages/opencode/src/session/workflow-runner.ts` now carries the generic build-mode continuation contract directly; the old `runner.txt` prompt artifact has been removed, and beta lifecycle guidance must not depend on resurrecting that file.
 - `packages/mcp/branch-cicd` already implements the concrete beta workflow logic, but this should become migration scaffolding rather than the long-term user-facing surface.
 - `packages/opencode/src/tool/plan.ts` currently initializes planner artifacts by checking only whether `implementation-spec.md` exists; this is too weak to protect partially populated or previously curated planner roots from accidental template rewrite.
 - Planner/spec/event documents are long-lived mainline knowledge artifacts; storing them inside beta worktrees would create branch-local divergence and document version bloom even if planning is triggered from beta execution.
@@ -72,7 +72,7 @@
 - /home/pkcs12/projects/opencode/packages/opencode/src/tool/plan.ts
 - /home/pkcs12/projects/opencode/packages/opencode/src/session/index.ts
 - /home/pkcs12/projects/opencode/packages/opencode/src/session/workflow-runner.ts
-- /home/pkcs12/projects/opencode/packages/opencode/src/session/prompt/runner.txt
+- /home/pkcs12/projects/opencode/packages/opencode/src/session/workflow-runner.ts
 - /home/pkcs12/projects/opencode/packages/mcp/branch-cicd/src/beta-tool.ts
 - /home/pkcs12/projects/opencode/packages/mcp/branch-cicd/src/context.ts
 - /home/pkcs12/projects/opencode/packages/mcp/branch-cicd/src/project-policy.ts

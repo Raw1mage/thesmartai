@@ -2,7 +2,7 @@
 
 ## Context
 
-The runloop currently pumps autonomous continuations on every turn-end regardless of session context. The "Continuation Gate" prompt layer (see `packages/opencode/src/session/prompt/runner.txt`) recently softened the wording via an if/else self-check, but the pump itself is still unconditional — one full LLM round of latency per turn, even in chat.
+The runloop originally pumped autonomous continuations on every turn-end regardless of session context, and earlier revisions also routed that decision through a synthetic "Continuation Gate" prompt round. The current direction moves the gate fully into runtime policy so chat turns do not depend on an extra LLM self-check round.
 
 This design lifts the arm/disarm decision out of the LLM and into a runtime flag keyed off plan-builder artifact state. The LLM stops being a gatekeeper and becomes purely an executor when autorun is armed. Arm/disarm is driven by two explicit signals (verbal trigger phrase, question tool answer) — no AI-inferred intent, no hidden heuristics.
 
@@ -34,7 +34,7 @@ This design lifts the arm/disarm decision out of the LLM and into a runtime flag
 - **DD-8** `/etc/opencode/tweaks.cfg` gains two keys with fallback defaults:
   - `autorun.trigger_phrases` (array of string) — default seed: `["start building", "go building", "start implementation", "開始實作", "執行計畫", "execute the plan"]`
   - `autorun.demote_on_disarm` (bool) — default `false` (per Q4 decision); opt-in for users who want strict re-arm flow
-- **DD-9** The existing `runner.txt` Continuation Gate prompt is retained for armed sessions. The gate now serves its original intent (tell the AI "if you have work, do it; else silence") within the correct scope, rather than firing on every turn.
+- **DD-9** Superseded by runtime hardening: autonomous continuation no longer depends on a retained `runner.txt` gate prompt. Armed sessions enqueue only a minimal synthetic resume signal, and stop/continue is decided from runtime policy + todo state rather than a prompt-level self-check.
 - **DD-10** Dead slash commands `/plan`, `/auto-yes-enabled`, `/auto-yes-disabled` in `use-session-commands.tsx` are deleted outright, not gated behind a migration flag. They were never wired correctly (the `/plan` handler re-types `/plan` into the input; auto-yes handlers are unused). Keeping them would mislead users.
 
 ## Risks / Trade-offs
@@ -68,6 +68,7 @@ This design lifts the arm/disarm decision out of the LLM and into a runtime flag
 ## Rollout Strategy
 
 Phase 1 (this spec's scope):
+
 - Runtime arm gate at four call sites
 - Storage keys + helpers
 - plan-builder script hooks (R6) — primary detection path only
@@ -76,6 +77,7 @@ Phase 1 (this spec's scope):
 - Tests for R0-R6
 
 Phase 2 (follow-up, separate spec):
+
 - File-watcher for R6 secondary path
 - TUI/webapp badge showing armed state
 - Telemetry on arm/disarm reasons for tuning the trigger phrase list

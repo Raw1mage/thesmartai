@@ -221,7 +221,7 @@ Status: Completed
   - controlled Web restart contract（`POST /api/v2/global/web/restart` + `OPENCODE_WEBCTL_PATH` + health-recovery reload）
   - `plan/build` 新語義（discussion-first vs execution-first，不再只是 readonly vs writable）
   - todo 作為 spec/runtime projection、sidebar 作為 observability surface 的定位
-  - autorunner compatibility baseline 與目前缺少 runner-level contract (`runner.txt` / equivalent) 的缺口
+  - autorunner compatibility baseline 與當時缺少 runner-level contract（`runner.txt` / equivalent）的缺口
 
 ## Runner contract draft follow-up
 
@@ -400,13 +400,13 @@ Status: Completed
 
 ### Baseline
 
-- `runner-contract.md` 已定義 runner 權責，但 runtime 尚未有真實 `runner.txt` asset。
+- `runner-contract.md` 已定義 runner 權責，但此段描述的是當時 runtime 尚未有真實 `runner.txt` asset 的歷史狀態。
 - autonomous build continuation 主要仍靠 `workflow-runner.ts` 內的 hardcoded continuation text。
 - Smart Runner 是 advisory layer，不適合拿來當 base runner contract。
 
 ### Design decision
 
-- 新增 `packages/opencode/src/session/prompt/runner.txt`
+- 新增（歷史）`packages/opencode/src/session/prompt/runner.txt`
 - phase-1 綁定策略採最小風險：
   - 不改 deterministic stop gates
   - 不改 Smart Runner adoption authority
@@ -414,7 +414,7 @@ Status: Completed
 
 ### Changed files
 
-- `packages/opencode/src/session/prompt/runner.txt`
+- `packages/opencode/src/session/prompt/runner.txt`（historical; later removed）
 - `packages/opencode/src/session/workflow-runner.ts`
 - `packages/opencode/src/session/workflow-runner.test.ts`
 - `specs/20260315_openspec-like-planner/runner-contract.md`
@@ -430,7 +430,7 @@ Status: Completed
 
 - Architecture Sync: Updated
 - `docs/ARCHITECTURE.md` 已補充 runner phase-1 binding 現況：
-  - `runner.txt` 已存在
+  - `runner.txt` 當時已存在（後續已移除，contract 改回 runtime-owned）
   - current binding point = `workflow-runner.ts`
   - deterministic gates / Smart Runner advisory boundary 仍維持原有分層
 

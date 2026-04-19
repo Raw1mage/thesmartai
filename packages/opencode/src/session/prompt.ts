@@ -141,9 +141,7 @@ export namespace SessionPrompt {
       return {
         enforced: true as const,
         violation: false as const,
-        reason: hasQuestionTool
-          ? ("question_tool" as const)
-          : ("tool_calls" as const),
+        reason: hasQuestionTool ? ("question_tool" as const) : ("tool_calls" as const),
       }
     }
 
@@ -262,7 +260,7 @@ export namespace SessionPrompt {
     const session = await Session.get(input.sessionID)
     await SessionRevert.cleanup(session)
 
-    // Ensure workflow exists with autonomous always-on; reset completed sessions to idle
+    // Ensure workflow exists; reset completed sessions to idle without force-enabling autorun
     await Session.update(
       input.sessionID,
       (draft) => {
@@ -270,7 +268,6 @@ export namespace SessionPrompt {
         if (!draft.workflow || current.state === "completed") {
           draft.workflow = {
             ...current,
-            autonomous: { ...current.autonomous, enabled: true },
             state: current.state === "completed" ? "idle" : current.state,
             stopReason: undefined,
             updatedAt: Date.now(),
@@ -764,10 +761,13 @@ export namespace SessionPrompt {
     return { kind: "continue" as const, continueDecision }
   }
 
-  async function runLoop(sessionID: string, options?: {
-    replaceRuntime?: boolean
-    incomingModel?: { providerId: string; modelID: string }
-  }) {
+  async function runLoop(
+    sessionID: string,
+    options?: {
+      replaceRuntime?: boolean
+      incomingModel?: { providerId: string; modelID: string }
+    },
+  ) {
     const runtime = start(sessionID, { replace: options?.replaceRuntime })
     if (!runtime) {
       return new Promise<MessageV2.WithParts>((resolve, reject) => {
@@ -831,29 +831,33 @@ export namespace SessionPrompt {
       if (!parentMessagePrefix) {
         const snap = await SharedContext.snapshot(session.parentID)
         if (snap) {
-          parentMessagePrefix = [{
-            info: {
-              id: Identifier.ascending("message"),
-              role: "assistant" as const,
-              sessionID: session.parentID,
-              time: { created: Date.now() },
-              summary: true,
-              tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-              cost: 0,
-              modelID: "system",
-              providerId: "system",
-              agent: "system",
-              variant: "normal" as const,
-              path: { cwd: Instance.directory, root: Instance.worktree },
-            } as MessageV2.Assistant,
-            parts: [{
-              id: Identifier.ascending("part"),
-              messageID: "",
-              sessionID: session.parentID,
-              type: "text" as const,
-              text: `<parent_session_context source="shared_context">\n${snap}\n</parent_session_context>`,
-            } as MessageV2.TextPart],
-          }]
+          parentMessagePrefix = [
+            {
+              info: {
+                id: Identifier.ascending("message"),
+                role: "assistant" as const,
+                sessionID: session.parentID,
+                time: { created: Date.now() },
+                summary: true,
+                tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+                cost: 0,
+                modelID: "system",
+                providerId: "system",
+                agent: "system",
+                variant: "normal" as const,
+                path: { cwd: Instance.directory, root: Instance.worktree },
+              } as MessageV2.Assistant,
+              parts: [
+                {
+                  id: Identifier.ascending("part"),
+                  messageID: "",
+                  sessionID: session.parentID,
+                  type: "text" as const,
+                  text: `<parent_session_context source="shared_context">\n${snap}\n</parent_session_context>`,
+                } as MessageV2.TextPart,
+              ],
+            },
+          ]
           parentContextSource = "shared_context"
           log.info("context sharing: SharedContext snapshot used", {
             sessionID,
@@ -925,13 +929,15 @@ export namespace SessionPrompt {
         if (model) {
           // Resolution chain: SharedContext (in-memory) → rebind checkpoint (disk) → minimal stub.
           // LLM compaction is NOT safe because old provider's tool call history is incompatible.
-          const snap = await SharedContext.snapshot(sessionID)
-            ?? (await SessionCompaction.loadRebindCheckpoint(sessionID))?.snapshot
+          const snap =
+            (await SharedContext.snapshot(sessionID)) ??
+            (await SessionCompaction.loadRebindCheckpoint(sessionID))?.snapshot
           SessionCompaction.recordCompaction(sessionID, 1)
           await SessionCompaction.compactWithSharedContext({
             sessionID,
-            snapshot: snap
-              ?? `[Provider switched from ${prevProvider} to ${nextProvider}. Previous conversation context was not recoverable. The user may re-state their request.]`,
+            snapshot:
+              snap ??
+              `[Provider switched from ${prevProvider} to ${nextProvider}. Previous conversation context was not recoverable. The user may re-state their request.]`,
             model,
             auto: true,
           })
@@ -1780,10 +1786,7 @@ export namespace SessionPrompt {
       //   • Root session: evaluate autonomous continuation. If there's a
       //     pending todo, enqueue a synthetic continuation and loop again.
       //     Otherwise persist the stop reason and break.
-      if (
-        processor.message.finish &&
-        !["tool-calls", "unknown"].includes(processor.message.finish)
-      ) {
+      if (processor.message.finish && !["tool-calls", "unknown"].includes(processor.message.finish)) {
         if (session.parentID) {
           log.info("loop: subagent terminal finish", {
             sessionID,
@@ -1946,7 +1949,6 @@ export namespace SessionPrompt {
       parts,
     }
   }
-
 
   export const ShellInput = z.object({
     sessionID: Identifier.schema("session"),

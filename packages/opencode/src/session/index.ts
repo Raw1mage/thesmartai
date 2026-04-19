@@ -265,7 +265,7 @@ export namespace Session {
   export function defaultWorkflow(now = Date.now()): WorkflowInfo {
     return {
       autonomous: {
-        enabled: true,
+        enabled: false,
         stopOnTestsFail: true,
         requireApprovalFor: ["push", "destructive", "architecture_change"],
       },
@@ -905,10 +905,13 @@ export namespace Session {
       _deltaMetrics.totalPartBytes += part.text.length
       _deltaMetrics.totalDeltaBytes += delta?.length ?? part.text.length
       if (_deltaMetrics.updates % 50 === 0) {
-        const ratio = _deltaMetrics.totalPartBytes > 0
-          ? (_deltaMetrics.totalDeltaBytes / _deltaMetrics.totalPartBytes * 100).toFixed(1)
-          : "N/A"
-        console.error(`[DELTA-PART] updates=${_deltaMetrics.updates} totalPartChars=${_deltaMetrics.totalPartBytes} totalDeltaChars=${_deltaMetrics.totalDeltaBytes} ratio=${ratio}% partId=${part.id}`)
+        const ratio =
+          _deltaMetrics.totalPartBytes > 0
+            ? ((_deltaMetrics.totalDeltaBytes / _deltaMetrics.totalPartBytes) * 100).toFixed(1)
+            : "N/A"
+        console.error(
+          `[DELTA-PART] updates=${_deltaMetrics.updates} totalPartChars=${_deltaMetrics.totalPartBytes} totalDeltaChars=${_deltaMetrics.totalDeltaBytes} ratio=${ratio}% partId=${part.id}`,
+        )
       }
     }
 

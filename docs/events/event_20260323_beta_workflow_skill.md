@@ -55,7 +55,7 @@ User requested that the beta build workflow stop depending on repeated ad-hoc pr
 ### Evidence Gathered
 
 - `templates/skills/beta-workflow/SKILL.md` was added as a bundled template skill.
-- `packages/opencode/src/session/prompt/runner.txt` now states that beta-enabled build runs must load `beta-workflow` first and keep implementation off the authoritative main repo/worktree.
+- 當時的 `packages/opencode/src/session/prompt/runner.txt` 載明 beta-enabled build runs 必須先 load `beta-workflow` 並避免在 authoritative main repo/worktree 上實作；該 standalone prompt artifact 後續已移除。
 - `packages/opencode/src/session/workflow-runner.ts` now injects `FIRST: Load skill "beta-workflow"` when mission metadata contains `mission.beta`.
 - `packages/opencode/src/session/prompt/enablement.json` and `templates/prompts/enablement.json` now include `beta-workflow` in bundled template skills.
 - `packages/opencode/src/session/workflow-runner.test.ts` includes focused assertions for the beta-skill loading contract.
@@ -79,7 +79,7 @@ User requested that the beta build workflow stop depending on repeated ad-hoc pr
 - `bun test packages/opencode/src/session/workflow-runner.test.ts`
   - Result previously observed in this session: `97 pass / 0 fail`.
 - Git scope inspection:
-  - `packages/opencode/src/session/prompt/enablement.json`, `packages/opencode/src/session/prompt/runner.txt`, and `templates/prompts/enablement.json` show clean task-relevant diffs.
+- `packages/opencode/src/session/prompt/enablement.json` 與 `templates/prompts/enablement.json` 顯示 clean task-relevant diffs；此處提到的 `runner.txt` 為當時存在的 artifact，後續已移除。
   - `packages/opencode/src/session/workflow-runner.ts` and `packages/opencode/src/session/workflow-runner.test.ts` contain both beta-workflow changes and unrelated worktree edits, so they are not yet safe for blind whole-file commit.
 - Architecture Sync: Updated `specs/architecture.md` to record the new beta-skill execution contract in the workflow-runner surface.
 

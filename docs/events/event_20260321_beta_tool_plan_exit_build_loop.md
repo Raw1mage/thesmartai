@@ -63,7 +63,7 @@ The requirement was later clarified with hard constraints:
 
 - `packages/opencode/src/tool/plan.ts` owns build entry.
 - `packages/opencode/src/session/index.ts` mission/workflow schema and `packages/opencode/src/session/workflow-runner.ts` continuation runtime form the builder control plane.
-- `packages/opencode/src/session/prompt/runner.txt` provides a generic build-mode execution contract.
+- 當時的 `packages/opencode/src/session/prompt/runner.txt` 提供 generic build-mode execution contract；該 artifact 後續已移除，現行 continuation contract 改由 runtime code 承接。
 - `packages/mcp/branch-cicd` already implements beta workflow logic but currently as a separate surface.
 
 ### Instrumentation / Evidence Plan

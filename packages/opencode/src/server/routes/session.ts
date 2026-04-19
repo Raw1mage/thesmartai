@@ -27,6 +27,7 @@ import { UserDaemonManager } from "../user-daemon"
 import { SessionCache } from "../session-cache"
 import { debugCheckpoint } from "@/util/debug"
 import {
+  clearPendingContinuation,
   enqueueAutonomousContinue,
   getAutonomousWorkflowHealth,
   getPendingContinuationQueueInspection,
@@ -382,14 +383,10 @@ export const SessionRoutes = lazy(() =>
           return c.body(null, 304)
         }
 
-        const { data: session } = await SessionCache.get(
-          `session:${sessionID}`,
-          sessionID,
-          async () => {
-            const data = await Session.get(sessionID)
-            return { data, version: SessionCache.getVersion(sessionID) }
-          },
-        )
+        const { data: session } = await SessionCache.get(`session:${sessionID}`, sessionID, async () => {
+          const data = await Session.get(sessionID)
+          return { data, version: SessionCache.getVersion(sessionID) }
+        })
         sessionRouteDebug("session.get response", {
           sessionID,
           found: !!session,
@@ -866,16 +863,16 @@ export const SessionRoutes = lazy(() =>
           )
         }
 
-        // Autonomous is always-on — ignore body.enabled, always ensure enabled: true
         const session = await Session.get(sessionID)
         const workflow = session.workflow ?? Session.defaultWorkflow(session.time.updated)
+        const nextEnabled = body.enabled ?? workflow.autonomous.enabled
         const updatedSession = await Session.update(
           sessionID,
           (draft) => {
             const current = draft.workflow ?? Session.defaultWorkflow(draft.time.updated)
             draft.workflow = {
               ...current,
-              autonomous: { ...current.autonomous, enabled: true },
+              autonomous: { ...current.autonomous, enabled: nextEnabled },
               state: current.state === "completed" ? "idle" : current.state,
               stopReason: undefined,
               updatedAt: Date.now(),
@@ -884,7 +881,11 @@ export const SessionRoutes = lazy(() =>
           { touch: false },
         )
 
-        if (body.enqueue !== false) {
+        if (!nextEnabled) {
+          await clearPendingContinuation(sessionID).catch(() => undefined)
+        }
+
+        if (nextEnabled && body.enqueue !== false) {
           let lastUser: MessageV2.User | undefined
           for await (const message of MessageV2.stream(sessionID)) {
             if (message.info.role === "user") lastUser = message.info as MessageV2.User
@@ -1524,14 +1525,10 @@ export const SessionRoutes = lazy(() =>
         }
 
         const cacheKey = `messages:${sessionID}:${query.limit ?? "all"}`
-        const { data: messages } = await SessionCache.get(
-          cacheKey,
-          sessionID,
-          async () => {
-            const data = await Session.messages({ sessionID, limit: query.limit })
-            return { data, version: SessionCache.getVersion(sessionID) }
-          },
-        )
+        const { data: messages } = await SessionCache.get(cacheKey, sessionID, async () => {
+          const data = await Session.messages({ sessionID, limit: query.limit })
+          return { data, version: SessionCache.getVersion(sessionID) }
+        })
         sessionRouteDebug("session.messages response", {
           sessionID,
           count: messages.length,
@@ -2109,8 +2106,7 @@ export const SessionRoutes = lazy(() =>
       "/:sessionID/transcribe",
       describeRoute({
         summary: "Transcribe audio",
-        description:
-          "Accept an audio recording and return transcribed text using an audio-capable model.",
+        description: "Accept an audio recording and return transcribed text using an audio-capable model.",
         operationId: "session.transcribe",
         responses: {
           200: {

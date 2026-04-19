@@ -53,7 +53,7 @@
 ## Critical Files
 
 - `packages/opencode/src/session/workflow-runner.ts`
-- `packages/opencode/src/session/prompt/runner.txt`
+- `packages/opencode/src/session/workflow-runner.ts` (legacy `runner.txt` artifact removed; runtime owns continuation wording)
 - `packages/opencode/src/tool/plan.ts`
 - `packages/opencode/src/session/trigger.ts`
 - `packages/opencode/src/session/workflow-runner.test.ts`

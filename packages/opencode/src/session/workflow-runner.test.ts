@@ -35,7 +35,7 @@ function baseSession(overrides?: Partial<Session.Info>): Session.Info {
     time: { created: 1, updated: 1 },
     workflow: {
       autonomous: {
-        enabled: true,
+        enabled: false,
         stopOnTestsFail: true,
         requireApprovalFor: ["push", "destructive", "architecture_change"],
       },
@@ -47,7 +47,28 @@ function baseSession(overrides?: Partial<Session.Info>): Session.Info {
   } as Session.Info
 }
 
+function armedSession(overrides?: Partial<Session.Info>): Session.Info {
+  const session = baseSession(overrides)
+  const workflow = session.workflow!
+  session.workflow = {
+    ...workflow,
+    autonomous: {
+      ...workflow.autonomous,
+      enabled: true,
+    },
+  }
+  return session
+}
+
 describe("planAutonomousNextAction", () => {
+  it("stops immediately when autorun is not armed", () => {
+    const action = planAutonomousNextAction({
+      session: baseSession(),
+      todos: [{ id: "a", content: "do it", status: "pending", priority: "high" }],
+    })
+    expect(action).toEqual({ type: "stop", reason: "not_armed" })
+  })
+
   it("stops subagent sessions — they are driven by the parent, not the runner", () => {
     const action = planAutonomousNextAction({
       session: { ...baseSession(), parentID: "parent_1" as any },
@@ -58,32 +79,32 @@ describe("planAutonomousNextAction", () => {
 
   it("continues with todo_pending when a pending todo exists", () => {
     const action = planAutonomousNextAction({
-      session: baseSession(),
+      session: armedSession(),
       todos: [{ id: "a", content: "do it", status: "pending", priority: "high" }],
     })
     expect(action.type).toBe("continue")
     if (action.type === "continue") {
       expect(action.reason).toBe("todo_pending")
-      expect(action.text).toContain("Continuation Gate")
+      expect(action.text).toContain("Continue with the current work")
       expect(action.todo.id).toBe("a")
     }
   })
 
   it("continues with todo_in_progress when an in_progress todo exists", () => {
     const action = planAutonomousNextAction({
-      session: baseSession(),
+      session: armedSession(),
       todos: [{ id: "a", content: "working", status: "in_progress", priority: "high" }],
     })
     expect(action.type).toBe("continue")
     if (action.type === "continue") {
       expect(action.reason).toBe("todo_in_progress")
-      expect(action.text).toContain("Continuation Gate")
+      expect(action.text).toContain("Continue with the current work")
     }
   })
 
   it("prefers in_progress over pending when both exist", () => {
     const action = planAutonomousNextAction({
-      session: baseSession(),
+      session: armedSession(),
       todos: [
         { id: "a", content: "pending", status: "pending", priority: "high" },
         { id: "b", content: "in-progress", status: "in_progress", priority: "high" },
@@ -96,51 +117,27 @@ describe("planAutonomousNextAction", () => {
     }
   })
 
-  it("fires completion-verify nudge once when todos drain and lastDecisionReason is not verify", () => {
+  it("stops with todo_complete when todos drain", () => {
     const action = planAutonomousNextAction({
-      session: baseSession(),
+      session: armedSession(),
       todos: [{ id: "a", content: "done", status: "completed", priority: "high" }],
-    })
-    expect(action.type).toBe("continue")
-    if (action.type === "continue") {
-      expect(action.reason).toBe("completion_verify")
-      expect(action.text).toContain("Continuation Gate")
-      expect(action.todo.id).toBe("_runner_completion_verify")
-    }
-  })
-
-  it("stops with todo_complete when AI did not update the todolist after verify", () => {
-    const action = planAutonomousNextAction({
-      session: baseSession(),
-      todos: [{ id: "a", content: "done", status: "completed", priority: "high" }],
-      lastDecisionReason: "completion_verify",
     })
     expect(action).toEqual({ type: "stop", reason: "todo_complete" })
   })
 
-  it("stops with todo_complete immediately when there are no todos at all and verify already fired", () => {
+  it("stops with todo_complete when there are no todos at all", () => {
     const action = planAutonomousNextAction({
-      session: baseSession(),
+      session: armedSession(),
       todos: [],
-      lastDecisionReason: "completion_verify",
     })
     expect(action).toEqual({ type: "stop", reason: "todo_complete" })
-  })
-
-  it("fires verify the first time even on a session with no todos at all", () => {
-    const action = planAutonomousNextAction({
-      session: baseSession(),
-      todos: [],
-    })
-    expect(action.type).toBe("continue")
-    if (action.type === "continue") expect(action.reason).toBe("completion_verify")
   })
 })
 
 describe("evaluateAutonomousContinuation", () => {
   it("wraps planAutonomousNextAction result in continue/stop form", () => {
     const decision = evaluateAutonomousContinuation({
-      session: baseSession(),
+      session: armedSession(),
       todos: [{ id: "a", content: "next", status: "pending", priority: "high" }],
     })
     expect(decision.continue).toBe(true)
@@ -152,9 +149,8 @@ describe("evaluateAutonomousContinuation", () => {
 
   it("returns stop form when planner says stop", () => {
     const decision = evaluateAutonomousContinuation({
-      session: baseSession(),
+      session: armedSession(),
       todos: [],
-      lastDecisionReason: "completion_verify",
     })
     expect(decision).toEqual({ continue: false, reason: "todo_complete" })
   })
@@ -170,22 +166,6 @@ describe("describeAutonomousNextAction", () => {
         todo: { id: "a", content: "finish it", status: "in_progress", priority: "high" },
       }),
     ).toEqual({ kind: "continue", text: "Runner continuing current step: finish it" })
-  })
-
-  it("narrates completion_verify distinctly", () => {
-    expect(
-      describeAutonomousNextAction({
-        type: "continue",
-        reason: "completion_verify",
-        text: "_",
-        todo: {
-          id: "_runner_completion_verify",
-          content: "verify",
-          status: "pending",
-          priority: "high",
-        },
-      }),
-    ).toEqual({ kind: "continue", text: "Runner verifying completion before stopping." })
   })
 
   it("narrates todo_complete as complete", () => {
@@ -229,7 +209,7 @@ describe("shouldInterruptAutonomousRun", () => {
   it("interrupts busy root session when the previous user message was synthetic", () => {
     expect(
       shouldInterruptAutonomousRun({
-        session: baseSession(),
+        session: armedSession(),
         status: { type: "busy" } as any,
         lastUserSynthetic: true,
         hasPendingContinuation: false,
@@ -240,20 +220,29 @@ describe("shouldInterruptAutonomousRun", () => {
   it("interrupts busy root session when a pending continuation is queued", () => {
     expect(
       shouldInterruptAutonomousRun({
-        session: baseSession(),
+        session: armedSession(),
         status: { type: "busy" } as any,
         lastUserSynthetic: false,
         hasPendingContinuation: true,
       }),
     ).toBe(true)
   })
+
+  it("does not interrupt when autorun is disabled", () => {
+    expect(
+      shouldInterruptAutonomousRun({
+        session: baseSession(),
+        status: { type: "busy" } as any,
+        lastUserSynthetic: true,
+        hasPendingContinuation: true,
+      }),
+    ).toBe(false)
+  })
 })
 
 describe("buildContinuationTrigger", () => {
   it("returns undefined when no todo supplied", () => {
-    expect(
-      buildContinuationTrigger({ todo: undefined, textForPending: "p", textForInProgress: "i" }),
-    ).toBeUndefined()
+    expect(buildContinuationTrigger({ todo: undefined, textForPending: "p", textForInProgress: "i" })).toBeUndefined()
   })
 
   it("returns in_progress trigger for in_progress todo", () => {

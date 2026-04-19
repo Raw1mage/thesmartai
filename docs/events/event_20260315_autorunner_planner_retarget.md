@@ -52,7 +52,7 @@ Workspace: /home/pkcs12/projects/opencode
 - `docs/ARCHITECTURE.md` 已記錄 autorunner 目前已有 mission-driven continuation、planner-derived todo、queue/health/anomaly surfaces，但本質仍是 prompt-loop centric continuation。
 - 現有 `AGENTS.md`、`templates/AGENTS.md`、`templates/system_prompt.md`、`templates/global_constitution.md` 仍保留 `model-selector`、`mcp-finder`、`skill-finder`、`software-architect` 作為預設或核心 skill 的敘述。
 - `packages/opencode/src/tool/plan.ts` 的 fallback artifact templates 仍偏通用，尚未把 architecture-thinking 與 delegation-first execution 寫死進 planner hardcode。
-- `packages/opencode/src/session/prompt/runner.txt` 雖已有 authority/behavior，但未明講 narration 不等於 pause，也未把 delegation-first continuation 收斂成主語。
+- 當時存在的 `packages/opencode/src/session/prompt/runner.txt` 雖已有 authority/behavior，但未明講 narration 不等於 pause，也未把 delegation-first continuation 收斂成主語；該 standalone artifact 後續已移除，對應 contract 現由 runtime/code 與 workflow skill 承接。
 - `agent-workflow` skill 雖已有 autonomous-ready SOP，但尚未明確把 delegation-first 與「narration 不應成為 pause boundary」寫成 autorunner-centered contract。
 
 ### Instrumentation Plan

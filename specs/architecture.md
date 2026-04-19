@@ -134,6 +134,9 @@ Launched 2026-04-18 to supersede the legacy `planner` skill (see `docs/events/ev
 - `packages/opencode/src/session/prompt.ts` resolves tools inside the run loop before each `processor.process(...)` call.
 - `packages/opencode/src/session/resolve-tools.ts` is the aggregation boundary for registry tools, MCP tools, managed-app tools, and session/agent/model-aware permission filtering.
 - `packages/opencode/src/mcp/index.ts` maintains a dirty-capable tools cache and emits `mcp.tools.changed`, but the new capability surface becomes effective on the next tools resolution cycle rather than through same-round mutation.
+- Autonomous continuation pumping is now **workflow-policy gated**, not always-on: `packages/opencode/src/session/workflow-runner.ts` stops with `not_armed` when `session.workflow.autonomous.enabled !== true`, and `packages/opencode/src/session/prompt.ts` no longer force-enables autorun on ordinary turns.
+- The `packages/opencode/src/server/routes/session.ts` `/session/:sessionID/autonomous` route is the explicit runtime switch for this policy surface: it respects `body.enabled`, clears queued continuations when disabling, and only enqueues synthetic continuation messages when autorun is enabled.
+- Autonomous continuation no longer depends on `packages/opencode/src/session/prompt/runner.txt` or a completion-verify prompt contract. Armed sessions now enqueue only a minimal resume signal, and `packages/opencode/src/session/workflow-runner.ts` stops immediately when no actionable todo exists instead of hardcoding an "update the todolist" prompt.
 - Planned `dialog_trigger_framework` v1 builds on this runtime truth: rule-first detectors + centralized trigger registry/policy + dirty-flag/next-round rebuild. It explicitly does **not** assume background AI governance or in-flight hot reload.
 - The formal semantic reference root for this topic is now `/specs/dialog_trigger_framework/`, promoted from the completed dated planning package `plans/20260327_plan-enter-plans-20260327-durable-cron-scheduler/` after the user approved spec promotion.
 
@@ -623,7 +626,7 @@ polling.
   with `normalizeRoutePattern()` collapsing opencode ID segments into `:id`
   so per-session URLs share one bucket.
 - `packages/opencode/src/server/routes/cache-health.ts` — `GET
-  /api/v2/server/cache/health` endpoint exposing cache + rate-limit stats
+/api/v2/server/cache/health` endpoint exposing cache + rate-limit stats
   via the pluggable `registerCacheStatsProvider` /
   `registerRateLimitStatsProvider` pattern.
 - `packages/opencode/src/server/routes/session.ts` — `GET /:sessionID`,
@@ -708,13 +711,13 @@ States: **Idle → Pending → { Replied | Rejected(manual) | Aborted(stream) } 
 
 Transitions:
 
-| From | To | Trigger |
-|---|---|---|
-| Idle | Pending | `Question.ask({ …, abort })` registers `pending[id]`, publishes `question.asked` (unless `abort.aborted` at entry) |
-| Pending | Replied | HTTP `/question.reply` → `Question.reply` deletes pending, calls `dispose()`, publishes `question.replied`, resolves promise |
-| Pending | Rejected | HTTP `/question.reject` → `Question.reject` deletes pending, calls `dispose()`, publishes `question.rejected`, rejects with `RejectedError` |
-| Pending | Aborted | `abort` signal fires → `onAbort` listener deletes pending, publishes `question.rejected` (same event as manual reject), rejects with `RejectedError("aborted: <reason>")` |
-| Pending+Replied | Replied | late `abort` fires after `reply` — `onAbort` finds no `pending[id]` → no-op (idempotent) |
+| From            | To       | Trigger                                                                                                                                                                   |
+| --------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Idle            | Pending  | `Question.ask({ …, abort })` registers `pending[id]`, publishes `question.asked` (unless `abort.aborted` at entry)                                                        |
+| Pending         | Replied  | HTTP `/question.reply` → `Question.reply` deletes pending, calls `dispose()`, publishes `question.replied`, resolves promise                                              |
+| Pending         | Rejected | HTTP `/question.reject` → `Question.reject` deletes pending, calls `dispose()`, publishes `question.rejected`, rejects with `RejectedError`                               |
+| Pending         | Aborted  | `abort` signal fires → `onAbort` listener deletes pending, publishes `question.rejected` (same event as manual reject), rejects with `RejectedError("aborted: <reason>")` |
+| Pending+Replied | Replied  | late `abort` fires after `reply` — `onAbort` finds no `pending[id]` → no-op (idempotent)                                                                                  |
 
 ### Cancel reason propagation
 
