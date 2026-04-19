@@ -2,13 +2,13 @@
 
 ## 1. Server Foundation — AbortSignal on Question.ask (Requirement A)
 
-- [ ] 1.1 Extend `Question.ask` signature to accept optional `abort?: AbortSignal`
-- [ ] 1.2 Store `dispose` handler on `pending[id]`; run on reply/reject/abort paths
-- [ ] 1.3 Implement abort listener: delete pending + `Bus.publish(Event.Rejected)` + reject promise with `RejectedError`
-- [ ] 1.4 Handle pre-aborted signal: short-circuit, no `question.asked` publish
-- [ ] 1.5 Add `log.info("aborted", { id, reason })` reading `signal.reason`
-- [ ] 1.6 Update `tool/question.ts` to pass `ctx.abort` into `Question.ask`
-- [ ] 1.7 Unit tests: stream-abort, late-abort (reply wins), pre-aborted signal, double-trigger idempotency
+- [x] 1.1 Extend `Question.ask` signature to accept optional `abort?: AbortSignal`
+- [x] 1.2 Store `dispose` handler on `pending[id]`; run on reply/reject/abort paths
+- [x] 1.3 Implement abort listener: delete pending + `Bus.publish(Event.Rejected)` + reject promise with `RejectedError`
+- [x] 1.4 Handle pre-aborted signal: short-circuit, no `question.asked` publish
+- [x] 1.5 Add `log.info("aborted", { id, reason })` reading `signal.reason`
+- [x] 1.6 Update `tool/question.ts` to pass `ctx.abort` into `Question.ask`
+- [x] 1.7 Unit tests: stream-abort, late-abort (reply wins), pre-aborted signal, double-trigger idempotency
 
 ## 2. Server Telemetry — Cancel Reason (Requirement C)
 
