@@ -33,14 +33,14 @@
 
 ## 3. Webapp — Content-hashed QuestionDock Cache (Requirement B)
 
-- [ ] 3.1 Add canonical JSON serializer (key-sorted recursive) helper
-- [ ] 3.2 Add hash helper: SHA-1 via `crypto.subtle.digest` with FNV-1a fallback (non-secure context / SSR)
-- [ ] 3.3 Change `cache: Map<string, CacheEntry>` key from `request.id` to `${sessionID}:${hex(hash(canonical(questions)))}`
-- [ ] 3.4 Pre-compute `cacheKey` memo at component mount (async hash ok — seed after resolve)
-- [ ] 3.5 `cache.get(cacheKey)` lookup in `createStore` init path
-- [ ] 3.6 `cache.delete(cacheKey)` on replied=true path
-- [ ] 3.7 `onCleanup` writes `cache.set(cacheKey, snapshot)` only when not replied
-- [ ] 3.8 Unit test (or Playwright): same session + identical questions → restore; different session → no leak; different questions → miss
+- [x] 3.1 Add canonical JSON serializer (key-sorted recursive) helper → `question-cache-key.ts::canonicalJson`
+- [x] 3.2 Hash helper: FNV-1a 32-bit sync (DD-2 amended from SHA-1 async to avoid createStore init race — see design.md)
+- [x] 3.3 Cache key = `${sessionID}:${fnv1a32(canonicalJson(questions))}` replacing `request.id`
+- [x] 3.4 `cacheKey` memoized via `createMemo`; sync, no async resolve races
+- [x] 3.5 `cache.get(cacheKey())` lookup at `createStore` init path
+- [x] 3.6 `cache.delete(cacheKey())` on replied=true path (reply + reject both)
+- [x] 3.7 `onCleanup` writes `cache.set(cacheKey(), snapshot)` only when not replied
+- [x] 3.8 Unit tests: 13 pass covering canonicalJson (4) + fnv1a32 (3) + questionCacheKey (6 — TV4/TV5/TV6 + option order + key order insensitive + flags). Full app suite 370/373 (3 skip) still green, no regression.
 
 ## 4. Docs & SSOT Sync
 

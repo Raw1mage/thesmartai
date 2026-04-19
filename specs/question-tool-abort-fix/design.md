@@ -45,16 +45,21 @@ Question tool 的 pending 生命週期在 2026-04-19 前並未與 stream AbortCo
 
 ### DD-2 — QuestionDock cache key = `${sessionID}:${hashCanonical(questions)}`
 
-**Decision**: cache key 改為 sessionID + questions array 的 canonical JSON hash。hash 使用 `crypto.subtle.digest("SHA-1")` 再取 hex（非安全用途，只要穩定即可）；fallback 到小型純 JS FNV-1a 實作以免 SSR / non-secure context 崩潰。canonical JSON 序列化保證 key 順序穩定。
+**Decision (v2, 2026-04-19, AMENDED during Phase 3)**: cache key = sessionID + FNV-1a 32-bit hash (8-char hex) of canonical JSON of questions array. canonical JSON = recursive key-sorted serializer. No SubtleCrypto.
 
-**Why**:
-- sessionID 隔離跨 session 的 cache leak
-- content hash 確保 AI 重問同題（新 request.id）能命中舊輸入
-- 完全不動 Bus event schema、不動 server-side
-- SHA-1 相較 FNV 碰撞極低，對 UI state 足夠；沒有安全考量
+~~**Decision (v1, SUPERSEDED by v2)**: SHA-1 via `crypto.subtle.digest` with FNV-1a fallback for SSR / non-secure contexts.~~
 
-**Alternative considered**: 用 request.id 直接比對（現況）。Rejected：重問新 id。
-**Alternative considered**: server 端保留 stable question fingerprint 當成 id。Rejected：需要改 ask() 簽名、Bus payload、所有 downstream consumer，得不償失。
+**Why (v2)**:
+- sessionID prefix isolates cross-session cache leak
+- content hash lets AI re-ask of identical question (new `request.id`) hit the previous input
+- No server-side / Bus event / SDK type changes
+- FNV-1a is synchronous → usable inside SolidJS `createStore(initial)` without races. Async SHA-1 would need "mount with empty state, then `setStore` after digest resolves" — but user typing in the tens-of-ms window between mount and resolve would be overwritten by the cache restore, a regression worse than the original bug
+- FNV-1a 32-bit collision probability <10⁻⁸ for <100 distinct questions per session; sessionID prefix drives cross-session collision to near zero
+- Cache key is never exposed and never participates in auth — no security concern
+
+**Alternative considered (v1)**: SubtleCrypto SHA-1. Rejected per the race argument above.
+**Alternative considered**: use `request.id` directly (status quo before this spec). Rejected: re-ask produces new id.
+**Alternative considered**: server-side stable question fingerprint as id. Rejected: requires breaking change to `ask()` signature, Bus payload, and all downstream consumers.
 
 ### DD-3 — prompt-runtime.cancel 需要 reason: CancelReason（TypeScript enum-like union）
 

@@ -65,6 +65,19 @@
         "packages/opencode/src/question/index.test.ts"
       ],
       "commit": "e88298e50715904e8ee374a882ab309bea84eaa7"
+    },
+    {
+      "at": "2026-04-19T04:24:08.041Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "drift detected: packages/opencode/src/cli/cmd/session.ts, packages/opencode/src/server/killswitch/service.ts, packages/opencode/src/tool/task.ts",
+      "result": "warned",
+      "drift": [
+        "packages/opencode/src/cli/cmd/session.ts",
+        "packages/opencode/src/server/killswitch/service.ts",
+        "packages/opencode/src/tool/task.ts"
+      ],
+      "commit": "207f4ce61e8c57976cb3dccc280aaedefacedee1"
     }
   ]
 }
