@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "implementing",
+  "state": "living",
   "profile": [],
   "history": [
     {
@@ -42,6 +42,22 @@
       "reason": "post-task sync, clean",
       "result": "clean",
       "commit": "46de622287ca3c84d4fe2b4a1fed1d231317b369"
+    },
+    {
+      "from": "implementing",
+      "to": "verified",
+      "at": "2026-04-19T20:16:41.486Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "merged to main @ eafee15ac; 89/89 tests pass across 11 files; runtime + endpoint live; Phase 6.4/6.5 UI deferred to per-client PRs; Phase 9.4-9.8 manual verification noted as user action"
+    },
+    {
+      "from": "verified",
+      "to": "living",
+      "at": "2026-04-19T20:16:45.233Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "merge commit eafee15ac on main; code is current production state"
     }
   ]
 }
