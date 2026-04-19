@@ -120,6 +120,7 @@
 
 - **不要把此文件傳給 Subagent**: 他們已透過 SYSTEM.md 獲得工具規範與紅燈規則，僅需額外提供具體任務指令。
 - **Event Log**: 任何重大決策必須記錄於 `docs/events/`。
+- **停止時必須交代下一步**：若 agent 因使用者插話、approval gate、decision gate、blocker 或 round 結束而停下，回覆中必須明確說明停止原因，並附上可執行的後續建議或恢復後的第一步；禁止只停在狀態描述。
 
 ## 6. Subagent 指派標準 (Task Dispatch Standards)
 

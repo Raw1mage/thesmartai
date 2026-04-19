@@ -730,6 +730,7 @@ Transitions:
 - `replace` — `prompt-runtime.start({ replace: true })` tearing down the prior AbortController
 - `session-switch` — reserved for explicit session-switching paths
 - `killswitch` — emergency `KillSwitchService.forceKill` / cancel / pause
+- Kill-switch stop semantics are two-layered: `KillSwitchService` must both call `SessionPrompt.cancel(sessionID, "killswitch")` and terminate any active child worker through `tool/task.ts::terminateActiveChild(sessionID)`. Aborting only the parent prompt is insufficient when the orchestrator is blocked waiting on a subagent worker result.
 - `parent-abort` — subagent cascade: parent session's abort triggers child session cancel via `tool/task.ts`
 - `unknown` — default when no meaningful reason is available (should not occur from internal callers; TypeScript enforces the closed set)
 

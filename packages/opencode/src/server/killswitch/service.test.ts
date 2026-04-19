@@ -1,8 +1,20 @@
-import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach, mock } from "bun:test"
+
+const terminateActiveChild = mock(async () => false)
+
+mock.module("@/tool/task", () => ({
+  terminateActiveChild,
+}))
+
 import { KillSwitchService } from "./service"
 import { SessionStatus } from "@/session/status"
 
 describe("KillSwitchService", () => {
+  beforeEach(() => {
+    terminateActiveChild.mockReset()
+    terminateActiveChild.mockImplementation(async () => false)
+  })
+
   it("generates and verifies MFA", async () => {
     const requestID = await KillSwitchService.idempotentRequestID("tester", "reason", 1000)
     const code = await KillSwitchService.generateMfa(requestID, "tester")
@@ -44,6 +56,29 @@ describe("KillSwitchService", () => {
     })
     expect(result).toContain("local://killswitch/")
     expect(result).toContain("ks_test_local")
+  })
+
+  it("cancel control terminates active child after aborting session", async () => {
+    const requestID = await KillSwitchService.idempotentRequestID("tester", "cancel-case", 1000)
+
+    const ack = await KillSwitchService.handleControl({
+      requestID,
+      sessionID: "ses_kill_cancel",
+      seq: 100,
+      action: "cancel",
+      initiator: "tester",
+    })
+
+    expect(ack.status).toBe("accepted")
+    expect(terminateActiveChild).toHaveBeenCalledTimes(1)
+    expect(terminateActiveChild).toHaveBeenCalledWith("ses_kill_cancel")
+  })
+
+  it("forceKill also terminates active child", async () => {
+    await KillSwitchService.forceKill("ses_force_kill", "ks_force_kill", "tester")
+
+    expect(terminateActiveChild).toHaveBeenCalledTimes(1)
+    expect(terminateActiveChild).toHaveBeenCalledWith("ses_force_kill")
   })
 })
 

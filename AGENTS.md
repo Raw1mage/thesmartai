@@ -92,6 +92,7 @@
 3. **變更留痕**：記錄於 `docs/events/`。
 4. **Session 啟動必讀 Architecture**：`specs/architecture.md`。
 5. **Beta/Test 分支用後即刪**：`beta/*`、`test/*` 分支與其 worktree 僅作一次性實作/驗證面。測試完成且 merge/fetch-back 回 `main` 後，必須立即刪除；禁止長留已完成任務的 beta/test 分支，避免 stale branch 在後續被誤認為主線或被 branch-pointer 操作拉回。
+6. **停止時必須交代下一步**：若 agent 因使用者插話、approval gate、decision gate、blocker 或 round 結束而停下，回覆中必須明確說明停止原因，並附上可執行的後續建議或恢復後的第一步；禁止只停在狀態描述。
 
 ### Release 前檢查清單
 
@@ -135,4 +136,3 @@
 - 修復優先順序：**讀取方自清 > 改寫事件順序 > 引入新旗標**。
 
 ---
-

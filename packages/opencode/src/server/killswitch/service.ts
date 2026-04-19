@@ -66,6 +66,17 @@ export namespace KillSwitchService {
     create(input: SnapshotInput): Promise<string | null>
   }
 
+  async function cancelSessionExecution(sessionID: string) {
+    SessionPrompt.cancel(sessionID, "killswitch")
+    const { terminateActiveChild } = await import("@/tool/task")
+    await terminateActiveChild(sessionID).catch((error) => {
+      log.warn("kill-switch failed to terminate active child", {
+        sessionID,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    })
+  }
+
   export async function writeAudit(input: {
     requestID?: string
     sessionID?: string
@@ -226,11 +237,11 @@ export namespace KillSwitchService {
     try {
       switch (input.action) {
         case "cancel": {
-          SessionPrompt.cancel(input.sessionID, "killswitch")
+          await cancelSessionExecution(input.sessionID)
           break
         }
         case "pause": {
-          await SessionPrompt.cancel(input.sessionID, "killswitch")
+          await cancelSessionExecution(input.sessionID)
           break
         }
         case "resume": {
@@ -318,7 +329,7 @@ export namespace KillSwitchService {
   }
 
   export async function forceKill(sessionID: string, requestID: string, initiator: string, reason = "ack_timeout") {
-    SessionPrompt.cancel(sessionID, "killswitch")
+    await cancelSessionExecution(sessionID)
     await writeAudit({
       requestID,
       sessionID,

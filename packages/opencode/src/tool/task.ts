@@ -105,7 +105,20 @@ function toolWhitelistForSubagent(agentName: string): string[] | undefined {
     return ["read", "glob", "grep", "list", "bash", "webfetch", "websearch", "codesearch", "question", "skill"]
   }
   if (name === "coding") {
-    return ["read", "glob", "grep", "list", "bash", "edit", "write", "apply_patch", "question", "skill", "todowrite", "todoread"]
+    return [
+      "read",
+      "glob",
+      "grep",
+      "list",
+      "bash",
+      "edit",
+      "write",
+      "apply_patch",
+      "question",
+      "skill",
+      "todowrite",
+      "todoread",
+    ]
   }
   return undefined
 }
@@ -223,7 +236,7 @@ function registryPath() {
 }
 
 interface RegistryEntry {
-  sessionID: string        // child session
+  sessionID: string // child session
   parentSessionID: string
   parentMessageID: string
   toolCallID: string
@@ -467,10 +480,7 @@ async function handleRateLimitEscalation(props: {
   // Resolve child's current Provider.Model (needed for rotation3d input).
   let currentProviderModel: Provider.Model | undefined
   try {
-    currentProviderModel = await Provider.getModel(
-      props.currentModel.providerId,
-      props.currentModel.modelID,
-    )
+    currentProviderModel = await Provider.getModel(props.currentModel.providerId, props.currentModel.modelID)
   } catch (err) {
     log.error("Escalation: cannot resolve child's current model for rotation", {
       childSessionID,
@@ -482,10 +492,9 @@ async function handleRateLimitEscalation(props: {
   }
 
   const triedSet = new Set(props.triedVectors)
-  const sessionIdentity =
-    parentSession?.execution
-      ? { providerId: parentSession.execution.providerId, accountId: parentSession.execution.accountId }
-      : undefined
+  const sessionIdentity = parentSession?.execution
+    ? { providerId: parentSession.execution.providerId, accountId: parentSession.execution.accountId }
+    : undefined
   const fallback = await LLM.handleRateLimitFallback(
     currentProviderModel,
     "account-first",
@@ -789,7 +798,15 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
         // Flush remaining buffer — worker may exit before final \n
         buffer += decoder.decode(undefined, { stream: false })
         const remaining = buffer.trim()
-        log.info("[TRACE][STDOUT_EOF] stdout EOF reached", { workerID, hasRemaining: remaining.length > 0, remainingLength: remaining.length, bufferPreview: remaining.slice(0, 200), hasCurrent: !!worker.current, currentId: worker.current?.id, workerPhase: worker.lastPhase })
+        log.info("[TRACE][STDOUT_EOF] stdout EOF reached", {
+          workerID,
+          hasRemaining: remaining.length > 0,
+          remainingLength: remaining.length,
+          bufferPreview: remaining.slice(0, 200),
+          hasCurrent: !!worker.current,
+          currentId: worker.current?.id,
+          workerPhase: worker.lastPhase,
+        })
         if (remaining) {
           log.info("[TRACE][FLUSH_START] flushing remaining stdout buffer", { workerID, length: remaining.length })
           for (const leftover of remaining.split("\n")) {
@@ -800,7 +817,14 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
             } catch {
               continue
             }
-            log.info("[TRACE][FLUSH_MSG_FOUND] msg found in flush buffer", { workerID, fMsgType: fMsg?.type, fMsgId: fMsg?.id, hasCurrent: !!worker.current, currentId: worker.current?.id, idMatch: worker.current?.id === fMsg?.id })
+            log.info("[TRACE][FLUSH_MSG_FOUND] msg found in flush buffer", {
+              workerID,
+              fMsgType: fMsg?.type,
+              fMsgId: fMsg?.id,
+              hasCurrent: !!worker.current,
+              currentId: worker.current?.id,
+              idMatch: worker.current?.id === fMsg?.id,
+            })
             if (fMsg?.type === "done" && worker.current?.id === fMsg.id) {
               log.info("[TRACE][FLUSH_DONE_RECOVERED] done msg recovered from unflushed buffer", {
                 workerID,
@@ -903,8 +927,16 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
           log.warn("worker message JSON parse failed", { workerID: worker?.id, payload: payload.slice(0, 100) })
           continue
         }
-        
-        log.info("[TRACE] worker message parsed", { workerID: worker?.id, msgType: msg?.type, msgId: msg?.id, hasCurrent: !!worker?.current, currentId: worker?.current?.id, workerBusy: worker?.busy, workerPhase: worker?.lastPhase })
+
+        log.info("[TRACE] worker message parsed", {
+          workerID: worker?.id,
+          msgType: msg?.type,
+          msgId: msg?.id,
+          hasCurrent: !!worker?.current,
+          currentId: worker?.current?.id,
+          workerBusy: worker?.busy,
+          workerPhase: worker?.lastPhase,
+        })
 
         if (msg?.type === "ready") {
           beacon.hit("worker.ready")
@@ -926,12 +958,12 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
         }
 
         if (msg?.type === "done") {
-          log.info("[TRACE][DONE_MSG_RECEIVED] done message arrived", { 
-            workerID: worker.id, 
+          log.info("[TRACE][DONE_MSG_RECEIVED] done message arrived", {
+            workerID: worker.id,
             msgId: msg.id,
             msgOk: msg.ok,
             msgError: msg.error,
-            hasCurrent: !!worker.current, 
+            hasCurrent: !!worker.current,
             currentId: worker.current?.id,
             currentSessionID: worker.current?.sessionID,
             currentParentSessionID: worker.current?.parentSessionID,
@@ -941,28 +973,43 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
             workerPhase: worker.lastPhase,
           })
           if (!worker.current) {
-            log.warn("[TRACE][DONE_MSG_NO_CURRENT] done msg received but worker.current is undefined — Done event will NOT be published!", {
-              workerID: worker.id,
-              msgId: msg.id,
-            })
+            log.warn(
+              "[TRACE][DONE_MSG_NO_CURRENT] done msg received but worker.current is undefined — Done event will NOT be published!",
+              {
+                workerID: worker.id,
+                msgId: msg.id,
+              },
+            )
           } else if (worker.current.id !== msg.id) {
-            log.warn("[TRACE][DONE_MSG_ID_MISMATCH] done msg id does not match worker.current.id — Done event will NOT be published!", {
-              workerID: worker.id,
-              msgId: msg.id,
-              currentId: worker.current.id,
-            })
+            log.warn(
+              "[TRACE][DONE_MSG_ID_MISMATCH] done msg id does not match worker.current.id — Done event will NOT be published!",
+              {
+                workerID: worker.id,
+                msgId: msg.id,
+                currentId: worker.current.id,
+              },
+            )
           }
         }
 
         if (msg?.type === "done" && worker.current?.id === msg.id) {
-          log.info("[TRACE][DONE_BRANCH_ENTERED] done processing started", { workerID: worker.id, msgId: msg.id, sessionID: worker.current?.sessionID, parentSessionID: worker.current?.parentSessionID, toolCallID: worker.current?.toolCallID })
+          log.info("[TRACE][DONE_BRANCH_ENTERED] done processing started", {
+            workerID: worker.id,
+            msgId: msg.id,
+            sessionID: worker.current?.sessionID,
+            parentSessionID: worker.current?.parentSessionID,
+            toolCallID: worker.current?.toolCallID,
+          })
           beacon.hit("worker.done")
           worker.lastPhase = "done"
           worker.lastWorkerMessage = typeof msg.error === "string" ? `done:${msg.error}` : "done"
           const req = worker.current
           worker.current = undefined
           if (req) registryRemove(req.toolCallID).catch(() => {})
-          log.info("[TRACE][DONE_CURRENT_CLEARED] worker.current set to undefined after done", { workerID: worker.id, reqId: req?.id })
+          log.info("[TRACE][DONE_CURRENT_CLEARED] worker.current set to undefined after done", {
+            workerID: worker.id,
+            reqId: req?.id,
+          })
           worker.busy = false
           scheduleIdleReap(worker)
           if (!req) continue
@@ -996,11 +1043,20 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
                 linkedTodoID: req.linkedTodoID,
               },
               { directory: capturedDirectory },
-            ).then(() => {
-              log.info("[TRACE][DONE_PUBLISH_SUCCESS] TaskWorkerEvent.Done published successfully", { workerID: worker.id, sessionID: req.sessionID, parentSessionID: req.parentSessionID })
-            }).catch((err) =>
-              log.error("[TRACE][DONE_PUBLISH_FAILED] bus publish TaskWorkerEvent.Done FAILED", { workerID: worker.id, error: String(err) }),
             )
+              .then(() => {
+                log.info("[TRACE][DONE_PUBLISH_SUCCESS] TaskWorkerEvent.Done published successfully", {
+                  workerID: worker.id,
+                  sessionID: req.sessionID,
+                  parentSessionID: req.parentSessionID,
+                })
+              })
+              .catch((err) =>
+                log.error("[TRACE][DONE_PUBLISH_FAILED] bus publish TaskWorkerEvent.Done FAILED", {
+                  workerID: worker.id,
+                  error: String(err),
+                }),
+              )
           } else {
             log.info("publishing TaskWorkerEvent.Failed", {
               workerID: worker.id,
@@ -1100,7 +1156,16 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
 
     if (!worker.ready) worker.readyResolve()
     const req = worker.current
-    log.info("[TRACE][EXIT_HANDLER] stdout loop ended, entering exit handler", { workerID, hasReq: !!req, reqId: req?.id, reqSessionID: req?.sessionID, reqParentSessionID: req?.parentSessionID, reqToolCallID: req?.toolCallID, workerPhase: worker.lastPhase, workerBusy: worker.busy })
+    log.info("[TRACE][EXIT_HANDLER] stdout loop ended, entering exit handler", {
+      workerID,
+      hasReq: !!req,
+      reqId: req?.id,
+      reqSessionID: req?.sessionID,
+      reqParentSessionID: req?.parentSessionID,
+      reqToolCallID: req?.toolCallID,
+      workerPhase: worker.lastPhase,
+      workerBusy: worker.busy,
+    })
     worker.current = undefined
     if (req) registryRemove(req.toolCallID).catch(() => {})
     worker.busy = false
@@ -1225,9 +1290,7 @@ async function getReadyWorker(config: Awaited<ReturnType<typeof Config.get>>) {
     const stderrHint = worker.lastStderr ? ` | stderr: ${worker.lastStderr.slice(-500)}` : ""
     // Point to worker's pre-bootstrap log file for post-mortem diagnosis
     const workerPid = worker.proc.pid
-    const workerLogHint = workerPid
-      ? ` | worker log: ${path.join(Global.Path.log, `worker-${workerPid}.log`)}`
-      : ""
+    const workerLogHint = workerPid ? ` | worker log: ${path.join(Global.Path.log, `worker-${workerPid}.log`)}` : ""
     log.error("worker failed to become ready", {
       workerID: worker.id,
       lastPhase: worker.lastPhase,
@@ -1437,13 +1500,20 @@ export function terminateAllActiveWorkers(): number {
 export async function terminateActiveChild(parentSessionID: string) {
   const activeChild = SessionActiveChild.get(parentSessionID)
   if (!activeChild) return false
-  if (activeChild.status !== "running") return false
+  if (activeChild.status !== "running") {
+    await SessionActiveChild.set(parentSessionID, null)
+    return true
+  }
 
   const worker =
     activeChild.workerID && activeChild.workerID !== "handoff"
       ? workers.find((candidate) => candidate.id === activeChild.workerID)
       : undefined
-  if (!worker) return false
+  if (!worker) {
+    SessionPrompt.cancel(activeChild.sessionID, "parent-abort")
+    await SessionActiveChild.set(parentSessionID, null)
+    return true
+  }
 
   // Try graceful cancel via stdin first
   let stdinOk = false
@@ -2007,7 +2077,10 @@ export const TaskTool = Tool.define("task", async (ctx) => {
             // Skip the first two fields (pid and `(comm)`); comm may contain spaces.
             const rp = stat.lastIndexOf(")")
             if (rp === -1) return null
-            const tail = stat.slice(rp + 2).trim().split(/\s+/)
+            const tail = stat
+              .slice(rp + 2)
+              .trim()
+              .split(/\s+/)
             // After comm: state(0) ppid(1) pgrp(2) session(3) tty_nr(4) tpgid(5)
             // flags(6) minflt(7) cminflt(8) majflt(9) cmajflt(10) utime(11) stime(12)
             const state = tail[0] ?? "?"
@@ -2209,7 +2282,11 @@ export const TaskTool = Tool.define("task", async (ctx) => {
               workerID: assignedWorkerID,
               resolution: watchdogResolution,
             })
-            try { worker.proc.kill() } catch { /* already dead */ }
+            try {
+              worker.proc.kill()
+            } catch {
+              /* already dead */
+            }
           }
         }
 
