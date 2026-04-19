@@ -64,3 +64,10 @@
 - [x] 6.2 Commits include spec slug + DD references across 6 commits (rebased: 3990c624b..cd62bdea5)
 - [x] 6.3 Promote `implementing` → `verified` once tasks 1–5 checked + handoff.md validation evidence filled
 - [x] 6.4 Promote `verified` → `living` once merged to main
+
+## 7. Followups (tracked, scheduled for future amend / extend / new-spec runs)
+
+- [ ] 7.1 TUI `cli/cmd/tui/routes/session/question.tsx` — add cache parity matching webapp's DD-2 v2 (sessionID + canonical FNV-1a). Explicitly deferred from this spec's OUT scope; open a follow-up plan-builder `extend` when picked up.
+- [ ] 7.2 If production telemetry later shows `reason=rate-limit-fallback` aborts (currently no caller emits this), amend processor rotation path to carry the reason at the abort boundary, and update `design.md` DD-3.
+- [ ] 7.3 If lazy-loaded tool schema-miss red boxes become a recurring UX complaint, open a new spec `tool-schema-lenient` to generalize the `apply_patch` passthrough + resolver pattern to the `question` tool and other commonly-lazy-loaded tools (flagged in user feedback 2026-04-19 screenshot).
+- [ ] 7.4 Monitor `session.monitor` evolution — if it gains a watchdog cancel path, wire `"monitor-watchdog"` reason (enum value is already reserved).

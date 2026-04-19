@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "implementing",
+  "state": "living",
   "profile": [],
   "history": [
     {
@@ -89,6 +89,22 @@
         "packages/app/src/components/question-dock.tsx"
       ],
       "commit": "7b972bb1c0a9da6149857815a8173b2451a250c2"
+    },
+    {
+      "from": "implementing",
+      "to": "verified",
+      "at": "2026-04-19T05:50:55.329Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "tests green + user E2E authorized merge; followups tracked in §7"
+    },
+    {
+      "from": "verified",
+      "to": "living",
+      "at": "2026-04-19T05:50:55.781Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "merged to main @ 6c096e354"
     }
   ]
 }
