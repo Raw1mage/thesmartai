@@ -785,8 +785,6 @@ export namespace SessionPrompt {
     let lastDecisionReason: Awaited<ReturnType<typeof decideAutonomousContinuation>>["reason"] | undefined
     let emptyRoundCount = 0
     let consecutiveCompactions = 0
-    let subagentNudgeCount = 0
-    const MAX_SUBAGENT_NUDGES = 2
     const session = await Session.get(sessionID)
     const cachedInstructionPrompts = await InstructionPrompt.system()
     const environmentCache = new Map<string, string[]>()
@@ -1712,51 +1710,10 @@ export namespace SessionPrompt {
           break
         }
 
-        // ── Subagent nudge: lightweight continuation for child sessions ──
-        // Small models tend to ask user questions instead of proceeding.
-        // Subagents are non-interactive — nudge them to continue working.
-        if (session.parentID && subagentNudgeCount < MAX_SUBAGENT_NUDGES) {
-          const assistantParts = await MessageV2.parts(processor.message.id)
-          const lastText = assistantParts
-            .filter((p): p is MessageV2.TextPart => p.type === "text")
-            .map((p) => p.text ?? "")
-            .join("\n")
-          const hasToolCalls = assistantParts.some((p) => p.type === "tool")
-          // Only nudge if the model stopped without tool calls (likely asked a question or stalled)
-          if (!hasToolCalls && lastText.length > 0) {
-            subagentNudgeCount++
-            log.info("subagent nudge: model stopped without tool calls, injecting continuation", {
-              sessionID,
-              nudgeCount: subagentNudgeCount,
-              maxNudges: MAX_SUBAGENT_NUDGES,
-              lastTextPreview: lastText.slice(0, 120),
-            })
-            const nudgeMsg = await Session.updateMessage({
-              id: Identifier.ascending("message"),
-              role: "user",
-              sessionID,
-              time: { created: Date.now() },
-              agent: lastUser.agent,
-              model: lastUser.model,
-              format: lastUser.format,
-              variant: lastUser.variant,
-            })
-            await Session.updatePart({
-              id: Identifier.ascending("part"),
-              messageID: nudgeMsg.id,
-              sessionID,
-              type: "text",
-              synthetic: true,
-              text: "You are a subagent — you cannot interact with the user. Do not ask questions or request clarification. Make a reasonable choice based on available context and continue executing the task. If you have genuinely completed all work, summarize what you accomplished.",
-              time: { start: Date.now(), end: Date.now() },
-            })
-            continue
-          }
-        }
-
         // processor returned "stop" → blocked (permission/question rejected)
         // or assistant error. Workflow state is already set inside processor.
-        // Don't run autonomous continuation: the user must unblock first.
+        // Child sessions must also stop here — parent/task completion wiring
+        // owns any follow-up, and child self-nudging can create synthetic loops.
         break
       }
       if (result === "compact") {

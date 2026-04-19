@@ -88,6 +88,38 @@
 
 - 若要完全落實 `specs/autonomous-opt-in/`，後續仍需補上 session-spec binding、explicit arm trigger、plan refill/disarm lifecycle。
 
+## Follow-up Bugfix: subagent self-loop after runloop gate change
+
+### Symptom
+
+- 使用者回報：上一輪 runloop 修改後，subagent 會自我循環、無法正常結束。
+
+### Root Cause
+
+- root session 的 synthetic continuation gate 已移除，但 `packages/opencode/src/session/prompt.ts` 仍保留 child session stop 後的 synthetic self-nudge：
+  - subagent 在無 tool call 的 `stop` 結束時，會自動再寫入一則 synthetic user message
+  - 該邏輯原本用來逼 child model 不要提問，但在新的 runloop 行為下，會把 subagent terminal finish 重新變成 child 自我續跑
+- 這與目前架構衝突：
+  - child session 應在 terminal finish 後直接停下
+  - parent completion / task tool caller / `task-worker-continuation` 才是合法收尾與後續接合點
+
+### Fix
+
+- 移除 `packages/opencode/src/session/prompt.ts` 中的：
+  - `subagentNudgeCount`
+  - `MAX_SUBAGENT_NUDGES`
+  - child stop 後注入 `You are a subagent... continue executing the task` synthetic message 的整段邏輯
+- 現在 child session 在 `stop` 時直接結束，由 parent/task completion wiring 負責 follow-up。
+
+### Validation
+
+- `bun test "packages/opencode/src/session/workflow-runner.test.ts" "packages/opencode/src/session/prompt-runtime.test.ts" "packages/opencode/src/session/prompt-context-sharing.test.ts"` ✅ 28 pass / 0 fail
+- grep 驗證：`subagentNudgeCount` / `MAX_SUBAGENT_NUDGES` / `subagent nudge` / `You are a subagent` 已不再存在於 `packages/opencode/src/session/` ✅
+
+### Architecture Sync
+
+- Verified (No doc changes): 本次是移除遺留的 child self-nudge，讓行為重新對齊既有「subagent terminal finish → parent completion path 收尾」邊界，不改變 architecture boundary 本身。
+
 ## Architecture Sync
 
 - Updated: `specs/architecture.md` 已補充 runloop 改為 policy-gated pumping、`/session/:sessionID/autonomous` 成為 explicit runtime switch，且 autonomous continuation 不再依賴 `Continuation Gate` / completion-verify prompt contract，而改由最小 resume 訊號 + 現有 todo 狀態自然驅動。
