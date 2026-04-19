@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "verified",
+  "state": "living",
   "profile": [],
   "history": [
     {
@@ -77,6 +77,14 @@
       "by": "pkcs12",
       "mode": "promote",
       "reason": "Phase 1-5 complete on test/question-tool-input-normalization: 31 new tests pass, typecheck clean on affected files, architecture.md + event log landed. Awaiting user approval for test -> main finalize."
+    },
+    {
+      "from": "verified",
+      "to": "living",
+      "at": "2026-04-19T18:36:11.971Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "merged to main via test/question-tool-input-normalization; beta + test branches cleaned up; opencode-beta worktree detached"
     }
   ]
 }
