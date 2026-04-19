@@ -1,0 +1,165 @@
+{
+  "diagram_title": "Tool input normalization pipeline",
+  "node_reference": "A0",
+  "parent_reference": null,
+  "standard": "IEEE 1320.1-1998 / FIPS 183 (IDEF0)",
+  "activities": [
+    {
+      "id": "A1",
+      "label": "Receive raw LLM tool-call args",
+      "description": "AI SDK stream 解析出 tool-call event，包含 tool name、callID、raw arguments object（LLM 產生，可能 noncompliant）",
+      "inputs": [
+        "LLM streaming response",
+        "tool-call event payload"
+      ],
+      "outputs": [
+        "value.toolName",
+        "value.toolCallId",
+        "value.input (raw args)"
+      ],
+      "controls": [
+        "AI SDK tool-call protocol",
+        "provider-specific transport (OpenAI Responses API / Anthropic API)"
+      ],
+      "mechanisms": [
+        "AI SDK fullStream",
+        "session/processor.ts case 'tool-call'"
+      ]
+    },
+    {
+      "id": "A2",
+      "label": "Parse & normalize via zod schema",
+      "description": "Tool.define wrapper 呼叫 parameters.parse(raw)；z.preprocess/z.transform/z.default 於此階段執行；成功回傳 parsed value，失敗丟 ZodError",
+      "inputs": [
+        "raw args from A1",
+        "tool.parameters (zod schema with optional preprocess)"
+      ],
+      "outputs": [
+        "parsed args (normalized)",
+        "ZodError (on failure)"
+      ],
+      "controls": [
+        "DD-1: wrapper uses parse return value",
+        "formatValidationError contract"
+      ],
+      "mechanisms": [
+        "zod z.preprocess / z.transform / z.default",
+        "tool/tool.ts Tool.define execute wrapper"
+      ]
+    },
+    {
+      "id": "A3",
+      "label": "Execute tool with parsed args",
+      "description": "Tool handler 實作（如 QuestionTool）收到 parsed args 跑業務邏輯；例如 QuestionTool 呼叫 Question.ask(sessionID, questions, tool, abort)",
+      "inputs": [
+        "parsed args from A2",
+        "Context (sessionID, messageID, callID, abort, etc.)"
+      ],
+      "outputs": [
+        "tool result (title, output, metadata)",
+        "tool error (on runtime failure)"
+      ],
+      "controls": [
+        "Tool.Info.execute 契約",
+        "tool-specific invariants (QuestionTool: questions must be array)"
+      ],
+      "mechanisms": [
+        "tool handler function",
+        "Question.ask / Bash / Edit / etc."
+      ]
+    },
+    {
+      "id": "A4",
+      "label": "Persist tool part state.input",
+      "description": "Processor 在 tool-result / tool-error 時寫入 session 存檔；completed 用 ToolRegistry 查 schema safeParse 存 normalized；error 保留 raw",
+      "inputs": [
+        "value.input (raw or already normalized)",
+        "tool result / error event",
+        "ToolRegistry.get(toolName).parameters"
+      ],
+      "outputs": [
+        "session/<id>/messages/<mid>/parts/<pid>.json with state.input field",
+        "shared-context consumers receive normalized"
+      ],
+      "controls": [
+        "DD-3: completed=normalized, error=raw",
+        "safeParse fallback to raw"
+      ],
+      "mechanisms": [
+        "session/processor.ts tool-result / tool-error handlers",
+        "ToolRegistry",
+        "Session.updatePart"
+      ]
+    },
+    {
+      "id": "A5",
+      "label": "Render tool part with defensive normalize",
+      "description": "UI 讀 state.input 前先過 Question.normalize helper；兼容舊 session 的 raw shape 與新 session 的 normalized shape",
+      "inputs": [
+        "state.input from A4",
+        "Question.normalize helper"
+      ],
+      "outputs": [
+        "QuestionDock / message-part / TUI session rendered UI",
+        "explicit error UI on un-normalizable input"
+      ],
+      "controls": [
+        "DD-2: single source of truth normalize helper",
+        "AGENTS.md 第一條: no silent fallback"
+      ],
+      "mechanisms": [
+        "packages/app/src/components/question-dock.tsx",
+        "packages/ui/src/components/message-part.tsx",
+        "packages/opencode/src/cli/cmd/tui/routes/session/index.tsx"
+      ]
+    }
+  ],
+  "sub_diagrams": [
+    {
+      "parent_reference": "A2",
+      "diagram_title": "Normalize helper internal decomposition",
+      "node_reference": "A2",
+      "activities": [
+        {
+          "id": "A2.1",
+          "label": "Classify input shape",
+          "description": "Determine whether input is null / primitive / flat single-question / canonical multi-question / unknown",
+          "inputs": ["raw args"],
+          "outputs": ["shape classification tag"],
+          "controls": ["DD-4 helper contract"],
+          "mechanisms": ["Question.normalize (top-level dispatch)"]
+        },
+        {
+          "id": "A2.2",
+          "label": "Wrap flat into array",
+          "description": "If flat single-question { question, options, multiple }, wrap into { questions: [normalizeSingle(input)] }",
+          "inputs": ["flat input"],
+          "outputs": ["{ questions: [...] } structure"],
+          "controls": ["DD-4: flat detection rule"],
+          "mechanisms": ["Question.normalize branch"]
+        },
+        {
+          "id": "A2.3",
+          "label": "Normalize each question (per-item)",
+          "description": "For each question: auto-fill header if missing; coerce options (string → {label, description}; {value, detail|explanation} → {label, description})",
+          "inputs": ["raw question object"],
+          "outputs": ["canonical question object"],
+          "controls": [
+            "header fallback = question.slice(0, 30)",
+            "option description fallback chain"
+          ],
+          "mechanisms": ["Question.normalizeSingle"]
+        },
+        {
+          "id": "A2.4",
+          "label": "Validate against zod schema",
+          "description": "After preprocess, the outer z.object validates canonical shape; throws ZodError on violation",
+          "inputs": ["preprocessed candidate"],
+          "outputs": ["parsed value or ZodError"],
+          "controls": ["zod .parse() semantics"],
+          "mechanisms": ["zod runtime"]
+        }
+      ]
+    }
+  ]
+}

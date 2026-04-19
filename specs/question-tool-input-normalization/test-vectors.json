@@ -1,0 +1,287 @@
+[
+  {
+    "id": "TV-1",
+    "requirementRef": "Tool.define guarantees execute receives parsed args",
+    "scenarioRef": "z.preprocess transform is honored",
+    "input": {
+      "toolParameters_pseudocode": "z.preprocess(raw => ({foo: raw.bar}), z.object({foo: z.string()}))",
+      "llmArgs": { "bar": "x" }
+    },
+    "expected": {
+      "executeArgs": { "foo": "x" }
+    }
+  },
+  {
+    "id": "TV-2",
+    "requirementRef": "Tool.define guarantees execute receives parsed args",
+    "scenarioRef": "canonical input passes through unchanged",
+    "input": {
+      "toolParameters_pseudocode": "z.preprocess(identity, z.object({foo: z.string()}))",
+      "llmArgs": { "foo": "x" }
+    },
+    "expected": {
+      "executeArgs": { "foo": "x" }
+    }
+  },
+  {
+    "id": "TV-3",
+    "requirementRef": "Tool.define guarantees execute receives parsed args",
+    "scenarioRef": "validation error path preserved",
+    "input": {
+      "toolParameters_pseudocode": "z.object({foo: z.string()})",
+      "llmArgs": { "baz": 1 }
+    },
+    "expected": {
+      "executeInvoked": false,
+      "throws": "ZodError (wrapped if formatValidationError present)"
+    }
+  },
+  {
+    "id": "TV-4",
+    "requirementRef": "QuestionTool normalizes flat and string-option inputs",
+    "scenarioRef": "flat single-question input wraps into questions array",
+    "input": {
+      "llmArgs": {
+        "question": "single-surface shell 的 canonical authenticated route 要用哪個？",
+        "options": [
+          "`/assets` 作為唯一 canonical route",
+          "`/inventory` 作為唯一 canonical route",
+          "`/` 作為 shell route"
+        ],
+        "multiple": false
+      }
+    },
+    "expected": {
+      "executeArgs": {
+        "questions": [
+          {
+            "question": "single-surface shell 的 canonical authenticated route 要用哪個？",
+            "header": "single-surface shell 的 canonic",
+            "options": [
+              { "label": "`/assets` 作為唯一 canonical route", "description": "`/assets` 作為唯一 canonical route" },
+              { "label": "`/inventory` 作為唯一 canonical route", "description": "`/inventory` 作為唯一 canonical route" },
+              { "label": "`/` 作為 shell route", "description": "`/` 作為 shell route" }
+            ],
+            "multiple": false
+          }
+        ]
+      },
+      "questionAskCalledWith_questions_length": 1,
+      "doesNotThrow": "TypeError: undefined is not an object (evaluating 'input.questions.length')"
+    }
+  },
+  {
+    "id": "TV-5",
+    "requirementRef": "QuestionTool normalizes flat and string-option inputs",
+    "scenarioRef": "string options coerced into {label, description}",
+    "input": {
+      "llmArgs": {
+        "questions": [
+          { "question": "X?", "options": ["A", "B"], "multiple": false }
+        ]
+      }
+    },
+    "expected": {
+      "executeArgs": {
+        "questions": [
+          {
+            "question": "X?",
+            "header": "X?",
+            "options": [
+              { "label": "A", "description": "A" },
+              { "label": "B", "description": "B" }
+            ],
+            "multiple": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "TV-6",
+    "requirementRef": "QuestionTool normalizes flat and string-option inputs",
+    "scenarioRef": "already-canonical input passes through unchanged",
+    "input": {
+      "llmArgs": {
+        "questions": [
+          {
+            "question": "X?",
+            "header": "X",
+            "options": [{ "label": "A", "description": "desc" }],
+            "multiple": false
+          }
+        ]
+      }
+    },
+    "expected": {
+      "executeArgs": {
+        "questions": [
+          {
+            "question": "X?",
+            "header": "X",
+            "options": [{ "label": "A", "description": "desc" }],
+            "multiple": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "TV-7",
+    "requirementRef": "QuestionTool normalizes flat and string-option inputs",
+    "scenarioRef": "multi-question with multiple=true",
+    "input": {
+      "llmArgs": {
+        "questions": [
+          { "question": "Q1?", "options": ["A", "B", "C"], "multiple": true },
+          { "question": "Q2?", "options": ["X", "Y"], "multiple": false }
+        ]
+      }
+    },
+    "expected": {
+      "executeArgs_questions_length": 2,
+      "executeArgs_questions_0_multiple": true,
+      "executeArgs_questions_0_options_0": { "label": "A", "description": "A" },
+      "executeArgs_questions_1_multiple": false,
+      "executeArgs_questions_1_header_startsWith": "Q2?"
+    }
+  },
+  {
+    "id": "TV-8",
+    "requirementRef": "state.input persisted as normalized shape for successful calls",
+    "scenarioRef": "successful tool call persists normalized input",
+    "input": {
+      "processorStream": [
+        { "type": "tool-call", "toolName": "question", "toolCallId": "c1", "input": { "question": "X?", "options": ["A"], "multiple": false } },
+        { "type": "tool-result", "toolCallId": "c1", "input": { "question": "X?", "options": ["A"], "multiple": false }, "output": { "title": "Asked 1 question", "output": "...", "metadata": { "answers": [["A"]] } } }
+      ]
+    },
+    "expected": {
+      "toolPart_state_input": {
+        "questions": [
+          {
+            "question": "X?",
+            "header": "X?",
+            "options": [{ "label": "A", "description": "A" }],
+            "multiple": false
+          }
+        ]
+      },
+      "toolPart_state_status": "completed"
+    }
+  },
+  {
+    "id": "TV-9",
+    "requirementRef": "state.input persisted as normalized shape for successful calls",
+    "scenarioRef": "failed tool call preserves raw input",
+    "input": {
+      "processorStream": [
+        { "type": "tool-call", "toolName": "question", "toolCallId": "c2", "input": { "baz": 1 } },
+        { "type": "tool-error", "toolCallId": "c2", "input": { "baz": 1 }, "error": "ZodError ..." }
+      ]
+    },
+    "expected": {
+      "toolPart_state_input": { "baz": 1 },
+      "toolPart_state_status": "error"
+    }
+  },
+  {
+    "id": "TV-10",
+    "requirementRef": "state.input persisted as normalized shape for successful calls",
+    "scenarioRef": "other tools unaffected",
+    "input": {
+      "processorStream": [
+        { "type": "tool-call", "toolName": "bash", "toolCallId": "c3", "input": { "command": "ls" } },
+        { "type": "tool-result", "toolCallId": "c3", "input": { "command": "ls" }, "output": { "title": "bash", "output": "a b c", "metadata": {} } }
+      ]
+    },
+    "expected": {
+      "toolPart_state_input_structurallyEqual_raw": true
+    }
+  },
+  {
+    "id": "TV-11",
+    "requirementRef": "UI renderers defensively normalize legacy raw shape",
+    "scenarioRef": "QuestionDock renders raw-shape message from legacy session",
+    "input": {
+      "state_input_raw": {
+        "questions": [
+          { "question": "single-surface shell 的 canonical authenticated route 要用哪個？", "options": ["/assets", "/inventory", "/"], "multiple": false }
+        ]
+      }
+    },
+    "expected": {
+      "rendered_tab_header": "single-surface shell 的 canonic",
+      "rendered_option_labels": ["/assets", "/inventory", "/"],
+      "rendered_option_descriptions": ["/assets", "/inventory", "/"],
+      "noUndefinedInDom": true,
+      "noConsoleError": true
+    }
+  },
+  {
+    "id": "TV-12",
+    "requirementRef": "UI renderers defensively normalize legacy raw shape",
+    "scenarioRef": "QuestionDock renders normalized-shape message from new session",
+    "input": {
+      "state_input_normalized": {
+        "questions": [
+          {
+            "question": "X?",
+            "header": "X",
+            "options": [{ "label": "A", "description": "desc" }],
+            "multiple": false
+          }
+        ]
+      }
+    },
+    "expected": {
+      "rendered_tab_header": "X",
+      "rendered_option_labels": ["A"],
+      "rendered_option_descriptions": ["desc"]
+    }
+  },
+  {
+    "id": "TV-13",
+    "requirementRef": "Shared normalize helper is the single source of truth",
+    "scenarioRef": "no silent fallback on un-normalizable input",
+    "input": {
+      "helper_input_cases": [null, 42, "string", {}, []]
+    },
+    "expected": {
+      "null_result": null,
+      "number_result": 42,
+      "string_result": "string",
+      "emptyObject_result": {},
+      "emptyArray_result": [],
+      "notableBehavior": "helper is pure; never throws; consumer sees raw when it cannot be classified"
+    }
+  },
+  {
+    "id": "TV-14",
+    "requirementRef": "Shared normalize helper is the single source of truth",
+    "scenarioRef": "option with value/detail keys gets coerced to label/description",
+    "input": {
+      "raw_option": { "value": "A", "detail": "The first choice" }
+    },
+    "expected": {
+      "normalized_option": { "label": "A", "description": "The first choice", "value": "A", "detail": "The first choice" }
+    }
+  },
+  {
+    "id": "TV-15",
+    "requirementRef": "UI renderers defensively normalize legacy raw shape",
+    "scenarioRef": "TUI Question component mirrors behavior",
+    "input": {
+      "state_input_raw": {
+        "questions": [
+          { "question": "X?", "options": ["A", "B"], "multiple": false }
+        ]
+      }
+    },
+    "expected": {
+      "tui_rendered_question_text": "X?",
+      "tui_rendered_option_rows": ["A", "B"],
+      "tui_no_undefined_in_output": true
+    }
+  }
+]

@@ -1,0 +1,184 @@
+[
+  {
+    "id": "P1",
+    "title": "Happy path — canonical input flows through all stages normalized",
+    "actors": ["llm", "daemon", "webapp"],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "llm",
+        "to": "daemon",
+        "componentRef": "CP4",
+        "label": "tool-call: { name: 'question', input: {questions:[{question,header,options:[{label,description}],multiple:false}]} }"
+      },
+      {
+        "id": "MSG2",
+        "from": "daemon",
+        "to": "daemon",
+        "componentRef": "CP4",
+        "label": "processor writes state.input=raw, status=running"
+      },
+      {
+        "id": "MSG3",
+        "from": "daemon",
+        "to": "daemon",
+        "componentRef": "CP1",
+        "label": "Tool.define.execute: parsed = parameters.parse(args) (preprocess is no-op on canonical)"
+      },
+      {
+        "id": "MSG4",
+        "from": "daemon",
+        "to": "daemon",
+        "componentRef": "CP3",
+        "label": "QuestionTool.execute(parsed, ctx) → Question.ask(normalized)"
+      },
+      {
+        "id": "MSG5",
+        "from": "daemon",
+        "to": "webapp",
+        "componentRef": "CP5",
+        "label": "Bus: question.asked → QuestionDock mounts, Question.normalize runs on questions (no-op)"
+      },
+      {
+        "id": "MSG6",
+        "from": "webapp",
+        "to": "daemon",
+        "componentRef": "CP4",
+        "label": "user submits → tool-result"
+      },
+      {
+        "id": "MSG7",
+        "from": "daemon",
+        "to": "daemon",
+        "componentRef": "CP4",
+        "label": "processor tool-result: safeParse → normalized==raw → state.input=normalized, status=completed"
+      }
+    ]
+  },
+  {
+    "id": "P2",
+    "title": "Noncompliant path — flat single-question recovers via preprocess (the bug fix case)",
+    "actors": ["llm", "daemon", "webapp"],
+    "messages": [
+      {
+        "id": "MSG10",
+        "from": "llm",
+        "to": "daemon",
+        "componentRef": "CP4",
+        "label": "tool-call: { name: 'question', input: {question:'X?', options:['A','B','C'], multiple:false} } (FLAT, no questions array)"
+      },
+      {
+        "id": "MSG11",
+        "from": "daemon",
+        "to": "daemon",
+        "componentRef": "CP4",
+        "label": "processor writes state.input=raw(flat), status=running"
+      },
+      {
+        "id": "MSG12",
+        "from": "daemon",
+        "to": "daemon",
+        "componentRef": "CP1",
+        "label": "Tool.define.execute: parsed = parse(args); preprocess wraps into {questions:[{question:'X?', header:'X?', options:[{label:'A',description:'A'},...], multiple:false}]}"
+      },
+      {
+        "id": "MSG13",
+        "from": "daemon",
+        "to": "daemon",
+        "componentRef": "CP3",
+        "label": "QuestionTool.execute(parsed, ctx); parsed.questions is array length 1 → Question.ask(sessionID, questions, ...)"
+      },
+      {
+        "id": "MSG14",
+        "from": "daemon",
+        "to": "webapp",
+        "componentRef": "CP5",
+        "label": "Bus: question.asked → QuestionDock renders header/options correctly (normalized)"
+      },
+      {
+        "id": "MSG15",
+        "from": "webapp",
+        "to": "daemon",
+        "componentRef": "CP4",
+        "label": "user submits → tool-result"
+      },
+      {
+        "id": "MSG16",
+        "from": "daemon",
+        "to": "daemon",
+        "componentRef": "CP4",
+        "label": "processor tool-result: safeParse(raw flat) → success with normalized → state.input=normalized"
+      },
+      {
+        "id": "MSG17",
+        "from": "daemon",
+        "to": "webapp",
+        "componentRef": "CP6",
+        "label": "session history re-renders via message-part: Question.normalize(state.input) no-op (already normalized) → correct UI"
+      }
+    ]
+  },
+  {
+    "id": "P3",
+    "title": "Legacy session — raw state.input recovered via defensive normalize",
+    "actors": ["user", "webapp"],
+    "messages": [
+      {
+        "id": "MSG20",
+        "from": "user",
+        "to": "webapp",
+        "componentRef": "CP6",
+        "label": "open a pre-fix session with tool part state.input still raw (string options, no header)"
+      },
+      {
+        "id": "MSG21",
+        "from": "webapp",
+        "to": "webapp",
+        "componentRef": "CP6",
+        "label": "message-part question renderer reads state.input → calls Question.normalize → gets canonical shape"
+      },
+      {
+        "id": "MSG22",
+        "from": "webapp",
+        "to": "webapp",
+        "componentRef": "CP6",
+        "label": "render question tabs with header fallback, options with label fallback — no blank UI"
+      }
+    ]
+  },
+  {
+    "id": "P4",
+    "title": "Un-normalizable input — error UI (no silent fallback)",
+    "actors": ["llm", "daemon", "webapp"],
+    "messages": [
+      {
+        "id": "MSG30",
+        "from": "llm",
+        "to": "daemon",
+        "componentRef": "CP4",
+        "label": "tool-call: { name: 'question', input: {baz: 1} } (completely wrong shape)"
+      },
+      {
+        "id": "MSG31",
+        "from": "daemon",
+        "to": "daemon",
+        "componentRef": "CP1",
+        "label": "Tool.define.execute: parse throws ZodError → formatValidationError → schema-miss hint"
+      },
+      {
+        "id": "MSG32",
+        "from": "daemon",
+        "to": "daemon",
+        "componentRef": "CP4",
+        "label": "processor tool-error: state.input=raw({baz:1}), status=error, error=hint message"
+      },
+      {
+        "id": "MSG33",
+        "from": "daemon",
+        "to": "webapp",
+        "componentRef": "CP6",
+        "label": "UI renders explicit error box with schema-miss hint (not blank dialog)"
+      }
+    ]
+  }
+]

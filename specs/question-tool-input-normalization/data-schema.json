@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "opencode://specs/question-tool-input-normalization/data-schema.json",
+  "title": "Question tool input & state.input contracts",
+  "description": "Data contracts for tool input normalization pipeline. Defines canonical (normalized) shape, accepted raw shapes, and state.input persistence shape.",
+  "$defs": {
+    "QuestionOption": {
+      "type": "object",
+      "description": "Canonical option shape",
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "Display text (1-5 words)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Explanation of choice; falls back to label if originally missing"
+        }
+      },
+      "required": ["label", "description"],
+      "additionalProperties": false
+    },
+    "QuestionInfo": {
+      "type": "object",
+      "description": "Canonical single question shape",
+      "properties": {
+        "question": {
+          "type": "string",
+          "description": "Full question text"
+        },
+        "header": {
+          "type": "string",
+          "description": "Short label (max 30 chars); auto-generated from question.slice(0,30) if originally missing",
+          "maxLength": 30
+        },
+        "options": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/QuestionOption" },
+          "description": "Available choices"
+        },
+        "multiple": {
+          "type": "boolean",
+          "description": "Allow multi-select"
+        },
+        "custom": {
+          "type": "boolean",
+          "description": "Allow free-text answer (default true at tool layer; omitted in tool schema via z.omit)"
+        }
+      },
+      "required": ["question", "header", "options"],
+      "additionalProperties": false
+    },
+    "QuestionToolInputCanonical": {
+      "type": "object",
+      "description": "The canonical / normalized tool input shape that QuestionTool.execute receives after Tool.define wrapper parses args",
+      "properties": {
+        "questions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/QuestionInfo" },
+          "minItems": 1,
+          "description": "One or more questions to ask"
+        }
+      },
+      "required": ["questions"],
+      "additionalProperties": false
+    },
+    "QuestionToolInputRawFlat": {
+      "type": "object",
+      "description": "Accepted noncompliant flat shape (Codex/OpenAI style). Normalized by Question.normalize into canonical form.",
+      "properties": {
+        "question": { "type": "string" },
+        "options": {
+          "description": "Either string[] or array of {label/value, description/detail/explanation}",
+          "oneOf": [
+            { "type": "array", "items": { "type": "string" } },
+            { "type": "array", "items": { "type": "object" } }
+          ]
+        },
+        "multiple": { "type": "boolean" },
+        "header": { "type": "string" }
+      },
+      "required": ["question"]
+    },
+    "QuestionToolInputRawArray": {
+      "type": "object",
+      "description": "Accepted noncompliant multi-question shape where options may still be raw strings.",
+      "properties": {
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "question": { "type": "string" },
+              "options": {
+                "oneOf": [
+                  { "type": "array", "items": { "type": "string" } },
+                  { "type": "array", "items": { "type": "object" } }
+                ]
+              },
+              "multiple": { "type": "boolean" },
+              "header": { "type": "string" }
+            },
+            "required": ["question"]
+          }
+        }
+      },
+      "required": ["questions"]
+    },
+    "ToolPartStateInputCompleted": {
+      "description": "state.input field value for completed tool call. For QuestionTool, equals QuestionToolInputCanonical. For tools without preprocess, equals their declared zod schema's canonical shape.",
+      "$comment": "DD-3: processor safeParses value.input using ToolRegistry.get(toolName).parameters and writes parsed result; raw fallback if safeParse fails."
+    },
+    "ToolPartStateInputError": {
+      "description": "state.input field value for errored tool call. Kept as LLM raw args for debugging; may be un-normalizable.",
+      "$comment": "DD-3: error status preserves raw for forensic evidence."
+    },
+    "NormalizerContract": {
+      "type": "object",
+      "description": "Question.normalize (top-level) and Question.normalizeSingle (per-item) semantic contract",
+      "properties": {
+        "inputTypes": {
+          "description": "Accepted inputs: unknown (any); null/primitive passes through as-is; object -> dispatched to flat-wrap or per-item normalize"
+        },
+        "outputInvariants": {
+          "description": "Canonical inputs round-trip unchanged; flat inputs wrap to {questions:[...]}; string options coerce to {label,description}; missing header fills via question.slice(0,30)"
+        },
+        "errorHandling": {
+          "description": "Pure data transform; never throws; malformed input yields best-effort output, not an exception"
+        }
+      }
+    }
+  },
+  "fieldContracts": {
+    "QuestionInfo.header": {
+      "source": "provided by LLM OR fallback from question.slice(0,30)",
+      "neverEmpty": true,
+      "uiUsage": [
+        "QuestionDock tab label",
+        "message-part compact display"
+      ]
+    },
+    "QuestionOption.label": {
+      "source": "provided by LLM OR if option was string, equal to the string itself",
+      "neverEmpty": true,
+      "uiUsage": [
+        "QuestionDock option button primary text",
+        "TUI option row"
+      ]
+    },
+    "QuestionOption.description": {
+      "source": "provided by LLM OR fallback to label",
+      "neverEmpty": true,
+      "uiUsage": [
+        "QuestionDock option button secondary text",
+        "TUI option hint"
+      ]
+    }
+  }
+}

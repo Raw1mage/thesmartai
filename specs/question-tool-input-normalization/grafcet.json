@@ -1,0 +1,137 @@
+[
+  {
+    "id": "S0",
+    "label": "Idle",
+    "description": "No tool call in flight; AI SDK stream running for content tokens",
+    "actions": [],
+    "transitions": [
+      {
+        "to": "S1",
+        "condition": "AI SDK emits tool-call event",
+        "refs": ["A1"]
+      }
+    ]
+  },
+  {
+    "id": "S1",
+    "label": "ReceivedRawArgs",
+    "description": "Processor received value.input as raw LLM args; tool part created with status=running, state.input=raw",
+    "actions": [
+      "toolcalls[callID] = { ... state: {status: 'running', input: value.input} }",
+      "Session.updatePart (raw state.input)"
+    ],
+    "transitions": [
+      {
+        "to": "S2",
+        "condition": "Tool.define wrapper starts execute(args, ctx)",
+        "refs": ["A2"]
+      }
+    ]
+  },
+  {
+    "id": "S2",
+    "label": "ParsingViaZod",
+    "description": "Tool.define wrapper runs parameters.parse(args); z.preprocess transforms flat → canonical, string[] options → [{label,description}], missing header filled",
+    "actions": [
+      "const parsed = toolInfo.parameters.parse(args)"
+    ],
+    "transitions": [
+      {
+        "to": "S3",
+        "condition": "parse succeeds",
+        "refs": ["A2", "A3"]
+      },
+      {
+        "to": "S6",
+        "condition": "parse throws ZodError",
+        "refs": ["A2"]
+      }
+    ]
+  },
+  {
+    "id": "S3",
+    "label": "Executing",
+    "description": "Tool execute(parsed, ctx) runs; for QuestionTool, Question.ask is called with normalized questions array",
+    "actions": [
+      "execute(parsed, ctx)",
+      "tool-specific work (Question.ask / Bash / Edit / ...)"
+    ],
+    "transitions": [
+      {
+        "to": "S4",
+        "condition": "execute resolves with result",
+        "refs": ["A3"]
+      },
+      {
+        "to": "S5",
+        "condition": "execute throws at runtime",
+        "refs": ["A3"]
+      }
+    ]
+  },
+  {
+    "id": "S4",
+    "label": "PersistingNormalized",
+    "description": "Processor tool-result handler: looks up ToolRegistry.get(toolName).parameters, safeParse(value.input), writes normalized to state.input with status=completed",
+    "actions": [
+      "const registryTool = ToolRegistry.get(value.toolName)",
+      "const parsed = registryTool?.parameters.safeParse(value.input)",
+      "const normalizedInput = parsed?.success ? parsed.data : value.input",
+      "Session.updatePart with state.input = normalizedInput, status='completed'"
+    ],
+    "transitions": [
+      {
+        "to": "S7",
+        "condition": "UI reads updated tool part",
+        "refs": ["A4", "A5"]
+      }
+    ]
+  },
+  {
+    "id": "S5",
+    "label": "PersistingError",
+    "description": "Processor tool-error handler: writes state.input = value.input (raw) for debug evidence, status='error'",
+    "actions": [
+      "Session.updatePart with state.input = value.input, state.error = errorMsg, status='error'"
+    ],
+    "transitions": [
+      {
+        "to": "S7",
+        "condition": "UI reads errored tool part",
+        "refs": ["A4", "A5"]
+      }
+    ]
+  },
+  {
+    "id": "S6",
+    "label": "FormatValidationError",
+    "description": "Wrapper catches ZodError; if tool has formatValidationError, wraps into human-readable message; otherwise uses generic fallback; execute never runs",
+    "actions": [
+      "throw new Error(toolInfo.formatValidationError(error), { cause: error })"
+    ],
+    "transitions": [
+      {
+        "to": "S5",
+        "condition": "caught as tool-error downstream",
+        "refs": ["A4"]
+      }
+    ]
+  },
+  {
+    "id": "S7",
+    "label": "RenderingDefensively",
+    "description": "UI (QuestionDock / message-part / TUI session) imports Question.normalize and runs it on state.input before destructuring; old raw sessions and new normalized sessions both render correctly",
+    "actions": [
+      "const normalized = Question.normalize(props.input)",
+      "render questions tabs with q.header || q.question.slice(0,30)",
+      "render options with opt.label || String(opt)"
+    ],
+    "transitions": [
+      {
+        "to": "S0",
+        "condition": "user submits/dismisses or session ends",
+        "refs": ["A5"]
+      }
+    ]
+  }
+]

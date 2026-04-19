@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "state": "implementing",
+  "profile": [],
+  "history": [
+    {
+      "from": null,
+      "to": "proposed",
+      "at": "2026-04-19T17:15:34.944Z",
+      "by": "pkcs12",
+      "mode": "new",
+      "reason": "initial spec created via plan-init.ts"
+    },
+    {
+      "from": "proposed",
+      "to": "designed",
+      "at": "2026-04-19T17:26:45.290Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "spec/design/idef0/grafcet/c4/sequence/data-schema drafted; 4 decisions confirmed by user"
+    },
+    {
+      "from": "designed",
+      "to": "planned",
+      "at": "2026-04-19T17:30:46.352Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "tasks/handoff/test-vectors/errors/observability drafted; ready for build-mode"
+    },
+    {
+      "at": "2026-04-19T17:42:08.231Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "drift detected: packages/opencode/test/session/mandatory-skills-integration.test.ts",
+      "result": "warned",
+      "drift": [
+        "packages/opencode/test/session/mandatory-skills-integration.test.ts"
+      ],
+      "commit": "a2e01c83e254152e11c0aeb84392e51f41ec81e3"
+    },
+    {
+      "from": "planned",
+      "to": "implementing",
+      "at": "2026-04-19T17:42:15.598Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "Phase 1 complete: Tool.define uses parsed args, 6 tests pass"
+    },
+    {
+      "at": "2026-04-19T17:45:52.367Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "a2e01c83e254152e11c0aeb84392e51f41ec81e3"
+    },
+    {
+      "at": "2026-04-19T17:50:47.227Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "a2e01c83e254152e11c0aeb84392e51f41ec81e3"
+    },
+    {
+      "at": "2026-04-19T17:58:15.650Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "a2e01c83e254152e11c0aeb84392e51f41ec81e3"
+    }
+  ]
+}

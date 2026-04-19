@@ -1,0 +1,143 @@
+{
+  "systems": [
+    {
+      "id": "S1",
+      "name": "opencode",
+      "description": "Core agent / session runtime + webapp + TUI",
+      "external": false
+    }
+  ],
+  "containers": [
+    {
+      "id": "C1",
+      "systemRef": "S1",
+      "name": "Daemon (bun runtime)",
+      "description": "opencode packages/opencode process serving HTTP + SSE, hosts tool framework + session runloop",
+      "technology": "Bun + TypeScript + Hono"
+    },
+    {
+      "id": "C2",
+      "systemRef": "S1",
+      "name": "Webapp (SolidJS SPA)",
+      "description": "packages/app — question dock, session message rendering",
+      "technology": "SolidJS + TypeScript + Vite"
+    },
+    {
+      "id": "C3",
+      "systemRef": "S1",
+      "name": "TUI (React terminal renderer)",
+      "description": "packages/opencode cli tui routes — terminal message rendering, question tool block",
+      "technology": "TypeScript + Ink-like terminal UI"
+    }
+  ],
+  "components": [
+    {
+      "id": "CP1",
+      "containerRef": "C1",
+      "name": "Tool framework",
+      "description": "Tool.define wrapper and ToolRegistry; validates args via zod, passes parsed to execute",
+      "files": [
+        "packages/opencode/src/tool/tool.ts",
+        "packages/opencode/src/tool/registry.ts"
+      ],
+      "moduleRef": "A2"
+    },
+    {
+      "id": "CP2",
+      "containerRef": "C1",
+      "name": "Question namespace",
+      "description": "Question.ask / reply / reject + Question.normalize (shared helper)",
+      "files": [
+        "packages/opencode/src/question/index.ts"
+      ],
+      "moduleRef": "A2.1,A2.2,A2.3"
+    },
+    {
+      "id": "CP3",
+      "containerRef": "C1",
+      "name": "QuestionTool",
+      "description": "Tool.define('question', ...) with z.preprocess(Question.normalize, ...)",
+      "files": [
+        "packages/opencode/src/tool/question.ts"
+      ],
+      "moduleRef": "A3"
+    },
+    {
+      "id": "CP4",
+      "containerRef": "C1",
+      "name": "Session processor",
+      "description": "AI SDK stream consumer; writes tool part state.input; looks up ToolRegistry on tool-result for normalize",
+      "files": [
+        "packages/opencode/src/session/processor.ts"
+      ],
+      "moduleRef": "A1,A4"
+    },
+    {
+      "id": "CP5",
+      "containerRef": "C2",
+      "name": "QuestionDock (webapp)",
+      "description": "Answer prompt dock; imports Question.normalize for defensive rendering",
+      "files": [
+        "packages/app/src/components/question-dock.tsx"
+      ],
+      "moduleRef": "A5"
+    },
+    {
+      "id": "CP6",
+      "containerRef": "C2",
+      "name": "message-part.tsx question renderer",
+      "description": "Historical tool part rendering in session message list; defensive normalize",
+      "files": [
+        "packages/ui/src/components/message-part.tsx"
+      ],
+      "moduleRef": "A5"
+    },
+    {
+      "id": "CP7",
+      "containerRef": "C3",
+      "name": "TUI Question component",
+      "description": "Terminal renderer for question tool part; defensive normalize",
+      "files": [
+        "packages/opencode/src/cli/cmd/tui/routes/session/index.tsx"
+      ],
+      "moduleRef": "A5"
+    }
+  ],
+  "relationships": [
+    {
+      "from": "CP4",
+      "to": "CP1",
+      "description": "Processor consults ToolRegistry for tool parameters schema on tool-result"
+    },
+    {
+      "from": "CP1",
+      "to": "CP3",
+      "description": "Tool.define wrapper parses args and calls QuestionTool.execute(parsed, ctx)"
+    },
+    {
+      "from": "CP3",
+      "to": "CP2",
+      "description": "QuestionTool uses z.preprocess(Question.normalize, ...) and calls Question.ask"
+    },
+    {
+      "from": "CP4",
+      "to": "CP2",
+      "description": "Processor safeParse uses schema; the schema's preprocess uses Question.normalize (indirect via CP1->CP3->CP2)"
+    },
+    {
+      "from": "CP5",
+      "to": "CP2",
+      "description": "QuestionDock imports Question.normalize for defensive rendering"
+    },
+    {
+      "from": "CP6",
+      "to": "CP2",
+      "description": "message-part.tsx question renderer imports Question.normalize"
+    },
+    {
+      "from": "CP7",
+      "to": "CP2",
+      "description": "TUI Question component imports Question.normalize"
+    }
+  ]
+}

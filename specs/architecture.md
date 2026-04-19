@@ -834,3 +834,34 @@ Dashboard "已載技能" panel should show pinned badges + source label for mand
 - Skills submodule commit `9103663` removes `agent-workflow/SKILL.md` and rewrites `code-thinker/SKILL.md`.
 
 See `specs/mandatory-skills-preload/design.md` DD-8/DD-10 and `docs/events/event_20260419_mandatory_skills_preload.md` for full decision trace.
+
+## Tool Framework Contract
+
+### Tool.define: execute() receives parsed args
+
+`Tool.define(id, init)` wraps a tool's `execute(args, ctx)` to guarantee that by the time user code runs:
+
+1. `parameters.parse(args)` has succeeded.
+2. The **parsed** value — not the raw LLM arguments — is what `execute()` receives.
+
+This means any `z.preprocess` / `z.transform` / `z.default` declared in `parameters` takes effect at runtime. Tool authors must **not** re-parse args inside `execute`, because side-effecting transforms would run twice.
+
+Validation errors route through `formatValidationError` (if provided) → thrown as `Error` whose message is the hint; otherwise a generic fallback wrapping the `ZodError`. `execute` is not called on validation failure.
+
+### Tool part `state.input` persistence
+
+The session processor (`session/processor.ts`) persists tool-call arguments on the tool part's `state.input` field:
+
+| Status | `state.input` content |
+|---|---|
+| `running` | Raw LLM args (short-lived; UI renderers must defensive-normalize) |
+| `completed` | **Normalized** shape: `ToolRegistry.getParameters(toolName).safeParse(value.input).data` when available; raw if registry miss or parse fails |
+| `error` | Raw LLM args (forensic evidence — we need the exact shape that failed) |
+
+`ToolRegistry.getParameters(id)` caches each tool's parameters schema on first lookup (process-lifetime `Map`). Registry miss / parse failure is logged at `debug` level; state.input falls back to raw and downstream UIs still render via defensive normalize.
+
+### Question tool normalize — cross-runtime single source of truth
+
+`normalizeQuestionInput` / `normalizeSingleQuestion` live in `packages/sdk/js/src/v2/question-normalize.ts` so both server runtime (`Question.normalize` re-exports from SDK) and client runtimes (webapp `QuestionDock` / `message-part.tsx`, TUI `session/index.tsx`) use the same pure implementation. Any future tool with cross-runtime shape coercion should follow the same pattern.
+
+See `specs/question-tool-input-normalization/` for the full RCA, design (DD-1…DD-6), and test vectors.
