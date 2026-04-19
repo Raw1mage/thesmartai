@@ -27,6 +27,22 @@
 
 ---
 
+## 第二條：執行 Plan 前必備份 XDG Config
+
+**每次 plan 開跑前（或 beta-workflow admission 通過後、第一個程式碼編輯/測試指令前），必須完整備份 XDG config 目錄**。
+
+- **備份範圍**：`~/.config/opencode/` 整個目錄（至少 `accounts.json`、`opencode.json`、`managed-apps.json`、`gauth.json`、`mcp.json`），以及 `~/.local/state/opencode/`、`~/.local/share/opencode/` 若該 plan 會觸及 state/data 層。
+- **備份位置**：`~/.config/opencode.bak-<YYYYMMDD-HHMM>-<plan-slug>/`（timestamp + plan slug，方便事後追溯是哪個 plan 留下的快照）。
+- **還原政策**：**備份 ≠ 還原目標**。使用者在 AI 工作期間也會主動更新 XDG（新增帳號、改 config 等），AI **絕不可**自行用舊備份覆蓋現行 XDG。
+  - plan 結束（無論 success / abort）後，**列出備份目錄位置**給使用者，並明確說「這是 plan 起跑前的快照，僅供需要時手動還原」。
+  - **只有在使用者明確要求「還原」時才執行 restore**；否則留著備份直到使用者說可以刪。
+  - 除非使用者指示，不得主動 `cp` / `rsync` / `mv` 備份回 `~/.config/opencode/`。
+- **Why**：beta 與 main 在同一 uid 下共用 `~/.config/opencode/`；任何 test / migration / Account.normalizeIdentities 路徑都可能透過 `Global.Path.user` 直寫真實檔案。2026-04-18 codex-rotation-hotfix 的測試跑過 `family-normalization.test.ts`，把 14 個 family 壓成 1 個，永久失去 5 個 codex 帳號 token（log 不記 refreshToken，rsync NAS 自 3/3 壞掉）。
+- **唯一例外**：純 read-only inspection（`git log` / `grep` / `cat`）不動任何 state，可略過；但只要進入 plan 實作階段就**不可跳過**。
+- **違規判定**：沒有 `opencode.bak-*` 快照存在的狀態下跑 `bun test` / `bun run ...` / 重啟 daemon，視為違規。
+
+---
+
 ## 專案背景
 
 本專案源自 `origin/dev` 分支，現已衍生為 `main` 分支作為主要產品線。
