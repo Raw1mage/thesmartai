@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "state": "implementing",
+  "profile": [],
+  "history": [
+    {
+      "from": null,
+      "to": "proposed",
+      "at": "2026-04-20T03:24:48.686Z",
+      "by": "pkcs12",
+      "mode": "new",
+      "reason": "initial spec created via plan-init.ts"
+    },
+    {
+      "from": "proposed",
+      "to": "designed",
+      "at": "2026-04-20T05:44:12.257Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "proposal refined after architecture audit; spec/design/c4/sequence/data-schema/idef0/grafcet drafted"
+    },
+    {
+      "from": "designed",
+      "to": "planned",
+      "at": "2026-04-20T05:49:03.324Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "tasks.md + handoff + test-vectors + errors + observability drafted; 7 sections / 28 concrete tasks ready for execution"
+    },
+    {
+      "from": "planned",
+      "to": "implementing",
+      "at": "2026-04-20T06:00:55.801Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "admission gate passed; beta/frontend-session-lazyload branch created from main@96dd10f89 and checked out in opencode-beta worktree; Phase 1 starts"
+    },
+    {
+      "at": "2026-04-20T06:08:32.109Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "drift detected: packages/opencode/src/tool/task.ts",
+      "result": "warned",
+      "drift": [
+        "packages/opencode/src/tool/task.ts"
+      ],
+      "commit": "96dd10f89a5ed9e99d4c60639ad8cd0731d0ffad"
+    }
+  ]
+}

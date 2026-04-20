@@ -1,0 +1,163 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "frontend-session-lazyload data contracts",
+  "definitions": {
+    "SessionMetaResponse": {
+      "type": "object",
+      "description": "GET /session/:id/meta 回應",
+      "required": ["partCount", "totalBytes", "lastUpdated", "etag"],
+      "additionalProperties": false,
+      "properties": {
+        "partCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "該 session 所有 message 內 part 檔案的總數量"
+        },
+        "totalBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "所有 part 檔案的磁碟大小總和（bytes）"
+        },
+        "lastUpdated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "最新一次 part / message / session 變更時間"
+        },
+        "etag": {
+          "type": "string",
+          "description": "對應 session:{id}:meta 的 ETag；與 session:{id} 版本掛勾"
+        },
+        "messageCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "message 數量（非必要欄位；便於 client 判斷是否超過 initial_page_size）"
+        }
+      }
+    },
+    "TweaksConfigKeys": {
+      "type": "object",
+      "description": "新增於 /etc/opencode/tweaks.cfg 的 keys",
+      "required": [
+        "frontend_session_lazyload",
+        "part_inline_cap_kb",
+        "tail_window_kb",
+        "fold_preview_lines",
+        "initial_page_size_small",
+        "initial_page_size_medium",
+        "initial_page_size_large",
+        "session_size_threshold_kb",
+        "session_size_threshold_parts"
+      ],
+      "properties": {
+        "frontend_session_lazyload": {
+          "type": "integer",
+          "enum": [0, 1],
+          "default": 0,
+          "description": "整套新行為的總開關；0=舊路徑、1=新路徑"
+        },
+        "part_inline_cap_kb": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 4096,
+          "default": 64,
+          "description": "單一 part 超過此大小即預設收合"
+        },
+        "tail_window_kb": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 4096,
+          "default": 64,
+          "description": "Streaming 中 part 只保留最後 N KB"
+        },
+        "fold_preview_lines": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 20,
+          "description": "折疊狀態下顯示前 N 行"
+        },
+        "initial_page_size_small": {
+          "type": "string",
+          "default": "all",
+          "description": "partCount ≤ 50 時的初始載入量；all / 數字皆可"
+        },
+        "initial_page_size_medium": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 1000,
+          "default": 100,
+          "description": "partCount 51–200 時初始載入 message 數"
+        },
+        "initial_page_size_large": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 1000,
+          "default": 50,
+          "description": "partCount > 200 時初始載入 message 數"
+        },
+        "session_size_threshold_kb": {
+          "type": "integer",
+          "minimum": 64,
+          "default": 512,
+          "description": "首頁 auto-redirect 的 bytes 門檻；超過則走 /sessions"
+        },
+        "session_size_threshold_parts": {
+          "type": "integer",
+          "minimum": 10,
+          "default": 80,
+          "description": "首頁 auto-redirect 的 part 數門檻；超過則走 /sessions"
+        }
+      }
+    },
+    "PartStore": {
+      "type": "object",
+      "description": "前端 store.part[id] 的擴充欄位",
+      "required": ["id", "type", "text"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "tool", "reasoning", "file", "agent"] },
+        "text": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["streaming", "completed"],
+          "description": "決定 MessagePart 用 tail-window 還是 fold UI"
+        },
+        "truncatedPrefix": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Streaming 中被截掉的前段 bytes 數；streaming 完成後需從 server 重拉才可恢復"
+        }
+      }
+    },
+    "LazyloadTelemetryEvent": {
+      "type": "object",
+      "description": "推到 observability pipeline 的事件",
+      "required": ["event", "at"],
+      "properties": {
+        "event": {
+          "type": "string",
+          "enum": [
+            "lazyload.meta.call",
+            "lazyload.meta.fail",
+            "lazyload.threshold.exceeded",
+            "lazyload.loadmore.trigger",
+            "lazyload.loadmore.complete",
+            "lazyload.part.fold",
+            "lazyload.part.expand",
+            "lazyload.streaming.tail",
+            "lazyload.rebuild.detected",
+            "lazyload.rebuild.mismatch",
+            "lazyload.flag.state"
+          ]
+        },
+        "at": { "type": "string", "format": "date-time" },
+        "sessionID": { "type": "string" },
+        "partID": { "type": "string" },
+        "partCount": { "type": "integer" },
+        "totalBytes": { "type": "integer" },
+        "flag": { "type": "integer", "enum": [0, 1] },
+        "details": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

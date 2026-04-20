@@ -1,0 +1,233 @@
+[
+  {
+    "id": "TV-R1-S1",
+    "requirementRef": "R1.S1",
+    "description": "小 session auto-redirect 正常",
+    "input": {
+      "lastSession": "ses_abc",
+      "metaResponse": { "partCount": 30, "totalBytes": 120000, "lastUpdated": "2026-04-20T10:00:00Z", "etag": "W/\"ses_abc:v5\"" },
+      "tweaks": { "frontend_session_lazyload": 1, "session_size_threshold_kb": 512, "session_size_threshold_parts": 80 }
+    },
+    "expected": {
+      "navigateTo": "/<dir>/session/ses_abc",
+      "toast": null,
+      "metaCalled": true
+    }
+  },
+  {
+    "id": "TV-R1-S2",
+    "requirementRef": "R1.S2",
+    "description": "大 session 走 /sessions",
+    "input": {
+      "lastSession": "ses_big",
+      "metaResponse": { "partCount": 151, "totalBytes": 2300000, "lastUpdated": "2026-04-20T11:00:00Z", "etag": "W/\"ses_big:v88\"" },
+      "tweaks": { "frontend_session_lazyload": 1, "session_size_threshold_kb": 512, "session_size_threshold_parts": 80 }
+    },
+    "expected": {
+      "navigateTo": "/<dir>/sessions",
+      "toast": "最後 session 較大，改顯示列表",
+      "logSubstring": "[lazyload] threshold-exceeded sessionID=ses_big parts=151 bytes=2300000"
+    }
+  },
+  {
+    "id": "TV-R1-S3",
+    "requirementRef": "R1.S3",
+    "description": "meta 失敗明確錯誤不退回舊行為",
+    "input": {
+      "lastSession": "ses_fail",
+      "metaResponse": { "status": 500 },
+      "tweaks": { "frontend_session_lazyload": 1 }
+    },
+    "expected": {
+      "navigateTo": "/<dir>/sessions",
+      "errorBanner": "無法判斷最後 session 狀態",
+      "fallbackToLegacyLoad": false
+    }
+  },
+  {
+    "id": "TV-R1-S4",
+    "requirementRef": "R1.S4",
+    "description": "Sidebar 新對話按鈕獨立於 lastSession",
+    "input": {
+      "action": "click.newSession",
+      "postSessionResponse": { "id": "ses_new", "directory": "/home/user/proj" }
+    },
+    "expected": {
+      "navigateTo": "/<dir>/session/ses_new",
+      "metaCalled": false
+    }
+  },
+  {
+    "id": "TV-R2-S1",
+    "requirementRef": "R2.S1",
+    "description": "小 part 照常全文顯示",
+    "input": {
+      "part": { "id": "prt_a", "type": "text", "textLength": 10240, "status": "completed", "textFixture": "pattern 'x' × 10240" },
+      "tweaks": { "part_inline_cap_kb": 64, "fold_preview_lines": 20 }
+    },
+    "expected": {
+      "folded": false,
+      "renderedChars": 10240,
+      "expandButtonVisible": false
+    }
+  },
+  {
+    "id": "TV-R2-S2",
+    "requirementRef": "R2.S2",
+    "description": "大 part 預設收合",
+    "input": {
+      "part": { "id": "prt_b", "type": "tool", "textLength": 500000, "status": "completed", "textFixture": "pattern 'line\\n' × 100000 (≈500KB)" },
+      "tweaks": { "part_inline_cap_kb": 64, "fold_preview_lines": 20 }
+    },
+    "expected": {
+      "folded": true,
+      "previewLineCount": 20,
+      "expandButtonLabel": "展開全文 (500 KB)"
+    }
+  },
+  {
+    "id": "TV-R3-S1",
+    "requirementRef": "R3.S1",
+    "description": "Streaming 中 part 超 cap 只 render tail",
+    "input": {
+      "event": { "type": "message.part.updated", "partId": "prt_c", "textLength": 204800, "messageStatus": "streaming", "textFixture": "pattern 'y' × 204800" },
+      "existingPart": { "id": "prt_c", "textLength": 200000, "status": "streaming" },
+      "tweaks": { "tail_window_kb": 64 }
+    },
+    "expected": {
+      "storePartTextLengthKB": 64,
+      "truncatedPrefix": 139264,
+      "banner": "streaming 中，暫顯示最後 64 KB"
+    }
+  },
+  {
+    "id": "TV-R3-S2",
+    "requirementRef": "R3.S2",
+    "description": "Streaming 完成後可展開完整 part",
+    "input": {
+      "sequence": [
+        { "type": "message.part.updated", "partId": "prt_d", "textLength": 200000, "messageStatus": "streaming" },
+        { "type": "message.updated", "messageId": "msg_d_owner", "status": "completed" },
+        { "action": "user.click.expand" }
+      ]
+    },
+    "expected": {
+      "finalUiState": "expanded",
+      "fetchesFullPartOnExpand": true
+    }
+  },
+  {
+    "id": "TV-R4-S1",
+    "requirementRef": "R4.S1",
+    "description": "真 delta append 正常",
+    "input": {
+      "existing": { "textLength": 1000, "textFixture": "pattern 'A' × 1000" },
+      "event": { "deltaLength": 10, "deltaFixture": "pattern 'B' × 10", "textLength": 1010 }
+    },
+    "expected": {
+      "resultTextLength": 1010,
+      "resultTextFixture": "'A' × 1000 + 'B' × 10",
+      "reconcileStrategy": "append"
+    }
+  },
+  {
+    "id": "TV-R4-S2",
+    "requirementRef": "R4.S2",
+    "description": "AI SDK 全量 rebuild 前綴 match → 視同 append",
+    "input": {
+      "existing": { "textFixture": "string X of length 2300" },
+      "event": {
+        "delta": null,
+        "textFixture": "X + 'NEW' (length 2303; first 1024 chars match)",
+        "textLength": null
+      }
+    },
+    "expected": {
+      "resultTextFixture": "X + 'NEW'",
+      "reconcileStrategy": "append",
+      "logSubstring": "[lazyload] rebuild-detected partId"
+    }
+  },
+  {
+    "id": "TV-R4-S3",
+    "requirementRef": "R4.S3",
+    "description": "前綴不 match 視為真替換",
+    "input": {
+      "existing": { "textFixture": "old-content" },
+      "event": { "delta": null, "textFixture": "entirely-different-new-text" }
+    },
+    "expected": {
+      "resultText": "entirely-different-new-text",
+      "reconcileStrategy": "replace",
+      "logSubstring": "[lazyload] rebuild-mismatch"
+    }
+  },
+  {
+    "id": "TV-R5-S1",
+    "requirementRef": "R5.S1",
+    "description": "捲到頂自動 loadMore",
+    "input": {
+      "historyMore": true,
+      "historyLoading": false,
+      "autoScrollMode": "free-reading",
+      "intersection": { "sentinel": "enter" }
+    },
+    "expected": {
+      "loadMoreCalled": true,
+      "topSpinnerVisible": true
+    }
+  },
+  {
+    "id": "TV-R5-S2",
+    "requirementRef": "R5.S2",
+    "description": "loading 期不重複觸發",
+    "input": {
+      "historyMore": true,
+      "historyLoading": true,
+      "intersection": { "sentinel": "enter" }
+    },
+    "expected": {
+      "loadMoreCalled": false
+    }
+  },
+  {
+    "id": "TV-R6-S1",
+    "requirementRef": "R6.S1",
+    "description": "小 session 全載",
+    "input": {
+      "meta": { "partCount": 30 },
+      "tweaks": { "initial_page_size_small": "all" }
+    },
+    "expected": {
+      "effectiveLimit": "Infinity"
+    }
+  },
+  {
+    "id": "TV-R6-S3",
+    "requirementRef": "R6.S3",
+    "description": "大 session 只載 50",
+    "input": {
+      "meta": { "partCount": 400 },
+      "tweaks": { "initial_page_size_large": 50 }
+    },
+    "expected": {
+      "effectiveLimit": 50
+    }
+  },
+  {
+    "id": "TV-R7-S1",
+    "requirementRef": "R7.S1",
+    "description": "Flag off 完全走主線行為",
+    "input": {
+      "tweaks": { "frontend_session_lazyload": 0 },
+      "lastSession": "ses_any"
+    },
+    "expected": {
+      "metaCalled": false,
+      "pageSize": 400,
+      "scrollSpyActive": false,
+      "partCap": "disabled",
+      "behaviorEqualsMainBaseline": true
+    }
+  }
+]

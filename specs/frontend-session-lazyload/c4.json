@@ -1,0 +1,141 @@
+{
+  "diagram_title": "Frontend Session Lazy-Load Components",
+  "diagram_level": "component",
+  "systems": [
+    {
+      "id": "SYS1",
+      "name": "opencode-webapp",
+      "description": "opencode 的前端 SPA + server 日常 session 互動面",
+      "external": false
+    }
+  ],
+  "containers": [
+    {
+      "id": "CT1",
+      "name": "Webapp SPA",
+      "description": "Solid + Vite，使用者實際操作的瀏覽器端應用",
+      "technology": "Solid / Vite",
+      "systemRef": "SYS1"
+    },
+    {
+      "id": "CT2",
+      "name": "Opencode Server",
+      "description": "daemon HTTP server",
+      "technology": "Bun / Hono",
+      "systemRef": "SYS1"
+    },
+    {
+      "id": "CT3",
+      "name": "Tweaks Config",
+      "description": "運行期設定檔",
+      "technology": "INI-style key=value",
+      "systemRef": "SYS1"
+    }
+  ],
+  "components": [
+    {
+      "id": "CMP1",
+      "name": "LayoutPage.openRootSession",
+      "description": "首頁 auto-redirect 邏輯，pre-redirect 會呼叫 meta endpoint",
+      "file": "packages/app/src/pages/layout.tsx",
+      "moduleRef": "A1.1",
+      "containerRef": "CT1"
+    },
+    {
+      "id": "CMP2",
+      "name": "SidebarNewSessionButton",
+      "description": "Sidebar 常駐「新對話」按鈕",
+      "file": "packages/app/src/pages/layout.tsx",
+      "moduleRef": "A1.2",
+      "containerRef": "CT1"
+    },
+    {
+      "id": "CMP3",
+      "name": "SessionsListPage",
+      "description": "/sessions 路由，純列表、不 auto-redirect",
+      "file": "packages/app/src/pages/sessions.tsx",
+      "moduleRef": "A1.3",
+      "containerRef": "CT1"
+    },
+    {
+      "id": "CMP4",
+      "name": "SyncContext.history",
+      "description": "message history loadMore / meta.limit / meta.complete；初次 limit 依 meta 動態",
+      "file": "packages/app/src/context/sync.tsx",
+      "moduleRef": "A3.1",
+      "containerRef": "CT1"
+    },
+    {
+      "id": "CMP5",
+      "name": "MessageTimeline",
+      "description": "訊息列表 + 頂端 IntersectionObserver scroll-spy",
+      "file": "packages/app/src/pages/session/message-timeline.tsx",
+      "moduleRef": "A3.2",
+      "containerRef": "CT1"
+    },
+    {
+      "id": "CMP6",
+      "name": "MessagePart",
+      "description": "Part 渲染；size cap 收合 + streaming 提示",
+      "file": "packages/ui/src/components/message-part.tsx",
+      "moduleRef": "A2.1",
+      "containerRef": "CT1"
+    },
+    {
+      "id": "CMP7",
+      "name": "EventReducer",
+      "description": "SSE event apply；rebuild-vs-append heuristic + tail-window 截斷",
+      "file": "packages/web/src/event-reducer.ts",
+      "moduleRef": "A2.2",
+      "containerRef": "CT1"
+    },
+    {
+      "id": "CMP8",
+      "name": "SessionMetaRoute",
+      "description": "新增 GET /session/:id/meta，沿用 SessionCache",
+      "file": "packages/opencode/src/server/routes/session.ts",
+      "moduleRef": "A1.4",
+      "containerRef": "CT2"
+    },
+    {
+      "id": "CMP9",
+      "name": "SessionCache",
+      "description": "既有 cache；新增 meta 命名空間；與舊 key 共享 version 與 ETag",
+      "file": "packages/opencode/src/server/session-cache.ts",
+      "moduleRef": "A4.1",
+      "containerRef": "CT2"
+    },
+    {
+      "id": "CMP10",
+      "name": "SessionMessagesRoute",
+      "description": "既有 GET /:id/message?limit=N；契約不變",
+      "file": "packages/opencode/src/server/routes/session.ts",
+      "moduleRef": "A4.2",
+      "containerRef": "CT2"
+    },
+    {
+      "id": "CMP11",
+      "name": "TweaksLoader",
+      "description": "讀取新 keys: frontend_session_lazyload, part_inline_cap_kb, tail_window_kb, fold_preview_lines, initial_page_size_{small,medium,large}, session_size_threshold_{kb,parts}",
+      "file": "packages/opencode/src/config/tweaks.ts",
+      "moduleRef": "A4.3",
+      "containerRef": "CT3"
+    }
+  ],
+  "relationships": [
+    { "from": "CMP1", "to": "CMP8", "description": "pre-redirect 呼 meta", "protocol": "HTTP" },
+    { "from": "CMP1", "to": "CMP3", "description": "meta 超門檻或失敗 → navigate /sessions" },
+    { "from": "CMP2", "to": "CT2", "description": "POST /session 建新 session", "protocol": "HTTP" },
+    { "from": "CMP4", "to": "CMP10", "description": "session.messages({limit}) 分頁載入", "protocol": "HTTP" },
+    { "from": "CMP4", "to": "CMP8", "description": "讀 meta 決定初始 limit", "protocol": "HTTP" },
+    { "from": "CMP5", "to": "CMP4", "description": "頂端 sentinel 觸發 loadMore" },
+    { "from": "CMP5", "to": "CMP6", "description": "render each part" },
+    { "from": "CMP7", "to": "CMP6", "description": "更新 store.part[id].text；MessagePart 反應式 re-render" },
+    { "from": "CMP8", "to": "CMP9", "description": "meta query 走 cache" },
+    { "from": "CMP10", "to": "CMP9", "description": "messages query 走 cache（既有）" },
+    { "from": "CMP11", "to": "CMP6", "description": "讀 part_inline_cap_kb / fold_preview_lines" },
+    { "from": "CMP11", "to": "CMP7", "description": "讀 tail_window_kb / rebuild heuristic" },
+    { "from": "CMP11", "to": "CMP1", "description": "讀 session_size_threshold_{kb,parts}" },
+    { "from": "CMP11", "to": "CMP4", "description": "讀 initial_page_size_*" }
+  ]
+}

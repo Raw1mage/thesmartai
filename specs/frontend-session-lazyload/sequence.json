@@ -1,0 +1,144 @@
+[
+  {
+    "diagram_title": "首頁載入 → 小 session 直接 auto-redirect",
+    "scenario": "Requirement R1.S1",
+    "moduleRef": "A1",
+    "participants": [
+      { "id": "P1", "name": "Browser", "type": "actor" },
+      { "id": "P2", "name": "LayoutPage.openRootSession", "type": "component", "componentRef": "CMP1" },
+      { "id": "P3", "name": "SessionMetaRoute", "type": "component", "componentRef": "CMP8" },
+      { "id": "P4", "name": "SessionCache", "type": "component", "componentRef": "CMP9" }
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "P1", "to": "P2", "label": "navigate /", "type": "sync", "order": 1 },
+      { "id": "MSG2", "from": "P2", "to": "P3", "label": "GET /session/:X/meta", "type": "sync", "order": 2 },
+      { "id": "MSG3", "from": "P3", "to": "P4", "label": "read session:X:meta", "type": "sync", "order": 3 },
+      { "id": "MSG4", "from": "P4", "to": "P3", "label": "{partCount:30, totalBytes:120KB}", "type": "return", "order": 4 },
+      { "id": "MSG5", "from": "P3", "to": "P2", "label": "200 + body", "type": "return", "order": 5 },
+      { "id": "MSG6", "from": "P2", "to": "P1", "label": "navigate /<dir>/session/X", "type": "sync", "order": 6 }
+    ],
+    "fragments": []
+  },
+  {
+    "diagram_title": "首頁載入 → 大 session 改進 /sessions",
+    "scenario": "Requirement R1.S2",
+    "moduleRef": "A1",
+    "participants": [
+      { "id": "P1", "name": "Browser", "type": "actor" },
+      { "id": "P2", "name": "openRootSession", "type": "component", "componentRef": "CMP1" },
+      { "id": "P3", "name": "SessionMetaRoute", "type": "component", "componentRef": "CMP8" },
+      { "id": "P4", "name": "TweaksLoader", "type": "component", "componentRef": "CMP11" },
+      { "id": "P5", "name": "SessionsListPage", "type": "component", "componentRef": "CMP3" }
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "P1", "to": "P2", "label": "navigate /", "type": "sync", "order": 1 },
+      { "id": "MSG2", "from": "P2", "to": "P3", "label": "GET /session/:Y/meta", "type": "sync", "order": 2 },
+      { "id": "MSG3", "from": "P3", "to": "P2", "label": "{partCount:151, totalBytes:2.3MB}", "type": "return", "order": 3 },
+      { "id": "MSG4", "from": "P2", "to": "P4", "label": "read session_size_threshold_{kb,parts}", "type": "sync", "order": 4 },
+      { "id": "MSG5", "from": "P2", "to": "P5", "label": "navigate /<dir>/sessions + toast", "type": "sync", "order": 5 }
+    ],
+    "fragments": []
+  },
+  {
+    "diagram_title": "首次開啟大 session → 只載最後 50 messages",
+    "scenario": "Requirement R6.S3",
+    "moduleRef": "A3",
+    "participants": [
+      { "id": "P1", "name": "Browser", "type": "actor" },
+      { "id": "P2", "name": "SyncContext.history", "type": "component", "componentRef": "CMP4" },
+      { "id": "P3", "name": "SessionMetaRoute", "type": "component", "componentRef": "CMP8" },
+      { "id": "P4", "name": "TweaksLoader", "type": "component", "componentRef": "CMP11" },
+      { "id": "P5", "name": "SessionMessagesRoute", "type": "component", "componentRef": "CMP10" },
+      { "id": "P6", "name": "MessageTimeline", "type": "component", "componentRef": "CMP5" }
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "P1", "to": "P2", "label": "session.sync(sessionID)", "type": "sync", "order": 1 },
+      { "id": "MSG2", "from": "P2", "to": "P3", "label": "GET /session/:id/meta（若未取過）", "type": "sync", "order": 2 },
+      { "id": "MSG3", "from": "P2", "to": "P4", "label": "read initial_page_size_large (=50)", "type": "sync", "order": 3 },
+      { "id": "MSG4", "from": "P2", "to": "P5", "label": "GET /:id/message?limit=50", "type": "sync", "order": 4 },
+      { "id": "MSG5", "from": "P5", "to": "P2", "label": "messages[] (last 50)", "type": "return", "order": 5 },
+      { "id": "MSG6", "from": "P2", "to": "P6", "label": "store.message / store.part 更新", "type": "async", "order": 6 }
+    ],
+    "fragments": []
+  },
+  {
+    "diagram_title": "Scroll-spy 自動載入更舊訊息",
+    "scenario": "Requirement R5.S1",
+    "moduleRef": "A3",
+    "participants": [
+      { "id": "P1", "name": "User", "type": "actor" },
+      { "id": "P2", "name": "MessageTimeline", "type": "component", "componentRef": "CMP5" },
+      { "id": "P3", "name": "SyncContext.history", "type": "component", "componentRef": "CMP4" },
+      { "id": "P4", "name": "SessionMessagesRoute", "type": "component", "componentRef": "CMP10" }
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "P1", "to": "P2", "label": "往上捲", "type": "sync", "order": 1 },
+      { "id": "MSG2", "from": "P2", "to": "P2", "label": "top-sentinel 進 viewport", "type": "sync", "order": 2 },
+      { "id": "MSG3", "from": "P2", "to": "P3", "label": "history.loadMore(sessionID)", "type": "sync", "order": 3 },
+      { "id": "MSG4", "from": "P3", "to": "P4", "label": "GET /:id/message?limit=currentLimit+100", "type": "sync", "order": 4 },
+      { "id": "MSG5", "from": "P4", "to": "P3", "label": "messages[]", "type": "return", "order": 5 },
+      { "id": "MSG6", "from": "P3", "to": "P2", "label": "prepend messages; meta.complete 若 length<limit 設 true", "type": "async", "order": 6 }
+    ],
+    "fragments": []
+  },
+  {
+    "diagram_title": "Streaming part 超 cap → tail-window",
+    "scenario": "Requirement R3.S1 + R4.S2",
+    "moduleRef": "A2",
+    "participants": [
+      { "id": "P1", "name": "SSE", "type": "external" },
+      { "id": "P2", "name": "EventReducer", "type": "component", "componentRef": "CMP7" },
+      { "id": "P3", "name": "TweaksLoader", "type": "component", "componentRef": "CMP11" },
+      { "id": "P4", "name": "MessagePart", "type": "component", "componentRef": "CMP6" }
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "P1", "to": "P2", "label": "message.part.updated delta=4KB textLength=200KB", "type": "async", "order": 1 },
+      { "id": "MSG2", "from": "P2", "to": "P3", "label": "read tail_window_kb (=64)", "type": "sync", "order": 2 },
+      { "id": "MSG3", "from": "P2", "to": "P2", "label": "判斷 rebuild or 真 delta", "type": "sync", "order": 3 },
+      { "id": "MSG4", "from": "P2", "to": "P2", "label": "text 截到最後 64KB；truncatedPrefix=136KB", "type": "sync", "order": 4 },
+      { "id": "MSG5", "from": "P2", "to": "P4", "label": "store.part[id] 更新", "type": "async", "order": 5 },
+      { "id": "MSG6", "from": "P4", "to": "P4", "label": "render tail + 「streaming 中，暫顯示最後 64KB」", "type": "sync", "order": 6 }
+    ],
+    "fragments": []
+  },
+  {
+    "diagram_title": "Streaming 完成 → MessagePart 可展開全文",
+    "scenario": "Requirement R3.S2",
+    "moduleRef": "A2",
+    "participants": [
+      { "id": "P1", "name": "SSE", "type": "external" },
+      { "id": "P2", "name": "EventReducer", "type": "component", "componentRef": "CMP7" },
+      { "id": "P3", "name": "MessagePart", "type": "component", "componentRef": "CMP6" },
+      { "id": "P4", "name": "User", "type": "actor" }
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "P1", "to": "P2", "label": "message.updated status=completed", "type": "async", "order": 1 },
+      { "id": "MSG2", "from": "P2", "to": "P3", "label": "store.message[id].status 更新", "type": "async", "order": 2 },
+      { "id": "MSG3", "from": "P3", "to": "P3", "label": "從 tail-window 轉為「折疊 + 展開鈕」UI", "type": "sync", "order": 3 },
+      { "id": "MSG4", "from": "P4", "to": "P3", "label": "click 展開", "type": "sync", "order": 4 },
+      { "id": "MSG5", "from": "P3", "to": "P3", "label": "render part.text 完整內容（需要時 re-fetch 完整 part）", "type": "sync", "order": 5 }
+    ],
+    "fragments": []
+  },
+  {
+    "diagram_title": "Feature flag off → 完全走舊路徑",
+    "scenario": "Requirement R7.S1",
+    "moduleRef": "A4",
+    "participants": [
+      { "id": "P1", "name": "Browser", "type": "actor" },
+      { "id": "P2", "name": "openRootSession", "type": "component", "componentRef": "CMP1" },
+      { "id": "P3", "name": "TweaksLoader", "type": "component", "componentRef": "CMP11" },
+      { "id": "P4", "name": "SyncContext", "type": "component", "componentRef": "CMP4" },
+      { "id": "P5", "name": "SessionMessagesRoute", "type": "component", "componentRef": "CMP10" },
+      { "id": "P6", "name": "MessagePart / EventReducer", "type": "component" }
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "P1", "to": "P2", "label": "navigate /", "type": "sync", "order": 1 },
+      { "id": "MSG2", "from": "P2", "to": "P3", "label": "read frontend_session_lazyload (=0)", "type": "sync", "order": 2 },
+      { "id": "MSG3", "from": "P2", "to": "P1", "label": "走既有 lastSession redirect，不呼 meta", "type": "sync", "order": 3 },
+      { "id": "MSG4", "from": "P4", "to": "P5", "label": "messagePageSize=400 固定", "type": "sync", "order": 4 },
+      { "id": "MSG5", "from": "P6", "to": "P1", "label": "無 cap、無 tail-window 截斷", "type": "sync", "order": 5 }
+    ],
+    "fragments": []
+  }
+]
