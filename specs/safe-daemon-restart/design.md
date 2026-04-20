@@ -27,10 +27,13 @@ Gateway（C 程式，`/usr/local/bin/opencode-gateway`）以 root 執行，per-u
 
 ## Decisions
 
-- **DD-1** `restart_self` 走 **gateway HTTP admin endpoint**，不在 daemon 內處理。
-  理由：daemon 自己處理會踩斷腳；gateway 是 lifecycle authority。
-- **DD-2** Restart 流程為 **SIGTERM → 2s waitpid → SIGKILL → unlink(socket) → clear DaemonInfo**。
-  理由：2s 對 bun daemon graceful shutdown 足夠；過長會拖使用者。
+- ~~**DD-1** `restart_self` 走 **gateway HTTP admin endpoint**（新建）。~~ (v1, SUPERSEDED 2026-04-21 by DD-1b)
+- **DD-1b** `restart_self` 重用既有的 `/api/v2/global/web/restart` 端點（bun daemon 上，UI 設定頁已使用）。MCP tool 只是個薄層 POST。不新增 gateway endpoint。
+  理由：端點、UI、webctl 整合都已存在；重造輪子沒意義。MCP tool 的職責是「被授權觸發」，真正邏輯在端點內。
+- ~~**DD-2** Restart 流程為 **SIGTERM → 2s waitpid → SIGKILL → unlink(socket) → clear DaemonInfo**。~~ (v1, SUPERSEDED 2026-04-21 by DD-2b)
+- **DD-2b** Restart 流程委派給 **`webctl.sh restart`**：(1) 偵測各層 dirty（frontend / binary / install / deploy）(2) 只 rebuild 變動的層 (3) install 到系統路徑 (4) daemon 自殺退出 (5) gateway 自癒 spawn（phase 1 路徑）。Gateway 自身重啟靠 `--force-gateway` + systemd respawn。
+  理由：webctl.sh 已有成熟 smart-skip 邏輯（stamp 比對、rebuild lock、error log）；重寫反而會 regress。
+  邊界：webctl rebuild 失敗 → daemon 不自殺，回 5xx，系統維持舊版。
 - ~~**DD-3** Orphan cleanup 用 **flock holder 偵測**（`fcntl(F_OFD_GETLK)` on the lock file），而非 process-scan，因為 flock 是既有單例保證機制。
   Fallback：若 lockfile 不存在，掃 `ss -xlp` 找持有 socket path 的 pid。~~ (v1, SUPERSEDED 2026-04-21 by DD-3b)
 - **DD-3b** Orphan cleanup 用 **PID-file 讀取**（2026-04-21, amended from DD-3）。Codebase 的 "gateway lock" 是 `~/.config/opencode/daemon.lock` 的 JSON file（`{pid, acquiredAtMs}`）+ `process.kill(pid, 0)` liveness，不是 kernel `flock()`。正確偵測：讀 JSON → 取 pid → 驗 `/proc/<pid>` st_uid == target_uid → 返回 pid。
@@ -58,12 +61,15 @@ Gateway（C 程式，`/usr/local/bin/opencode-gateway`）以 root 執行，per-u
 
 ## Critical Files
 
-- `daemon/opencode-gateway.c`
-  - `resolve_runtime_dir()` (line ~715-770) — 擴充 `mkdir -p opencode/` 子目錄
-  - `ensure_daemon_running()` (line ~1491) — 加 orphan detect + cleanup
-  - 新增 HTTP route handler for `/api/v2/global/restart-self`
+- `daemon/opencode-gateway.c` (✅ phase 1 done)
+  - `resolve_runtime_dir()` — extended to handle `opencode/` subdir (done)
+  - `ensure_daemon_running()` — orphan detect + cleanup (done)
+- `packages/opencode/src/server/routes/global.ts` (line ~479 `/web/restart`)
+  - 擴充 gateway-daemon 分支（line ~511-533）：先跑 webctl.sh 再自殺
+  - 支援 `targets` 參數決定要不要 `--force-gateway`
+- `webctl.sh` — 可能要微調 `restart` 支援從 daemon 內呼叫時的 env 判斷（避免死鎖）
 - `packages/mcp/system-manager/src/index.ts`
-  - tools array (line ~417) — 新增 `restart_self` tool
+  - tools array (line ~417) — 新增 `restart_self` tool（POST /web/restart 薄層）
   - `execute_command` handler (line ~825) — 加 denylist
 - `AGENTS.md` — 新條款
 - `specs/architecture.md` — daemon lifecycle authority 小節

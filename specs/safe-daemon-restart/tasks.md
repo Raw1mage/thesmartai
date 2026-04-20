@@ -8,21 +8,26 @@
 - [x] 1.4 Wire orphan cleanup into `ensure_daemon_running`: after `adopt failed`, before `fork`, call detect → if holder found AND uid matches → cleanup → then proceed
 - [x] 1.5 Unit test (C-level): `daemon/test-orphan-cleanup.c` covers detect(alive/stale/no-file) + cleanup(SIGTERM/SIGKILL escalation); all 9 assertions pass
 
-## 2. Gateway restart-self HTTP endpoint (C)
+## 2. Extend /web/restart gateway-daemon branch to run webctl rebuild (TypeScript)
 
-- [ ] 2.1 Add route handler for `POST /api/v2/global/restart-self` in gateway HTTP dispatch: validate JWT, extract uid, generate `eventId` (UUID v4)
-- [ ] 2.2 Return `202 Accepted` immediately with `{accepted, eventId, targetPid, scheduledAt}` JSON (see `data-schema.json:RestartSelfResponse`)
-- [ ] 2.3 Schedule async restart: push job onto gateway event loop queue → SIGTERM → 2s waitpid → SIGKILL if needed → `unlink(socket_path)` → `DaemonInfo.state = NONE`
-- [ ] 2.4 During restart window (state=RESTARTING), return `503 {retryAfter: "2s"}` for that uid's new HTTP requests instead of triggering a parallel spawn
-- [ ] 2.5 Emit structured logs: `restart-self uid=... targetPid=... eventId=... reason=...` + `restart-sigkill` on escalation
-- [ ] 2.6 Add integration test: curl endpoint with valid JWT, assert 202 + pid change + no user redirect
+Scope **revised 2026-04-21**: `/api/v2/global/web/restart` already exists (`packages/opencode/src/server/routes/global.ts`) and handles legacy-mode with webctl.sh rebuild. Gateway-daemon mode currently just self-terminates without rebuild. This phase closes that gap.
 
-## 3. system-manager MCP tool (TypeScript)
+- [ ] 2.1 In `packages/opencode/src/server/routes/global.ts` line ~511-533 (gateway-daemon branch): before the self-terminate setTimeout, call `webctl.sh restart --graceful` via `Bun.spawn` (same pattern as legacy branch line ~535-595)
+- [ ] 2.2 On webctl exit != 0: do NOT self-terminate; return 5xx with error log path + hint (mirrors legacy error path); preserves "rebuild failed → system stays on old version" invariant
+- [ ] 2.3 Accept optional `targets?: ("daemon"|"frontend"|"gateway")[]` body parameter; when `gateway` is requested, append `--force-gateway` to the webctl call
+- [ ] 2.4 Ensure webctl is NOT re-entered if already-running (webctl has its own lock file at `RESTART_LOCK_FILE`); if busy, return 409 Conflict
+- [ ] 2.5 Emit structured logs: `web-restart mode=gateway-daemon txid=... targets=... webctlExit=...`
+- [ ] 2.6 Integration smoke test: call endpoint, assert webctl invoked (log check) + daemon exits + gateway respawn succeeds
 
-- [ ] 3.1 Add `restart_self` tool to `packages/mcp/system-manager/src/index.ts` tools array; schema matches `data-schema.json:RestartSelfRequest`; description emphasises AI should only call this when restart is explicitly needed (config reload, stuck state)
-- [ ] 3.2 Tool handler: HTTP POST to `http://localhost:1080/api/v2/global/restart-self` (or unix-socket equivalent) with current session JWT (read from daemon-side env `OPENCODE_SESSION_JWT` or gateway header passthrough); return `{restartScheduled, eventId}` to AI
-- [ ] 3.3 Handle tool-side edge: if POST fails before 202 (connection refused) return error with actionable message; do NOT attempt any local spawn as fallback
-- [ ] 3.4 Unit test: mock gateway endpoint, assert tool correctly forwards JWT, returns eventId, handles non-202 as error
+## 3. system-manager MCP restart_self tool (TypeScript)
+
+Scope **simplified**: no new endpoint needed — tool just POSTs the existing `/web/restart`.
+
+- [ ] 3.1 Add `restart_self` tool to `packages/mcp/system-manager/src/index.ts` tools array; description makes it clear this triggers rebuild+restart and should be used after code changes or for recovery
+- [ ] 3.2 Tool handler: POST `/api/v2/global/web/restart` on localhost (reuse `globalSDK` equivalent or raw fetch with session JWT); optional `targets` passthrough
+- [ ] 3.3 Return `{restartScheduled: true, mode, txid}` to AI; on non-2xx return error with log path so AI can read + report
+- [ ] 3.4 No local-spawn fallback — if endpoint unreachable, fail loud (AGENTS.md rule 1)
+- [ ] 3.5 Unit test: mock endpoint, assert tool forwards JWT + targets; assert non-2xx surfaced as error
 
 ## 4. system-manager execute_command denylist (TypeScript)
 

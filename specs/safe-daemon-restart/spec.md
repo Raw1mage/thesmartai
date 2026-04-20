@@ -6,27 +6,50 @@
 
 ## Requirements
 
-### Requirement: RESTART-001 AI 可透過正式 tool 請求自重啟
+### Requirement: RESTART-001 AI 可透過正式 tool 請求含 rebuild 的自重啟 (v2, REVISED 2026-04-21)
 
-- **GIVEN** 一個 AI agent 在 daemon context 中執行
+~~(v1) MCP tool → gateway 新 endpoint → SIGTERM + respawn。~~ Scope 擴大：真正情境是 AI 剛改過 code（src / frontend / gateway），需要完整 rebuild+install+restart，不只 signal。
+
+- **GIVEN** 一個 AI agent 在 daemon context 中（剛做完 code change 或 config 調整）
 - **WHEN** 呼叫 `system-manager:restart_self` tool
-- **THEN** MCP tool 會對 gateway 的 `/api/v2/global/restart-self` 發 POST（帶當前 JWT）
-- **AND** gateway 回 `202 Accepted` 後異步對當前 daemon pid 執行 SIGTERM → 2s waitpid → SIGKILL
-- **AND** gateway 清空 `DaemonInfo` 狀態並 `unlink(socket_path)`
-- **AND** 下一個使用者請求進來會觸發乾淨的 spawn
-
-#### Scenario: 正常 graceful restart
-- **GIVEN** daemon 健康運作、無 in-flight 關鍵寫入
-- **WHEN** AI 呼叫 restart_self
-- **THEN** daemon 在 2 秒內於 SIGTERM 下收工退出
-- **AND** 下一次請求成功 spawn 新 daemon（`DAEMON_READY`）
+- **THEN** MCP tool POST `/api/v2/global/web/restart`（**既有端點**，UI 設定頁已在用）帶 JWT
+- **AND** 端點在 gateway-daemon 模式下先執行 `webctl.sh restart`（smart-detect rebuild + install per-layer），再自殺退出
+- **AND** gateway 偵測 daemon 退出後，下一個請求觸發乾淨 spawn（走 phase 1 的自癒路徑）
 - **AND** 使用者瀏覽器的 SSE 自動重連，不被踢登入
 
-#### Scenario: daemon hang 時的強制終結
-- **GIVEN** daemon 因為某原因 SIGTERM 後 2s 內沒退出
-- **WHEN** waitpid timeout
-- **THEN** gateway 送 SIGKILL 並繼續清理流程
-- **AND** event log 記錄 `forced-kill`
+#### Scenario: 無變動的空轉重啟
+- **GIVEN** 沒有任何 source/frontend/binary 改動
+- **WHEN** AI 呼叫 restart_self
+- **THEN** webctl.sh 各層 stamp 比對都 skip，不 rebuild
+- **AND** daemon 直接重啟（<= 3s）
+
+#### Scenario: daemon 程式碼改動後重啟
+- **GIVEN** AI 剛改 `packages/opencode/src/**`
+- **WHEN** 呼叫 restart_self
+- **THEN** webctl.sh 偵測到 daemon 層 dirty → rebuild daemon bundle（或 dev 模式 re-exec）
+- **AND** 其他層（frontend, gateway C binary）skip
+- **AND** 新 daemon 跑的是新版本
+
+#### Scenario: Gateway C binary 改動後重啟
+- **GIVEN** AI 剛改 `daemon/opencode-gateway.c`
+- **AND** restart_self 帶 `targets: ["gateway"]`（或自動偵測到 gateway 層 dirty）
+- **WHEN** 執行
+- **THEN** webctl.sh `make` + `install` + `systemctl restart opencode-gateway`
+- **AND** systemd 拉起新 gateway binary；期間所有使用者斷線 3-5s
+- **AND** 新 gateway 重拾 spawn 新 per-user daemon
+
+#### Scenario: 前端 prod bundle 改動後重啟
+- **GIVEN** prod 模式（`/usr/local/share/opencode/frontend` 存在）
+- **AND** AI 剛改 `packages/app/src/**`
+- **WHEN** 呼叫 restart_self
+- **THEN** webctl.sh 偵測到 frontend 層 dirty → `build-frontend` + 部署到系統路徑
+- **AND** Dev 模式下跳過（vite HMR 處理）
+
+#### Scenario: Webctl rebuild 失敗
+- **GIVEN** rebuild 途中任一步 exit ≠ 0
+- **WHEN** webctl.sh 回傳錯誤
+- **THEN** daemon 不自殺（保命），回傳 5xx + 錯誤 log 路徑給 UI / MCP
+- **AND** 系統維持舊版本可用
 
 ### Requirement: RESTART-002 Daemon 禁止 spawn 自己或兄弟
 
