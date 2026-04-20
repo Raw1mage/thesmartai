@@ -120,10 +120,22 @@ function FoldableMarkdown(props: {
     setExpanded(true)
   }
 
-  // Streaming + truncated → show banner + current tail content (no collapse).
+  // Which of the four render modes is active. Exactly one must be true for
+  // every possible combination of (streaming, truncated, overCap, expanded),
+  // otherwise the component silently renders nothing and the whole message
+  // disappears.
+  const mode = (): "streaming-tail" | "folded" | "expanded" | "full" => {
+    if (streaming() && truncated()) return "streaming-tail"
+    if (!streaming() && (truncated() || overCap()) && !expanded()) return "folded"
+    if (!streaming() && (truncated() || overCap()) && expanded()) return "expanded"
+    // Everything else — including "streaming && !truncated" — renders the
+    // full text as the baseline markdown.
+    return "full"
+  }
+
   return (
-    <>
-      <Show when={truncated() && streaming()}>
+    <Switch>
+      <Match when={mode() === "streaming-tail"}>
         <div
           data-component="lazyload-streaming-banner"
           role="status"
@@ -133,9 +145,9 @@ function FoldableMarkdown(props: {
           streaming 中，暫顯示最後 {cfg().tailWindowKb} KB（截斷前段 {Math.round((props.truncatedPrefix ?? 0) / 1024)} KB）
         </div>
         <Markdown text={props.text} cacheKey={props.cacheKey + ":tail"} />
-      </Show>
+      </Match>
 
-      <Show when={!streaming() && (truncated() || overCap()) && !expanded()}>
+      <Match when={mode() === "folded"}>
         <div data-component="lazyload-fold">
           <Markdown text={previewText()} cacheKey={props.cacheKey + ":preview"} />
           <Button
@@ -152,9 +164,9 @@ function FoldableMarkdown(props: {
             </Show>
           </Button>
         </div>
-      </Show>
+      </Match>
 
-      <Show when={!streaming() && (truncated() || overCap()) && expanded()}>
+      <Match when={mode() === "expanded"}>
         <Markdown text={props.text} cacheKey={props.cacheKey + ":full"} />
         <Button
           data-component="lazyload-collapse"
@@ -163,12 +175,12 @@ function FoldableMarkdown(props: {
         >
           收合
         </Button>
-      </Show>
+      </Match>
 
-      <Show when={!streaming() && !truncated() && !overCap()}>
+      <Match when={mode() === "full"}>
         <Markdown text={props.text} cacheKey={props.cacheKey} />
-      </Show>
-    </>
+      </Match>
+    </Switch>
   )
 }
 
