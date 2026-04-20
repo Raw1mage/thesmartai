@@ -27,6 +27,13 @@ const defaultPaths: DirectorySet = {
   state: path.join(xdgState ?? path.join(os.homedir(), ".local/state"), app),
 }
 
+// bun test default NODE_ENV=test -> pin XDG to a per-pid tmpdir so tests never
+// scribble on real ~/.config/opencode/ (see docs/events/event_2026-04-20_frontend_oom_rca.md I-7).
+// Explicit caller-set OPENCODE_DATA_HOME wins.
+if (process.env.NODE_ENV === "test" && !process.env.OPENCODE_DATA_HOME) {
+  process.env.OPENCODE_DATA_HOME = path.join(os.tmpdir(), `opencode-test-${process.pid}`)
+}
+
 const fallbackRoot = process.env.OPENCODE_DATA_HOME ?? path.join(process.cwd(), ".opencode-data")
 const fallbackPaths: DirectorySet = {
   data: path.join(fallbackRoot, "data"),
@@ -51,6 +58,12 @@ function isAccessDenied(error: unknown): error is NodeJS.ErrnoException {
 }
 
 const resolvedPaths: DirectorySet = await (async () => {
+  // Explicit OPENCODE_DATA_HOME (or the test auto-pin above) bypasses default XDG entirely.
+  if (process.env.OPENCODE_DATA_HOME) {
+    await fs.mkdir(fallbackRoot, { recursive: true }).catch(() => {})
+    await ensurePaths(fallbackPaths)
+    return fallbackPaths
+  }
   try {
     await ensurePaths(defaultPaths)
     return defaultPaths
