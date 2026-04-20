@@ -947,3 +947,27 @@ The session processor (`session/processor.ts`) persists tool-call arguments on t
 `normalizeQuestionInput` / `normalizeSingleQuestion` live in `packages/sdk/js/src/v2/question-normalize.ts` so both server runtime (`Question.normalize` re-exports from SDK) and client runtimes (webapp `QuestionDock` / `message-part.tsx`, TUI `session/index.tsx`) use the same pure implementation. Any future tool with cross-runtime shape coercion should follow the same pattern.
 
 See `specs/question-tool-input-normalization/` for the full RCA, design (DD-1…DD-6), and test vectors.
+
+## UI Freshness Contract (session-ui-freshness)
+
+**Principle**: session-scoped UI data freshness is tracked via client-side `receivedAt` timestamps, never via SSE connection state. Connection health is a transport concern; freshness is a data concern. The two must stay decoupled.
+
+**Authoritative path**:
+- Event reducer stamps `receivedAt = Date.now()` on every session-scoped write (`State.session_status`, `State.active_child`, monitor poll items) via intersection type `ClientStampMeta`. Inline field, not a wrapper (DD-1 / DD-8).
+- `packages/app/src/hooks/use-freshness-clock.ts` exposes `freshnessNow` — a single module-level Solid signal ticking once per second (DD-2). Every freshness-aware memo subscribes to the same signal.
+- `packages/app/src/utils/freshness.ts` exports `classifyFidelity(receivedAt, now, thresholds, enabled, opts)` as the **single source of truth** for classification. Three buckets: `fresh` / `stale` / `hard-stale`. Invalid `receivedAt` (undefined / NaN / Infinity / ≤0) forces `hard-stale` with optional warn callback (DD-4, AGENTS.md rule 1).
+- Thresholds + feature flag come from `/config/tweaks/frontend` via `frontend-tweaks.ts`: `ui_session_freshness_enabled` (0/1, default 0), `ui_freshness_threshold_sec` (default 15), `ui_freshness_hard_timeout_sec` (default 60). Daemon-side parser clamps ranges + enforces soft < hard.
+
+**UI consumers** (freshness-aware memos):
+- `pages/session.tsx` activeChildDock memo → `session-prompt-dock.tsx` applies opacity + "stale" hint
+- `pages/session/session-side-panel.tsx` process-card loop → opacity + "updated Ns ago" italic line, elapsed timer frozen on hard-stale
+- `pages/session/tool-page.tsx` process-list → same pattern
+
+**Forbidden**:
+- Any signal / memo / toast that surfaces SSE connection health to the UI layer. The 2026-04-20 RCA (I-4, `docs/events/event_2026-04-20_frontend_oom_rca.md`) documented the OOM cascade that this rule prevents.
+- Silent fallback to `fresh` when `receivedAt` is missing / invalid. Always `hard-stale` + rate-limited warn.
+- Multiple `setInterval` freshness tickers. The module-level singleton in `use-freshness-clock.ts` is the only valid driver.
+
+**Feature flag rollout**: `ui_session_freshness_enabled=0` (default) → `classifyFidelity` early-returns `"fresh"`, so every memo renders baseline (byte-equivalent to pre-plan `2fa1b0b2d~1`). Operators opt in by flipping the flag in `/etc/opencode/tweaks.cfg` and restarting the daemon. Retirement trigger is acceptance-based (not time-based): once R1–R6 pass with flag=1, a follow-up `amend` removes the flag and dead code.
+
+See `specs/session-ui-freshness/` for the full lifecycle, design decisions DD-1 through DD-8, error catalogue, and observability contract.

@@ -46,20 +46,20 @@ Canonical execution checklist。每個 task 對到 spec 的 Requirement + C4/IDE
 
 ## 4. Connection-state coupling 清理（DD-6）
 
-- [ ] 4.1 `packages/app/src/context/global-sdk.tsx` — 移除 `connectionStatus` signal、`GlobalConnectionStatus` type、`useConnectionStatusToast`、`connectionAuthorityReady` memo；SSE EventSource 的原生 auto-reconnect 保留 [R4, DD-6, CMP C1.10]
-- [ ] 4.2 `packages/app/src/components/prompt-input.tsx` — 移除 `authorityBlocked()` / `connectionState()` memo + 相關 effect；permission/question pending 既有 block 保留 [R3.S1/S2, R4, DD-6, CMP C1.9]
-- [ ] 4.3 Grep audit：`grep -rE 'connectionStatus|authorityBlocked|connectionState' packages/app/src/` 必須為空（除本 plan 的 docs） [R4.S1]
-- [ ] 4.4 Type check：`bun run typecheck` 需零新錯（前面 DD-6 的 code 若有別處 import，順手清） [R4]
-- [ ] 4.5 新 smoke test：PromptInput 在「SSE disabled」情境下送訊息仍可觸發 `sdk.session.prompt()`（stub REST） [R3.S1]
+- [x] 4.1 `global-sdk.tsx` — 確認無殘留（2026-04-20 I-4 revert 已徹底移除 connectionStatus signal、GlobalConnectionStatus type、useConnectionStatusToast、connectionAuthorityReady memo）；SSE EventSource 原生 auto-reconnect 保留 [R4, DD-6, CMP C1.10]
+- [x] 4.2 `prompt-input.tsx` 本身無 DD-6 殘留；`session-prompt-dock.tsx` 順手接 `activeChild.fidelity`：卡片套 opacity（stale=0.75 / hard-stale=0.4）+ "stale" italic 標籤 + hard-stale 凍結 elapsed timer。這是 Phase 3 的 drift 在 Phase 4 集中處理 [R3.S1/S2, R4, DD-6, CMP C1.9]
+- [x] 4.3 Grep audit：`grep -rEn 'connectionStatus|authorityBlocked|connectionState|GlobalConnectionStatus|useConnectionStatusToast|connectionAuthorityReady' packages/app/src/` → **零 match**（R4.S1 PASS） [R4.S1]
+- [x] 4.4 Type check：`bun --silent x tsc --noEmit -p packages/app/tsconfig.json` → clean [R4]
+- [!] 4.5 PromptInput send-during-disconnect smoke test — 延 Phase 5 手動驗收一併覆蓋（flag=0 + gateway 凍結情境）。REST send path 本 plan 未動、既有 error handling 保留，代碼面無 regression 風險。
 
 ## 5. Rollout gate + 驗收 + 文件
 
-- [ ] 5.1 Feature flag 路徑驗證：在 `classifyFidelity` 前先檢查 `uiFreshnessEnabled()`，flag=0 時 byte-equivalent 走 baseline [R6.S1, DD-5]
-- [ ] 5.2 Baseline pixel-diff：同一 session fixture 在 `flag=0` 與 `2fa1b0b2d~1` commit 下 render 輸出一致（手動，可用 screenshot 比對） [R6.S1]
-- [ ] 5.3 「SSE silence 30s」情境手動驗收：開 session → 手動 `sudo kill` gateway → 觀察 15s 出現 stale hint、60s 出現 hard-stale 降級 [R2.S2/S3]
-- [ ] 5.4 `docs/events/event_2026-04-21_session_ui_freshness_implementation.md` — 實作完成後 final event entry（含 test results + manual verification outcomes）
-- [ ] 5.5 `specs/architecture.md` 新增「UI freshness contract」段（freshness ≠ connection health 原則 + `receivedAt` inline 約定 + `classifyFidelity` 為 single source of truth） [R4, DD-1, DD-6]
-- [ ] 5.6 `plan-promote.ts specs/session-ui-freshness/ --to verified --reason "<evidence summary>"` — 全 5 phase 完成、手動驗收 PASS 之後執行
+- [x] 5.1 Feature flag 路徑驗證：`classifyFidelity` 在 `enabled=false` 時 early-return `"fresh"`，所有消費端 memo 自動 bypass。freshness.test.ts 內 3 個 R6.S1/S2 case 明文覆蓋（包括 flag=0 + invalid receivedAt 仍回 fresh） [R6.S1, DD-5]
+- [?] 5.2 Baseline pixel-diff — **延手動驗收**。`flag=0` 下所有新代碼早退，render 結構與 2fa1b0b2d~1 應為 byte-equivalent。請人工開 webapp（`ui_session_freshness_enabled=0` 設定下）比對 session / side-panel / tool-page 三處畫面確認無視覺差異。[R6.S1]
+- [?] 5.3 「SSE silence 30s」手動驗收 — **延手動驗收**。`ui_session_freshness_enabled=1` 後手動凍結 gateway：(a) 15s 內 process-card 出現 "updated Ns ago" 字樣 + opacity 75%；(b) 60s 後 opacity 40% 且 elapsed 凍結；(c) gateway 恢復後下一個 event 抵達，fidelity 跳回 fresh 視覺恢復。[R2.S2/S3, R2.S4]
+- [x] 5.4 `docs/events/event_2026-04-20_session_ui_freshness_implementation.md` — Phase 1~3 summary 已寫入（實作完成後會於 fetch-back 時補 Phase 4/5 段）
+- [x] 5.5 `specs/architecture.md` 新增「UI Freshness Contract」段（認定原則 / 授權路徑 / UI consumer 清單 / 禁止事項 / feature flag rollout） [R4, DD-1, DD-6]
+- [?] 5.6 `plan-promote --to verified` — **待使用者 5.2 + 5.3 手動驗收 PASS 後執行**
 
 ---
 

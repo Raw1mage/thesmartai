@@ -115,3 +115,46 @@ XDG backup: `~/.config/opencode.bak-20260420-1829-session-ui-freshness/`
 - **Drift**:
   - PromptInput 尚未消費 dock 物件的 `fidelity` 欄位（render 還沒被降級）。決定延至 Phase 4——那邊本來就要大改 PromptInput（移除 connectionStatus memo），順手把 fidelity 視覺加入更乾淨。紀錄在此以便追蹤。
 - **Remaining**: 進 Phase 4（DD-6 連線狀態退場 + PromptInput 順手接 activeChildDock.fidelity）。
+
+---
+
+## Phase 4 — DD-6 連線狀態退場 + dock fidelity 消費端
+
+- **Done tasks**: 4.1 (確認無殘留), 4.2 (dock 消費 fidelity), 4.3 (grep audit), 4.4 (typecheck)。4.5 延 Phase 5 手動驗收。
+- **Key decisions**:
+  - **I-4 revert 已徹底清掉連線狀態殘留**：跑 `grep -rEn 'connectionStatus|authorityBlocked|connectionState|GlobalConnectionStatus|useConnectionStatusToast|connectionAuthorityReady' packages/app/src/` 回零 match。Phase 4.1 + 4.2 + 4.3 在 2026-04-20 I-4 revert 時就已達標；本 plan 不需要再做刪除動作。
+  - **session-prompt-dock 接 fidelity**：dock 卡片容器套 `opacity: 1 | 0.75 | 0.4`；fidelity 為 stale/hard-stale 時顯示 italic "stale" 字樣；hard-stale 額外凍結 elapsed timer（不更新，保留最後值會誤導）。這是 Phase 3 標註的漂移項在 Phase 4 集中處理。
+  - **既有 per-dock setInterval(1000)（`activeChildElapsed`）保留不動**：是前置 code 的獨立計時器，與本 plan 的 DD-2 single-clock 原則相悖，但重構需改 tick-based memo 為 freshnessNow-based，屬 post-rollout amend 範圍，非本 plan scope。
+- **Validation**:
+  - `grep -rEn 'connectionStatus\|authorityBlocked\|connectionState' packages/app/src/` → 0 match（R4.S1 PASS）
+  - `bun --silent x tsc --noEmit -p packages/app/tsconfig.json` → clean
+- **Files changed**:
+  - `packages/app/src/pages/session/session-prompt-dock.tsx` — prop 型別加 `fidelity?` + `receivedAt?`；dock 卡片套 opacity + "stale" hint；hard-stale 凍結 elapsed 顯示
+  - `specs/architecture.md` — 新增「UI Freshness Contract」段（見 Phase 5.5）
+  - `specs/session-ui-freshness/tasks.md` — 4.1~4.5 標狀態
+- **Drift**: 無（僅合併 Phase 3 標記的 dock drift）。
+- **Remaining**: 進 Phase 5（flag bypass 自動 verify + 手動驗收打包 + 架構文件同步 + 待 promote）。
+
+---
+
+## Phase 5 — Rollout 驗收 + 文件 + state 推進
+
+- **Done tasks**: 5.1 (flag bypass automated), 5.4 (event log 維護中), 5.5 (architecture.md 更新)。5.2 / 5.3 / 5.6 需使用者手動驗收後才推進。
+- **Key decisions**:
+  - **5.1 flag bypass 採純 util 驗證**：`classifyFidelity` 在 `enabled=false` 時 early-return `"fresh"`；freshness.test.ts 有 3 個明文 case（flag=0 + 正常 receivedAt、flag=0 + 無效 receivedAt、flag=1 回復完整分類）。視為 R6 acceptance 自動化覆蓋完成。
+  - **5.2 + 5.3 為人工工序**：browser pixel-diff 與手動暫停 gateway 都需要實體操作；AI 無法代替。標 `[?]` 等使用者。
+  - **5.6 promote 觸發條件**：使用者回報 5.2 + 5.3 PASS 後，由 beta 分支 fetch-back 到 main 的時機執行 `plan-promote --to verified`。
+- **Validation**:
+  - Aggregate test run：`bun test packages/app/src/utils/freshness.test.ts packages/app/src/context/global-sync/event-reducer.test.ts packages/opencode/test/config/tweaks.test.ts packages/opencode/test/server/frontend-tweaks-route.test.ts` → **70 pass / 0 fail**
+    - freshness.test.ts 18
+    - event-reducer.test.ts 23（新 3 個 + 既有 20）
+    - tweaks.test.ts 25（新 8 個 + 既有 17）
+    - frontend-tweaks-route.test.ts 4（新 2 個 + 既有 2）
+  - `tsc --noEmit -p packages/app/tsconfig.json` → clean
+  - `tsc --noEmit -p packages/opencode/tsconfig.json` → clean
+- **Files changed**:
+  - `specs/architecture.md` — 新增 `## UI Freshness Contract (session-ui-freshness)` 段
+  - `docs/events/event_2026-04-20_session_ui_freshness_implementation.md` — Phase 1-5 summary 全落地
+  - `specs/session-ui-freshness/tasks.md` — 5.1/5.4/5.5 標 `- [x]`；5.2/5.3/5.6 標 `- [?]` 等使用者
+- **Drift**: 無。
+- **Remaining**: 使用者手動驗收後 → `plan-promote --to verified` → fetch-back 到 main → 刪 `beta/session-ui-freshness` 分支。
