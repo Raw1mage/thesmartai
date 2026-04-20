@@ -304,16 +304,23 @@ export async function recoverOrphanTasks() {
             childSessionID: entry.sessionID,
           })
 
+          // Mark as completed (not error) so the UI doesn't render a red
+          // banner — daemon restart is a normal re-init, not a task failure.
+          // The LLM still sees the truthful string on next turn so it knows
+          // the prior subagent produced no result.
+          const runningState = part.state
           await Session.updatePart({
             ...part,
             messageID: msg.info.id,
             sessionID: entry.parentSessionID,
             state: {
-              ...part.state,
-              status: "error",
-              error: "daemon restarted while task was in-flight",
+              status: "completed",
+              input: runningState.input,
+              output: "[interrupted by daemon restart; no result captured]",
+              title: runningState.title ?? "task",
+              metadata: runningState.metadata ?? {},
               time: {
-                ...part.state.time,
+                start: runningState.time.start,
                 end: Date.now(),
               },
             },
