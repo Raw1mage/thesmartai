@@ -82,3 +82,36 @@ XDG backup: `~/.config/opencode.bak-20260420-1829-session-ui-freshness/`
   - `specs/session-ui-freshness/tasks.md` — 2.1 ~ 2.7 標 `- [x]`
 - **Drift**: 無。
 - **Remaining**: 進 Phase 3（UI 消費 freshness）。先寫 `classifyFidelity` 共用 util（task 3.5），再做 3.1 / 3.2 / 3.3 / 3.4 的 memo 接線。
+
+---
+
+## Phase 3 — UI 消費 freshness
+
+- **Done tasks**: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7
+- **Key decisions**:
+  - **classifyFidelity 放 `packages/app/src/utils/freshness.ts`** 作為單一 source of truth；所有 UI memo 都 import 同一個函式。搭配 `createRateLimitedWarn` 滿足 errors.md `FRESHNESS_INVALID_TIMESTAMP` 的 ≤1/min/entry 規定。
+  - **監看資料 scope 收斂**：useStatusMonitor 拉輪詢結果時對每個 item 戳 `receivedAt = Date.now()`（整批同一個時間戳；邏輯上該批資料都是該時刻 server 確認的）。型別用 local alias `StampedMonitorItem = SessionMonitorInfo & { receivedAt: number }`，透過 spread 自然傳進 `EnrichedMonitorEntry` → `ProcessCard`。
+  - **ProcessCard freshness = max(members)**：一個 process card 聚合多個 monitor entry；card 的 `receivedAt` 取 group 內所有 entries 的最大值（最近一次被確認的時間），對應 "card 代表的最新 server 觀察"。
+  - **視覺預設（使用者授權的保守選擇）**：
+    - `fresh` → 完全不改（render 照常）
+    - `stale` → 卡片容器 `opacity: 0.75` + 下面加一行 italic "updated Ns ago"
+    - `hard-stale` → `opacity: 0.4` + italic "updated Ns ago" + elapsed 欄位 return 空字串（timer 凍結，DD-7）
+  - **flag=0 bypass 路徑零侵入**：classifyFidelity 在 `enabled=false` 時早退 `"fresh"`；所有 memo 都 early-return 到 render-baseline；視覺層完全無 opacity 或 badge（byte-equivalent 於 2fa1b0b2d~1，R6.S1 acceptance）。
+  - **R2.S4 tick 重算延 manual Phase 5 驗收**：useFreshnessClock 的 `setInterval(1000)` + Solid signal reactivity 屬 integration 行為，unit test 已覆蓋純函式邊界（classifyFidelity 18/18）；真 reactive 流由 Phase 5 task 5.3 手動驗收（暫停 gateway 15s/60s 觀察 UI 降級）。
+- **Validation**:
+  - `bun test packages/app/src/utils/freshness.test.ts` → **18 pass / 0 fail**
+  - `bun test packages/app/src/context/global-sync/event-reducer.test.ts` → **23 pass / 0 fail**
+  - 合併 run → **41 pass / 0 fail**
+  - `bun --silent x tsc --noEmit -p packages/app/tsconfig.json` → **clean**
+- **Files changed**:
+  - `packages/app/src/utils/freshness.ts` — 新檔，pure classifyFidelity + createRateLimitedWarn
+  - `packages/app/src/utils/freshness.test.ts` — 新檔，18 test case
+  - `packages/app/src/pages/session.tsx` — imports + activeChildDock memo 接 classifyFidelity；dock 物件加 `fidelity` + `receivedAt`（render 套視覺留給 PromptInput，Phase 3 暫不動 PromptInput）
+  - `packages/app/src/pages/session/session-side-panel.tsx` — imports + 在 `For each={processCards()}` 裡面 per-card 算 fidelity → 套 opacity + stale badge + elapsed 凍結
+  - `packages/app/src/pages/session/tool-page.tsx` — 同上 pattern
+  - `packages/app/src/pages/session/monitor-helper.ts` — `EnrichedMonitorEntry` + `ProcessCard` 加 optional `receivedAt`；`buildProcessCards` 取 group max receivedAt
+  - `packages/app/src/pages/session/use-status-monitor.ts` — `StampedMonitorItem` 型別 + poll 成功時對每個 item 戳時
+  - `specs/session-ui-freshness/tasks.md` — 3.1 ~ 3.7 標 `- [x]`
+- **Drift**:
+  - PromptInput 尚未消費 dock 物件的 `fidelity` 欄位（render 還沒被降級）。決定延至 Phase 4——那邊本來就要大改 PromptInput（移除 connectionStatus memo），順手把 fidelity 視覺加入更乾淨。紀錄在此以便追蹤。
+- **Remaining**: 進 Phase 4（DD-6 連線狀態退場 + PromptInput 順手接 activeChildDock.fidelity）。

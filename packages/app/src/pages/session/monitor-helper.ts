@@ -36,6 +36,10 @@ export type EnrichedMonitorEntry = SessionMonitorInfo & {
   latestResult?: string
   latestNarration?: string
   telemetry?: ProjectorTelemetryPayload
+  // session-ui-freshness DD-1 / DD-7: client-stamped when the poll result
+  // arrived (or the event reducer updated the underlying SessionMonitorInfo).
+  // Missing / invalid => classifyFidelity's onInvalid fires (R5 / DD-4).
+  receivedAt?: number
 }
 
 export type MonitorDisplayCard = {
@@ -60,6 +64,11 @@ export type ProcessCard = {
   narration?: string
   sessionID: string
   canAbort: boolean
+  // session-ui-freshness: max client receivedAt across the card's member
+  // entries. Consumer memos pair this with useFreshnessClock and
+  // classifyFidelity to decide render fidelity. Undefined => treated as
+  // hard-stale (DD-4).
+  receivedAt?: number
 }
 
 type RawTelemetryBlock = Record<string, unknown>
@@ -548,6 +557,7 @@ export function buildProcessCards(entries: EnrichedMonitorEntry[], mainSessionID
     let narration: string | undefined
     let bestStatus: "active" | "waiting" | "pending" | "error" | "idle" = "idle"
     let latestUpdate = 0
+    let latestReceivedAt: number | undefined
 
     for (const entry of group) {
       requests = Math.max(requests, entry.requests)
@@ -556,6 +566,11 @@ export function buildProcessCards(entries: EnrichedMonitorEntry[], mainSessionID
       if (!activeTool && entry.activeTool) activeTool = entry.activeTool
       if (!narration && entry.latestNarration) narration = entry.latestNarration
       latestUpdate = Math.max(latestUpdate, entry.updated)
+      if (typeof entry.receivedAt === "number" && Number.isFinite(entry.receivedAt)) {
+        if (latestReceivedAt === undefined || entry.receivedAt > latestReceivedAt) {
+          latestReceivedAt = entry.receivedAt
+        }
+      }
       const rank = statusRank(entry.status.type)
       const order = { active: 4, waiting: 3, pending: 2, error: 5, idle: 0 }
       if (order[rank] > order[bestStatus]) bestStatus = rank
@@ -581,6 +596,7 @@ export function buildProcessCards(entries: EnrichedMonitorEntry[], mainSessionID
       narration,
       sessionID,
       canAbort: !isMain && bestStatus !== "idle",
+      receivedAt: latestReceivedAt,
     })
   }
 

@@ -4,6 +4,11 @@ import { createStore } from "solid-js/store"
 import type { useSDK } from "@/context/sdk"
 import type { useSync } from "@/context/sync"
 
+// session-ui-freshness DD-1 / DD-7: each monitor item carries a client-stamped
+// receivedAt matching the moment the poll result arrived. Downstream
+// (monitor-helper) propagates it into EnrichedMonitorEntry and ProcessCard.
+export type StampedMonitorItem = SessionMonitorInfo & { receivedAt: number }
+
 const ACTIVE_FALLBACK_MS = 15_000
 const IDLE_FALLBACK_MS = 90_000
 const MIN_REFRESH_MS = 6_000
@@ -30,7 +35,7 @@ export function useStatusMonitor(input: {
   sync: ReturnType<typeof useSync>
 }) {
   const [monitor, setMonitor] = createStore({
-    items: [] as SessionMonitorInfo[],
+    items: [] as StampedMonitorItem[],
     loading: false,
     initialized: false,
     error: undefined as string | undefined,
@@ -96,13 +101,20 @@ export function useStatusMonitor(input: {
           maxMessages: MAX_MESSAGES,
         })
         if (cancelled) return
+        // session-ui-freshness DD-1: stamp the poll-arrival time on every item
+        // so downstream memos can derive fidelity via classifyFidelity.
+        const stampedAt = Date.now()
+        const stamped: StampedMonitorItem[] = (result.data ?? []).map((item) => ({
+          ...item,
+          receivedAt: stampedAt,
+        }))
         setMonitor({
-          items: result.data ?? [],
+          items: stamped,
           loading: false,
           initialized: true,
           error: undefined,
         })
-        lastFetchedAt = Date.now()
+        lastFetchedAt = stampedAt
       } catch (error) {
         if (cancelled) return
         setMonitor({

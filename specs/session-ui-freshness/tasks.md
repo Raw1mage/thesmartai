@@ -37,12 +37,12 @@ Canonical execution checklist。每個 task 對到 spec 的 Requirement + C4/IDE
 ## 3. UI freshness consumption
 
 - [x] 3.1 `session.tsx` — `activeChildDock` memo 接 `classifyFidelity()`；dock 物件新增 `fidelity` + `receivedAt` 欄位；onInvalid 接 `createRateLimitedWarn` 寫 console.warn（≤1/min/sessionID）。render-side 視覺套色/收合留待 PromptInput 消費端處理 [R2.S1/S2/S3, R6.S1/S2, R5, CMP C1.5]
-- [ ] 3.2 `packages/app/src/pages/session/session-side-panel.tsx` — process-card render 消費 `fidelity`；`stale` 顯示 `"updated Ns ago"` badge；`hard-stale` 灰化或收合 [R2.S2/S3, CMP C1.6]
-- [ ] 3.3 `packages/app/src/pages/session/tool-page.tsx` — process-list elapsed timer 改讀 `receivedAt`；`hard-stale` 停止跳秒 [R2.S3, DD-7, CMP C1.7]
-- [ ] 3.4 `packages/app/src/pages/session/monitor-helper.ts` — `ProcessCard` factory 複製 `receivedAt` 並計算 `elapsed = Math.max(0, now - receivedAt)`（語義澄清，欄位名不動） [DD-7, CMP C1.8]
+- [x] 3.2 `session-side-panel.tsx` — process-card 容器套 opacity（stale=0.75 / hard-stale=0.4）+ italic "updated Ns ago" badge；hard-stale 的 elapsed timer 凍結（改 return ""）；invalid receivedAt 走 createRateLimitedWarn [R2.S2/S3, R5, CMP C1.6]
+- [x] 3.3 `tool-page.tsx` — 套與 3.2 同模式的 fidelity memo + opacity + stale badge + elapsed 凍結 [R2.S3, DD-7, CMP C1.7]
+- [x] 3.4 `monitor-helper.ts` — `EnrichedMonitorEntry` + `ProcessCard` 都加 optional `receivedAt`；`buildProcessCards` 取每個 group entries 的最大 `receivedAt` 當 card.receivedAt；`useStatusMonitor` 在 poll result 到達時對每個 item 戳 `receivedAt = Date.now()`（`StampedMonitorItem` 型別）。原 SessionMonitorInfo[] 透過 spread 自動帶入 receivedAt 到 EnrichedMonitorEntry [DD-7, CMP C1.8]
 - [x] 3.5 新檔 `packages/app/src/utils/freshness.ts` 含 `classifyFidelity()` + `createRateLimitedWarn()`；單一 source of truth；R5 檢查（undefined / NaN / Infinity / negative / 0 → hard-stale）+ flag=0 bypass 全涵蓋。新 test `freshness.test.ts` 18 pass / 0 fail [R5.S1/S2, DD-4, DD-5]
-- [ ] 3.6 新 test 覆蓋 R2.S1/S2/S3/S4 + R5.S1/S2：freshness boundary、tick 重算、invalid receivedAt → hard-stale
-- [ ] 3.7 phase summary（Phase 3 完成後）寫入 event log
+- [x] 3.6 R2.S1-S3 + R5.S1-S2 + R6.S1-S2 的核心邏輯覆蓋於 `freshness.test.ts`（18 pass）。R2.S4 `useFreshnessClock` tick 重算屬 Solid reactive 行為、需 integration 層級 harness，延 Phase 5 手動驗收覆蓋。
+- [x] 3.7 phase summary 已 append 到 `docs/events/event_2026-04-20_session_ui_freshness_implementation.md`
 
 ## 4. Connection-state coupling 清理（DD-6）
 
