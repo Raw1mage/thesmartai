@@ -31,6 +31,10 @@ export function SessionPromptDock(props: {
     step: string
     href: string
     startedAt?: number
+    // session-ui-freshness: dock memo passes fidelity + receivedAt so the
+    // dock card can mirror the degradation applied in side-panel / tool-page.
+    fidelity?: import("@/utils/freshness").Fidelity
+    receivedAt?: number
   }
   onOpenChildSession: (href: string) => void
   onAbortActiveChild: () => Promise<void>
@@ -64,8 +68,19 @@ export function SessionPromptDock(props: {
         }}
       >
         <Show when={props.activeChild}>
-          {(child) => (
-            <div class="mb-3 pointer-events-auto rounded-md border border-border-base/60 bg-background-base/90 px-3 py-2">
+          {(child) => {
+            // session-ui-freshness: opacity + hint mirror side-panel / tool-page
+            // process-card pattern. fidelity=undefined means feature flag is OFF
+            // or memo hasn't classified yet — treat as fresh (no visual change).
+            const dockOpacity = () => {
+              const f = child().fidelity
+              return f === "hard-stale" ? 0.4 : f === "stale" ? 0.75 : 1
+            }
+            return (
+            <div
+              class="mb-3 pointer-events-auto rounded-md border border-border-base/60 bg-background-base/90 px-3 py-2"
+              style={{ opacity: dockOpacity() }}
+            >
               <div class="flex items-center gap-2 min-w-0">
                 <Icon name="task" size="small" class="shrink-0 text-text-weak" />
                 <div class="min-w-0 flex-1 overflow-hidden">
@@ -73,8 +88,11 @@ export function SessionPromptDock(props: {
                     <span class="shrink-0">{child().agent}</span>
                     <span class="truncate min-w-0">{child().title}</span>
                     <span class="truncate min-w-0 text-text-weak">{child().step}</span>
-                    <Show when={activeChildElapsed()}>
+                    <Show when={activeChildElapsed() && child().fidelity !== "hard-stale"}>
                       {(elapsed) => <span class="shrink-0 text-text-weak tabular-nums">{elapsed()}</span>}
+                    </Show>
+                    <Show when={child().fidelity === "stale" || child().fidelity === "hard-stale"}>
+                      <span class="shrink-0 text-text-weak italic">stale</span>
                     </Show>
                   </div>
                 </div>
@@ -109,7 +127,8 @@ export function SessionPromptDock(props: {
                 </Button>
               </div>
             </div>
-          )}
+            )
+          }}
         </Show>
 
         <Show when={props.questionRequest()} keyed>
