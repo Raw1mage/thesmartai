@@ -982,9 +982,28 @@ export const SessionRoutes = lazy(() =>
               session.title = updates.title
             }
             if (updates.execution) {
+              // Carry over current accountId if the incoming payload omits it.
+              // Otherwise a rotation-pinned account gets silently wiped when the
+              // UI sends {providerId, modelID} without accountId, and the next
+              // runloop has to re-resolve an account from scratch — often
+              // landing on the same rate-limited account and looping silently.
+              const merged = {
+                providerId: updates.execution.providerId,
+                modelID: updates.execution.modelID,
+                accountId: updates.execution.accountId ?? session.execution?.accountId,
+              }
+              const prevExecution = session.execution
               session.execution = Session.nextExecutionIdentity({
                 current: session.execution,
-                model: updates.execution,
+                model: merged,
+              })
+              log.info("session.update: execution changed", {
+                sessionID,
+                prev: prevExecution,
+                next: session.execution,
+                incomingHadAccountId: updates.execution.accountId !== undefined,
+                accountIdCarriedOver:
+                  updates.execution.accountId === undefined && prevExecution?.accountId !== undefined,
               })
             }
             if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
@@ -1007,13 +1026,47 @@ export const SessionRoutes = lazy(() =>
           { touch: false },
         )
 
-        // Propagate model change to active child worker (if any)
+        // Rebind epoch bump — capability layer MUST refresh on identity change.
+        // Without this, rotation or manual model switch leaves the cached
+        // capability bundle (AGENTS.md / driver / skills) pinned to the
+        // previous provider/account, and the next runloop iteration hits stale
+        // context — sometimes surfacing as "chat permanently silent after
+        // manual switch" when combined with account mis-resolution.
+        if (updates.execution) {
+          try {
+            const outcome = await RebindEpoch.bumpEpoch({
+              sessionID,
+              trigger: "provider_switch",
+              reason: `manual execution update via PATCH /session/${sessionID}`,
+            })
+            log.info("session.update: rebind epoch bumped after execution change", {
+              sessionID,
+              status: outcome.status,
+              previousEpoch: outcome.previousEpoch,
+              currentEpoch: outcome.currentEpoch,
+            })
+          } catch (err) {
+            log.warn("session.update: failed to bump rebind epoch", {
+              sessionID,
+              error: err instanceof Error ? err.message : String(err),
+            })
+          }
+        }
+
+        // Propagate model change to active child worker (if any).
+        // Most calls here are no-ops (no active child) — we still want to see
+        // real errors, per AGENTS.md §1 no-silent-fallback. Previously this
+        // catch was empty, which hid subagent model-update failures behind a
+        // parent session that looked "stuck with no reply".
         if (updates.execution) {
           try {
             const { sendModelUpdateToActiveChild } = await import("@/tool/task")
             await sendModelUpdateToActiveChild(sessionID, updates.execution)
-          } catch {
-            // No active child or propagation failed — non-blocking
+          } catch (err) {
+            log.warn("session.update: sendModelUpdateToActiveChild failed", {
+              sessionID,
+              error: err instanceof Error ? err.message : String(err),
+            })
           }
         }
 
