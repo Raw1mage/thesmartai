@@ -78,6 +78,30 @@ function applyTailWindow(
   return { text: text.slice(truncatedPrefix), truncatedPrefix }
 }
 
+/**
+ * Streaming OOM safety cap — separate from the tight tail-window used by
+ * the attach-phase lazy loader. Live streaming replies should render as
+ * they arrive; we only truncate when the accumulated text is large enough
+ * to threaten browser memory (AI SDK rebuild pathology: 3MB+ in one part).
+ *
+ * Contract: `applyTailWindow` is for the history attach path (where we
+ * want to cap at tailWindowKb, typically 64KB). This function is for the
+ * live SSE delta path (where the user is actively watching the reply land)
+ * and uses a much larger cap — 16× the configured tail window. At the
+ * default 64KB that becomes 1MB, comfortably above any normal reply but
+ * still bounded so a runaway rebuild does not crash the tab.
+ */
+function applyStreamingOomCap(
+  text: string,
+  cfg: { frontend_session_lazyload: 0 | 1; tail_window_kb: number },
+): { text: string; truncatedPrefix: number } {
+  if (cfg.frontend_session_lazyload === 0) return { text, truncatedPrefix: 0 }
+  const cap = tailWindowBytes(cfg) * 16
+  if (text.length <= cap) return { text, truncatedPrefix: 0 }
+  const truncatedPrefix = text.length - cap
+  return { text: text.slice(truncatedPrefix), truncatedPrefix }
+}
+
 function pushLlmHistory(draft: State, entry: LlmHistoryEntry) {
   if (!draft.llm_history) draft.llm_history = []
   draft.llm_history.push(entry)
@@ -352,12 +376,17 @@ export function applyDirectoryEvent(input: {
               }
               _appliedTextLength.set(dedupKey, props.textLength)
             }
-            // Fast path: append delta to existing text without replacing the whole part
+            // Fast path: append delta to existing text without replacing the whole part.
+            // Live streaming — use OOM-safety cap only (NOT the tighter attach tail window).
+            // Rationale: this branch fires on every SSE delta for a reply the user is
+            // actively watching land. Capping at 64KB here hides most of a normal reply
+            // behind the "streaming 中，暫顯示最後 N KB" banner even though the reply is
+            // nowhere near memory-threatening. The attach tail window belongs on the
+            // history hydration path, not on live streaming.
             const hasText = "text" in part && typeof (part as any).text === "string"
             const rawText = hasText ? (part as any).text : existing.text + delta
-            // specs/frontend-session-lazyload §5.2 — tail-window truncation.
             const existingTruncated = (existing as any).truncatedPrefix as number | undefined
-            const { text: windowedText, truncatedPrefix: newTruncated } = applyTailWindow(rawText, tweaksCfg)
+            const { text: windowedText, truncatedPrefix: newTruncated } = applyStreamingOomCap(rawText, tweaksCfg)
             input.setStore("part", part.messageID, result.index, "text" as any, windowedText)
             const effectiveTruncated = (existingTruncated ?? 0) + newTruncated
             if (effectiveTruncated > 0) {
@@ -389,7 +418,9 @@ export function applyDirectoryEvent(input: {
           if (isTextPartType(existing)) {
             const decision = classifyNonDeltaUpdate(existing.text, part.text)
             if (decision === "append") {
-              const { text: windowedText, truncatedPrefix: newTruncated } = applyTailWindow(part.text, tweaksCfg)
+              // AI SDK rebuild-on-every-update path — still live streaming.
+              // Use OOM-safety cap, not attach tail window. See note above.
+              const { text: windowedText, truncatedPrefix: newTruncated } = applyStreamingOomCap(part.text, tweaksCfg)
               input.setStore("part", part.messageID, result.index, "text" as any, windowedText)
               if (newTruncated > 0) {
                 input.setStore("part", part.messageID, result.index, "truncatedPrefix" as any, newTruncated)
@@ -404,11 +435,12 @@ export function applyDirectoryEvent(input: {
         }
       }
 
-      // Pre-insert tail-window: any text/reasoning part heading into a
-      // non-delta insert or replace path gets windowed if it exceeds cap.
-      // This covers the first-arrival-of-a-huge-part case.
+      // Pre-insert OOM cap: first-arrival via SSE is still streaming (history
+      // hydration goes through sync.tsx loadMessages, not this reducer). Use the
+      // larger streaming cap so normal replies arrive intact; the cap only kicks
+      // in on pathological multi-MB single parts.
       if (isTextPartType(part)) {
-        const windowed = applyTailWindow(part.text, tweaksCfg)
+        const windowed = applyStreamingOomCap(part.text, tweaksCfg)
         if (windowed.truncatedPrefix > 0) {
           ;(part as any).text = windowed.text
           ;(part as any).truncatedPrefix = windowed.truncatedPrefix

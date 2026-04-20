@@ -7,6 +7,7 @@ import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import path from "path"
 import fs from "fs"
+import os from "os"
 import z from "zod"
 import { Provider } from "../provider/provider"
 import { NamedError } from "@opencode-ai/util/error"
@@ -128,6 +129,22 @@ export function createApp(app: Hono): Hono {
     }),
   )
 
+  // Per-user daemon default: when WebAuth is disabled (the usual mode for
+  // daemons spawned by the gateway — gateway already authenticated the caller
+  // and relays the request on a per-user Unix socket), the daemon runs under
+  // its own uid. Every request served by this process therefore belongs to
+  // the uid that owns the process. Using that as the RequestUser username
+  // resolves the `no-username` fallthrough we saw in `rate-limit bypassed`
+  // warnings and `prompt_async inbound { username: null }` entries without
+  // introducing a new trust-boundary — we never look at untrusted headers.
+  const daemonOwnUsername = (() => {
+    try {
+      return os.userInfo().username
+    } catch {
+      return undefined
+    }
+  })()
+
   app.use(async (c, next) => {
     const proceed = (username?: string) => RequestUser.provide(username, () => next())
 
@@ -148,7 +165,7 @@ export function createApp(app: Hono): Hono {
       return proceed(tokenUser)
     }
 
-    if (!WebAuth.enabled()) return proceed()
+    if (!WebAuth.enabled()) return proceed(daemonOwnUsername)
     if (WebAuth.routePublic(c)) return proceed()
     if (WebAuth.isTrustedLoopbackRequest(c)) {
       // Daemon architecture: resolve the loopback user so session routes can
