@@ -2,27 +2,32 @@
 
 ## 1. Gateway runtime-dir guarantee + orphan cleanup (C)
 
-- [ ] 1.1 Extend `resolve_runtime_dir()` in `daemon/opencode-gateway.c` to also `mkdir + chown + chmod 0700` the `opencode/` subdir (`/run/user/<uid>/opencode/`) before returning — new helper `ensure_socket_parent_dir(uid, gid)` called from `ensure_daemon_running` BEFORE fork
-- [ ] 1.2 Add `detect_flock_holder_pid(lock_path, target_uid)` helper: uses `fcntl(F_OFD_GETLK)` first, falls back to scanning `/proc/*/fd/` symlinks matching `lock_path`; returns pid or -1
-- [ ] 1.3 Add `cleanup_orphan_daemon(pid, username)` helper: SIGTERM → `waitpid(WNOHANG)` loop for 1000ms → SIGKILL if still alive → log `orphan-cleanup uid=... holderPid=... result=...`
-- [ ] 1.4 Wire orphan cleanup into `ensure_daemon_running`: after `adopt failed`, before `fork`, call detect → if holder found AND uid matches → cleanup → then proceed
-- [ ] 1.5 Unit test (C-level): write a small test harness that spawns a fake lock-holder process, invokes the helpers, asserts cleanup + spawn succeeds
+- [x] 1.1 Extend `resolve_runtime_dir()` in `daemon/opencode-gateway.c` to also `mkdir + chown + chmod 0700` the `opencode/` subdir (`/run/user/<uid>/opencode/`) before returning — new helper `ensure_socket_parent_dir(uid, gid)` called from `ensure_daemon_running` BEFORE fork
+- [x] 1.2 Add `detect_lock_holder_pid(username, target_uid)` helper — **design amended**: gateway lock is a PID JSON file at `~/.config/opencode/daemon.lock` (not kernel flock); detector reads file, verifies `/proc/<pid>` uid matches target. Returns pid or -1.
+- [x] 1.3 Add `cleanup_orphan_daemon(pid, username)` helper: SIGTERM → poll `kill(pid,0)` for 1000ms → SIGKILL if still alive → log `orphan-cleanup uid=... holderPid=... result=...`
+- [x] 1.4 Wire orphan cleanup into `ensure_daemon_running`: after `adopt failed`, before `fork`, call detect → if holder found AND uid matches → cleanup → then proceed
+- [x] 1.5 Unit test (C-level): `daemon/test-orphan-cleanup.c` covers detect(alive/stale/no-file) + cleanup(SIGTERM/SIGKILL escalation); all 9 assertions pass
 
-## 2. Gateway restart-self HTTP endpoint (C)
+## 2. Extend /web/restart gateway-daemon branch to run webctl rebuild (TypeScript)
 
-- [ ] 2.1 Add route handler for `POST /api/v2/global/restart-self` in gateway HTTP dispatch: validate JWT, extract uid, generate `eventId` (UUID v4)
-- [ ] 2.2 Return `202 Accepted` immediately with `{accepted, eventId, targetPid, scheduledAt}` JSON (see `data-schema.json:RestartSelfResponse`)
-- [ ] 2.3 Schedule async restart: push job onto gateway event loop queue → SIGTERM → 2s waitpid → SIGKILL if needed → `unlink(socket_path)` → `DaemonInfo.state = NONE`
-- [ ] 2.4 During restart window (state=RESTARTING), return `503 {retryAfter: "2s"}` for that uid's new HTTP requests instead of triggering a parallel spawn
-- [ ] 2.5 Emit structured logs: `restart-self uid=... targetPid=... eventId=... reason=...` + `restart-sigkill` on escalation
-- [ ] 2.6 Add integration test: curl endpoint with valid JWT, assert 202 + pid change + no user redirect
+Scope **revised 2026-04-21**: `/api/v2/global/web/restart` already exists (`packages/opencode/src/server/routes/global.ts`) and handles legacy-mode with webctl.sh rebuild. Gateway-daemon mode currently just self-terminates without rebuild. This phase closes that gap.
 
-## 3. system-manager MCP tool (TypeScript)
+- [x] 2.1 In `packages/opencode/src/server/routes/global.ts` line ~511-533 (gateway-daemon branch): before the self-terminate setTimeout, call `webctl.sh restart --graceful` via `Bun.spawn` (same pattern as legacy branch line ~535-595)
+- [x] 2.2 On webctl exit != 0: do NOT self-terminate; return 5xx with error log path + hint (mirrors legacy error path); preserves "rebuild failed → system stays on old version" invariant
+- [x] 2.3 Accept optional `targets?: ("daemon"|"frontend"|"gateway")[]` body parameter; when `gateway` is requested, append `--force-gateway` to the webctl call
+- [x] 2.4 Webctl lock busy (stderr matches `/already in progress/`) → return 409 `RESTART_LOCK_BUSY`
+- [x] 2.5 Structured logs at 3 checkpoints: `invoking webctl` (INFO), `webctl failed` (ERROR), `webctl ok, scheduling self-terminate` (INFO) — all include txid, targets, webctlExit
+- [>] 2.6 Integration smoke test — **deferred to Phase 6 TV-1**: full end-to-end needs running daemon + gateway + webctl; covered in manual verification phase with other acceptance vectors
 
-- [ ] 3.1 Add `restart_self` tool to `packages/mcp/system-manager/src/index.ts` tools array; schema matches `data-schema.json:RestartSelfRequest`; description emphasises AI should only call this when restart is explicitly needed (config reload, stuck state)
-- [ ] 3.2 Tool handler: HTTP POST to `http://localhost:1080/api/v2/global/restart-self` (or unix-socket equivalent) with current session JWT (read from daemon-side env `OPENCODE_SESSION_JWT` or gateway header passthrough); return `{restartScheduled, eventId}` to AI
-- [ ] 3.3 Handle tool-side edge: if POST fails before 202 (connection refused) return error with actionable message; do NOT attempt any local spawn as fallback
-- [ ] 3.4 Unit test: mock gateway endpoint, assert tool correctly forwards JWT, returns eventId, handles non-202 as error
+## 3. system-manager MCP restart_self tool (TypeScript)
+
+Scope **simplified**: no new endpoint needed — tool just POSTs the existing `/web/restart`.
+
+- [x] 3.1 Added `restart_self` tool schema to tools array (line ~571) with `targets?` and `reason?` + explicit description warning about `--force-gateway` disconnect
+- [x] 3.2 Handler at end of dispatch: uses `serverFetch` via unix socket (same pattern as `remove_mcp_app`); forwards targets + reason
+- [x] 3.3 Success → text describing mode + txid + reconnect expectation; error → preserves `code`, `hint`, `errorLogPath` from endpoint
+- [x] 3.4 No fallback — endpoint error surfaced as isError text; no retry, no spawn
+- [>] 3.5 Unit test — **deferred to Phase 6 TV-1 / TV-2**: end-to-end via real daemon gives stronger signal than mock
 
 ## 4. system-manager execute_command denylist (TypeScript)
 
@@ -33,10 +38,10 @@
 
 ## 5. Policy + docs
 
-- [ ] 5.1 Add to `AGENTS.md` (top-level rules section): 「AI 禁止自行 spawn / kill / restart daemon 行程；restart 必須透過 `restart_self` tool，否則違規」
-- [ ] 5.2 Add section to `specs/architecture.md`: "Daemon Lifecycle Authority" — gateway is the sole owner; daemon never forks/execs another daemon; AI never invokes daemon-spawning commands
-- [ ] 5.3 Write `docs/events/event_2026-04-20_daemon-orphan.md` capturing the incident RCA, fix summary, and link to this spec package
-- [ ] 5.4 Update `templates/AGENTS.md` to mirror the new rule (release sync per §Release 前檢查清單)
+- [x] 5.1 `AGENTS.md`: added "Daemon Lifecycle Authority" section after XDG backup rule
+- [x] 5.2 `specs/architecture.md`: appended "Daemon Lifecycle Authority" section
+- [x] 5.3 `docs/events/event_2026-04-20_daemon-orphan.md`: full RCA + timeline + fix summary
+- [x] 5.4 `templates/AGENTS.md`: new rule 11 mirrors project AGENTS.md
 
 ## 6. Acceptance validation
 
