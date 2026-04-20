@@ -35,6 +35,14 @@ import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
 import { useComments } from "@/context/comments"
 import { sendSessionReloadDebugBeacon } from "@/utils/debug-beacon"
+// session-ui-freshness Phase 3: dock memo classifies fidelity from receivedAt.
+import { classifyFidelity, createRateLimitedWarn, type Fidelity } from "@/utils/freshness"
+import { useFreshnessClock } from "@/hooks/use-freshness-clock"
+import {
+  uiFreshnessEnabled,
+  uiFreshnessHardTimeoutSec,
+  uiFreshnessThresholdSec,
+} from "@/context/frontend-tweaks"
 import { ConstrainDragYAxis, getDraggableId } from "@/utils/solid-dnd"
 import { usePermission } from "@/context/permission"
 import { showToast } from "@opencode-ai/ui/toast"
@@ -922,6 +930,12 @@ export default function Page() {
   })
   const hasActiveChild = createMemo(() => !!activeChild())
   const sessionBusy = createMemo(() => status().type !== "idle" || hasActiveChild())
+  const { freshnessNow: activeChildFreshnessNow } = useFreshnessClock()
+  // session-ui-freshness R5.S2 warn sink (rate-limited ≤1/min per sessionID).
+  const warnActiveChildInvalid = createRateLimitedWarn((msg, detail) => {
+    // eslint-disable-next-line no-console
+    console.warn(msg, detail)
+  })
   const activeChildDock = createMemo(() => {
     const child = activeChild()
     if (!child) return undefined
@@ -932,6 +946,17 @@ export default function Page() {
       messages: childMessages,
       partsByMessage: sync.data.part,
     })
+    // session-ui-freshness R2/R5: classify fidelity from client receivedAt.
+    const fidelity: Fidelity = classifyFidelity(
+      child.receivedAt,
+      activeChildFreshnessNow(),
+      {
+        softSec: uiFreshnessThresholdSec(),
+        hardSec: uiFreshnessHardTimeoutSec(),
+      },
+      uiFreshnessEnabled(),
+      { onInvalid: (raw) => warnActiveChildInvalid(child.sessionID, raw) },
+    )
     return {
       agent: formatActiveChildAgentLabel(child.agent),
       title: derived.title,
@@ -939,6 +964,8 @@ export default function Page() {
       href: childSessionHref(sdk.directory, child.sessionID),
       sessionID: child.sessionID,
       startedAt: child.dispatchedAt ?? childSession?.time.created,
+      fidelity,
+      receivedAt: child.receivedAt,
     }
   })
   const visibleChildDock = createMemo(() => {

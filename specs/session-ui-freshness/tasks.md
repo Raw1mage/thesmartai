@@ -36,11 +36,11 @@ Canonical execution checklist。每個 task 對到 spec 的 Requirement + C4/IDE
 
 ## 3. UI freshness consumption
 
-- [ ] 3.1 `packages/app/src/pages/session.tsx` — `activeChildDock` memo 重寫：讀 `receivedAt` + `freshnessNow()` + thresholds，計算 `fidelity ∈ {fresh, stale, hard-stale}`；`flag=0` 早退回 `fresh` [R2.S1/S2/S3, R6.S1/S2, CMP C1.5]
+- [x] 3.1 `session.tsx` — `activeChildDock` memo 接 `classifyFidelity()`；dock 物件新增 `fidelity` + `receivedAt` 欄位；onInvalid 接 `createRateLimitedWarn` 寫 console.warn（≤1/min/sessionID）。render-side 視覺套色/收合留待 PromptInput 消費端處理 [R2.S1/S2/S3, R6.S1/S2, R5, CMP C1.5]
 - [ ] 3.2 `packages/app/src/pages/session/session-side-panel.tsx` — process-card render 消費 `fidelity`；`stale` 顯示 `"updated Ns ago"` badge；`hard-stale` 灰化或收合 [R2.S2/S3, CMP C1.6]
 - [ ] 3.3 `packages/app/src/pages/session/tool-page.tsx` — process-list elapsed timer 改讀 `receivedAt`；`hard-stale` 停止跳秒 [R2.S3, DD-7, CMP C1.7]
 - [ ] 3.4 `packages/app/src/pages/session/monitor-helper.ts` — `ProcessCard` factory 複製 `receivedAt` 並計算 `elapsed = Math.max(0, now - receivedAt)`（語義澄清，欄位名不動） [DD-7, CMP C1.8]
-- [ ] 3.5 建立 shared `classifyFidelity(receivedAt, now, soft, hard)` util（單一 source of truth，R5 檢查在這裡做） [R5.S1/S2, DD-4]
+- [x] 3.5 新檔 `packages/app/src/utils/freshness.ts` 含 `classifyFidelity()` + `createRateLimitedWarn()`；單一 source of truth；R5 檢查（undefined / NaN / Infinity / negative / 0 → hard-stale）+ flag=0 bypass 全涵蓋。新 test `freshness.test.ts` 18 pass / 0 fail [R5.S1/S2, DD-4, DD-5]
 - [ ] 3.6 新 test 覆蓋 R2.S1/S2/S3/S4 + R5.S1/S2：freshness boundary、tick 重算、invalid receivedAt → hard-stale
 - [ ] 3.7 phase summary（Phase 3 完成後）寫入 event log
 
