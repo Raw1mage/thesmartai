@@ -26,6 +26,14 @@ import { useSync } from "@/context/sync"
 import type { Message, Todo, UserMessage } from "@opencode-ai/sdk/v2/client"
 import { getSessionStatusSummary } from "./helpers"
 import { buildMonitorEntries, buildProcessCards, type EnrichedMonitorEntry } from "./monitor-helper"
+// session-ui-freshness Phase 3.2: classify card fidelity from receivedAt.
+import { classifyFidelity, createRateLimitedWarn, type Fidelity } from "@/utils/freshness"
+import { useFreshnessClock } from "@/hooks/use-freshness-clock"
+import {
+  uiFreshnessEnabled,
+  uiFreshnessHardTimeoutSec,
+  uiFreshnessThresholdSec,
+} from "@/context/frontend-tweaks"
 import { SessionStatusSections } from "./session-status-sections"
 import { StatusTodoList } from "./status-todo-list"
 import { useStatusMonitor } from "./use-status-monitor"
@@ -535,6 +543,12 @@ export function SessionSidePanel(props: {
                           {(() => {
                             const processCards = () =>
                               buildProcessCards((monitorEntries() ?? []) as EnrichedMonitorEntry[], activeSessionID())
+                            // session-ui-freshness R2/R5: shared freshness clock + warn sink.
+                            const { freshnessNow: sidePanelFreshnessNow } = useFreshnessClock()
+                            const warnInvalidReceivedAt = createRateLimitedWarn((msg, detail) => {
+                              // eslint-disable-next-line no-console
+                              console.warn(msg, detail)
+                            })
                             return (
                               <Show
                                 when={processCards().length > 0}
@@ -571,14 +585,45 @@ export function SessionSidePanel(props: {
                                             : card.status === "pending"
                                               ? "Pending"
                                               : ""
-                                    const elapsed = () =>
-                                      card.elapsed == null
+                                    // session-ui-freshness: R2 fidelity + R5 invalid-handling. Hard-stale
+                                    // also freezes the elapsed timer per DD-7 — we compute from receivedAt
+                                    // instead of the raw elapsed when classification is hard-stale.
+                                    const fidelity = createMemo<Fidelity>(() =>
+                                      classifyFidelity(
+                                        card.receivedAt,
+                                        sidePanelFreshnessNow(),
+                                        {
+                                          softSec: uiFreshnessThresholdSec(),
+                                          hardSec: uiFreshnessHardTimeoutSec(),
+                                        },
+                                        uiFreshnessEnabled(),
+                                        { onInvalid: (raw) => warnInvalidReceivedAt(card.key, raw) },
+                                      ),
+                                    )
+                                    const secondsSinceReceived = createMemo(() => {
+                                      const rxAt = card.receivedAt
+                                      if (typeof rxAt !== "number" || !Number.isFinite(rxAt) || rxAt <= 0)
+                                        return undefined
+                                      return Math.max(0, Math.floor((sidePanelFreshnessNow() - rxAt) / 1000))
+                                    })
+                                    const elapsed = () => {
+                                      if (fidelity() === "hard-stale") return "" // frozen (DD-7)
+                                      return card.elapsed == null
                                         ? ""
                                         : card.elapsed < 60
                                           ? `${card.elapsed}s`
                                           : Math.floor(card.elapsed / 60) < 60
                                             ? `${Math.floor(card.elapsed / 60)}m`
                                             : `${Math.floor(Math.floor(card.elapsed / 60) / 60)}h${Math.floor(card.elapsed / 60) % 60}m`
+                                    }
+                                    const cardOpacity = () =>
+                                      fidelity() === "hard-stale" ? 0.4 : fidelity() === "stale" ? 0.75 : 1
+                                    const staleHint = () => {
+                                      if (fidelity() === "fresh") return undefined
+                                      const s = secondsSinceReceived()
+                                      if (s === undefined) return "stale"
+                                      return `updated ${s}s ago`
+                                    }
                                     return (
                                       <div
                                         class="rounded-md border bg-background-base px-3 py-2 flex flex-col gap-1"
@@ -586,6 +631,7 @@ export function SessionSidePanel(props: {
                                           "border-left": `3px solid ${borderColor()}`,
                                           "border-color": "var(--border-weak-base)",
                                           "border-left-color": borderColor(),
+                                          opacity: cardOpacity(),
                                         }}
                                       >
                                         <div class="flex items-start gap-2 min-w-0">
@@ -626,6 +672,13 @@ export function SessionSidePanel(props: {
                                           {card.model ? ` · ${card.model.modelID}` : ""}
                                           {` · ${card.requests} reqs · ${card.totalTokens.toLocaleString()} tok`}
                                         </div>
+                                        <Show when={staleHint()}>
+                                          {(hint) => (
+                                            <div class="text-11-regular text-text-weak break-words italic">
+                                              {hint()}
+                                            </div>
+                                          )}
+                                        </Show>
                                       </div>
                                     )
                                   }}
