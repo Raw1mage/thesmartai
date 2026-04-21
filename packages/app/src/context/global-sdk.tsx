@@ -211,14 +211,35 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
                 })
               },
             })
+            const previousEventAt = lastEventAt
             streamOpenCount += 1
             lastEventAt = Date.now()
             if (streamOpenCount > 1 && typeof window !== "undefined") {
-              console.info("[global-sdk] event stream reconnected — dispatching resync signal", {
-                url: server.url,
-                openCount: streamOpenCount,
-              })
-              window.dispatchEvent(new CustomEvent("opencode:sse_reconnect"))
+              // Only treat this reconnect as "missed events — full resync needed"
+              // if the stream was truly down for a while. Short flaps (nginx
+              // keepalive / cellular NAT bounce / HTTP/2 ping miss) reconnect
+              // within seconds; racing a force-refetch against an in-flight
+              // streaming reply can wipe partial message parts from the store
+              // because the GET /message response is a point-in-time snapshot
+              // that may predate the current streaming assistant message. Rely
+              // on SSE's natural event delivery for short gaps.
+              const SSE_LONG_OUTAGE_THRESHOLD_MS = 30_000
+              const gapMs = previousEventAt === 0 ? 0 : Date.now() - previousEventAt
+              if (gapMs > SSE_LONG_OUTAGE_THRESHOLD_MS) {
+                console.info("[global-sdk] event stream reconnected after long outage — dispatching resync", {
+                  url: server.url,
+                  openCount: streamOpenCount,
+                  gapMs,
+                  thresholdMs: SSE_LONG_OUTAGE_THRESHOLD_MS,
+                })
+                window.dispatchEvent(new CustomEvent("opencode:sse_reconnect"))
+              } else {
+                console.info("[global-sdk] event stream reconnected — short flap, skipping resync", {
+                  url: server.url,
+                  openCount: streamOpenCount,
+                  gapMs,
+                })
+              }
             }
             let yielded = Date.now()
             for await (const event of events.stream) {
