@@ -30,6 +30,12 @@ type RuntimeEntry = {
     resolve(input: MessageV2.WithParts): void
     reject(reason?: any): void
   }[]
+  // Promise resolvers queued by waitForSlot(). Drained on finish() so
+  // callers blocked waiting for the slot to open can re-attempt start().
+  // Unlike `callbacks`, these DO NOT receive the finishing runloop's
+  // result — they represent "a new prompt arrived while this runtime was
+  // mid-cleanup; it needs its OWN runloop against its OWN user message".
+  slotWaiters: Array<() => void>
 }
 
 export type RuntimeStart = {
@@ -82,15 +88,38 @@ export function start(sessionID: string, options?: { replace?: boolean }): Runti
   if (current && options?.replace) current.abort.abort("replace" satisfies CancelReason)
   const controller = new AbortController()
   const runID = `${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`
+  // Carry-over: preserve slotWaiters across a replace so waiters don't get
+  // stranded when two back-to-back prompts collide with interrupt handling.
+  // Callbacks carry-over stays as before (historical behaviour).
+  const carriedSlotWaiters = current && options?.replace ? current.slotWaiters : []
   s[sessionID] = {
     runID,
     abort: controller,
     callbacks: current && options?.replace ? current.callbacks : [],
+    slotWaiters: carriedSlotWaiters,
   }
   return {
     runID,
     signal: controller.signal,
   }
+}
+
+/**
+ * Wait until the current runtime slot for this session is released (by
+ * finish() or cancel()). Used by runLoop() entry when a new prompt arrives
+ * while an older runloop is still in its post-reply cleanup window —
+ * the new prompt must get its own runloop against its own user message
+ * instead of being resolved with the old runloop's stale reply.
+ *
+ * Safe to call when no runtime exists — resolves immediately.
+ */
+export function waitForSlot(sessionID: string): Promise<void> {
+  const s = state()
+  const current = s[sessionID]
+  if (!current) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    current.slotWaiters.push(resolve)
+  })
 }
 
 export function enqueueCallback(
@@ -141,6 +170,16 @@ export function finish(sessionID: string, runID: string) {
     log.info("finish: runID mismatch, newer runtime active — skipping", { sessionID, runID, activeRunID: match.runID })
     return
   }
+  const waiters = match.slotWaiters
   delete s[sessionID]
   SessionStatus.set(sessionID, { type: "idle" })
+  // Release waiters AFTER the entry is deleted so their follow-up start()
+  // call sees a clean slot.
+  for (const w of waiters) {
+    try {
+      w()
+    } catch {
+      // swallow — waiter error must not stop release of others
+    }
+  }
 }

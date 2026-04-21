@@ -46,6 +46,7 @@ import {
   finish as finishRuntime,
   enqueueCallback,
   consumeCallbacks,
+  waitForSlot as waitForRuntimeSlot,
   type CancelReason,
 } from "./prompt-runtime"
 import { TuiEvent } from "@/cli/cmd/tui/event"
@@ -820,15 +821,42 @@ export namespace SessionPrompt {
       incomingModel?: { providerId: string; modelID: string }
     },
   ) {
-    const runtime = start(sessionID, { replace: options?.replaceRuntime })
+    // Race-condition fix: previously, when start() returned undefined because
+    // a runloop was still in its post-reply cleanup window (SharedContext
+    // update / compaction / pruning — line ~1884-1932), we would enqueue a
+    // result-callback that later got drained at the end of the OLD runloop
+    // and resolved with the OLD runloop's assistant reply. That silently
+    // absorbed the new user message: "here's the reply" the daemon thought
+    // it was serving was actually a reply to a different, older prompt.
+    // User-visible symptom: first prompt typed right after a runloop just
+    // finished got no response, probabilistic with the exact typing timing.
+    //
+    // Fix: wait for the current runtime slot to release, then start our own
+    // runloop against the user message we were invoked for. Bounded retry
+    // with replace-on-last-resort so a pathological never-finish runtime
+    // can't livelock a fresh prompt.
+    let runtime = start(sessionID, { replace: options?.replaceRuntime })
     if (!runtime) {
-      return new Promise<MessageV2.WithParts>((resolve, reject) => {
-        enqueueCallback(sessionID, { resolve, reject })
-      })
+      for (let attempt = 0; attempt < 3 && !runtime; attempt++) {
+        await waitForRuntimeSlot(sessionID)
+        runtime = start(sessionID)
+      }
+      if (!runtime) {
+        log.warn("runLoop: slot never opened after waits — forcing replace", { sessionID })
+        runtime = start(sessionID, { replace: true })
+      }
+      if (!runtime) {
+        // Absolute last resort: the enqueue path. This should be
+        // essentially unreachable, but keep it so a pathological state
+        // never blocks the caller silently.
+        return new Promise<MessageV2.WithParts>((resolve, reject) => {
+          enqueueCallback(sessionID, { resolve, reject })
+        })
+      }
     }
 
-    const abort = runtime.signal
-    using _ = defer(() => finishRuntime(sessionID, runtime.runID))
+    const abort = runtime!.signal
+    using _ = defer(() => finishRuntime(sessionID, runtime!.runID))
 
     let structuredOutput: unknown | undefined
 
