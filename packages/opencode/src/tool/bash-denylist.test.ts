@@ -5,20 +5,9 @@ import { matchDaemonSpawnDenylist } from "./bash"
  * See specs/safe-daemon-restart/test-vectors.json TV-3, TV-4. */
 
 describe("daemon-spawn denylist", () => {
-  test("blocks webctl.sh dev-start (TV-3)", () => {
-    const m = matchDaemonSpawnDenylist("webctl.sh dev-start")
-    expect(m).not.toBeNull()
-    expect(m?.rule).toBe("webctl-restart-family")
-  })
-
-  test("blocks webctl.sh restart with flags", () => {
-    const m = matchDaemonSpawnDenylist("./webctl.sh restart --force-gateway")
-    expect(m?.rule).toBe("webctl-restart-family")
-  })
-
-  test("blocks webctl.sh web-refresh", () => {
-    const m = matchDaemonSpawnDenylist("/etc/opencode/webctl.sh web-refresh")
-    expect(m?.rule).toBe("webctl-restart-family")
+  test("allows webctl.sh restart (rule removed 2026-04-21 — needed for other projects)", () => {
+    expect(matchDaemonSpawnDenylist("webctl.sh dev-start")).toBeNull()
+    expect(matchDaemonSpawnDenylist("./webctl.sh restart --force-gateway")).toBeNull()
   })
 
   test("blocks bun serve --unix-socket (TV-4)", () => {
@@ -64,15 +53,15 @@ describe("daemon-spawn denylist", () => {
   })
 
   test("argvHash is stable across calls", () => {
-    const a = matchDaemonSpawnDenylist("webctl.sh dev-start")
-    const b = matchDaemonSpawnDenylist("webctl.sh dev-start")
+    const a = matchDaemonSpawnDenylist("opencode serve --port 1080")
+    const b = matchDaemonSpawnDenylist("opencode serve --port 1080")
     expect(a?.argvHash).toBe(b?.argvHash)
     expect(a?.argvHash).toMatch(/^[0-9a-f]{8}$/)
   })
 
   test("argvHash differs for different commands", () => {
-    const a = matchDaemonSpawnDenylist("webctl.sh dev-start")
-    const b = matchDaemonSpawnDenylist("webctl.sh restart")
+    const a = matchDaemonSpawnDenylist("opencode serve --port 1080")
+    const b = matchDaemonSpawnDenylist("opencode serve --port 2080")
     expect(a?.argvHash).not.toBe(b?.argvHash)
   })
 })

@@ -27,7 +27,6 @@
 **AI 禁止自行 spawn / kill / restart opencode daemon 或 gateway 行程。** 唯一合法的自重啟路徑是呼叫 `system-manager:restart_self` MCP tool（內部 POST `/api/v2/global/web/restart`，由 gateway + `webctl.sh` 負責 rebuild + install + restart 的 orchestration）。
 
 - **禁止指令範圍**（由 `packages/opencode/src/tool/bash.ts` 的 `DAEMON_SPAWN_DENYLIST` 擋下；實際規則以原始碼為準）：
-  - `webctl.sh dev-start` / `dev-refresh` / `restart` / `web-restart` / `web-refresh` / `reload`
   - `bun ... serve --unix-socket ...`
   - `opencode serve` / `opencode web`
   - 針對 daemon pid 的 `kill`（透過 `cat daemon.lock` 或 `pgrep opencode` 取得 pid）

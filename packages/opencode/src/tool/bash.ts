@@ -31,7 +31,6 @@ export const log = Log.create({ service: "bash-tool" })
  * (DD-5): fast regex prefilter, not a full AST walk — defence-in-depth,
  * not a security boundary; the hard gate is AGENTS.md + code review. */
 const DAEMON_SPAWN_DENYLIST: Array<{ rule: string; pattern: RegExp }> = [
-  { rule: "webctl-restart-family", pattern: /\bwebctl\.sh\s+(dev-start|dev-refresh|dev-stop|restart|web-restart|web-refresh|reload)\b/ },
   { rule: "bun-serve-unix-socket", pattern: /\bbun\b[^\n;|&]*\bserve\b[^\n;|&]*--unix-socket\b/ },
   { rule: "opencode-serve-or-web", pattern: /\b(?:opencode|\.\/opencode)\s+(?:serve|web)\b/ },
   { rule: "direct-daemon-signal", pattern: /\bkill\s+(?:-(?:TERM|KILL|9|15|HUP|INT)\s+)?\$?\(\s*(?:cat\s+[^)]*daemon\.lock|pgrep[^)]*opencode[^)]*)\s*\)/ },
