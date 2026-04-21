@@ -23,6 +23,19 @@ interface WsSessionState {
   lastInputLength?: number
   disableWebsockets: boolean
   continuationInvalidated?: boolean
+  // True once a `response.completed` event has landed for this session
+  // within the current daemon process. Starts false even when state is
+  // hydrated from disk — persisted continuations survive daemon restart
+  // but Codex's server-side state might not, so the first request of a
+  // fresh process must not trust the carry-over blindly. After one
+  // successful completion we know the continuation is live on both sides
+  // and subsequent requests can reuse it normally.
+  validatedInProcess?: boolean
+  // True when the persisted `lastResponseId` was loaded from disk (i.e.
+  // produced by a previous daemon life), as opposed to written by this
+  // process. Used to distinguish "stale carry-over" from "freshly
+  // earned". Cleared once validatedInProcess becomes true.
+  continuationFromDisk?: boolean
 }
 
 const sessions = new Map<string, WsSessionState>()
@@ -31,6 +44,7 @@ function getSession(sessionId: string): WsSessionState {
   let state = sessions.get(sessionId)
   if (!state) {
     const persisted = getContinuation(sessionId)
+    const hasPersisted = !!persisted.lastResponseId
     state = {
       ws: null,
       status: "idle",
@@ -38,6 +52,8 @@ function getSession(sessionId: string): WsSessionState {
       lastResponseId: persisted.lastResponseId,
       lastInputLength: persisted.lastInputLength,
       accountId: persisted.accountId,
+      validatedInProcess: false,
+      continuationFromDisk: hasPersisted,
     }
     sessions.set(sessionId, state)
   }
@@ -255,6 +271,11 @@ function wsRequest(input: {
                 accountId: state.accountId,
               })
             }
+            // Mark this process's view of the session as validated — a
+            // full round-trip completed successfully. Subsequent requests
+            // can now trust lastResponseId as continuation input.
+            state.validatedInProcess = true
+            state.continuationFromDisk = false
             endStream()
             return
           }
@@ -370,6 +391,26 @@ export interface WsTransportInput {
 export async function tryWsTransport(input: WsTransportInput): Promise<ReadableStream<ResponseStreamEvent> | null> {
   const { sessionId, accessToken, accountId, body, wsUrl } = input
   const state = getSession(sessionId)
+
+  // Daemon-restart safety: if this session's continuation came from disk
+  // (previous daemon life) and we have not yet completed a response in
+  // this process, drop the carry-over before the first request. Codex's
+  // server-side state for that lastResponseId may or may not still be
+  // valid — getting a generic "An error occurred while processing your
+  // request" from the upstream after a restart is the empirical symptom
+  // users hit. Trading one round's continuation-cache benefit for
+  // reliability is worth it; after the first successful completion the
+  // carry-over flag clears and subsequent calls reuse continuation
+  // normally.
+  if (state.continuationFromDisk && !state.validatedInProcess && state.lastResponseId) {
+    console.error(
+      `[CODEX-WS] dropping disk-persisted continuation before first call session=${sessionId} lastResponseId=${state.lastResponseId.slice(0, 12)}...`,
+    )
+    state.lastResponseId = undefined
+    state.lastInputLength = undefined
+    invalidateContinuation(sessionId)
+    state.continuationFromDisk = false
+  }
 
   // Account switch: close WS, preserve per-account continuation
   if (state.accountId !== undefined && state.accountId !== accountId) {
