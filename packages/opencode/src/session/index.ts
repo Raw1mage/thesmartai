@@ -663,10 +663,20 @@ export namespace Session {
     z.object({
       sessionID: Identifier.schema("session"),
       limit: z.number().optional(),
+      // Wall-clock ms — only return messages created at or after this point.
+      // Used by the incremental resync path so a reconnecting client can
+      // fetch the small tail of new messages instead of re-downloading the
+      // entire session history. MessageV2.stream yields newest-first, so we
+      // can short-circuit as soon as we see an older message.
+      since: z.number().optional(),
     }),
     async (input) => {
       const result = [] as MessageV2.WithParts[]
       for await (const msg of MessageV2.stream(input.sessionID)) {
+        if (input.since !== undefined) {
+          const created = msg.info?.time?.created
+          if (typeof created === "number" && created < input.since) break
+        }
         if (input.limit && result.length >= input.limit) break
         result.push(msg)
       }

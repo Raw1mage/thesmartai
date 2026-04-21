@@ -299,6 +299,84 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         })
     }
 
+    // Incremental tail fetch — used by force-resync when we already have
+    // messages hydrated. Instead of re-downloading the whole session (which
+    // races an in-flight streaming reply and can wipe partial parts), ask
+    // the server for just the messages created since shortly before our
+    // newest known message, then merge them into the existing store.
+    const INCREMENTAL_SINCE_MARGIN_MS = 1000
+    const loadMessagesIncremental = async (input: {
+      directory: string
+      client: typeof sdk.client
+      setStore: Setter
+      store: Store<State>
+      sessionID: string
+    }) => {
+      const existing = input.store.message[input.sessionID] ?? []
+      if (existing.length === 0) return  // caller should use loadMessages for cold start
+      // Use the newest known message's created time as the cursor, minus a
+      // small margin so any message written during that boundary second is
+      // included. The server returns messages with time.created >= since.
+      let newest = 0
+      for (const msg of existing) {
+        const t = (msg?.info?.time as { created?: number } | undefined)?.created
+        if (typeof t === "number" && t > newest) newest = t
+      }
+      if (newest === 0) return  // nothing to anchor against — let caller decide
+      const since = newest - INCREMENTAL_SINCE_MARGIN_MS
+      sendSessionReloadDebugBeacon({
+        sdk,
+        event: "loadMessagesIncremental:start",
+        sessionID: input.sessionID,
+        payload: { directory: input.directory, since },
+      })
+      try {
+        const url = new URL(`${sdk.url}/api/v2/session/${input.sessionID}/message`)
+        url.searchParams.set("directory", input.directory)
+        url.searchParams.set("since", String(since))
+        const res = await retry(() => sdk.fetch(url.toString()))
+        if (!res.ok) throw new Error(`incremental fetch ${res.status}`)
+        const raw = (await res.json()) as Array<{ info: Message; parts: Part[] }>
+        const incoming = raw.filter((x) => !!x?.info?.id)
+        sendSessionReloadDebugBeacon({
+          sdk,
+          event: "loadMessagesIncremental:success",
+          sessionID: input.sessionID,
+          payload: { directory: input.directory, since, incomingCount: incoming.length },
+        })
+        if (incoming.length === 0) return
+        batch(() => {
+          input.setStore(
+            "message",
+            input.sessionID,
+            produce((draft: Message[]) => {
+              for (const item of incoming) {
+                const msg = item.info
+                const idx = draft.findIndex((m) => m?.id === msg.id)
+                if (idx >= 0) draft[idx] = msg
+                else draft.push(msg)
+              }
+              draft.sort((a, b) => cmp(a?.id ?? "", b?.id ?? ""))
+            }),
+          )
+          for (const item of incoming) {
+            input.setStore("part", item.info.id, reconcile(sortParts(item.parts), { key: "id" }))
+          }
+        })
+      } catch (error) {
+        sendSessionReloadDebugBeacon({
+          sdk,
+          event: "loadMessagesIncremental:error",
+          sessionID: input.sessionID,
+          payload: {
+            directory: input.directory,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        })
+        throw error
+      }
+    }
+
     return {
       get data() {
         return currentStore()
@@ -427,8 +505,29 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   )
                 })
 
-          const messagesReq =
-            hasMessages && hydrated && !force
+          // Incremental resync: when force-refreshing a session we already
+          // have hydrated, fetch only new messages (tail) instead of
+          // re-downloading the whole history. Full loadMessages races
+          // against in-flight streaming replies — the point-in-time GET
+          // snapshot can predate the still-being-written assistant message
+          // and reconcile-wipe its partial parts from the store. The
+          // incremental path merges new messages only, leaving the streaming
+          // one untouched so SSE deltas keep flowing into it.
+          const canUseIncremental = force && hasSession && hasMessages && hydrated
+          const messagesReq = canUseIncremental
+            ? loadMessagesIncremental({
+                directory,
+                client,
+                setStore,
+                store,
+                sessionID,
+              }).catch(() => {
+                // Incremental fetch failed — fall back to full refetch so
+                // the user doesn't end up with a missed reply just because
+                // the incremental endpoint hiccuped.
+                return loadMessages({ directory, client, setStore, sessionID, limit })
+              })
+            : hasMessages && hydrated && !force
               ? Promise.resolve()
               : loadMessages({
                   directory,

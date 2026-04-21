@@ -1744,6 +1744,13 @@ export const SessionRoutes = lazy(() =>
         "query",
         z.object({
           limit: z.coerce.number().optional(),
+          // Wall-clock ms — incremental tail fetch. Only return messages
+          // whose time.created >= since. Designed for SSE-reconnect resync
+          // so a client coming back from a long outage can catch up on new
+          // messages without re-downloading the whole history. When set, we
+          // skip SessionCache and ETag/304 (the response is a targeted tail,
+          // not the full session snapshot the cache layer represents).
+          since: z.coerce.number().optional(),
         }),
       ),
       async (c) => {
@@ -1753,11 +1760,13 @@ export const SessionRoutes = lazy(() =>
         log.debug("session.messages request", {
           sessionID,
           limit: query.limit,
+          since: query.since,
           username: username ?? "local",
         })
         sessionRouteDebug("session.messages request", {
           sessionID,
           limit: query.limit,
+          since: query.since,
           username: username ?? "local",
         })
         if (username && UserDaemonManager.routeSessionReadEnabled()) {
@@ -1774,6 +1783,25 @@ export const SessionRoutes = lazy(() =>
             },
             503,
           )
+        }
+        // Incremental path — bypass cache + ETag; return just the tail.
+        if (query.since !== undefined) {
+          const tail = await Session.messages({ sessionID, limit: query.limit, since: query.since })
+          sessionRouteDebug("session.messages incremental response", {
+            sessionID,
+            count: tail.length,
+            since: query.since,
+            limit: query.limit,
+          })
+          log.debug("session.messages incremental response", {
+            sessionID,
+            count: tail.length,
+            since: query.since,
+            limit: query.limit,
+          })
+          // No ETag header here — the response is a derived slice, not the
+          // full session snapshot the session-level version counter tracks.
+          return c.json(tail)
         }
         // Conditional GET short-circuit for message listing. See R-2.
         const etag = SessionCache.currentEtag(sessionID)
