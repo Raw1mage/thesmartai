@@ -313,16 +313,16 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       sessionID: string
     }) => {
       const existing = input.store.message[input.sessionID] ?? []
-      if (existing.length === 0) return  // caller should use loadMessages for cold start
+      if (existing.length === 0) return // caller should use loadMessages for cold start
       // Use the newest known message's created time as the cursor, minus a
       // small margin so any message written during that boundary second is
       // included. The server returns messages with time.created >= since.
       let newest = 0
       for (const msg of existing) {
-        const t = (msg?.info?.time as { created?: number } | undefined)?.created
+        const t = msg?.time?.created
         if (typeof t === "number" && t > newest) newest = t
       }
-      if (newest === 0) return  // nothing to anchor against — let caller decide
+      if (newest === 0) return // nothing to anchor against — let caller decide
       const since = newest - INCREMENTAL_SINCE_MARGIN_MS
       sendSessionReloadDebugBeacon({
         sdk,
@@ -375,6 +375,52 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         })
         throw error
       }
+    }
+
+    // R9 (frontend-session-lazyload revise 2026-04-22): cursor-based older
+    // history pagination. Replaces the previous "grow `limit` and refetch
+    // the whole prefix" hack with a true append. Uses direct fetch so we
+    // can send the `beforeMessageID` query param without waiting for an
+    // SDK regen cycle (mirrors the `loadMessagesIncremental` pattern).
+    const loadOlderMessages = async (input: {
+      directory: string
+      client: typeof sdk.client
+      setStore: Setter
+      store: Store<State>
+      sessionID: string
+      beforeMessageID: string
+      limit: number
+    }): Promise<{ appended: number }> => {
+      const url = new URL(`${sdk.url}/api/v2/session/${input.sessionID}/message`)
+      url.searchParams.set("directory", input.directory)
+      url.searchParams.set("beforeMessageID", input.beforeMessageID)
+      url.searchParams.set("limit", String(input.limit))
+      const res = await retry(() => sdk.fetch(url.toString()))
+      if (!res.ok) throw new Error(`loadOlder fetch ${res.status}`)
+      const raw = (await res.json()) as Array<{ info: Message; parts: Part[] }>
+      const incoming = raw.filter((x) => !!x?.info?.id)
+      if (incoming.length === 0) return { appended: 0 }
+      batch(() => {
+        input.setStore(
+          "message",
+          input.sessionID,
+          produce((draft: Message[]) => {
+            const known = new Set(draft.map((m) => m?.id))
+            for (const item of incoming) {
+              const msg = item.info
+              if (!msg?.id || known.has(msg.id)) continue
+              draft.push(msg)
+              known.add(msg.id)
+            }
+            // id prefix encodes creation time, so id sort is chronological.
+            draft.sort((a, b) => cmp(a?.id ?? "", b?.id ?? ""))
+          }),
+        )
+        for (const item of incoming) {
+          input.setStore("part", item.info.id, reconcile(sortParts(item.parts), { key: "id" }))
+        }
+      })
+      return { appended: incoming.length }
     }
 
     return {
@@ -658,31 +704,58 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             return meta.loading[key] ?? false
           },
           async loadMore(sessionID: string, count?: number) {
-            // specs/frontend-session-lazyload: loadMore respects tweaks so
-            // scroll-spy increments stay aligned with the initial page size
-            // bucket. Explicit count param (e.g. user clicking "Load Earlier")
-            // still overrides.
+            // R9 (frontend-session-lazyload revise 2026-04-22): cursor
+            // append. The old path (`currentLimit + count` full refetch)
+            // was the whole-slice-refetch anti-pattern INV-9 forbids — it
+            // doubled the downloaded payload on each scroll-up and caused
+            // the cold-open starvation spike this revise targets.
             if (count === undefined) {
               const cfg = frontendTweaks()
-              count =
-                cfg.frontend_session_lazyload === 1
-                  ? cfg.initial_page_size_large
-                  : messagePageSize
+              count = cfg.frontend_session_lazyload === 1 ? cfg.initial_page_size_large : messagePageSize
             }
             const directory = sdk.directory
             const client = sdk.client
-            const [, setStore] = globalSync.child(directory)
+            const [store, setStore] = globalSync.child(directory)
             const key = keyFor(directory, sessionID)
             if (meta.loading[key]) return
             if (meta.complete[key]) return
-            const currentLimit = meta.limit[key] ?? messagePageSize
-            await loadMessages({
-              directory,
-              client,
-              setStore,
-              sessionID,
-              limit: currentLimit + count,
-            })
+            const existing = store.message[sessionID] ?? []
+            if (existing.length === 0) {
+              // Cold-start should go through `sync.session.sync` / loadMessages,
+              // not through loadMore. Without an anchor cursor there's no
+              // "older" to fetch. Treat as no-op rather than silently hitting
+              // the tail endpoint (which would duplicate what the page open
+              // already did).
+              return
+            }
+            // id prefix encodes creation time, so lexicographically smallest
+            // known id is the oldest — the cursor for the next older page.
+            let oldest = existing[0]?.id
+            for (const msg of existing) {
+              if (!msg?.id) continue
+              if (!oldest || msg.id < oldest) oldest = msg.id
+            }
+            if (!oldest) return
+            setMeta("loading", key, true)
+            try {
+              const { appended } = await loadOlderMessages({
+                directory,
+                client,
+                setStore,
+                store,
+                sessionID,
+                beforeMessageID: oldest,
+                limit: count,
+              })
+              // R9: `complete` is now driven by the server returning an
+              // empty page (or fewer than requested), NOT by a client-side
+              // `currentLimit + count` arithmetic. This survives sessions
+              // that gain new older messages via race-y writes.
+              if (appended < count) setMeta("complete", key, true)
+              setMeta("limit", key, (existing.length + appended))
+            } finally {
+              setMeta("loading", key, false)
+            }
           },
         },
         fetch: async (count = 10) => {

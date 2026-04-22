@@ -21,6 +21,7 @@ import { extractChecklistItems } from "@/session/tasks-checklist"
 import { Agent } from "../../agent/agent"
 import { Snapshot } from "@/snapshot"
 import { Log } from "../../util/log"
+import { Tweaks } from "../../config/tweaks"
 import { PermissionNext } from "@/permission/next"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
@@ -1751,6 +1752,13 @@ export const SessionRoutes = lazy(() =>
           // skip SessionCache and ETag/304 (the response is a targeted tail,
           // not the full session snapshot the cache layer represents).
           since: z.coerce.number().optional(),
+          // R9 (specs/frontend-session-lazyload revise 2026-04-22): cursor
+          // for older-history append. When set, return messages strictly
+          // older than this id. Combined with a small default `limit`
+          // (`session_messages_default_tail`) this makes "tail first,
+          // older on scroll" the default server protocol — cold open no
+          // longer full-hydrates a 1000-message session.
+          beforeMessageID: z.string().optional(),
         }),
       ),
       async (c) => {
@@ -1761,19 +1769,25 @@ export const SessionRoutes = lazy(() =>
           sessionID,
           limit: query.limit,
           since: query.since,
+          beforeMessageID: query.beforeMessageID,
           username: username ?? "local",
         })
         sessionRouteDebug("session.messages request", {
           sessionID,
           limit: query.limit,
           since: query.since,
+          beforeMessageID: query.beforeMessageID,
           username: username ?? "local",
         })
         if (username && UserDaemonManager.routeSessionReadEnabled()) {
           const response = await UserDaemonManager.callSessionMessages<MessageV2.WithParts[]>(
             username,
             sessionID,
-            query.limit,
+            {
+              limit: query.limit,
+              since: query.since,
+              beforeMessageID: query.beforeMessageID,
+            },
           )
           if (response.ok && Array.isArray(response.data)) return c.json(response.data)
           return c.json(
@@ -1786,7 +1800,12 @@ export const SessionRoutes = lazy(() =>
         }
         // Incremental path — bypass cache + ETag; return just the tail.
         if (query.since !== undefined) {
-          const tail = await Session.messages({ sessionID, limit: query.limit, since: query.since })
+          const tail = await Session.messages({
+            sessionID,
+            limit: query.limit,
+            since: query.since,
+            beforeMessageID: query.beforeMessageID,
+          })
           sessionRouteDebug("session.messages incremental response", {
             sessionID,
             count: tail.length,
@@ -1803,7 +1822,32 @@ export const SessionRoutes = lazy(() =>
           // full session snapshot the session-level version counter tracks.
           return c.json(tail)
         }
-        // Conditional GET short-circuit for message listing. See R-2.
+
+        // R9: server-side tail-first default. When the client sent neither
+        // `limit` nor `beforeMessageID`, fall back to the tweak-controlled
+        // tail size so cold open bounds its payload. Old callers that
+        // pass an explicit `limit` keep previous behaviour. Cursor path
+        // always uses the caller's limit or the same default.
+        const lazyloadCfg = await Tweaks.frontendLazyload()
+        const defaultTail = lazyloadCfg.sessionMessagesDefaultTail
+        const effectiveLimit = query.limit ?? defaultTail
+
+        // Cursor (beforeMessageID) short-circuits ETag/304 — response is a
+        // derived slice keyed on a specific position, not the full session
+        // snapshot the session-level version counter tracks.
+        if (query.beforeMessageID !== undefined) {
+          const page = await Session.messages({
+            sessionID,
+            limit: effectiveLimit,
+            beforeMessageID: query.beforeMessageID,
+          })
+          console.error(
+            `[MESSAGES-CURSOR] sessionID=${sessionID} before=${query.beforeMessageID} limit=${effectiveLimit} returned=${page.length}`,
+          )
+          return c.json(page)
+        }
+
+        // Conditional GET short-circuit for tail listing. See R-2.
         const etag = SessionCache.currentEtag(sessionID)
         const ifNoneMatch = c.req.header("if-none-match")
         if (SessionCache.isEtagMatch(sessionID, ifNoneMatch)) {
@@ -1811,20 +1855,26 @@ export const SessionRoutes = lazy(() =>
           return c.body(null, 304)
         }
 
-        const cacheKey = `messages:${sessionID}:${query.limit ?? "all"}`
+        // R9: cache key incorporates the `before` position so cursor pages
+        // never collide with the cold-open tail cache. Cold open (no
+        // cursor) keys on "tail".
+        const cacheKey = `messages:${sessionID}:tail:${effectiveLimit}`
         const { data: messages } = await SessionCache.get(cacheKey, sessionID, async () => {
-          const data = await Session.messages({ sessionID, limit: query.limit })
+          const data = await Session.messages({ sessionID, limit: effectiveLimit })
           return { data, version: SessionCache.getVersion(sessionID) }
         })
+        console.error(
+          `[MESSAGES-CURSOR] sessionID=${sessionID} before=null limit=${effectiveLimit} returned=${messages.length}`,
+        )
         sessionRouteDebug("session.messages response", {
           sessionID,
           count: messages.length,
-          limit: query.limit,
+          limit: effectiveLimit,
         })
         log.debug("session.messages response", {
           sessionID,
           count: messages.length,
-          limit: query.limit,
+          limit: effectiveLimit,
         })
         c.header("ETag", SessionCache.currentEtag(sessionID))
         return c.json(messages)
