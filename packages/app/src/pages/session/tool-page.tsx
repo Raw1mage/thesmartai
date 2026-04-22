@@ -31,6 +31,21 @@ import { SessionTelemetryCards } from "./session-telemetry-cards"
 import { useGlobalSync } from "@/context/global-sync"
 import { resolveTelemetryAccountLabel, useSessionTelemetryHydration } from "./session-telemetry-ui"
 
+type SkillLayerState = {
+  name: string
+  loadedAt: number
+  lastUsedAt: number
+  runtimeState: "active" | "idle" | "sticky" | "summarized" | "unloaded"
+  desiredState: "full" | "summary" | "absent"
+  pinned: boolean
+  lastReason: string
+}
+
+type SkillLayerActionResponse = {
+  ok: boolean
+  entries: SkillLayerState[]
+}
+
 export default function SessionToolPageRoute() {
   const language = useLanguage()
   const layout = useLayout()
@@ -368,7 +383,7 @@ export default function SessionToolPageRoute() {
                                   return Math.max(0, Math.floor((toolPageFreshnessNow() - rxAt) / 1000))
                                 })
                                 const elapsed = () => {
-                                  if (fidelity() === "hard-stale") return "" // frozen per DD-7
+                                  if (fidelity() === "hard-stale") return ""
                                   return card.elapsed == null
                                     ? ""
                                     : card.elapsed < 60
@@ -449,6 +464,123 @@ export default function SessionToolPageRoute() {
                     </div>
                   </Show>
                 </Show>
+              </Show>
+            }
+            skillsContent={
+              <Show when={params.id} fallback={<div class="text-12-regular text-text-weak">No active session.</div>}>
+                {(() => {
+                  const [layers, setLayers] = createSignal<SkillLayerState[]>([])
+                  const [error, setError] = createSignal<string | null>(null)
+                  const formatTimestamp = (value?: number) => {
+                    if (!value) return "—"
+                    return new Date(value).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  }
+                  const fetchLayers = async () => {
+                    const sid = params.id
+                    if (!sid) return
+                    try {
+                      const res = await sdk.fetch(`${sdk.url}/api/v2/session/${sid}/skill-layer`)
+                      if (!res.ok) {
+                        const body = await res.json().catch(() => ({ message: "Failed to load skill layers." }))
+                        throw new Error(body.message || "Failed to load skill layers.")
+                      }
+                      setError(null)
+                      const payload = (await res.json()) as SkillLayerState[]
+                      setLayers(payload)
+                    } catch (e) {
+                      console.error(e)
+                      setError(e instanceof Error ? e.message : "Failed to load skill layers.")
+                    }
+                  }
+                  const runAction = async (name: string, action: string) => {
+                    const sid = params.id
+                    if (!sid) return
+                    setError(null)
+                    try {
+                      const res = await sdk.fetch(`${sdk.url}/api/v2/session/${sid}/skill-layer/${name}/action`, {
+                        method: "POST",
+                        headers: { "content-type": "application/json", "x-opencode-directory": sdk.directory },
+                        body: JSON.stringify({ action }),
+                      })
+                      if (!res.ok) throw new Error((await res.json()).message || "Action failed")
+                      const payload = (await res.json()) as SkillLayerActionResponse
+                      setLayers(payload.entries)
+                    } catch (e: any) {
+                      setError(e.message)
+                    }
+                  }
+                  createEffect(() => void fetchLayers())
+
+                  return (
+                    <>
+                      <Show when={error()}>
+                        <div class="text-11-regular text-warning">{error()}</div>
+                      </Show>
+                      <Show
+                        when={layers().length > 0}
+                        fallback={<div class="text-12-regular text-text-weak">No managed skills.</div>}
+                      >
+                        <For each={layers()}>
+                          {(layer) => (
+                            <div class="flex flex-col gap-1 p-1.5 rounded hover:bg-surface-tertiary">
+                              <div class="flex items-center justify-between min-w-0 gap-2">
+                                <span class="text-12-medium text-text-strong truncate" title={layer.name}>
+                                  {layer.name}
+                                  <Show when={layer.pinned}>
+                                    <span class="ml-1 text-warning">★</span>
+                                  </Show>
+                                </span>
+                                <div class="flex gap-1 shrink-0">
+                                  <button
+                                    class="text-11-medium text-text-weak hover:text-text-strong"
+                                    onClick={() => void runAction(layer.name, layer.pinned ? "unpin" : "pin")}
+                                  >
+                                    {layer.pinned ? "Unpin" : "Pin"}
+                                  </button>
+                                  <button
+                                    class="text-11-medium text-text-weak hover:text-text-strong"
+                                    onClick={() => void runAction(layer.name, "promote")}
+                                  >
+                                    Full
+                                  </button>
+                                  <button
+                                    class="text-11-medium text-text-weak hover:text-text-strong"
+                                    onClick={() => void runAction(layer.name, "demote")}
+                                  >
+                                    Sum
+                                  </button>
+                                  <button
+                                    class="text-11-medium text-text-weak hover:text-warning"
+                                    onClick={() => void runAction(layer.name, "unload")}
+                                  >
+                                    Drop
+                                  </button>
+                                </div>
+                              </div>
+                              <div class="flex items-center gap-2 text-11-regular text-text-weak">
+                                <span
+                                  classList={{
+                                    "text-success": layer.runtimeState === "active",
+                                    "text-info": layer.runtimeState === "sticky",
+                                    "text-warning": layer.runtimeState === "summarized",
+                                  }}
+                                >
+                                  [{layer.runtimeState}]
+                                </span>
+                                <span>{layer.desiredState}</span>
+                                <span class="truncate max-w-[100px]">{layer.lastReason}</span>
+                              </div>
+                              <div class="text-11-regular text-text-weak">last used {formatTimestamp(layer.lastUsedAt)}</div>
+                            </div>
+                          )}
+                        </For>
+                      </Show>
+                    </>
+                  )
+                })()}
               </Show>
             }
           />
