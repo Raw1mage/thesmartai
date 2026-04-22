@@ -48,6 +48,12 @@ export namespace Tweaks {
     initialPageSizeLarge: number
     sessionSizeThresholdKb: number
     sessionSizeThresholdParts: number
+    // R9 (frontend-session-lazyload revise 2026-04-22): default page size
+    // for `GET /:sessionID/message` when the client sends neither `limit`
+    // nor `beforeMessageID`. Makes "tail first" the server-side default
+    // for cold opens, so a long session doesn't full-hydrate on first
+    // paint.
+    sessionMessagesDefaultTail: number
   }
 
   /**
@@ -106,6 +112,7 @@ export namespace Tweaks {
     initialPageSizeLarge: 50,
     sessionSizeThresholdKb: 512,
     sessionSizeThresholdParts: 80,
+    sessionMessagesDefaultTail: 30,
   }
 
   const SESSION_UI_FRESHNESS_DEFAULTS: SessionUiFreshnessConfig = {
@@ -196,6 +203,7 @@ export namespace Tweaks {
     "ui_freshness_hard_timeout_sec",
     "sse_reconnect_replay_max_events",
     "sse_reconnect_replay_max_age_sec",
+    "session_messages_default_tail",
   ])
 
   function parseFlag01(raw: string, key: string): 0 | 1 | undefined {
@@ -352,6 +360,11 @@ export namespace Tweaks {
     if (thresholdPartsRaw !== undefined) {
       const v = parseIntRange(thresholdPartsRaw, "session_size_threshold_parts", 10, 100000)
       if (v !== undefined) frontendLazyload.sessionSizeThresholdParts = v
+    }
+    const defaultTailRaw = parsed.get("session_messages_default_tail")
+    if (defaultTailRaw !== undefined) {
+      const v = parseIntRange(defaultTailRaw, "session_messages_default_tail", 5, 200)
+      if (v !== undefined) frontendLazyload.sessionMessagesDefaultTail = v
     }
 
     // INV-7: tail_window_kb MUST NOT exceed part_inline_cap_kb.
