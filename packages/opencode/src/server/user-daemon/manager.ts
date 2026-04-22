@@ -227,6 +227,14 @@ export namespace UserDaemonManager {
     body?: unknown
   }): Promise<DaemonCallResult<T>> {
     const timeoutMs = Number(process.env.OPENCODE_PER_USER_DAEMON_REQUEST_TIMEOUT_MS ?? "5000")
+    const startedAt = Date.now()
+    const traceCtx = {
+      username: input.entry.username,
+      method: input.method,
+      path: input.path,
+      timeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : 5000,
+    }
+    log.info("daemon-call start", traceCtx)
 
     return await new Promise<DaemonCallResult<T>>((resolve) => {
       const req = httpRequest(
@@ -247,7 +255,9 @@ export namespace UserDaemonManager {
           })
           res.on("end", () => {
             const status = res.statusCode ?? 500
+            const elapsedMs = Date.now() - startedAt
             if (status < 200 || status >= 300) {
+              log.warn("daemon-call http-error", { ...traceCtx, status, elapsedMs })
               resolve({
                 ok: false,
                 error: {
@@ -260,11 +270,13 @@ export namespace UserDaemonManager {
             try {
               input.entry.status = "ready"
               input.entry.lastStartError = undefined
+              log.info("daemon-call ok", { ...traceCtx, status, elapsedMs })
               resolve({
                 ok: true,
                 data: raw ? (JSON.parse(raw) as T) : ({} as T),
               })
             } catch {
+              log.warn("daemon-call invalid-json", { ...traceCtx, status, elapsedMs })
               resolve({
                 ok: false,
                 error: {
@@ -278,8 +290,10 @@ export namespace UserDaemonManager {
       )
 
       req.on("error", (error) => {
+        const elapsedMs = Date.now() - startedAt
         input.entry.status = "missing"
         input.entry.lastStartError = error.message
+        log.warn("daemon-call error", { ...traceCtx, elapsedMs, error: error.message })
         maybeTriggerLazyStart(input.entry)
         resolve({
           ok: false,
@@ -291,6 +305,8 @@ export namespace UserDaemonManager {
       })
 
       req.on("timeout", () => {
+        const elapsedMs = Date.now() - startedAt
+        log.warn("daemon-call timeout", { ...traceCtx, elapsedMs })
         req.destroy(new Error("daemon request timeout"))
       })
 

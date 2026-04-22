@@ -98,6 +98,12 @@ export function start(sessionID: string, options?: { replace?: boolean }): Runti
     callbacks: current && options?.replace ? current.callbacks : [],
     slotWaiters: carriedSlotWaiters,
   }
+  log.info("start", {
+    sessionID,
+    runID,
+    replace: !!options?.replace,
+    carriedWaiters: carriedSlotWaiters.length,
+  })
   return {
     runID,
     signal: controller.signal,
@@ -117,8 +123,20 @@ export function waitForSlot(sessionID: string): Promise<void> {
   const s = state()
   const current = s[sessionID]
   if (!current) return Promise.resolve()
+  const enqueuedAt = Date.now()
+  log.info("waitForSlot enqueue", {
+    sessionID,
+    activeRunID: current.runID,
+    waitersAhead: current.slotWaiters.length,
+  })
   return new Promise<void>((resolve) => {
-    current.slotWaiters.push(resolve)
+    current.slotWaiters.push(() => {
+      log.info("waitForSlot release", {
+        sessionID,
+        waitedMs: Date.now() - enqueuedAt,
+      })
+      resolve()
+    })
   })
 }
 
@@ -173,6 +191,7 @@ export function finish(sessionID: string, runID: string) {
   const waiters = match.slotWaiters
   delete s[sessionID]
   SessionStatus.set(sessionID, { type: "idle" })
+  log.info("finish", { sessionID, runID, releasedWaiters: waiters.length })
   // Release waiters AFTER the entry is deleted so their follow-up start()
   // call sees a clean slot.
   for (const w of waiters) {

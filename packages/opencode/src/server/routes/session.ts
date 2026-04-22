@@ -2172,12 +2172,39 @@ export const SessionRoutes = lazy(() =>
         if (username && UserDaemonManager.routeSessionMutationEnabled()) {
           const response = await UserDaemonManager.callSessionPromptAsync<boolean>(username, sessionID, body)
           if (response.ok) return stream(c, async () => {})
+          log.warn("prompt_async daemon-proxy failed", {
+            sessionID,
+            username,
+            code: response.error.code,
+            message: response.error.message,
+          })
           return c.json(
             {
               code: response.error.code,
               message: response.error.message,
             },
             503,
+          )
+        }
+        // Wire inbound HTTP abort (mobile/CMS disconnect, client timeout) to
+        // a telemetry breadcrumb so we can correlate "client bailed" vs
+        // "runloop stuck". The runloop itself is fire-and-forget below and
+        // deliberately NOT aborted here — cancelling on every mobile flap
+        // would kill in-progress subagent work.
+        const inboundSignal = c.req.raw.signal
+        if (inboundSignal) {
+          const firedAt = Date.now()
+          inboundSignal.addEventListener(
+            "abort",
+            () => {
+              log.warn("prompt_async inbound aborted", {
+                sessionID,
+                username: username ?? null,
+                afterMs: Date.now() - firedAt,
+                reason: String((inboundSignal as any).reason ?? "unknown"),
+              })
+            },
+            { once: true },
           )
         }
         return stream(c, async () => {
