@@ -313,16 +313,16 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       sessionID: string
     }) => {
       const existing = input.store.message[input.sessionID] ?? []
-      if (existing.length === 0) return  // caller should use loadMessages for cold start
+      if (existing.length === 0) return // caller should use loadMessages for cold start
       // Use the newest known message's created time as the cursor, minus a
       // small margin so any message written during that boundary second is
       // included. The server returns messages with time.created >= since.
       let newest = 0
       for (const msg of existing) {
-        const t = (msg?.info?.time as { created?: number } | undefined)?.created
+        const t = msg?.time?.created
         if (typeof t === "number" && t > newest) newest = t
       }
-      if (newest === 0) return  // nothing to anchor against — let caller decide
+      if (newest === 0) return // nothing to anchor against — let caller decide
       const since = newest - INCREMENTAL_SINCE_MARGIN_MS
       sendSessionReloadDebugBeacon({
         sdk,
@@ -711,10 +711,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             // the cold-open starvation spike this revise targets.
             if (count === undefined) {
               const cfg = frontendTweaks()
-              count =
-                cfg.frontend_session_lazyload === 1
-                  ? cfg.initial_page_size_large
-                  : messagePageSize
+              count = cfg.frontend_session_lazyload === 1 ? cfg.initial_page_size_large : messagePageSize
             }
             const directory = sdk.directory
             const client = sdk.client
