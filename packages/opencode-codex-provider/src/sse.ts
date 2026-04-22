@@ -263,9 +263,14 @@ function mapEvent(event: ResponseStreamEvent, state: StreamState): LanguageModel
     }
 
     case "response.output_text.done": {
-      const id = `text_${state.textIdCounter > 0 ? state.textIdCounter - 1 : 0}`
-      parts.push({ type: "text-end", id } as LanguageModelV2StreamPart)
-      state.openTextId = null
+      // Use openTextId (set by text-start) so text-end id matches the id AI SDK
+      // registered on text-start. Recomputing from counter races with concurrent
+      // output_item.added events and produced "text part text_N not found" errors.
+      const id = state.openTextId ?? `text_${state.textIdCounter > 0 ? state.textIdCounter - 1 : 0}`
+      if (state.openTextId != null) {
+        parts.push({ type: "text-end", id } as LanguageModelV2StreamPart)
+        state.openTextId = null
+      }
       break
     }
 
