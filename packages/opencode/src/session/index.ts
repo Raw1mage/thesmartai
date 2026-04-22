@@ -669,10 +669,27 @@ export namespace Session {
       // entire session history. MessageV2.stream yields newest-first, so we
       // can short-circuit as soon as we see an older message.
       since: z.number().optional(),
+      // R9 (specs/frontend-session-lazyload revise 2026-04-22): cursor for
+      // older-history pagination. When set, return up to `limit` messages
+      // older than (i.e. created strictly before) the referenced message.
+      // MessageV2.stream is newest-first so we skip until we see this id,
+      // drop it, then collect the next `limit` entries. Mutually exclusive
+      // with `since` at the handler level — cursor is a distinct semantics
+      // from "incremental forward tail"; caller must pick one.
+      beforeMessageID: z.string().optional(),
     }),
     async (input) => {
       const result = [] as MessageV2.WithParts[]
+      let seenCursor = input.beforeMessageID === undefined
       for await (const msg of MessageV2.stream(input.sessionID)) {
+        if (!seenCursor) {
+          if (msg.info?.id === input.beforeMessageID) {
+            seenCursor = true
+          }
+          // Skip cursor itself too (we want strictly-older), then fall through
+          // on subsequent iterations to collect.
+          continue
+        }
         if (input.since !== undefined) {
           const created = msg.info?.time?.created
           if (typeof created === "number" && created < input.since) break

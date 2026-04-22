@@ -48,6 +48,12 @@ export namespace Tweaks {
     initialPageSizeLarge: number
     sessionSizeThresholdKb: number
     sessionSizeThresholdParts: number
+    // R9 (frontend-session-lazyload revise 2026-04-22): default page size
+    // for `GET /:sessionID/message` when the client sends neither `limit`
+    // nor `beforeMessageID`. Makes "tail first" the server-side default
+    // for cold opens, so a long session doesn't full-hydrate on first
+    // paint.
+    sessionMessagesDefaultTail: number
   }
 
   /**
@@ -74,12 +80,25 @@ export namespace Tweaks {
     lowQuotaThresholdPercent: number
   }
 
+  /**
+   * R8 (specs/frontend-session-lazyload revise 2026-04-22):
+   * bounded SSE reconnect replay window. Defaults sized so a typical
+   * short-flap reconnect replays ≤100 recent events (was: full 1000-event
+   * ring buffer sequentially — the root cause of daemon event-loop
+   * starvation observed 2026-04-22).
+   */
+  export interface SseReplayConfig {
+    maxEvents: number
+    maxAgeSec: number
+  }
+
   export interface Effective {
     sessionCache: SessionCacheConfig
     rateLimit: RateLimitConfig
     frontendLazyload: FrontendLazyloadConfig
     sessionUiFreshness: SessionUiFreshnessConfig
     codexRotation: CodexRotationConfig
+    sseReplay: SseReplayConfig
     source: { path: string; present: boolean }
   }
 
@@ -105,6 +124,7 @@ export namespace Tweaks {
     initialPageSizeLarge: 50,
     sessionSizeThresholdKb: 512,
     sessionSizeThresholdParts: 80,
+    sessionMessagesDefaultTail: 30,
   }
 
   const SESSION_UI_FRESHNESS_DEFAULTS: SessionUiFreshnessConfig = {
@@ -115,6 +135,11 @@ export namespace Tweaks {
 
   const CODEX_ROTATION_DEFAULTS: CodexRotationConfig = {
     lowQuotaThresholdPercent: 10,
+  }
+
+  const SSE_REPLAY_DEFAULTS: SseReplayConfig = {
+    maxEvents: 100,
+    maxAgeSec: 60,
   }
 
   function path(): string {
@@ -193,6 +218,9 @@ export namespace Tweaks {
     "ui_freshness_threshold_sec",
     "ui_freshness_hard_timeout_sec",
     "codex_rotation_low_quota_percent",
+    "sse_reconnect_replay_max_events",
+    "sse_reconnect_replay_max_age_sec",
+    "session_messages_default_tail",
   ])
 
   function parseFlag01(raw: string, key: string): 0 | 1 | undefined {
@@ -244,6 +272,8 @@ export namespace Tweaks {
           rateLimit: RATE_LIMIT_DEFAULTS,
           frontendLazyload: FRONTEND_LAZYLOAD_DEFAULTS,
           sessionUiFreshness: SESSION_UI_FRESHNESS_DEFAULTS,
+          codexRotation: CODEX_ROTATION_DEFAULTS,
+          sseReplay: SSE_REPLAY_DEFAULTS,
         },
       })
       return {
@@ -252,6 +282,7 @@ export namespace Tweaks {
         frontendLazyload: { ...FRONTEND_LAZYLOAD_DEFAULTS },
         sessionUiFreshness: { ...SESSION_UI_FRESHNESS_DEFAULTS },
         codexRotation: { ...CODEX_ROTATION_DEFAULTS },
+        sseReplay: { ...SSE_REPLAY_DEFAULTS },
         source: { path: cfgPath, present: false },
       }
     }
@@ -349,6 +380,11 @@ export namespace Tweaks {
       const v = parseIntRange(thresholdPartsRaw, "session_size_threshold_parts", 10, 100000)
       if (v !== undefined) frontendLazyload.sessionSizeThresholdParts = v
     }
+    const defaultTailRaw = parsed.get("session_messages_default_tail")
+    if (defaultTailRaw !== undefined) {
+      const v = parseIntRange(defaultTailRaw, "session_messages_default_tail", 5, 200)
+      if (v !== undefined) frontendLazyload.sessionMessagesDefaultTail = v
+    }
 
     // INV-7: tail_window_kb MUST NOT exceed part_inline_cap_kb.
     if (frontendLazyload.tailWindowKb > frontendLazyload.partInlineCapKb) {
@@ -395,9 +431,22 @@ export namespace Tweaks {
       if (v !== undefined) codexRotation.lowQuotaThresholdPercent = v
     }
 
+    const sseReplay: SseReplayConfig = { ...SSE_REPLAY_DEFAULTS }
+
+    const sseMaxEventsRaw = parsed.get("sse_reconnect_replay_max_events")
+    if (sseMaxEventsRaw !== undefined) {
+      const v = parseIntRange(sseMaxEventsRaw, "sse_reconnect_replay_max_events", 10, 1000)
+      if (v !== undefined) sseReplay.maxEvents = v
+    }
+    const sseMaxAgeRaw = parsed.get("sse_reconnect_replay_max_age_sec")
+    if (sseMaxAgeRaw !== undefined) {
+      const v = parseIntRange(sseMaxAgeRaw, "sse_reconnect_replay_max_age_sec", 5, 600)
+      if (v !== undefined) sseReplay.maxAgeSec = v
+    }
+
     log.info("tweaks.cfg loaded", {
       path: cfgPath,
-      effective: { sessionCache, rateLimit, frontendLazyload, sessionUiFreshness, codexRotation },
+      effective: { sessionCache, rateLimit, frontendLazyload, sessionUiFreshness, codexRotation, sseReplay },
     })
     return {
       sessionCache,
@@ -405,6 +454,7 @@ export namespace Tweaks {
       frontendLazyload,
       sessionUiFreshness,
       codexRotation,
+      sseReplay,
       source: { path: cfgPath, present: true },
     }
   }
@@ -433,6 +483,10 @@ export namespace Tweaks {
 
   export async function codexRotation(): Promise<CodexRotationConfig> {
     return (await effective()).codexRotation
+  }
+
+  export async function sseReplay(): Promise<SseReplayConfig> {
+    return (await effective()).sseReplay
   }
 
   export async function loadEffective(): Promise<Effective> {
