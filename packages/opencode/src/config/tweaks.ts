@@ -63,11 +63,24 @@ export namespace Tweaks {
     hardTimeoutSec: number
   }
 
+  /**
+   * R8 (specs/frontend-session-lazyload revise 2026-04-22):
+   * bounded SSE reconnect replay window. Defaults sized so a typical
+   * short-flap reconnect replays ≤100 recent events (was: full 1000-event
+   * ring buffer sequentially — the root cause of daemon event-loop
+   * starvation observed 2026-04-22).
+   */
+  export interface SseReplayConfig {
+    maxEvents: number
+    maxAgeSec: number
+  }
+
   export interface Effective {
     sessionCache: SessionCacheConfig
     rateLimit: RateLimitConfig
     frontendLazyload: FrontendLazyloadConfig
     sessionUiFreshness: SessionUiFreshnessConfig
+    sseReplay: SseReplayConfig
     source: { path: string; present: boolean }
   }
 
@@ -99,6 +112,11 @@ export namespace Tweaks {
     flag: 0,
     softThresholdSec: 15,
     hardTimeoutSec: 60,
+  }
+
+  const SSE_REPLAY_DEFAULTS: SseReplayConfig = {
+    maxEvents: 100,
+    maxAgeSec: 60,
   }
 
   function path(): string {
@@ -176,6 +194,8 @@ export namespace Tweaks {
     "ui_session_freshness_enabled",
     "ui_freshness_threshold_sec",
     "ui_freshness_hard_timeout_sec",
+    "sse_reconnect_replay_max_events",
+    "sse_reconnect_replay_max_age_sec",
   ])
 
   function parseFlag01(raw: string, key: string): 0 | 1 | undefined {
@@ -227,6 +247,7 @@ export namespace Tweaks {
           rateLimit: RATE_LIMIT_DEFAULTS,
           frontendLazyload: FRONTEND_LAZYLOAD_DEFAULTS,
           sessionUiFreshness: SESSION_UI_FRESHNESS_DEFAULTS,
+          sseReplay: SSE_REPLAY_DEFAULTS,
         },
       })
       return {
@@ -234,6 +255,7 @@ export namespace Tweaks {
         rateLimit: { ...RATE_LIMIT_DEFAULTS },
         frontendLazyload: { ...FRONTEND_LAZYLOAD_DEFAULTS },
         sessionUiFreshness: { ...SESSION_UI_FRESHNESS_DEFAULTS },
+        sseReplay: { ...SSE_REPLAY_DEFAULTS },
         source: { path: cfgPath, present: false },
       }
     }
@@ -370,15 +392,29 @@ export namespace Tweaks {
       sessionUiFreshness.softThresholdSec = Math.max(1, sessionUiFreshness.hardTimeoutSec - 1)
     }
 
+    const sseReplay: SseReplayConfig = { ...SSE_REPLAY_DEFAULTS }
+
+    const sseMaxEventsRaw = parsed.get("sse_reconnect_replay_max_events")
+    if (sseMaxEventsRaw !== undefined) {
+      const v = parseIntRange(sseMaxEventsRaw, "sse_reconnect_replay_max_events", 10, 1000)
+      if (v !== undefined) sseReplay.maxEvents = v
+    }
+    const sseMaxAgeRaw = parsed.get("sse_reconnect_replay_max_age_sec")
+    if (sseMaxAgeRaw !== undefined) {
+      const v = parseIntRange(sseMaxAgeRaw, "sse_reconnect_replay_max_age_sec", 5, 600)
+      if (v !== undefined) sseReplay.maxAgeSec = v
+    }
+
     log.info("tweaks.cfg loaded", {
       path: cfgPath,
-      effective: { sessionCache, rateLimit, frontendLazyload, sessionUiFreshness },
+      effective: { sessionCache, rateLimit, frontendLazyload, sessionUiFreshness, sseReplay },
     })
     return {
       sessionCache,
       rateLimit,
       frontendLazyload,
       sessionUiFreshness,
+      sseReplay,
       source: { path: cfgPath, present: true },
     }
   }
@@ -403,6 +439,10 @@ export namespace Tweaks {
 
   export async function sessionUiFreshness(): Promise<SessionUiFreshnessConfig> {
     return (await effective()).sessionUiFreshness
+  }
+
+  export async function sseReplay(): Promise<SseReplayConfig> {
+    return (await effective()).sseReplay
   }
 
   export async function loadEffective(): Promise<Effective> {
