@@ -389,6 +389,80 @@ export async function getOpenAIQuotaForDisplay(accountId: string): Promise<OpenA
   return getOpenAIQuota(accountId, { waitFresh: true })
 }
 
+/**
+ * Runloop-end proactive rotation: fetches fresh 5H quota for a
+ * codex / openai subscription account and marks it rate-limited when
+ * hourlyRemaining drops below `thresholdPercent`. Next turn's pre-flight
+ * will rotate to a different account via the existing QUOTA_EXHAUSTED path.
+ *
+ * Threshold <= 0 disables the check. Accounts already marked rate-limited
+ * or without a 5H window (free plans) are skipped.
+ *
+ * Returns true iff this call marked the account rate-limited.
+ */
+export async function checkCodexLowQuotaAndMark(
+  providerId: string,
+  accountId: string | undefined,
+  thresholdPercent: number,
+): Promise<boolean> {
+  if (!accountId) return false
+  if (providerId !== "codex" && providerId !== "openai") return false
+  if (!Number.isFinite(thresholdPercent) || thresholdPercent <= 0) return false
+
+  try {
+    const { getRateLimitTracker, calculateBackoffMs } = await import("../rotation")
+    const tracker = getRateLimitTracker()
+    if (tracker.isRateLimited(accountId, providerId)) return false
+
+    const quota = await getOpenAIQuota(accountId, { waitFresh: true })
+    if (!quota) return false
+    if (quota.hasHourlyWindow === false) return false
+    if (!(quota.hourlyRemaining < thresholdPercent)) return false
+
+    const backoffMs = calculateBackoffMs("QUOTA_EXHAUSTED", 0, undefined, 0)
+    tracker.markRateLimited(accountId, providerId, "QUOTA_EXHAUSTED", backoffMs)
+    log.info("runloop-end low quota — proactively marked rate-limited", {
+      providerId,
+      accountId,
+      hourlyRemaining: quota.hourlyRemaining,
+      weeklyRemaining: quota.weeklyRemaining,
+      thresholdPercent,
+      backoffMs,
+    })
+
+    try {
+      const [{ Bus }, { RateLimitEvent }] = await Promise.all([
+        import("../../bus"),
+        import("../rate-limit-judge"),
+      ])
+      Bus.publish(RateLimitEvent.Detected, {
+        providerId,
+        accountId,
+        modelId: "",
+        reason: "QUOTA_EXHAUSTED",
+        backoffMs,
+        source: "cockpit",
+        dailyFailures: 0,
+        timestamp: Date.now(),
+      }).catch(() => {})
+    } catch (e) {
+      log.warn("failed to broadcast runloop-end low quota", {
+        providerId,
+        accountId,
+        error: String(e),
+      })
+    }
+    return true
+  } catch (e) {
+    log.warn("checkCodexLowQuotaAndMark failed", {
+      providerId,
+      accountId,
+      error: String(e),
+    })
+    return false
+  }
+}
+
 async function refreshOpenAIAccountQuota(id: string, info: Account.Info, providerId: string): Promise<void> {
   if (info.type !== "subscription") return
   const now = Date.now()

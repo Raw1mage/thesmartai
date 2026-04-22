@@ -21,6 +21,8 @@ import { debugCheckpoint } from "@/util/debug"
 import { isRateLimitError, getRateLimitTracker } from "@/account/rotation"
 import { isVectorRateLimited } from "@/account/rotation3d"
 import { CodexFamilyExhausted } from "@/account/rate-limit-judge"
+import { checkCodexLowQuotaAndMark } from "@/account/quota/openai"
+import { Tweaks } from "@/config/tweaks"
 import { Global } from "@/global"
 import path from "path"
 import { materializeToolAttachments } from "./attachment-ownership"
@@ -943,13 +945,18 @@ export namespace SessionProcessor {
                       RETRYABLE_TOOL_ERRORS.some((pattern) => errorMsg.includes(pattern))
 
                     if (isRetryable) {
+                      const firstLine = errorMsg.split("\n")[0]
+                      const isSchemaMiss = errorMsg.includes("[schema-miss:")
+                      const output = isSchemaMiss
+                        ? `${errorMsg}\n\nRetry this tool on your next turn using the shape above. Do not skip it.`
+                        : `[skip] ${firstLine}\nThis is expected. Continue with your next step.`
                       await Session.updatePart({
                         ...match,
                         state: {
                           status: "completed",
                           input: value.input ?? match.state.input,
-                          title: errorMsg.split("\n")[0].slice(0, 80),
-                          output: `[skip] ${errorMsg.split("\n")[0]}\nThis is expected. Continue with your next step.`,
+                          title: firstLine.slice(0, 80),
+                          output,
                           metadata: { truncated: false, retryable: true },
                           time: {
                             start: match.state.time.start,
@@ -1229,6 +1236,23 @@ export namespace SessionProcessor {
                     input.model.id,
                     streamInput.accountId ?? input.accountId,
                   )
+                  // Post-turn proactive rotation: if the just-used codex /
+                  // openai subscription account's 5H window dropped below the
+                  // configured threshold, mark it rate-limited so the next
+                  // turn's pre-flight rotates away from it. Threshold <= 0
+                  // in tweaks.cfg disables the check.
+                  try {
+                    const { lowQuotaThresholdPercent } = await Tweaks.codexRotation()
+                    await checkCodexLowQuotaAndMark(
+                      input.model.providerId,
+                      streamInput.accountId ?? input.accountId,
+                      lowQuotaThresholdPercent,
+                    )
+                  } catch (e) {
+                    log.warn("post-turn codex quota check failed", {
+                      error: String(e),
+                    })
+                  }
                   break
 
                 default:

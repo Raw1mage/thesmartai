@@ -63,11 +63,23 @@ export namespace Tweaks {
     hardTimeoutSec: number
   }
 
+  /**
+   * Post-turn proactive rotation for codex / openai subscription accounts.
+   * When the 5H hourly window drops below `lowQuotaThresholdPercent`
+   * at the end of a runloop, mark the account rate-limited so the next
+   * turn rotates away from it (QUOTA_EXHAUSTED path in rate-limit-judge).
+   * Disabled when threshold <= 0.
+   */
+  export interface CodexRotationConfig {
+    lowQuotaThresholdPercent: number
+  }
+
   export interface Effective {
     sessionCache: SessionCacheConfig
     rateLimit: RateLimitConfig
     frontendLazyload: FrontendLazyloadConfig
     sessionUiFreshness: SessionUiFreshnessConfig
+    codexRotation: CodexRotationConfig
     source: { path: string; present: boolean }
   }
 
@@ -99,6 +111,10 @@ export namespace Tweaks {
     flag: 0,
     softThresholdSec: 15,
     hardTimeoutSec: 60,
+  }
+
+  const CODEX_ROTATION_DEFAULTS: CodexRotationConfig = {
+    lowQuotaThresholdPercent: 10,
   }
 
   function path(): string {
@@ -176,6 +192,7 @@ export namespace Tweaks {
     "ui_session_freshness_enabled",
     "ui_freshness_threshold_sec",
     "ui_freshness_hard_timeout_sec",
+    "codex_rotation_low_quota_percent",
   ])
 
   function parseFlag01(raw: string, key: string): 0 | 1 | undefined {
@@ -234,6 +251,7 @@ export namespace Tweaks {
         rateLimit: { ...RATE_LIMIT_DEFAULTS },
         frontendLazyload: { ...FRONTEND_LAZYLOAD_DEFAULTS },
         sessionUiFreshness: { ...SESSION_UI_FRESHNESS_DEFAULTS },
+        codexRotation: { ...CODEX_ROTATION_DEFAULTS },
         source: { path: cfgPath, present: false },
       }
     }
@@ -370,15 +388,23 @@ export namespace Tweaks {
       sessionUiFreshness.softThresholdSec = Math.max(1, sessionUiFreshness.hardTimeoutSec - 1)
     }
 
+    const codexRotation: CodexRotationConfig = { ...CODEX_ROTATION_DEFAULTS }
+    const codexLowRaw = parsed.get("codex_rotation_low_quota_percent")
+    if (codexLowRaw !== undefined) {
+      const v = parseIntRange(codexLowRaw, "codex_rotation_low_quota_percent", 0, 100)
+      if (v !== undefined) codexRotation.lowQuotaThresholdPercent = v
+    }
+
     log.info("tweaks.cfg loaded", {
       path: cfgPath,
-      effective: { sessionCache, rateLimit, frontendLazyload, sessionUiFreshness },
+      effective: { sessionCache, rateLimit, frontendLazyload, sessionUiFreshness, codexRotation },
     })
     return {
       sessionCache,
       rateLimit,
       frontendLazyload,
       sessionUiFreshness,
+      codexRotation,
       source: { path: cfgPath, present: true },
     }
   }
@@ -403,6 +429,10 @@ export namespace Tweaks {
 
   export async function sessionUiFreshness(): Promise<SessionUiFreshnessConfig> {
     return (await effective()).sessionUiFreshness
+  }
+
+  export async function codexRotation(): Promise<CodexRotationConfig> {
+    return (await effective()).codexRotation
   }
 
   export async function loadEffective(): Promise<Effective> {
