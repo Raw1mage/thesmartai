@@ -58,10 +58,10 @@ From here on in this file, sections 1/2/3 remain as `[-]` strike-through history
 
 ## 5. Disarm observer  (**new Phase 2** under revised scope)
 
-- [ ] 5.1 Implement `disarm-observer` subscriber in `packages/opencode/src/session/autorun/observer.ts` — listens on Bus for killswitch activation and non-continuation user messages (messages whose parts are not `autonomousNarration`-synthetic)
-- [ ] 5.2 On event, flip `workflow.autonomous.enabled = false` via `Session.updateAutonomous({enabled: false})`; log reason structured for telemetry
-- [ ] 5.3 Wire observer startup in the `Instance.provide` path so every session has it registered
-- [ ] 5.4 Tests for each disarm reason. **Note**: regular user messages during armed autonomous runs should NOT disarm (user nudges are legitimate); only killswitch / abort / "停" intent phrase disarm. Define the disarm trigger list explicitly in tweaks.cfg `autorun.disarm_phrases`
+- [x] 5.1 Implement `disarm-observer` subscriber in `packages/opencode/src/session/autorun/observer.ts`. Listens on `KillSwitchChanged` with `active=true`. ~~Non-continuation user messages~~ already handled by the Phase 4 verbal disarm detector — no duplication here.
+- [x] 5.2 Sweep flips `workflow.autonomous.enabled = false` via `Session.updateAutonomous({enabled: false})` for every armed root session; subagents skipped (they inherit parent's gate). Structured log `"autorun disarmed by killswitch"` per session + sweep summary log.
+- [x] 5.3 Registered at daemon startup (`index.ts` alongside the other `register*` subscriber calls — this is where `pending-notice-appender` etc. live). `Instance.provide` was the original plan but the actual registration point in main is top-level index.ts; observer is idempotent via `_registered` guard.
+- [x] 5.4 Tests — 10 unit tests via injected-deps `runDisarmSweep`: disarms armed root / skips disarmed / skips subagent / skips no-workflow / flips multiple / no-op zero-armed / one update failure doesn't abort sweep / empty list. 57 pass across Phase 4+5 tests.
 
 ## 6. Todolist refill  (**new Phase 3** under revised scope)
 
