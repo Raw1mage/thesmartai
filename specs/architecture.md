@@ -1003,3 +1003,71 @@ See `specs/session-ui-freshness/` for the full lifecycle, design decisions DD-1 
 - JWT uid 必須 = 目標 daemon uid
 
 違反任一 invariant = P0 bug。
+
+
+---
+
+## Responsive Orchestrator (2026-04-23, spec `responsive-orchestrator` state=living)
+
+Main agent (orchestrator) stays responsive while subagents run. `task` tool dispatches are **asynchronous**: the tool returns a `dispatched` stub immediately, the assistant turn closes, and the session releases its busy lock. Subagent results arrive on a subsequent turn as a one-line system-prompt addendum — they are NOT appended to the visible chat log.
+
+### Dispatch contract
+
+```
+main agent emits task(description, prompt, subagent_type)
+  ↓ (synchronous, <200ms)
+task tool
+  ├─ allocate jobId (= toolCallID)
+  ├─ spawn subagent worker + register
+  ├─ detach background watcher (IIFE)
+  └─ return { status: "dispatched", jobId, childSessionID, output: "<instructions for LLM>" }
+  ↓
+main agent's assistant turn closes naturally; session → idle
+```
+
+Meanwhile, in background:
+
+```
+subagent runloop → writes terminal finish to disk (stop | error | canceled | rate_limited | quota_low)
+  ↓
+background watcher (watchdog A/B/C) detects
+  ↓
+Bus.publish(task.completed { jobId, parentSessionID, childSessionID, status, finish, elapsedMs, errorDetail?, rotateHint? })
+  ↓
+pending-notice-appender subscriber
+  ↓
+parent session info.json#pendingSubagentNotices += PendingSubagentNotice
+  ↓ (next user turn)
+prompt assemble reads notices → renderNoticeAddendum(n) → system prompt addendum + atomically drain
+```
+
+### Subagent self-protection
+
+- **R3 rate-limit bounded wait**: subagent escalation to parent is bounded by `subagent_escalation_wait_ms` (default 30 s, tweak). On timeout, subagent writes `finish: "rate_limited"` with errorDetail and exits cleanly.
+- **R6 proactive quota wrap-up**: post-turn check reads account remaining; if ≤ `subagent_quota_low_red_line_percent` (default 5 %), subagent injects a wrap-up directive into its own context, runs one final summary turn, writes `finish: "quota_low"` with `rotateHint { exhaustedAccountId, remainingPercent, directive: "rotate-before-redispatch" }`, and exits.
+
+### LLM-facing operator tools
+
+- `cancel_task(jobId, reason?)` — abort one running subagent via stdin cancel command; single-authority pattern (DD-6) means the normal disk-terminal pipeline still delivers the cancellation notice.
+- `system-manager.list_subagents({ parentSessionID?, includeFinished? })` — MCP tool, lists active + recently-finished subagents with status/finish/elapsedMs/dispatchedAt.
+- `system-manager.read_subsession({ sessionID, sinceMessageID?, limit? })` — MCP tool, reads child session messages; structured error on missing/inaccessible session (never throws).
+
+### Historical fix
+
+This architecture **restores the pre-2026-04-09 async dispatch intent** that was regressed by commit `c32b9612b` (which replaced the Bus-event-chain delivery with a synchronous `await worker.done` to fix race-induced "parent never resumes" bug). The replacement delivery substrate is disk-terminal + watchdog A (race-free, survives IPC severance) instead of the original racy Bus chain.
+
+### Invariants
+
+- Every `tool_use` gets a paired `tool_result` in the same turn (stub satisfies provider hard requirement)
+- Every terminal subagent finish delivers a `PendingSubagentNotice` within `DISK_GRACE_MS + WATCHDOG_INTERVAL_MS` (≤ 10 s) — even if IPC is severed
+- Each notice is consumed exactly once (per-turn atomic drain)
+- Main agent never blocks on subagent lifecycle
+
+Violations = P0 (user-facing orchestrator hang).
+
+### Open issues (not in scope)
+
+- `I-1` subagent status bar hydration after reload / multi-client
+- `I-4` mobile UX collapse on large sessions (next spec)
+
+See `specs/responsive-orchestrator/` for full documentation (proposal.md, spec.md, design.md DD-1..DD-11, IDEF0/GRAFCET, C4, sequence, tasks.md, handoff.md, errors.md, observability.md, test-vectors.json, issues.md).

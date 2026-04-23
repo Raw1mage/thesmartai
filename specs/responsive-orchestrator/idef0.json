@@ -1,0 +1,164 @@
+{
+  "diagram_title": "Responsive Orchestrator — Async Task Tool with Disk-Terminal Delivery",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Dispatch task & return stub immediately",
+      "description": "Main agent emits task tool call. Tool spawns subagent worker, allocates jobId + childSessionID, returns dispatched stub result satisfying LLM tool-use protocol (DD-1).",
+      "decomposition": null
+    },
+    {
+      "id": "A2",
+      "title": "Run subagent independently",
+      "description": "Subagent worker process executes its runloop in isolation. Includes the new post-turn quota check (R6) and reactive 429 handling with bounded escalation wait (R3).",
+      "decomposition": null
+    },
+    {
+      "id": "A3",
+      "title": "Detect terminal finish & emit completed event",
+      "description": "Background watcher (formerly the synchronous await) monitors child via watchdog A/B/C. On any TERMINAL_FINISHES disk write or proc death, emits TaskCompletedEvent on Bus.",
+      "decomposition": null
+    },
+    {
+      "id": "A4",
+      "title": "Inject synthetic task_result message into parent",
+      "description": "Subscriber consumes TaskCompletedEvent, builds TaskResultMessage payload, appends as MessageV2.User with synthetic.source='task_result' to parent session. Triggers parent runloop wakeup.",
+      "decomposition": null
+    },
+    {
+      "id": "A5",
+      "title": "Cancel running subagent (out-of-band)",
+      "description": "Main agent invokes cancel_task tool. Single authority pattern (DD-6): signal abort, worker writes 'cancelled' finish, normal A3+A4 path delivers result. cancel_task returns within 1s.",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    {
+      "id": "AR1",
+      "source": "EXTERNAL",
+      "target": "A1:input",
+      "label": "task tool_use call (description, prompt, subagent_type)",
+      "type": "input"
+    },
+    {
+      "id": "AR2",
+      "source": "EXTERNAL",
+      "target": "A1:control",
+      "label": "lanes.maxConcurrent capacity policy",
+      "type": "control"
+    },
+    {
+      "id": "AR3",
+      "source": "A1:output",
+      "target": "EXTERNAL",
+      "label": "TaskDispatchedResult stub (jobId, childSessionID)",
+      "type": "output"
+    },
+    {
+      "id": "AR4",
+      "source": "EXTERNAL",
+      "target": "A1:mechanism",
+      "label": "Worker pool, Storage.write, Identifier.create",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR5",
+      "source": "A1:output",
+      "target": "A2:input",
+      "label": "Worker handle + child session bootstrap",
+      "type": "input"
+    },
+    {
+      "id": "AR6",
+      "source": "EXTERNAL",
+      "target": "A2:control",
+      "label": "tweaks.cfg: subagent_escalation_wait_ms, subagent_quota_low_red_line_percent",
+      "type": "control"
+    },
+    {
+      "id": "AR7",
+      "source": "A2:output",
+      "target": "A3:input",
+      "label": "Disk-written terminal finish (stop|error|cancelled|rate_limited|quota_low)",
+      "type": "input"
+    },
+    {
+      "id": "AR8",
+      "source": "EXTERNAL",
+      "target": "A2:mechanism",
+      "label": "LLM provider, Storage, ModelUpdateSignal, checkCodexLowQuotaAndMark",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR9",
+      "source": "EXTERNAL",
+      "target": "A3:control",
+      "label": "tweaks: WATCHDOG_INTERVAL_MS=5000, DISK_GRACE_MS=5000, SILENCE_THRESHOLD_MS=60000",
+      "type": "control"
+    },
+    {
+      "id": "AR10",
+      "source": "A3:output",
+      "target": "A4:input",
+      "label": "TaskCompletedEvent (Bus)",
+      "type": "input"
+    },
+    {
+      "id": "AR11",
+      "source": "EXTERNAL",
+      "target": "A3:mechanism",
+      "label": "/proc reader, MessageV2.stream, Bus.publish",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR12",
+      "source": "EXTERNAL",
+      "target": "A4:control",
+      "label": "MessageV2.User schema; synthetic flag tagging rules (DD-3)",
+      "type": "control"
+    },
+    {
+      "id": "AR13",
+      "source": "A4:output",
+      "target": "EXTERNAL",
+      "label": "Parent session new turn with synthetic <task_result> message",
+      "type": "output"
+    },
+    {
+      "id": "AR14",
+      "source": "EXTERNAL",
+      "target": "A4:mechanism",
+      "label": "Session.appendMessage, Bus subscriber framework",
+      "type": "mechanism"
+    },
+    {
+      "id": "AR15",
+      "source": "EXTERNAL",
+      "target": "A5:input",
+      "label": "cancel_task tool_use (jobId, reason)",
+      "type": "input"
+    },
+    {
+      "id": "AR16",
+      "source": "A5:output",
+      "target": "A2:input",
+      "label": "Abort signal to worker (jobId-scoped)",
+      "type": "input"
+    },
+    {
+      "id": "AR17",
+      "source": "A5:output",
+      "target": "EXTERNAL",
+      "label": "CancelTaskResult (cancelled|not_found|already_terminal)",
+      "type": "output"
+    },
+    {
+      "id": "AR18",
+      "source": "EXTERNAL",
+      "target": "A5:mechanism",
+      "label": "Worker registry lookup, AbortSignal propagation",
+      "type": "mechanism"
+    }
+  ]
+}

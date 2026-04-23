@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "state": "living",
+  "profile": [],
+  "history": [
+    {
+      "from": null,
+      "to": "proposed",
+      "at": "2026-04-23T03:28:41.545Z",
+      "by": "pkcs12",
+      "mode": "new",
+      "reason": "initial spec created via plan-init.ts"
+    },
+    {
+      "from": "proposed",
+      "to": "designed",
+      "at": "2026-04-23T04:05:27.343Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "spec.md (6 Requirements), design.md (DD-1..DD-10), data-schema.json, idef0.json, grafcet.json, c4.json, sequence.json all drafted"
+    },
+    {
+      "from": "designed",
+      "to": "planned",
+      "at": "2026-04-23T04:48:20.476Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "all 13 planned-state artifacts present and valid"
+    },
+    {
+      "at": "2026-04-23T05:34:26.005Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "drift detected: packages/app/src/i18n/en.ts, packages/app/src/i18n/zh.ts, packages/app/src/pages/session/use-session-commands.tsx",
+      "result": "warned",
+      "drift": [
+        "packages/app/src/i18n/en.ts",
+        "packages/app/src/i18n/zh.ts",
+        "packages/app/src/pages/session/use-session-commands.tsx"
+      ],
+      "commit": "c39b6dfbb8f478008b6a5dcd0fea2536daf5cee9"
+    },
+    {
+      "from": "planned",
+      "to": "implementing",
+      "at": "2026-04-23T13:33:28.122Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "Phase 1-9 code merged to main; implementing state reflects task checkboxes flipped during build"
+    },
+    {
+      "from": "implementing",
+      "to": "verified",
+      "at": "2026-04-23T13:33:36.066Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "Runtime validated 2026-04-23: 3 task.completed events fired, notice append+drain pipeline end-to-end, 0 rejections, async dispatch confirmed"
+    },
+    {
+      "from": "verified",
+      "to": "living",
+      "at": "2026-04-23T13:33:44.188Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "Merged to main (commit 7c3cd50e7); spec now reflects current production code state"
+    }
+  ]
+}

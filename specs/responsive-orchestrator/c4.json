@@ -1,0 +1,144 @@
+{
+  "title": "Responsive Orchestrator — C4 Model",
+  "scope": "Daemon-internal architecture for async task tool dispatch with disk-terminal delivery",
+  "systems": [
+    {
+      "id": "S1",
+      "name": "OpenCode Daemon",
+      "description": "Single-user persistent process managing sessions, providers, workers, and the bus. Hosts both main agent runloop and subagent worker subprocesses."
+    },
+    {
+      "id": "S2",
+      "name": "LLM Provider",
+      "description": "External: Codex / Anthropic / OpenAI APIs. Subject to rate-limits and quotas this spec must cooperate with.",
+      "external": true
+    },
+    {
+      "id": "S3",
+      "name": "Web UI / TUI Client",
+      "description": "User-facing client. Reads parent session over SSE; renders synthetic <task_result> messages alongside real user/assistant turns.",
+      "external": true
+    }
+  ],
+  "containers": [
+    {
+      "id": "C1",
+      "systemRef": "S1",
+      "name": "Main Daemon Process",
+      "description": "The opencode serve process. Owns parent sessions, the Bus, the worker registry, the task tool runtime."
+    },
+    {
+      "id": "C2",
+      "systemRef": "S1",
+      "name": "Subagent Worker Subprocess",
+      "description": "Forked per task dispatch. Runs its own runloop in its own session; communicates with C1 via stdout IPC + Storage shared filesystem."
+    }
+  ],
+  "components": [
+    {
+      "id": "CMP1",
+      "containerRef": "C1",
+      "name": "ParentSessionRunloop",
+      "moduleRef": "A1",
+      "description": "session/prompt.ts — drives main agent's tool-use loop. After this spec: no longer awaits task tool result; turn closes after stub returned.",
+      "files": ["packages/opencode/src/session/prompt.ts"]
+    },
+    {
+      "id": "CMP2",
+      "containerRef": "C1",
+      "name": "TaskToolRuntime",
+      "moduleRef": "A1",
+      "description": "tool/task.ts — execute() returns dispatched stub immediately; spawns background watcher.",
+      "files": ["packages/opencode/src/tool/task.ts"]
+    },
+    {
+      "id": "CMP3",
+      "containerRef": "C1",
+      "name": "BackgroundTaskWatcher",
+      "moduleRef": "A3",
+      "description": "Detached promise per dispatched task. Owns watchdog A/B/C polling loop. Emits TaskCompletedEvent.",
+      "files": ["packages/opencode/src/tool/task.ts"]
+    },
+    {
+      "id": "CMP4",
+      "containerRef": "C1",
+      "name": "TaskResultInjector",
+      "moduleRef": "A4",
+      "description": "Bus subscriber for TaskCompletedEvent. Builds and appends synthetic MessageV2.User to parent session.",
+      "files": ["packages/opencode/src/bus/subscribers/task-result-injector.ts"]
+    },
+    {
+      "id": "CMP5",
+      "containerRef": "C1",
+      "name": "CancelTaskTool",
+      "moduleRef": "A5",
+      "description": "tool/cancel-task.ts — looks up worker by jobId, sends abort signal. New tool exposed to main agent.",
+      "files": ["packages/opencode/src/tool/cancel-task.ts"]
+    },
+    {
+      "id": "CMP6",
+      "containerRef": "C1",
+      "name": "WorkerRegistry",
+      "moduleRef": "A1",
+      "description": "task.ts internal workers[] array + assignedWorkerID tracking. Now keyed also by jobId for cancel_task lookup.",
+      "files": ["packages/opencode/src/tool/task.ts"]
+    },
+    {
+      "id": "CMP7",
+      "containerRef": "C1",
+      "name": "Bus",
+      "moduleRef": "A3-A4",
+      "description": "Existing Bus singleton. New event type: TaskCompletedEvent.",
+      "files": ["packages/opencode/src/bus/index.ts"]
+    },
+    {
+      "id": "CMP8",
+      "containerRef": "C2",
+      "name": "SubagentRunloop",
+      "moduleRef": "A2",
+      "description": "session/processor.ts shared code. Modified for child-session escalation timeout (R3) and post-turn quota wrap-up (R6).",
+      "files": ["packages/opencode/src/session/processor.ts"]
+    },
+    {
+      "id": "CMP9",
+      "containerRef": "C2",
+      "name": "QuotaSelfMonitor",
+      "moduleRef": "A2",
+      "description": "Reuses checkCodexLowQuotaAndMark for child sessions; sets quotaLowExitRequested flag.",
+      "files": ["packages/opencode/src/session/processor.ts", "packages/opencode/src/account/rate-limit-judge.ts"]
+    },
+    {
+      "id": "CMP10",
+      "containerRef": "S1",
+      "name": "Storage (shared filesystem)",
+      "description": "Existing Storage namespace. session/<sid>/messages/<mid>/info.json carries finish field — the substrate for disk-terminal delivery.",
+      "files": ["packages/opencode/src/storage/storage.ts"]
+    },
+    {
+      "id": "CMP11",
+      "containerRef": "C1",
+      "name": "TweaksConfig",
+      "description": "config/tweaks.ts — adds subagent_escalation_wait_ms, subagent_quota_low_red_line_percent, task_result_inject_grace_ms.",
+      "files": ["packages/opencode/src/config/tweaks.ts"]
+    }
+  ],
+  "relationships": [
+    { "from": "CMP1", "to": "CMP2", "label": "invokes task tool", "protocol": "in-process function call" },
+    { "from": "CMP2", "to": "CMP6", "label": "registers worker by jobId", "protocol": "in-process" },
+    { "from": "CMP2", "to": "C2", "label": "spawns subprocess", "protocol": "child_process" },
+    { "from": "CMP2", "to": "CMP3", "label": "detaches background watcher", "protocol": "Promise (orphan)" },
+    { "from": "CMP3", "to": "CMP10", "label": "polls for terminal finish", "protocol": "filesystem read" },
+    { "from": "CMP3", "to": "C2", "label": "polls /proc + reads stdout EOF state", "protocol": "/proc + IPC" },
+    { "from": "CMP3", "to": "CMP7", "label": "emits TaskCompletedEvent", "protocol": "Bus.publish" },
+    { "from": "CMP7", "to": "CMP4", "label": "delivers event", "protocol": "Bus subscription" },
+    { "from": "CMP4", "to": "CMP1", "label": "appends synthetic user message + wakes runloop", "protocol": "Session.appendMessage + signal" },
+    { "from": "CMP1", "to": "CMP5", "label": "may invoke cancel_task tool", "protocol": "in-process function call" },
+    { "from": "CMP5", "to": "CMP6", "label": "lookup worker by jobId", "protocol": "in-process" },
+    { "from": "CMP5", "to": "C2", "label": "sends abort signal", "protocol": "AbortSignal via IPC" },
+    { "from": "CMP8", "to": "S2", "label": "LLM API calls", "protocol": "HTTPS" },
+    { "from": "CMP8", "to": "CMP9", "label": "post-turn quota check", "protocol": "in-process" },
+    { "from": "CMP8", "to": "CMP10", "label": "writes terminal finish + summary", "protocol": "Storage.write" },
+    { "from": "CMP9", "to": "S2", "label": "fetches rate_limits headers / quota state", "protocol": "HTTPS" },
+    { "from": "S3", "to": "CMP1", "label": "user input + SSE subscription", "protocol": "HTTP + SSE" }
+  ]
+}

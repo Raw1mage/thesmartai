@@ -1,0 +1,294 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://opencode.local/specs/responsive-orchestrator/data-schema.json",
+  "title": "responsive-orchestrator data contracts",
+  "description": "Wire formats and stored entities introduced or modified by responsive-orchestrator.",
+  "type": "object",
+  "definitions": {
+    "JobId": {
+      "type": "string",
+      "pattern": "^job_[a-zA-Z0-9]+$",
+      "description": "Stable identifier issued by task tool at dispatch. Same value flows through dispatched stub, completion event, pending notice, and cancel_task input."
+    },
+    "ChildSessionID": {
+      "type": "string",
+      "pattern": "^ses_[a-zA-Z0-9]+$",
+      "description": "Subagent session ID, allocated at dispatch."
+    },
+    "TerminalFinish": {
+      "type": "string",
+      "enum": [
+        "stop",
+        "error",
+        "cancelled",
+        "rate_limited",
+        "quota_low",
+        "worker_exited",
+        "no_progress_timeout"
+      ],
+      "description": "Extended TERMINAL_FINISHES set. New entries: rate_limited (DD-7), quota_low (DD-4)."
+    },
+    "NoticeStatus": {
+      "type": "string",
+      "enum": ["success", "error", "cancelled", "rate_limited", "quota_low", "worker_dead", "silent_kill"],
+      "description": "User-facing classification for pending notices. Distinct from raw runloop finish."
+    },
+    "TaskDispatchedResult": {
+      "type": "object",
+      "description": "Stub tool_result returned synchronously by task tool, satisfying LLM tool-use protocol (DD-1).",
+      "required": ["status", "jobId", "childSessionID"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "const": "dispatched" },
+        "jobId": { "$ref": "#/definitions/JobId" },
+        "childSessionID": { "$ref": "#/definitions/ChildSessionID" },
+        "note": {
+          "type": "string",
+          "description": "Hint to remind LLM that result will arrive later as a pending notice on the next turn."
+        }
+      }
+    },
+    "PendingSubagentNotice": {
+      "type": "object",
+      "description": "Wake-only notice appended to parent session info.json#pendingSubagentNotices when a subagent reaches terminal state. Rendered as a one-line system-prompt addendum on the next prompt assemble, then removed from the array (DD-3). Never appended to messages/.",
+      "required": ["jobId", "childSessionID", "status", "finish", "elapsedMs", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "jobId": { "$ref": "#/definitions/JobId" },
+        "childSessionID": { "$ref": "#/definitions/ChildSessionID" },
+        "status": { "$ref": "#/definitions/NoticeStatus" },
+        "finish": { "$ref": "#/definitions/TerminalFinish" },
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Wall-clock time from dispatch to terminal."
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO-8601 timestamp when the notice was appended."
+        },
+        "errorDetail": {
+          "type": "object",
+          "description": "Present for rate_limited / error / silent_kill statuses.",
+          "properties": {
+            "message": { "type": "string" },
+            "code": { "type": "string" },
+            "resetsInSeconds": { "type": "integer" }
+          }
+        },
+        "rotateHint": {
+          "type": "object",
+          "description": "Present when status=quota_low (DD-3.1). Tells main agent the exhausted account and instructs rotation before next dispatch.",
+          "required": ["exhaustedAccountId", "directive"],
+          "properties": {
+            "exhaustedAccountId": {
+              "type": "string",
+              "description": "Concatenated provider:accountId of the account subagent was using when it exited."
+            },
+            "exhaustedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "remainingPercent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Quota remaining at exit time."
+            },
+            "directive": {
+              "type": "string",
+              "enum": ["rotate-before-redispatch"],
+              "description": "Instruction to main agent. Only one value defined currently."
+            }
+          }
+        },
+        "cancelReason": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Present when status=cancelled — echoes cancel_task's reason field for audit."
+        }
+      }
+    },
+    "ParentSessionInfoExtension": {
+      "type": "object",
+      "description": "Optional fields added to session info.json. Backward-compatible.",
+      "properties": {
+        "pendingSubagentNotices": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/PendingSubagentNotice" },
+          "description": "FIFO queue of unprocessed notices. Populated by task-result subscriber, drained by prompt-assemble. Empty/absent when nothing pending."
+        }
+      }
+    },
+    "TaskCompletedEvent": {
+      "type": "object",
+      "description": "Internal Bus event emitted by task tool's background watcher when subagent terminates. Subscriber translates this into a PendingSubagentNotice.",
+      "required": ["jobId", "parentSessionID", "childSessionID", "status", "finish", "elapsedMs"],
+      "properties": {
+        "jobId": { "$ref": "#/definitions/JobId" },
+        "parentSessionID": { "$ref": "#/definitions/ChildSessionID" },
+        "childSessionID": { "$ref": "#/definitions/ChildSessionID" },
+        "status": { "$ref": "#/definitions/NoticeStatus" },
+        "finish": { "$ref": "#/definitions/TerminalFinish" },
+        "elapsedMs": { "type": "integer", "minimum": 0 },
+        "errorDetail": { "type": "object" },
+        "rotateHint": { "type": "object" },
+        "cancelReason": { "type": "string" }
+      }
+    },
+    "CancelTaskInput": {
+      "type": "object",
+      "description": "Input schema for the cancel_task tool exposed to main agent.",
+      "required": ["jobId"],
+      "additionalProperties": false,
+      "properties": {
+        "jobId": { "$ref": "#/definitions/JobId" },
+        "reason": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Optional human-readable reason. Echoed as cancelReason on the resulting PendingSubagentNotice."
+        }
+      }
+    },
+    "CancelTaskResult": {
+      "type": "object",
+      "required": ["status", "jobId"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["cancelled", "not_found", "already_terminal"],
+          "description": "cancelled: signal sent. not_found: jobId unknown. already_terminal: subagent already finished before signal arrived."
+        },
+        "jobId": { "$ref": "#/definitions/JobId" }
+      }
+    },
+    "SystemPromptAddendumFormat": {
+      "type": "object",
+      "description": "Logical shape of how prompt-assemble renders one PendingSubagentNotice into a one-line system-prompt addendum. Wire format is plain text inside the system message, not JSON; this schema documents what the renderer reads from each notice.",
+      "properties": {
+        "template": {
+          "type": "string",
+          "description": "Per-status text template, parameterized with notice fields. Concrete templates live in design.md DD-3 and DD-3.1; data-schema.json only declares the dependency."
+        }
+      }
+    },
+    "SubagentRunloopState": {
+      "type": "object",
+      "description": "Runtime state added to processor.ts for subagent quota-low awareness.",
+      "properties": {
+        "quotaLowExitRequested": {
+          "type": "boolean",
+          "description": "Set by post-turn check (DD-4) when remaining quota ≤ red-line. Next iteration triggers wrap-up flow instead of new LLM call."
+        },
+        "quotaSnapshotPercent": {
+          "type": "number",
+          "description": "Last observed remaining percent for diagnostics and rotateHint payload."
+        }
+      }
+    },
+    "ListSubagentsInput": {
+      "type": "object",
+      "description": "Input for system-manager.list_subagents (DD-11). Omit parentSessionID for global query.",
+      "additionalProperties": false,
+      "properties": {
+        "parentSessionID": { "$ref": "#/definitions/ChildSessionID" },
+        "includeFinished": {
+          "type": "boolean",
+          "default": true,
+          "description": "When false, only running subagents are returned."
+        }
+      }
+    },
+    "SubagentStatusEntry": {
+      "type": "object",
+      "required": ["jobId", "childSessionID", "parentSessionID", "status", "dispatchedAt"],
+      "properties": {
+        "jobId": { "$ref": "#/definitions/JobId" },
+        "childSessionID": { "$ref": "#/definitions/ChildSessionID" },
+        "parentSessionID": { "$ref": "#/definitions/ChildSessionID" },
+        "status": {
+          "type": "string",
+          "enum": ["dispatched", "running", "finished"]
+        },
+        "finish": { "$ref": "#/definitions/TerminalFinish" },
+        "dispatchedAt": { "type": "string", "format": "date-time" },
+        "lastActivityAt": { "type": "string", "format": "date-time" },
+        "elapsedMs": { "type": "integer", "minimum": 0 },
+        "agent": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "ListSubagentsResult": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/SubagentStatusEntry" }
+    },
+    "ReadSubsessionInput": {
+      "type": "object",
+      "description": "Input for system-manager.read_subsession (DD-11).",
+      "required": ["sessionID"],
+      "additionalProperties": false,
+      "properties": {
+        "sessionID": { "$ref": "#/definitions/ChildSessionID" },
+        "sinceMessageID": { "type": "string" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+      }
+    },
+    "ReadSubsessionResult": {
+      "type": "object",
+      "description": "Either a successful read or a structured error. Errors do NOT throw.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["sessionID", "messages"],
+          "properties": {
+            "sessionID": { "$ref": "#/definitions/ChildSessionID" },
+            "messages": { "type": "array" },
+            "hasMore": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["error", "sessionID"],
+          "properties": {
+            "error": { "type": "string", "enum": ["session_not_found", "session_not_accessible"] },
+            "sessionID": { "$ref": "#/definitions/ChildSessionID" }
+          }
+        }
+      ]
+    },
+    "TweaksKeys": {
+      "type": "object",
+      "description": "New entries for /etc/opencode/tweaks.cfg (parsed by config/tweaks.ts).",
+      "properties": {
+        "subagent_escalation_wait_ms": {
+          "type": "integer",
+          "minimum": 5000,
+          "maximum": 300000,
+          "default": 30000
+        },
+        "subagent_quota_low_red_line_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50,
+          "default": 5
+        }
+      }
+    }
+  },
+  "properties": {
+    "TaskDispatchedResult": { "$ref": "#/definitions/TaskDispatchedResult" },
+    "PendingSubagentNotice": { "$ref": "#/definitions/PendingSubagentNotice" },
+    "ParentSessionInfoExtension": { "$ref": "#/definitions/ParentSessionInfoExtension" },
+    "TaskCompletedEvent": { "$ref": "#/definitions/TaskCompletedEvent" },
+    "CancelTaskInput": { "$ref": "#/definitions/CancelTaskInput" },
+    "CancelTaskResult": { "$ref": "#/definitions/CancelTaskResult" },
+    "ListSubagentsInput": { "$ref": "#/definitions/ListSubagentsInput" },
+    "ListSubagentsResult": { "$ref": "#/definitions/ListSubagentsResult" },
+    "ReadSubsessionInput": { "$ref": "#/definitions/ReadSubsessionInput" },
+    "ReadSubsessionResult": { "$ref": "#/definitions/ReadSubsessionResult" },
+    "SubagentRunloopState": { "$ref": "#/definitions/SubagentRunloopState" },
+    "TweaksKeys": { "$ref": "#/definitions/TweaksKeys" }
+  }
+}

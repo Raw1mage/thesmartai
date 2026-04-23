@@ -1,0 +1,284 @@
+[
+  {
+    "id": "TV1",
+    "requirementRef": "R1 — Async dispatch — main turn never blocks",
+    "description": "task tool returns dispatched stub within 200ms",
+    "input": {
+      "tool_call": "task",
+      "args": {
+        "description": "Run linter",
+        "prompt": "Run bun lint and report",
+        "subagent_type": "testing"
+      }
+    },
+    "expected": {
+      "tool_result_within_ms": 200,
+      "shape": {
+        "status": "dispatched",
+        "jobId": "/^job_[a-zA-Z0-9]+$/",
+        "childSessionID": "/^ses_[a-zA-Z0-9]+$/"
+      },
+      "session_busy_clears_within_ms": 500,
+      "subagent_running_independently": true
+    },
+    "notes": "Acceptance check A1 baseline. Cross-check spec.md R1 first scenario."
+  },
+  {
+    "id": "TV2",
+    "requirementRef": "R1 — multi-subagent parallel dispatch",
+    "description": "two task tool calls in one turn → two subagents run in parallel",
+    "input": {
+      "tool_calls": ["task", "task"],
+      "args": [
+        { "description": "lint", "prompt": "...", "subagent_type": "testing" },
+        { "description": "typecheck", "prompt": "...", "subagent_type": "testing" }
+      ]
+    },
+    "expected": {
+      "active_subagents_count": 2,
+      "distinct_jobIds": true,
+      "lanes_at_capacity": true
+    },
+    "notes": "Acceptance check A6. Requires lanes.maxConcurrent ≥ 2."
+  },
+  {
+    "id": "TV3",
+    "requirementRef": "R2 — happy path delivery",
+    "description": "subagent finishes stop → notice appears in pendingSubagentNotices within 10s; UI chat unchanged",
+    "input": {
+      "subagent_action": "complete normally with finish:stop",
+      "subagent_last_message": "Linter passed. 0 errors, 3 warnings."
+    },
+    "expected": {
+      "pending_notice_within_ms": 10000,
+      "notice_shape": {
+        "jobId": "/^job_/",
+        "status": "success",
+        "finish": "stop"
+      },
+      "messages_in_parent_log_added": 0,
+      "system_prompt_addendum_on_next_assemble": true,
+      "notice_removed_after_consume": true
+    }
+  },
+  {
+    "id": "TV4",
+    "requirementRef": "R2 — notice consumed exactly once",
+    "description": "Two consecutive prompt assembles after one notice arrives — only first sees it",
+    "input": {
+      "notices_in_queue": 1,
+      "assemble_count": 2
+    },
+    "expected": {
+      "first_assemble_addendum_present": true,
+      "second_assemble_addendum_present": false,
+      "queue_depth_after_first": 0
+    }
+  },
+  {
+    "id": "TV5",
+    "requirementRef": "R3 — rate-limit reactive exit",
+    "description": "subagent hits 429, parent does not rotate within 30s, exits with rate_limited",
+    "input": {
+      "provider_response": "429 usage_limit_reached resets_in_seconds=12000",
+      "parent_pushes_new_model": false,
+      "subagent_escalation_wait_ms": 30000
+    },
+    "expected": {
+      "subagent_finish": "rate_limited",
+      "subagent_exit_within_ms_of_timeout": 5000,
+      "notice_status": "rate_limited",
+      "notice_errorDetail_resetsInSeconds": 12000
+    }
+  },
+  {
+    "id": "TV6",
+    "requirementRef": "R3 — parent rotates in time",
+    "description": "subagent escalates 429, parent pushes new model within 5s, subagent continues",
+    "input": {
+      "provider_response": "429",
+      "parent_pushes_new_model_at_ms": 5000
+    },
+    "expected": {
+      "subagent_continues": true,
+      "no_pending_notice_yet": true,
+      "model_switched_to_new": true
+    }
+  },
+  {
+    "id": "TV7",
+    "requirementRef": "R4 — cancel_task happy path",
+    "description": "main agent cancels a running subagent",
+    "input": {
+      "tool_call": "cancel_task",
+      "args": { "jobId": "job_abc", "reason": "user changed mind" }
+    },
+    "expected": {
+      "tool_result_within_ms": 1000,
+      "tool_result": { "status": "cancelled", "jobId": "job_abc" },
+      "subagent_finish": "cancelled",
+      "notice_status": "cancelled",
+      "notice_cancelReason": "user changed mind",
+      "main_session_still_active": true,
+      "other_subagents_unaffected": true
+    }
+  },
+  {
+    "id": "TV8",
+    "requirementRef": "R4 — cancel_task on unknown jobId",
+    "input": {
+      "tool_call": "cancel_task",
+      "args": { "jobId": "job_does_not_exist" }
+    },
+    "expected": {
+      "tool_result": { "status": "not_found", "jobId": "job_does_not_exist" },
+      "no_error_event_emitted": true
+    }
+  },
+  {
+    "id": "TV9",
+    "requirementRef": "R5 — IPC pipe sever resilience",
+    "description": "stdout EOF mid-flight, subagent still alive, watchdog A still detects finish",
+    "input": {
+      "induce_stdout_eof_at_seconds": 15,
+      "subagent_finishes_at_seconds": 25
+    },
+    "expected": {
+      "watchdog_a_fires": true,
+      "notice_arrives_within_ms_of_finish": 10000,
+      "notice_status": "success",
+      "log_marker": "workerEvicted:true"
+    },
+    "notes": "Acceptance check A3. Verifies 2026-04-23 守門 fix still effective and disk-terminal delivery is not coupled to worker registry membership."
+  },
+  {
+    "id": "TV10",
+    "requirementRef": "R5 — silent kill",
+    "description": "subagent alive but no progress 60s, watchdog C kills, notice arrives",
+    "input": {
+      "subagent_state": "alive but no CPU/IO ticks for 60s"
+    },
+    "expected": {
+      "watchdog_c_fires": true,
+      "worker_killed": true,
+      "notice_status": "silent_kill",
+      "notice_finish": "no_progress_timeout"
+    }
+  },
+  {
+    "id": "TV11",
+    "requirementRef": "R6 — quota_low proactive wrap-up",
+    "description": "post-turn quota check sees 4% remaining, subagent wraps up + exits",
+    "input": {
+      "quota_remaining_after_turn_n": 4,
+      "subagent_quota_low_red_line_percent": 5
+    },
+    "expected": {
+      "wrap_up_turn_runs": true,
+      "wrap_up_assistant_message_nonempty": true,
+      "subagent_finish": "quota_low",
+      "notice_status": "quota_low",
+      "notice_rotateHint_present": true,
+      "notice_rotateHint_directive": "rotate-before-redispatch",
+      "notice_rotateHint_remainingPercent": 4,
+      "system_addendum_text_includes": ["account", "rotate", "before next dispatch"]
+    },
+    "notes": "Acceptance check A5. Cross-check that addendum text contains explicit rotate directive."
+  },
+  {
+    "id": "TV12",
+    "requirementRef": "R6 — quota check disabled",
+    "description": "tweak set to 0 disables quota_low path",
+    "input": {
+      "subagent_quota_low_red_line_percent": 0,
+      "quota_remaining": 2
+    },
+    "expected": {
+      "wrap_up_turn_does_not_run": true,
+      "subagent_continues_until_429_or_natural_completion": true
+    }
+  },
+  {
+    "id": "TV13",
+    "requirementRef": "R7 — list_subagents",
+    "description": "session has 2 running + 1 finished subagents",
+    "input": {
+      "tool_call": "system-manager.list_subagents",
+      "args": { "parentSessionID": "ses_self" }
+    },
+    "expected": {
+      "result_length": 3,
+      "running_count": 2,
+      "finished_count": 1,
+      "each_entry_has_fields": [
+        "jobId", "childSessionID", "parentSessionID",
+        "status", "dispatchedAt", "elapsedMs"
+      ]
+    }
+  },
+  {
+    "id": "TV14",
+    "requirementRef": "R7 — read_subsession happy path",
+    "input": {
+      "tool_call": "system-manager.read_subsession",
+      "args": { "sessionID": "ses_xyz", "limit": 50 }
+    },
+    "expected": {
+      "result_shape_includes": ["sessionID", "messages"],
+      "messages_chronological": true
+    }
+  },
+  {
+    "id": "TV15",
+    "requirementRef": "R7 — read_subsession unknown",
+    "input": {
+      "tool_call": "system-manager.read_subsession",
+      "args": { "sessionID": "ses_does_not_exist" }
+    },
+    "expected": {
+      "result_shape": { "error": "session_not_found", "sessionID": "ses_does_not_exist" },
+      "no_throw": true
+    }
+  },
+  {
+    "id": "TV16",
+    "requirementRef": "R7 — read_subsession cross-tenant",
+    "input": {
+      "tool_call": "system-manager.read_subsession",
+      "args": { "sessionID": "ses_belongs_to_other_user" }
+    },
+    "expected": {
+      "result_shape": { "error": "session_not_accessible" },
+      "no_content_leak": true
+    }
+  },
+  {
+    "id": "TV17",
+    "requirementRef": "DD-10 — cumulative escalation cap",
+    "description": "even with bounded timeout, MAX_CUMULATIVE_ESCALATIONS=5 still trips",
+    "input": {
+      "parent_pushes_models_count": 6,
+      "each_pushed_model_also_429s": true
+    },
+    "expected": {
+      "subagent_fails_fast_after_5_escalations": true,
+      "notice_status": "rate_limited",
+      "errorDetail_message_includes": "cumulative escalations"
+    },
+    "notes": "Acceptance check A7."
+  },
+  {
+    "id": "TV18",
+    "requirementRef": "R1 — user can chat with main during subagent run",
+    "description": "manual scenario; user sends 3 messages while subagent runs; all 3 get normal responses",
+    "input": {
+      "subagent_running_during": "user_message_1, user_message_2, user_message_3"
+    },
+    "expected": {
+      "main_responds_to_each_within_normal_latency": true,
+      "subagent_unaffected_by_user_traffic": true,
+      "subagent_result_arrives_after_completion": true
+    },
+    "notes": "Acceptance check A1. Manual verification — automate later if regression risk emerges."
+  }
+]

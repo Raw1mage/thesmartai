@@ -1,0 +1,412 @@
+[
+  {
+    "id": "P1",
+    "name": "Happy path: dispatch → run → success → injection",
+    "componentRefs": [
+      "CMP1",
+      "CMP2",
+      "CMP6",
+      "C2",
+      "CMP3",
+      "CMP10",
+      "CMP7",
+      "CMP4"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "CMP1",
+        "to": "CMP2",
+        "label": "execute(task tool_use)"
+      },
+      {
+        "id": "MSG2",
+        "from": "CMP2",
+        "to": "CMP6",
+        "label": "register({ jobId, childSessionID })"
+      },
+      {
+        "id": "MSG3",
+        "from": "CMP2",
+        "to": "C2",
+        "label": "spawn worker"
+      },
+      {
+        "id": "MSG4",
+        "from": "CMP2",
+        "to": "CMP3",
+        "label": "detach background watcher (jobId)"
+      },
+      {
+        "id": "MSG5",
+        "from": "CMP2",
+        "to": "CMP1",
+        "label": "return TaskDispatchedResult { status:'dispatched', jobId, childSessionID }"
+      },
+      {
+        "id": "MSG6",
+        "from": "CMP1",
+        "to": "CMP1",
+        "label": "assistant turn closes; session idle"
+      },
+      {
+        "id": "MSG7",
+        "from": "C2",
+        "to": "CMP10",
+        "label": "subagent finishes; writes finish:'stop' to disk"
+      },
+      {
+        "id": "MSG8",
+        "from": "CMP3",
+        "to": "CMP10",
+        "label": "watchdog A reads message; sees finish past DISK_GRACE_MS"
+      },
+      {
+        "id": "MSG9",
+        "from": "CMP3",
+        "to": "CMP7",
+        "label": "Bus.publish(TaskCompletedEvent { status:'success', summary, ... })"
+      },
+      {
+        "id": "MSG10",
+        "from": "CMP7",
+        "to": "CMP4",
+        "label": "deliver event"
+      },
+      {
+        "id": "MSG11",
+        "from": "CMP4",
+        "to": "CMP1",
+        "label": "appendNotice(PendingSubagentNotice) to parent info.json"
+      },
+      {
+        "id": "MSG12",
+        "from": "CMP1",
+        "to": "CMP1",
+        "label": "runloop wakes; next prompt assemble renders notice as system addendum"
+      }
+    ]
+  },
+  {
+    "id": "P2",
+    "name": "IPC-sever resilience: stdout EOF mid-flight, subagent still alive",
+    "componentRefs": [
+      "CMP2",
+      "C2",
+      "CMP3",
+      "CMP6",
+      "CMP10",
+      "CMP7",
+      "CMP4"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "CMP2",
+        "to": "C2",
+        "label": "(post dispatch, worker running)"
+      },
+      {
+        "id": "MSG2",
+        "from": "C2",
+        "to": "CMP2",
+        "label": "stdout EOF (kernel pipe buffer issue)"
+      },
+      {
+        "id": "MSG3",
+        "from": "CMP2",
+        "to": "CMP6",
+        "label": "exit handler removes worker from registry"
+      },
+      {
+        "id": "MSG4",
+        "from": "CMP3",
+        "to": "CMP6",
+        "label": "tick: workers.find returns undefined; assignedWorkerID still set → continue (守門 fix)"
+      },
+      {
+        "id": "MSG5",
+        "from": "CMP3",
+        "to": "CMP10",
+        "label": "tick: read child session messages — finish not yet present"
+      },
+      {
+        "id": "MSG6",
+        "from": "C2",
+        "to": "CMP10",
+        "label": "subagent (still alive) finishes; writes finish:'stop'"
+      },
+      {
+        "id": "MSG7",
+        "from": "CMP3",
+        "to": "CMP10",
+        "label": "next tick: detects disk_terminal"
+      },
+      {
+        "id": "MSG8",
+        "from": "CMP3",
+        "to": "CMP7",
+        "label": "Bus.publish(TaskCompletedEvent { workerEvicted:true })"
+      },
+      {
+        "id": "MSG9",
+        "from": "CMP4",
+        "to": "CMP1",
+        "label": "PendingSubagentNotice appended; main agent unaware IPC was severed"
+      }
+    ]
+  },
+  {
+    "id": "P3",
+    "name": "Reactive 429 path: subagent escalates, parent does not respond, timeout → rate_limited",
+    "componentRefs": [
+      "CMP8",
+      "S2",
+      "CMP7",
+      "CMP10",
+      "CMP3",
+      "CMP4"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "CMP8",
+        "to": "S2",
+        "label": "LLM API call"
+      },
+      {
+        "id": "MSG2",
+        "from": "S2",
+        "to": "CMP8",
+        "label": "429 usage_limit_reached (resets_in_seconds:12000)"
+      },
+      {
+        "id": "MSG3",
+        "from": "CMP8",
+        "to": "CMP7",
+        "label": "Bus.publish(RateLimitEscalationEvent)"
+      },
+      {
+        "id": "MSG4",
+        "from": "CMP8",
+        "to": "CMP8",
+        "label": "ModelUpdateSignal.wait(timeout=subagent_escalation_wait_ms)"
+      },
+      {
+        "id": "MSG5",
+        "from": "CMP8",
+        "to": "CMP8",
+        "label": "timeout fires (parent never pushed new model)"
+      },
+      {
+        "id": "MSG6",
+        "from": "CMP8",
+        "to": "CMP10",
+        "label": "write finish:'rate_limited' with errorDetail"
+      },
+      {
+        "id": "MSG7",
+        "from": "CMP8",
+        "to": "CMP8",
+        "label": "worker process exits"
+      },
+      {
+        "id": "MSG8",
+        "from": "CMP3",
+        "to": "CMP10",
+        "label": "watchdog A picks up finish:'rate_limited'"
+      },
+      {
+        "id": "MSG9",
+        "from": "CMP3",
+        "to": "CMP7",
+        "label": "Bus.publish(TaskCompletedEvent { status:'rate_limited', resetsInSeconds:12000 })"
+      },
+      {
+        "id": "MSG10",
+        "from": "CMP4",
+        "to": "CMP1",
+        "label": "PendingSubagentNotice { status:'rate_limited', errorDetail.resetsInSeconds:12000 } appended"
+      }
+    ]
+  },
+  {
+    "id": "P4",
+    "name": "Proactive quota_low path: subagent sees 4% remaining, wraps up",
+    "componentRefs": [
+      "CMP8",
+      "CMP9",
+      "S2",
+      "CMP10",
+      "CMP3",
+      "CMP4"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "CMP8",
+        "to": "S2",
+        "label": "LLM turn N completes successfully"
+      },
+      {
+        "id": "MSG2",
+        "from": "CMP9",
+        "to": "S2",
+        "label": "post-turn quota query → remaining 4%"
+      },
+      {
+        "id": "MSG3",
+        "from": "CMP9",
+        "to": "CMP8",
+        "label": "set quotaLowExitRequested = true"
+      },
+      {
+        "id": "MSG4",
+        "from": "CMP8",
+        "to": "CMP8",
+        "label": "next iteration: flag set, skip new tool call; inject system 'wrap up' message"
+      },
+      {
+        "id": "MSG5",
+        "from": "CMP8",
+        "to": "S2",
+        "label": "one final summary turn"
+      },
+      {
+        "id": "MSG6",
+        "from": "S2",
+        "to": "CMP8",
+        "label": "summary text returned"
+      },
+      {
+        "id": "MSG7",
+        "from": "CMP8",
+        "to": "CMP10",
+        "label": "write finish:'quota_low' with summary as last assistant message"
+      },
+      {
+        "id": "MSG8",
+        "from": "CMP3",
+        "to": "CMP10",
+        "label": "watchdog A picks up finish:'quota_low'"
+      },
+      {
+        "id": "MSG9",
+        "from": "CMP4",
+        "to": "CMP1",
+        "label": "PendingSubagentNotice { status:'quota_low', rotateHint:{ exhaustedAccountId, remainingPercent:4, directive:'rotate-before-redispatch' } } appended"
+      }
+    ]
+  },
+  {
+    "id": "P5",
+    "name": "cancel_task path: main agent cancels one subagent",
+    "componentRefs": [
+      "CMP1",
+      "CMP5",
+      "CMP6",
+      "C2",
+      "CMP10",
+      "CMP3",
+      "CMP4"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "CMP1",
+        "to": "CMP5",
+        "label": "execute(cancel_task { jobId:'job_abc', reason:'user changed mind' })"
+      },
+      {
+        "id": "MSG2",
+        "from": "CMP5",
+        "to": "CMP6",
+        "label": "lookup workers by jobId"
+      },
+      {
+        "id": "MSG3",
+        "from": "CMP5",
+        "to": "C2",
+        "label": "send AbortSignal"
+      },
+      {
+        "id": "MSG4",
+        "from": "CMP5",
+        "to": "CMP1",
+        "label": "return CancelTaskResult { status:'cancelled' }"
+      },
+      {
+        "id": "MSG5",
+        "from": "C2",
+        "to": "CMP10",
+        "label": "abort handler writes finish:'cancelled' (DD-6 single authority)"
+      },
+      {
+        "id": "MSG6",
+        "from": "C2",
+        "to": "C2",
+        "label": "worker exits"
+      },
+      {
+        "id": "MSG7",
+        "from": "CMP3",
+        "to": "CMP10",
+        "label": "watchdog A picks up finish:'cancelled'"
+      },
+      {
+        "id": "MSG8",
+        "from": "CMP4",
+        "to": "CMP1",
+        "label": "PendingSubagentNotice { status:'cancelled', cancelReason:'user changed mind' } appended"
+      }
+    ]
+  },
+  {
+    "id": "P6",
+    "name": "Worst-case: subagent hangs forever; watchdog C silent_kill",
+    "componentRefs": [
+      "C2",
+      "CMP3",
+      "CMP10",
+      "CMP4"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "C2",
+        "to": "C2",
+        "label": "subagent stuck (provider hang, no CPU/IO ticks)"
+      },
+      {
+        "id": "MSG2",
+        "from": "CMP3",
+        "to": "C2",
+        "label": "watchdog C accumulates silence"
+      },
+      {
+        "id": "MSG3",
+        "from": "CMP3",
+        "to": "CMP3",
+        "label": "silentSinceMs ≥ SILENCE_THRESHOLD_MS (60s)"
+      },
+      {
+        "id": "MSG4",
+        "from": "CMP3",
+        "to": "C2",
+        "label": "kill worker"
+      },
+      {
+        "id": "MSG5",
+        "from": "CMP3",
+        "to": "CMP10",
+        "label": "synthesize finish for missing case"
+      },
+      {
+        "id": "MSG6",
+        "from": "CMP4",
+        "to": "CMP1",
+        "label": "PendingSubagentNotice { status:'silent_kill', errorDetail.code:'no_progress_timeout' } appended"
+      }
+    ]
+  }
+]
