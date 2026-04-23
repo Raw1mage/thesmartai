@@ -8,6 +8,7 @@ import { useSDK } from "./sdk"
 import { sendSessionReloadDebugBeacon } from "@/utils/debug-beacon"
 import type { Message, Part } from "@opencode-ai/sdk/v2/client"
 import type { State } from "./global-sync/types"
+import { evictGlobalIfOverCap } from "./global-sync/event-reducer"
 import { buildMonitorEntries, buildSessionTelemetryFromProjector } from "@/pages/session/monitor-helper"
 import { frontendTweaks } from "./frontend-tweaks"
 
@@ -250,6 +251,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       directory: string
       client: typeof sdk.client
       setStore: Setter
+      store: Store<State>
       sessionID: string
       limit: number
     }) => {
@@ -285,6 +287,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             setMeta("limit", key, input.limit)
             setMeta("complete", key, next.complete)
           })
+          // Phase 10: enforce global cap after cold load.
+          evictGlobalIfOverCap(input.store, input.setStore)
         })
         .catch((error) => {
           sendSessionReloadDebugBeacon({
@@ -352,6 +356,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           input.setStore("part", item.info.id, reconcile(sortParts(item.parts), { key: "id" }))
         }
       })
+      // Phase 10: enforce global cap after prepending older messages. Strict
+      // policy per user: "從來不會真的上去看" — scroll-up overage is cleaned
+      // up immediately on the next cap check rather than yo-yo-accumulating.
+      evictGlobalIfOverCap(input.store, input.setStore)
       return { appended: incoming.length }
     }
 
@@ -469,7 +477,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           const messagesReq = hasMessages && hydrated
             ? Promise.resolve()
-            : loadMessages({ directory, client, setStore, sessionID, limit })
+            : loadMessages({ directory, client, setStore, store, sessionID, limit })
 
           return runInflight(inflight, key, () => Promise.all([sessionReq, messagesReq]).then(() => void 0))
         },
