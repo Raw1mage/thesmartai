@@ -1,108 +1,164 @@
-# Design: system-manager-quota-observability
+# Design: subagent-quota-safety-gate
 
 ## Context
 
-`packages/mcp/system-manager/src/index.ts` 是一個 stdio MCP server，對外提供 25+ 個管理類 tool。其中 `get_system_status` 已暴露 rotation 狀態（`rotation-state.json`）、codex 5H/WK usage（live API）、RPM/RPD 統計（`usage-stats.json`）。但目前無法區分「UI 選的帳號」與「rotation 當次 inflight 選的帳號」，且 `getCodexUsage()` 每次呼叫都打 live API，沒有 cache、沒有 timestamp。
+這份 spec 在 2026-04-23 經歷過一次 scope pivot：從「AI 觀測 tool」改為「runtime 強制 quota gate + 附屬觀測 tool」。原因：`SYSTEM.md` 已有的 5% wrap-up 文字規則在實務中對 subagent 完全不生效，而 subagent 有自己的 pinned `execution.accountId`、rotation 預設尊重 pin 不動它。事故模式一再是 subagent 把單一帳號 5H window 燒爆。結論：這件事不能靠 AI 自律，必須 runtime 硬攔。
 
-同時，Session 的 `execution.accountId`（pinned rotation 結果）已持久化在 `~/.local/share/opencode/storage/session/{sessionID}/info.json`（由 [processor.ts:463-470](packages/opencode/src/session/processor.ts#L463-L470) 的 `pinExecutionIdentity()` 寫入），但 MCP tool 層沒有機制知道「是哪個 session 呼叫我」。
+技術面既有的基礎：
+- Rotation 在首次 request 後把 `{providerId, modelID, accountId}` 用 `pinExecutionIdentity()` 寫進 session info.json（[processor.ts:463-470](packages/opencode/src/session/processor.ts#L463-L470)）— 這就是 subagent 當前用的帳號
+- `getCodexUsage()` 每次呼叫都打 live API，無 cache、無 timestamp（[system-manager/index.ts:261](packages/mcp/system-manager/src/index.ts#L261)）— gate 若直接用會 hammer OpenAI
+- Task tool 的 subagent runloop 在 [packages/opencode/src/tool/task.ts](packages/opencode/src/tool/task.ts) — 這是插入 gate 的位置
+- 既有 cancel reason / CancelReason union 已存在（[session/prompt-runtime.ts](packages/opencode/src/session/prompt-runtime.ts)，參考 `runaway-guard` reason 的前例）
 
 ## Goals / Non-Goals
 
 ### Goals
 
-- AI（特別是 subagent）能以單一 tool 呼叫拿到「我這個 session 現在用的帳號的用量」
-- 主 agent / admin 透過 `get_system_status` 能看見 `selectedAccount` vs `currentInflightAccount` 的差別
-- 不增加 OpenAI usage endpoint 的壓力；cache staleness 對 AI 顯性
-- Read-only 保證在 import 層面硬鎖
+- Subagent 5H 或 weekly 任一跌破 5% → runtime 強制終止，不給 LLM 再燒的機會
+- Parent 收到的不是 crash 而是結構化 handover（SharedContext + runtime 自動摘要）
+- Gate 邏輯與觀測 tool 共享同一份 quota 資料源（`AccountQuotaProbe` registry + `quota-cache.json`）
+- 保留 v1 的觀測 tool 能力作為附屬
 
 ### Non-Goals
 
-- 不重構 rotation3d 本身（request-gated → background ticker 留給 `process-liveness-contract`）
-- 不新增「自動 handover」邏輯（先給眼睛，行為層晚點再設計）
-- 不改 `accounts.json` / rotation-state.json 的寫入路徑
-- 不為非 codex/openai provider 發明 usage 機制（它們回 `not supported`）
+- 不重構 rotation3d（request-gated → background ticker 留給 `process-liveness-contract`）
+- 不在 subagent 內部做 rotation 或 re-pin（不動 rotation 契約）
+- 不替 parent 自動重派（policy 留給 parent LLM / 使用者）
+- 不處理 root session / parent / 非 task-tool session 的 quota 問題
+- 不追求 LLM-品質的摘要（runtime 機械生成就夠）
 
 ## Decisions
 
-- **DD-1** Inflight 帳號的 source-of-truth = session info.json 的 `execution.accountId`（由 [processor.ts:463-470](packages/opencode/src/session/processor.ts#L463-L470) `pinExecutionIdentity()` 持久化）。MCP tool 以 `sessionID` 反查該檔案，**不**另建 in-memory cache。
-  - Rationale：這是 rotation3d 唯一已持久化、跨行程可見的「誰在用誰」contract。另建 cache 會與 rotation 寫入時序競爭。
+### 主線（v2 gate）
 
-- **DD-2** MCP tool 透過 **opencode MCP bridge 自動注入 `sessionID`** 進 tool args，LLM 不需要知道也不需要傳。
-  - 改動點：[packages/opencode/src/mcp/index.ts:142-158](packages/opencode/src/mcp/index.ts#L142-L158) 的 `dynamicTool()` 包裝層，在呼叫 `client.callTool()` 前把當前 session 的 sessionID 併入 args。
-  - Rationale：LLM 不穩定 — 要它自己帶 sessionID 一定會漏。Bridge 層注入對 LLM 完全透明，也保留「tool 仍可接受顯式 sessionID 覆寫」的彈性（admin UI 帶 sessionID 查別人的 session）。
-  - Scope：僅針對 system-manager 這支 MCP server；不改 HTTP MCP transport。
+- **DD-10** Gate 插入點 = subagent runloop 的 **pre-dispatch hook**：每輪 tool-call 結束、下一次要把 message 送去 provider 之前。
+  - 位置：`packages/opencode/src/tool/task.ts` subagent 執行迴圈 OR 共用的 session runloop（`prompt.ts` / `processor.ts`）— 實作時選最薄的那一層（若共用 runloop 能只加一個 `if (isSubagent)` 就最好）。
+  - Rationale：tool-call 邊界粒度夠細（不會連燒十次）且成本低（每輪僅一次 cache 讀取）；選 pre-dispatch 而非 post-tool-call 是因為要擋的是「下一次 provider 呼叫」而非「上一次的已成事實」。
 
-- **DD-3** 新增本地 quota cache，key `codex:{accountId}`，value `{ fiveHourPercent, weeklyPercent, nextResetAt, cachedAt }`。存放於 `~/.config/opencode/quota-cache.json`（獨立於現有 `usage-stats.json`，職責不同）。
-  - TTL 由 tweaks.cfg `quota.cache_ttl_seconds` 控制，預設 60 秒。
-  - 讀路徑：`getCodexUsage()` 先查 cache，若 `ageSeconds > ttl` 才打 live API 並寫回 cache。
-  - Rationale：目前 `getCodexUsage()` 每次打 live API（[system-manager/index.ts:261](packages/mcp/system-manager/src/index.ts#L261)），若 AI 按 heuristic 每幾個 tool call 查一次會直接 hammer OpenAI。60s TTL 在「即時性」與「配額健康」間取平衡。
+- **DD-11** 判斷「這個 session 是不是 task-tool subagent」的依據 = `session.parentSessionID` 存在 **且** `session.source === "task-tool"`（或等價的 spawn-origin 標記）。
+  - 若現有 session info 沒有 `source` 欄位，**補**一個並在 task tool spawn 時標註。
+  - 其他 spawn 路徑（MCP handover、使用者手開）**不**標 `task-tool`，自動不進 gate 範圍。
+  - Rationale：光靠 `parentSessionID` 不夠區分（MCP handover 也有 parent）；要明確標「這是 task-tool 生的」。
 
-- **DD-4** `get_system_status` 新增 optional input param `sessionID?: string`。有提供時，每個 family 的回傳加 `currentInflightAccount`（從 session.execution.accountId 推出）；未提供時該欄位為 `null`。
-  - **不**自動從 bridge 注入 — 因為 `get_system_status` 的語意是「系統級全景」，有些呼叫端（admin UI）不綁單一 session。
+- **DD-12** Gate 觸發條件 = `min(fiveHourPercent_remaining, weeklyPercent_remaining) < threshold`。`remaining = 100 - used_percent`。
+  - `triggerWindow` 取數值較低者；若並列，優先回報 `"5h"`（時間尺度較短 → 使用者 recovery 較快，優先曝光）。
+  - Threshold 預設 5，可由 `/etc/opencode/tweaks.cfg` 的 `subagent.quota_gate_threshold_percent` 覆寫。
 
-- **DD-5** Provider quota probe 透過 account manager 暴露的 `AccountQuotaProbe` 介面分派。
+- **DD-13** Cancel 路徑 = 新增 `CancelReason: "quota-gate-trip"`；由 runtime（非 subagent 的 LLM）觸發 cancel。
+  - Subagent 的 runloop 收到 cancel 後走正常 cancel 路徑，但 task tool 層攔截這個特定 reason 組成結構化 result（見 DD-15），而非讓 parent 看到「manual_interrupt」或 error。
+  - 注意：[prompt.ts:390-403 已知 bug](packages/opencode/src/session/prompt.ts#L390-L403)（`manual_interrupt` stopReason 寫死）要**先**修，否則這個 reason 會被覆蓋。此修補列入 tasks.md 為 prerequisite task。
+
+- **DD-14** 「寧縱勿誤殺」fallback 語義明確化：
+  - Probe 不存在 / cache 完全空 / probe 拋例外 → gate **放行**（不 cancel）+ WARN log
+  - Probe 回 stale 但有數字（`ageSeconds > TTL`）→ gate 正常觸發 refresh；refresh 失敗則退回放行 + WARN
+  - Probe 回的數字明顯異常（<0 或 >100）→ 當 missing 處理，放行 + WARN
+  - Rationale：誤殺比放行難處理（使用者看到 subagent 莫名死亡會失去信任）；放行只是回到 pre-gate 的 status quo。WARN log 確保不會靜默失效。
+
+- **DD-15** Structured summary 由 runtime 機械生成，**不**呼叫 LLM：
+  - 生成器位置：`packages/opencode/src/session/quota-trip-summary.ts`（新檔）
+  - 輸入：subagent sessionID、SharedContext snapshot、session message list
+  - 掃描邏輯：
+    - `completedToolCalls`：掃 session messages 的 tool_use + tool_result pairs，取後 20 筆
+    - `readFiles` / `editedFiles`：從 tool_use 的 name + args 提取（Read tool → readFiles，Edit/Write → editedFiles），unique + path 歸一化
+    - `lastMessages`：取最後 3 則 assistant message 的 text content，每則截 500 字
+    - `pendingWork`：若 session 有 TodoWrite state 且存在 non-completed items，輸出 content + status；否則空陣列
+  - 為 pure function，輸入 snapshot 輸出 JSON — 可單元測試
+
+- **DD-16** Task tool 回傳 schema 擴充：原本 task tool 結束回傳 final assistant text；現在額外支援「trip result」型別：
   ```ts
-  interface AccountQuotaProbe {
-    probe(accountId: string): Promise<{ fiveHourPercent: number; weeklyPercent: number; nextResetAt: string } | { supported: false; reason: string }>
-  }
+  type TaskResult =
+    | { tripped: false, finalText: string }
+    | { tripped: true, reason: "quota-gate-trip", triggerWindow: "5h" | "weekly", remainingPercent: number, summary: StructuredSummary, sharedContext: string }
   ```
-  Codex/OpenAI 實作該介面包裝 `getCodexUsage`；其他 provider 回 `{ supported: false }`。MCP tool 只做 registry dispatch。
-  - Rationale：遵守 `feedback_provider_boundary.md` — MCP 層不內嵌 provider-specific 邏輯。
+  - Parent LLM 收到後看 `tripped` 欄位分流；tool description 要明示這個型別
 
-- **DD-6** Tool description 內嵌 heuristic：
-  ```
-  get_my_current_usage: Check remaining quota (5-hour and weekly) for the account your current session is using. Pure read — does not change any rotation or account state. Recommended to call periodically during long tasks, after bursts of heavy tool calls, or when provider responses feel unusually slow, so you can proactively summarize and request handover before hitting exhaustion.
-  ```
-  - Rationale：AI 看 schema 就知道何時用；不完全依賴 SYSTEM.md 被讀到。
+### 共享層
 
-- **DD-7** Read-only 硬鎖：quota tool 實作檔的 import allow-list 在 CI / lint 階段強制（或至少以 unit test 斷言 import 清單）。禁止 import：`markRateLimited`、`updateQuotaCache`（寫入版本）、`forceRotate`、`accounts.json` 的任何 `fs.writeFile` 路徑。
-  - Rationale：`feedback_destructive_tool_guard.md` 的教訓 — 光靠註解或命名不夠。
+- **DD-17** Quota 資料源 = 單一 `AccountQuotaProbe` registry（原 v1 DD-5，保留） + 單一 `quota-cache.json`（原 v1 DD-3，保留）。Gate 與觀測 tool 都呼叫同一組介面，看到同一份 cache。
+  - TTL 由 `quota.cache_ttl_seconds` 控制，預設 60。
+  - Gate 呼叫 probe 時若 cache 過期會自動 refresh — 這會讓 gate 觸發點可能有一次 live fetch 成本；可接受（1 req/60s/account 上限）。
+
+- **DD-18** `tweaks.cfg` 新增三個 knob：
+  - `subagent.quota_gate_enabled`（default `true`）
+  - `subagent.quota_gate_threshold_percent`（default `5`）
+  - `quota.cache_ttl_seconds`（default `60`，gate 與觀測 tool 共用）
+
+### 支援線（v1 觀測 tool，保留不變）
+
+- **DD-1 ~ DD-7**（v1）：全部保留。詳見 proposal.md v1 Revision History 與先前版本 design.md。核心摘要：
+  - DD-1：inflight account = session.execution.accountId
+  - DD-2：MCP bridge 自動注入 sessionID
+  - DD-3：quota-cache.json + TTL 60s（與 gate 共用）
+  - DD-4：`get_system_status` 加 `currentInflightAccount`
+  - DD-5：`AccountQuotaProbe` 介面（與 gate 共用）
+  - DD-6：tool description 帶 heuristic
+  - DD-7：read-only import allow-list（觀測 tool，不含 gate — gate 當然有 cancel 權）
 
 ## Risks / Trade-offs
 
-- **R-1** Bridge 注入 sessionID 可能在某些邊界情境（initialize 階段、admin UI 無 session 呼叫）失敗。→ 處理：若 bridge 取不到 sessionID，不注入，tool 走「沒 pinned identity」分支回 `supported: false`。不 throw。
-- **R-2** quota-cache.json 與 rotation-state.json 之間可能出現「rotation 剛切號但 quota cache 仍是舊號」的瞬時不一致。→ 處理：cache key 以 `accountId` 為粒度，rotation 切號後 `execution.accountId` 變動，下次查自然落到新 key — 不會跨號污染。
-- **R-3** 若 OpenAI usage endpoint 自己在某個 TTL 內 cache，我們再疊一層 60s 等於看到「過時的過時」。→ 接受；ageSeconds 欄位讓 AI 自己判斷。
-- **R-4** Subagent 的 sessionID（子 session）跟父 session 不同 — 要確保 bridge 注入的是**執行當下**那個 session 的 ID，不是對話起點的。→ 處理：注入點在 `dynamicTool()` 包裝執行時，從 request context 取 sessionID，非從啟動時快取。
+- **R-10** 5% 門檻在快速燒的情境下仍來不及 — 例如 subagent 一輪 tool-call 就從 6% 燒到 3%。→ tool-call 邊界檢查只能抓到邊界時刻；若單輪消耗 >1% 理論上會穿門檻。緩解：tweaks.cfg 可把門檻調高（例如 10%）。
+- **R-11** Cache TTL 60s 可能讓 gate 看到的是 1 分鐘前的數字，實際帳號其實已耗盡。→ 接受；快速情境下 codex 自己會開始 429 走 rotation 既有路徑。Gate 的目標是「絕大多數情況下避免燒乾」，不是「絕對保證不燒乾」。
+- **R-12** Parent LLM 看到 structured trip result 仍可能「沒讀懂就重派」導致無限迴圈。→ 緩解：tool description 明示 trip 語義；但最終還是人/LLM 行為問題，policy 不在這個 spec 內解決。未來若發現問題可加一個 parent-side 重派計數上限。
+- **R-13** Session `source` 欄位補上之後，**既有** session info.json 沒有這個欄位 — 判斷要 fallback。→ 緩解：missing source 視為「非 task-tool」（不攔）；從此刻起 spawn 的新 subagent 才會標 `task-tool`。屬於 on-touch 遷移，不做 batch migration。
+- **R-14** 結構化摘要即使截斷後仍可能 > parent context 可容納的量。→ 緩解：硬上限（completedToolCalls 20、lastMessages 3×500 字）；極端情況 parent LLM 自行處理長 tool result。
+- **R-15** Gate 觸發後 subagent 的 SharedContext 若正在被其他寫入 path 修改，snapshot 可能不一致。→ 緩解：snapshot 取副本（shallow clone 對 SharedContext 足夠，它本身已是 immutable-ish）；若不夠就在 cancel 前加一個 write barrier。
 
 ## Critical Files
 
-- [packages/mcp/system-manager/src/index.ts](packages/mcp/system-manager/src/index.ts) — 新增 `get_my_current_usage`、擴充 `get_system_status`
-- [packages/opencode/src/mcp/index.ts](packages/opencode/src/mcp/index.ts) — bridge sessionID 注入（dynamicTool 包裝層，約 L142-158）
-- [packages/opencode/src/session/processor.ts](packages/opencode/src/session/processor.ts) — 已有 `pinExecutionIdentity()`，**不改**，只讀
-- [packages/opencode/src/session/index.ts](packages/opencode/src/session/index.ts) — `ExecutionIdentity` schema（L211-218），**不改**
-- `packages/opencode/src/account/` — 新增 `quota-probe.ts`（`AccountQuotaProbe` 介面 + codex 實作 + registry）
-- [templates/prompts/enablement.json](templates/prompts/enablement.json) + `packages/opencode/src/session/prompt/enablement.json` — 新 tool 預設啟用
-- `/etc/opencode/tweaks.cfg` — 新增 `quota.cache_ttl_seconds`（預設 60）
-- `~/.config/opencode/quota-cache.json` — 新 cache 檔（runtime state）
+### 主線
+- [packages/opencode/src/tool/task.ts](packages/opencode/src/tool/task.ts) — subagent spawn 時標 `source: "task-tool"`；gate check hook 可能加在這裡
+- [packages/opencode/src/session/prompt.ts](packages/opencode/src/session/prompt.ts) OR processor.ts — pre-dispatch gate hook 的實際位置（實作時擇一）
+- [packages/opencode/src/session/prompt-runtime.ts](packages/opencode/src/session/prompt-runtime.ts) — 新增 `CancelReason: "quota-gate-trip"`
+- `packages/opencode/src/session/quota-trip-summary.ts`（**新檔**）— 結構化摘要生成器
+- [packages/opencode/src/session/index.ts](packages/opencode/src/session/index.ts) — Session schema 可能要加 `source` 欄位
+- Task tool result schema — 需要擴充成 union 型別
 
-## Data Flow
+### 共享 / 支援線
+- `packages/opencode/src/account/quota-probe.ts`（**新檔**）— registry + 介面
+- `packages/opencode/src/account/quota-probe-codex.ts`（**新檔**）— codex 實作包裝 `getCodexUsage`
+- `~/.config/opencode/quota-cache.json`（**新 runtime state**）
+- [packages/mcp/system-manager/src/index.ts](packages/mcp/system-manager/src/index.ts) — 新 `get_my_current_usage`、擴 `get_system_status`
+- [packages/opencode/src/mcp/index.ts](packages/opencode/src/mcp/index.ts) — bridge 自動注入 sessionID（v1 DD-2）
+- `/etc/opencode/tweaks.cfg` — 三個 knob
+
+### Prerequisites（要先處理）
+- [packages/opencode/src/session/prompt.ts:390-403](packages/opencode/src/session/prompt.ts#L390-L403) — `manual_interrupt` stopReason 寫死的 bug；必須修好讓新 cancel reason 能正確傳遞
+
+## Data Flow（Gate 觸發路徑）
 
 ```
-Subagent LLM
+Subagent LLM 發完一輪 tool_use → tool_result
     │
-    │ call "get_my_current_usage" (no args)
+    ▼ (pre-dispatch hook)
+Runtime: isSubagent(session)?  ── false → 正常走原路徑
+    │ true
     ▼
-MCP bridge (packages/opencode/src/mcp/index.ts dynamicTool)
+Runtime: probe quota for session.execution.accountId
     │
-    │ inject { sessionID: <current session> } into args
+    │ via AccountQuotaProbe registry (共用 quota-cache.json, TTL 60s)
     ▼
-system-manager MCP (get_my_current_usage handler)
+remainingPercent = min(5H, weekly)
     │
-    │ read session info.json → execution.accountId
-    ▼
-AccountQuotaProbe registry.get(providerId).probe(accountId)
+    ├─ >= threshold → 正常繼續，送下一筆 provider request
     │
-    │ check quota-cache.json[codex:{accountId}]
-    │   │
-    │   ├─ fresh (ageSeconds <= TTL) → return cached
-    │   └─ stale → fetch live API → write cache → return
-    ▼
-Response to LLM: { provider, family, accountId, usage{...}, cachedAt, ageSeconds }
+    └─ < threshold → gate trip
+            │
+            ▼
+       Runtime: cancel(session, reason="quota-gate-trip")
+            │
+            ▼
+       Runtime: generate structured summary (quota-trip-summary.ts)
+            │
+            ▼
+       Task tool: 組 TaskResult { tripped: true, ... } 回給 parent
+            │
+            ▼
+       Parent session: 收到 tool_result → parent LLM 自行決定
 ```
 
 ## Open Questions for Implementation Phase
 
-- `AccountQuotaProbe` registry 放在 `account/` 還是 `provider/`？兩處都有道理；傾向 `account/` 因為 probe 是針對 account 而非 provider dispatch。
-- Tool unit test 怎麼模擬「某個 session 的 pinned identity」？可能要 temp dir + fake session info.json。
-- 若未來 Anthropic 推出 usage endpoint，擴充路徑是加 `AnthropicQuotaProbe` 實作，不需改 tool — 驗證此 DD-5 設計。
+- Gate hook 放在 `task.ts`（subagent 層）還是 `prompt.ts` / `processor.ts`（共用 runloop 加 isSubagent 分支）？— 傾向後者，但要看現有架構的介面粒度
+- Session `source` 欄位要加在 `Session.Info`（info.json）還是另起一個 meta 檔？— 傾向前者
+- `pendingWork` 要從 TodoWrite 的 runtime state 抓 — 那份 state 存在哪？（可能在 session messages 裡的 tool_use args）
+- 觀測 tool bridge 注入 sessionID 的機制（v1 DD-2）— 具體怎麼從 `dynamicTool` 層取到當次 request 的 sessionID？需要補設計
