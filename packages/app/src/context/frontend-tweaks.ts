@@ -50,9 +50,9 @@ export const FRONTEND_TWEAKS_DEFAULTS: FrontendTweaks = {
   ui_freshness_threshold_sec: 15,
   ui_freshness_hard_timeout_sec: 60,
   session_tail_mobile: 30,
-  session_tail_desktop: 200,
-  session_store_cap_mobile: 200,
-  session_store_cap_desktop: 500,
+  session_tail_desktop: 100,
+  session_store_cap_mobile: 100,
+  session_store_cap_desktop: 200,
   session_part_cap_bytes: 512000,
 }
 

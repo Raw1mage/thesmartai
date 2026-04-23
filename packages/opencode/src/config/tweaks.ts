@@ -164,9 +164,9 @@ export namespace Tweaks {
     sessionSizeThresholdParts: 80,
     sessionMessagesDefaultTail: 30,
     sessionTailMobile: 30,
-    sessionTailDesktop: 200,
-    sessionStoreCapMobile: 200,
-    sessionStoreCapDesktop: 500,
+    sessionTailDesktop: 100,
+    sessionStoreCapMobile: 100,
+    sessionStoreCapDesktop: 200,
     sessionPartCapBytes: 512_000,
   }
 
