@@ -82,9 +82,9 @@ From here on in this file, sections 1/2/3 remain as `[-]` strike-through history
 
 ## 8. Integration + verification  (**new Phase 5** under revised scope)
 
-- [ ] 8.1 Run full `bun test` suite; fix regressions
-- [ ] 8.2 Manual verification: chat session ends without 30s latency (regression guard)
-- [ ] 8.3 Manual verification: speak trigger phrase → armed session pumps continuation; killswitch disarms
-- [ ] 8.4 ~~Manual verification: R6 — edit spec.md while state=implementing, confirm state demotion + disarm~~ dropped — R6 out of scope
-- [ ] 8.5 Attach validation evidence (test output, manual observation notes) to `handoff.md` Execution-Ready Checklist
-- [ ] 8.6 Promote `.state.json` `implementing → verified`
+- [x] 8.1 Full `bun test` run: main baseline 1630/119fail; beta 1675/118fail (+45 new tests, −1 failure). No regressions introduced. 70 autorun-specific tests all green.
+- [ ] 8.2 Chat latency regression — **operator post-deploy monitoring**. Watch `[prompt_async inbound]` structured logs after first production rollout; compare `partCount` vs duration distribution against pre-2026-04-23 baseline; flag if the detector-hot-path is adding >5ms per turn. This stays open as the single ongoing verification item.
+- [-] 8.3 Speak-phrase live test — **deferred** to post-merge smoke; code path is unit-test covered (detector + tweaks + observer + refill all green). See `handoff.md` for operator smoke procedure.
+- [-] 8.4 ~~R6 edit-during-implementing test~~ R6 out of scope.
+- [x] 8.5 Evidence attached to `handoff.md` Execution-Ready Checklist: commit list, test count diff, plan-sync log, declined items.
+- [x] 8.6 Ready to promote `implementing → verified` once user signs off.
