@@ -1,0 +1,58 @@
+[
+  {
+    "id": "P1",
+    "name": "Cold session open (mobile)",
+    "componentRef": ["C1", "C6", "C7", "C2"],
+    "messages": [
+      { "id": "MSG1", "from": "browser", "to": "C1", "label": "route /session/:id mounted" },
+      { "id": "MSG2", "from": "C1", "to": "C6", "label": "GET /session/:id/message?limit=30" },
+      { "id": "MSG3", "from": "C6", "to": "C1", "label": "200 { messages: [...30 latest] }" },
+      { "id": "MSG4", "from": "C1", "to": "C2", "label": "populate store chronological" },
+      { "id": "MSG5", "from": "C2", "to": "C7", "label": "EventSource subscribe (no Last-Event-ID)" },
+      { "id": "MSG6", "from": "C7", "to": "C2", "label": "SSE live events from now" }
+    ]
+  },
+  {
+    "id": "P2",
+    "name": "SSE drop + reconnect (no resync)",
+    "componentRef": ["C2", "C7"],
+    "messages": [
+      { "id": "MSG1", "from": "C2", "to": "C7", "label": "EventSource connection drops" },
+      { "id": "MSG2", "from": "C2", "to": "C7", "label": "EventSource auto-reconnect (no headers)" },
+      { "id": "MSG3", "from": "C7", "to": "C2", "label": "new events only; missed window lost" }
+    ]
+  },
+  {
+    "id": "P3",
+    "name": "Scroll-up to load older",
+    "componentRef": ["C4", "C1", "C6", "C3"],
+    "messages": [
+      { "id": "MSG1", "from": "user", "to": "C4", "label": "scroll gesture near top" },
+      { "id": "MSG2", "from": "C4", "to": "C1", "label": "loadMore(before=oldest)" },
+      { "id": "MSG3", "from": "C1", "to": "C6", "label": "GET /message?limit=30&before=<oldestID>" },
+      { "id": "MSG4", "from": "C6", "to": "C1", "label": "200 { messages: [...older 30] }" },
+      { "id": "MSG5", "from": "C1", "to": "C3", "label": "prepend + evictToCap(cap, liveSet)" }
+    ]
+  },
+  {
+    "id": "P4",
+    "name": "Truncated part expand",
+    "componentRef": ["C5", "C6", "C2"],
+    "messages": [
+      { "id": "MSG1", "from": "user", "to": "C5", "label": "click expand on truncated part" },
+      { "id": "MSG2", "from": "C5", "to": "C6", "label": "GET /message/:mid/part/:pid" },
+      { "id": "MSG3", "from": "C6", "to": "C5", "label": "200 { part: full }" },
+      { "id": "MSG4", "from": "C5", "to": "C2", "label": "reducer.patchPart (no syncSession)" }
+    ]
+  },
+  {
+    "id": "P5",
+    "name": "Tab backgrounded and foregrounded (no-op)",
+    "componentRef": ["browser", "C1"],
+    "messages": [
+      { "id": "MSG1", "from": "browser", "to": "browser", "label": "visibilitychange: hidden" },
+      { "id": "MSG2", "from": "browser", "to": "browser", "label": "visibilitychange: visible" },
+      { "id": "MSG3", "from": "C1", "to": "C1", "label": "no handler fires; store untouched" }
+    ]
+  }
+]

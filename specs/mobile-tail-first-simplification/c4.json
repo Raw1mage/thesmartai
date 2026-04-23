@@ -1,0 +1,32 @@
+{
+  "schema": "c4/v1",
+  "systems": [
+    { "id": "SYS", "name": "opencode session runtime" }
+  ],
+  "containers": [
+    { "id": "C-CLIENT", "parent": "SYS", "name": "Web client (packages/app + packages/ui)" },
+    { "id": "C-SERVER", "parent": "SYS", "name": "opencode daemon (packages/opencode server)" }
+  ],
+  "components": [
+    { "id": "C1", "parent": "C-CLIENT", "name": "sync.tsx (session load orchestrator)", "moduleRef": "A1,A3" },
+    { "id": "C2", "parent": "C-CLIENT", "name": "global-sync/event-reducer.ts", "moduleRef": "A2" },
+    { "id": "C3", "parent": "C-CLIENT", "name": "evictToCap helper", "moduleRef": "A4" },
+    { "id": "C4", "parent": "C-CLIENT", "name": "scroll-spy sentinel + gesture gate", "moduleRef": "A3" },
+    { "id": "C5", "parent": "C-CLIENT", "name": "FoldableMarkdown part expand", "moduleRef": "A5" },
+    { "id": "C6", "parent": "C-SERVER", "name": "session.ts routes (messages, part)", "moduleRef": "A1,A3,A5" },
+    { "id": "C7", "parent": "C-SERVER", "name": "SSE live writer (no replay)", "moduleRef": "A2" }
+  ],
+  "relationships": [
+    { "from": "C1", "to": "C6", "label": "GET /message?limit[&before]" },
+    { "from": "C2", "to": "C7", "label": "EventSource subscribe" },
+    { "from": "C5", "to": "C6", "label": "GET /message/:mid/part/:pid" },
+    { "from": "C1", "to": "C3", "label": "invokes on every mutation" },
+    { "from": "C4", "to": "C1", "label": "triggers loadMore on gesture" }
+  ],
+  "deleted_components": [
+    "client use-session-resume-sync.ts (entire file removed)",
+    "server SSE replay buffer + Last-Event-ID handler",
+    "server force-resync incremental tail branch",
+    "client force-refetch code path in sync.tsx"
+  ]
+}

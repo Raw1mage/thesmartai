@@ -1,0 +1,56 @@
+[
+  {
+    "id": "S0",
+    "name": "Idle (no session route)",
+    "initial": true,
+    "action": "no-op"
+  },
+  {
+    "id": "S1",
+    "name": "Tail loading",
+    "action": "fetch GET /session/:id/message?limit=N",
+    "enter_from": ["S0"],
+    "condition_in": "route enters /session/:id"
+  },
+  {
+    "id": "S2",
+    "name": "Live streaming (hydrated)",
+    "action": "apply SSE events in-place; enforce store cap via evictToCap",
+    "enter_from": ["S1", "S3", "S4"],
+    "condition_in": "data ready; SSE subscribed",
+    "traceability": ["R2", "R4"]
+  },
+  {
+    "id": "S3",
+    "name": "Loading older",
+    "action": "fetch GET /session/:id/message?limit=N&before=<oldestID>",
+    "enter_from": ["S2"],
+    "condition_in": "scroll-spy sentinel intersects AND user-gesture marker fresh",
+    "traceability": ["R3"]
+  },
+  {
+    "id": "S4",
+    "name": "Part expanding",
+    "action": "fetch GET /session/:id/message/:mid/part/:pid and patch in place",
+    "enter_from": ["S2"],
+    "condition_in": "user clicks expand on truncated completed part",
+    "traceability": ["R5"]
+  },
+  {
+    "id": "S_EXIT",
+    "name": "Session route left (store discarded)",
+    "action": "discard store, drop SSE subscription",
+    "enter_from": ["S2", "S3", "S4"],
+    "condition_in": "route changes away from /session/:id"
+  },
+  {
+    "id": "S_INVARIANTS",
+    "name": "Invariants (not a runtime step)",
+    "action": "documentation only",
+    "notes": [
+      "No transition from S2 back to S1 exists — once hydrated, never re-hydrate (no force-refetch).",
+      "No transition fires on SSE reconnect, visibility change, online event, or timer.",
+      "S3 transition gate requires BOTH scroll-spy intersection AND user-gesture marker."
+    ]
+  }
+]

@@ -1,0 +1,129 @@
+[
+  {
+    "id": "TV-R1-01",
+    "requirement": "R1",
+    "name": "Mobile cold open — returns exactly 30 latest messages chronological",
+    "given": { "platform": "mobile", "session_messages_total": 400, "store": "empty" },
+    "when": { "action": "route enter /session/:id", "http": "GET /session/:id/message?limit=30" },
+    "then": {
+      "response_status": 200,
+      "response_count": 30,
+      "response_order": "ascending by createdAt",
+      "response_is_last_30": true
+    }
+  },
+  {
+    "id": "TV-R1-02",
+    "requirement": "R1",
+    "name": "Desktop cold open — returns exactly 200 latest",
+    "given": { "platform": "desktop", "session_messages_total": 400, "store": "empty" },
+    "when": { "action": "route enter", "http": "GET /session/:id/message?limit=200" },
+    "then": { "response_count": 200, "response_is_last_200": true }
+  },
+  {
+    "id": "TV-R1-03",
+    "requirement": "R1",
+    "name": "Short session — returns all messages, no padding",
+    "given": { "platform": "mobile", "session_messages_total": 7, "store": "empty" },
+    "when": { "http": "GET /session/:id/message?limit=30" },
+    "then": { "response_count": 7 }
+  },
+  {
+    "id": "TV-R1-04",
+    "requirement": "R1",
+    "name": "Reopen discards existing store — no resume",
+    "given": { "platform": "mobile", "store": "populated from previous visit with 30 messages" },
+    "when": { "action": "navigate away and back to same session" },
+    "then": {
+      "store_before_fetch": "empty",
+      "http_fired": "GET /session/:id/message?limit=30",
+      "no_delta_merge": true
+    }
+  },
+  {
+    "id": "TV-R2-01",
+    "requirement": "R2",
+    "name": "SSE reconnect sends no Last-Event-ID",
+    "given": { "sse_connected": true },
+    "when": { "action": "drop network 2s and reconnect" },
+    "then": {
+      "reconnect_request_headers": { "Last-Event-ID": "absent" },
+      "http_fetches_fired": 0,
+      "events_missed_during_drop": "lost (acceptable per spec)"
+    }
+  },
+  {
+    "id": "TV-R2-02",
+    "requirement": "R2",
+    "name": "Tab background/foreground does nothing",
+    "given": { "platform": "mobile", "store": "hydrated" },
+    "when": { "action": "visibilitychange hidden then visible after 30s" },
+    "then": { "http_fetches_fired": 0, "store_mutations": 0 }
+  },
+  {
+    "id": "TV-R3-01",
+    "requirement": "R3",
+    "name": "Scroll-up with user gesture fires load-more",
+    "given": { "store": "30 messages", "scroll_position": "near top", "user_gesture_recent": true },
+    "when": { "action": "scroll-spy sentinel intersects viewport" },
+    "then": { "http": "GET /session/:id/message?limit=30&before=<oldestID>", "result": "30 older prepended" }
+  },
+  {
+    "id": "TV-R3-02",
+    "requirement": "R3",
+    "name": "Programmatic scroll does NOT fire load-more",
+    "given": { "store": "30 messages", "user_gesture_recent": false },
+    "when": { "action": "programmatic scrollTo(0)" },
+    "then": { "http_fetches_fired": 0 }
+  },
+  {
+    "id": "TV-R4-01",
+    "requirement": "R4",
+    "name": "Insert beyond cap evicts oldest non-streaming",
+    "given": { "cap": 200, "store_size": 200, "live_set": ["msg_150"] },
+    "when": { "action": "load-more prepends 30 older" },
+    "then": { "store_size": 200, "msg_150_present": true, "oldest_30_evicted": true }
+  },
+  {
+    "id": "TV-R4-02",
+    "requirement": "R4",
+    "name": "Live-streaming message never evicted",
+    "given": { "cap": 10, "store_size": 10, "live_set": ["msg_1", "msg_2", "msg_3"] },
+    "when": { "action": "new message arrives via SSE" },
+    "then": { "store_size": "may exceed 10 temporarily", "live_set_intact": true, "warn_logged": "STORE_CAP_EXCEEDED_LIVE_PROTECTED" }
+  },
+  {
+    "id": "TV-R4-03",
+    "requirement": "R4",
+    "name": "Live-streaming message completes → becomes LRU-eligible",
+    "given": { "live_set": ["msg_1"], "store_size_at_cap": true },
+    "when": { "event": "message.updated with final=true for msg_1" },
+    "then": { "live_set": [], "msg_1_evictable_on_next_insert": true }
+  },
+  {
+    "id": "TV-R5-01",
+    "requirement": "R5",
+    "name": "Part expand calls part-scoped endpoint, not syncSession",
+    "given": { "store": "hydrated", "truncated_part": "msg_50.part_3" },
+    "when": { "action": "user clicks expand on msg_50.part_3" },
+    "then": {
+      "http": "GET /session/:sid/message/msg_50/part/part_3",
+      "not_called": ["syncSession", "GET /session/:sid/message"],
+      "store_parts_other_than_target": "unchanged"
+    }
+  },
+  {
+    "id": "TV-R6-01",
+    "requirement": "R6",
+    "name": "Bundle grep — forbidden symbols absent",
+    "given": { "bundle": "post-merge production build" },
+    "when": { "action": "grep symbols in dist/** and src/**" },
+    "then": {
+      "hits_for_Last-Event-ID": 0,
+      "hits_for_beforeMessageID": 0,
+      "hits_for_force_true": 0,
+      "hits_for_use-session-resume-sync": 0,
+      "exclusions": ["specs/", "docs/events/"]
+    }
+  }
+]

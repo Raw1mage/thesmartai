@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mobile-tail-first-simplification data contracts",
+  "$defs": {
+    "Tweaks": {
+      "type": "object",
+      "description": "Runtime-tunable knobs consumed by frontend + server. All have hard-coded fallback defaults if tweaks.cfg fetch fails.",
+      "properties": {
+        "session_tail_mobile": { "type": "integer", "minimum": 1, "default": 30 },
+        "session_tail_desktop": { "type": "integer", "minimum": 1, "default": 200 },
+        "session_store_cap_mobile": { "type": "integer", "minimum": 1, "default": 200 },
+        "session_store_cap_desktop": { "type": "integer", "minimum": 1, "default": 500 },
+        "session_part_cap_bytes": { "type": "integer", "minimum": 1024, "default": 512000 }
+      },
+      "required": [
+        "session_tail_mobile",
+        "session_tail_desktop",
+        "session_store_cap_mobile",
+        "session_store_cap_desktop",
+        "session_part_cap_bytes"
+      ]
+    },
+    "MessagesQuery": {
+      "type": "object",
+      "description": "The ONLY valid query shape for GET /session/:id/message.",
+      "properties": {
+        "limit": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "before": {
+          "type": "string",
+          "description": "Older-than-this messageID. When present, returns limit messages strictly older than this ID, chronological."
+        }
+      },
+      "required": ["limit"],
+      "additionalProperties": false
+    },
+    "MessagesResponse": {
+      "type": "object",
+      "properties": {
+        "messages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Message" }
+        }
+      },
+      "required": ["messages"],
+      "additionalProperties": false
+    },
+    "Message": {
+      "type": "object",
+      "description": "Opaque — structure lives in existing session schema. Included here only as reference.",
+      "additionalProperties": true
+    },
+    "PartScopedFetchResponse": {
+      "type": "object",
+      "description": "New endpoint: GET /session/:id/message/:msgID/part/:partID — returns one full part.",
+      "properties": {
+        "part": { "type": "object", "additionalProperties": true }
+      },
+      "required": ["part"]
+    },
+    "ClientStoreInvariants": {
+      "type": "object",
+      "description": "Runtime invariants enforced by global-sync reducer. Not wire; for test vectors.",
+      "properties": {
+        "size": {
+          "type": "integer",
+          "description": "messages.length must be ≤ session_store_cap_{platform}"
+        },
+        "liveStreamingSet": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Set of messageIDs currently streaming. These are NEVER evicted by LRU."
+        },
+        "forbiddenFields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fields that MUST NOT appear anywhere in store: lastEventID, resumeCursor, forceRefetchPending"
+        }
+      }
+    }
+  }
+}

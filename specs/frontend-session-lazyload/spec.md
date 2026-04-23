@@ -254,7 +254,10 @@ MessageTimeline 頂端 IntersectionObserver 自動觸發 `loadMore()`。
 
 ---
 
-### Requirement: R8 — SSE reconnect bounded replay (G9, ADDED 2026-04-22 revise)
+### Requirement: R8 — SSE reconnect bounded replay (G9, ADDED 2026-04-22 revise) [SUPERSEDED 2026-04-24 by mobile-tail-first-simplification]
+
+> **SUPERSEDED 2026-04-24**: SSE replay 機制整個拆掉。SSE 現在只發 live events，斷線時缺口事件直接丟掉，clients 靠 user scroll-up 或離開重進 route 恢復。細節見 `specs/mobile-tail-first-simplification/` DD-3 + R2。下方原始 R8 內容保留作為歷史紀錄，**不再為現行 runtime contract**。
+
 
 SSE 重連握手時，server 不得把 ring buffer 的所有事件串行 `await stream.writeSSE` 送出。必須先裁切到時間窗口（`sse_reconnect_replay_max_age_sec`）+ 數量窗口（`sse_reconnect_replay_max_events`），窗口外的缺口改發 `sync.required`。
 
@@ -298,7 +301,10 @@ SSE 重連握手時，server 不得把 ring buffer 的所有事件串行 `await 
 
 ---
 
-### Requirement: R9 — session.messages cursor pagination (G10, ADDED 2026-04-22 revise)
+### Requirement: R9 — session.messages cursor pagination (G10, ADDED 2026-04-22 revise) [SUPERSEDED 2026-04-24 by mobile-tail-first-simplification]
+
+> **SUPERSEDED 2026-04-24**: `beforeMessageID` cursor query param 改名為 canonical `before`。Cold-open tail-first 行為保留（由 `session_tail_mobile` / `session_tail_desktop` 控制），但 R9 所描述的 `beforeMessageID` 協議已不存在。細節見 `specs/mobile-tail-first-simplification/` R1 + R3。下方原始 R9 內容保留作為歷史紀錄，**不再為現行 runtime contract**。
+
 
 `GET /session/:id/message` 預設回 tail；older history 改由 `beforeMessageID` cursor append。`limit` 語意從「整包上限」變「本頁筆數」。CMS/user-daemon proxy 必須完整透傳新參數。前端 `history.loadMore()` 不得再用「擴大 limit 全量重抓」假裝 lazyload。
 
