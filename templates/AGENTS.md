@@ -13,6 +13,7 @@ Main Agent 啟動時由 runtime 自動 preload + pin 下方 **Mandatory Skills**
 
 <!-- opencode:mandatory-skills -->
 - plan-builder
+- code-thinker
 <!-- /opencode:mandatory-skills -->
 
 - 區塊由 `packages/opencode/src/session/mandatory-skills.ts` 每輪解析，對每個 skill 呼叫 `SkillLayerRegistry.recordLoaded` + `.pin`；內容由 skill-layer-seam 注入 system prompt。
