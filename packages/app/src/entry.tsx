@@ -138,6 +138,23 @@ const installDynamicImportRecovery = () => {
     window.location.reload()
   }
 
+  // Monkey-patch window.location.reload so ANY caller (error.tsx health
+   // recovery, settings-general save, platform.restart, third-party libs)
+  // beacons a cause+stack before the page unloads. Without this we only
+  // see vite:preloadError + unhandledrejection paths.
+  try {
+    const loc = window.location
+    const originalReload = loc.reload.bind(loc)
+    const wrapped = function (...args: any[]) {
+      const stack = new Error("location.reload called").stack
+      beaconReloadCause("location.reload", stack?.slice(0, 800) ?? "no stack")
+      return (originalReload as any)(...args)
+    }
+    Object.defineProperty(loc, "reload", { value: wrapped, configurable: true, writable: true })
+  } catch {
+    // some browsers lock location props; diagnostic only
+  }
+
   window.addEventListener("vite:preloadError", (event) => {
     recover("vite:preloadError", (event as any)?.payload ?? (event as any)?.target?.src ?? "unknown")
   })
