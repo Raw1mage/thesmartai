@@ -51,7 +51,7 @@ function applyProxyFriendlySSEHeaders(c: { header: (name: string, value: string)
 
 export const GlobalDisposedEvent = BusEvent.define("global.disposed", z.object({}))
 
-// SSE is live-only: no ring buffer, no Last-Event-ID resume, no bounded
+// SSE is live-only: no ring buffer, no event-id resume, no bounded
 // replay. Missed events during drops are lost — clients recover by
 // re-entering the route (tail-first hydrate). Counter is retained only to
 // stamp outgoing frames with a monotonic id for debug correlation.
