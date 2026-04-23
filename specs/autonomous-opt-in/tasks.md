@@ -72,13 +72,13 @@ From here on in this file, sections 1/2/3 remain as `[-]` strike-through history
 
 ## 7. Cleanup + docs  (**new Phase 4** under revised scope)
 
-- [ ] 7.1 ~~Delete `session.plan` command block in `use-session-commands.tsx:87-96`~~ verify it still exists on main; if gone, mark complete
-- [ ] 7.2 ~~Delete `permissions.autoaccept.enable` / `permissions.autoaccept.disable` blocks~~ verify same; if already removed, mark complete
-- [ ] 7.3 Remove any unused i18n strings tied to deleted commands
-- [ ] 7.4 Update `specs/architecture.md` runloop section to describe verbal-arm + disarm lifecycle
-- [ ] 7.5 Update `templates/prompts/SYSTEM.md` with a short "autorun is opt-in, triggered by phrase" note (one line)
-- [ ] 7.6 ~~Update plan-builder SKILL.md §16 with R3a/R3b and R6 obligations~~ dropped — R3b and R6 out of scope under this revision
-- [ ] 7.7 Write `docs/events/event_2026-04-23_autonomous_opt_in_main_ssot.md` event log
+- [x] 7.1 Deleted `session.plan` command block in `use-session-commands.tsx:87-96` — the handler literally re-typed `/plan` into the prompt input; never wired to a real action. No i18n cleanup needed (command used inline English title/description).
+- [-] 7.2 ~~Delete `permissions.autoaccept.enable` / `permissions.autoaccept.disable` blocks~~ **declined**: the handlers are real (`input.permission.enableAutoAccept` / `enableAutoAcceptDirectory`) and are called from `prompt-input/submit.ts`. Original spec assumption was wrong. i18n strings exist across 15+ locales and stay.
+- [-] 7.3 ~~Remove unused i18n strings~~ N/A after 7.2 declined.
+- [x] 7.4 `specs/architecture.md` Dialog-Trigger section gained a bullet pointing at the three new autorun files (detector / observer / refill) and the verbal-arm policy.
+- [x] 7.5 `templates/prompts/SYSTEM.md` got a new `## 9. Autorun (Autonomous Continuation)` section — one paragraph, opt-in, phrase-driven, don't assume on.
+- [-] 7.6 ~~plan-builder SKILL.md §16 update~~ dropped — R3b/R6 out of scope under this revision (recorded in the header-level Revision block).
+- [x] 7.7 `docs/events/event_2026-04-23_autonomous_opt_in_main_ssot.md` written.
 
 ## 8. Integration + verification  (**new Phase 5** under revised scope)
 
