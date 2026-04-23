@@ -37,6 +37,7 @@ Recorded from conversation 2026-04-19:
 
 - 2026-04-18: initial draft created via plan-init.ts
 - 2026-04-19: proposal.md authored from conversation transcript; six numbered rules distilled; open questions captured
+- 2026-04-23: **main-as-SSOT pivot (revise).** Discovered Phase 1+2 were implemented on `shelf/autonomous-opt-in` (commits `6db33208d`, `ed8e9be2e`) but never merged to main; main diverged via `1ed57f092` into a simpler single-flag gate. User chose main as SSOT. Requirements R0/R3a/R4/R5 stay; R1/R2 (spec binding + plan state) collapse into "session has a `workflow.autonomous.enabled` field that the arm/disarm path flips"; R3b (question-based arm) dropped — verbal phrase is the only arm path; R6 (demote-on-edit) dropped. Implementation scope shrinks from 8 phases to 5. See `design.md` DD-11 and `tasks.md` Revision section.
 
 ## Effective Requirement Description
 
