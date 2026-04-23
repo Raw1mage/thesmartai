@@ -216,21 +216,19 @@ export function createApp(app: Hono): Hono {
 
   app.use(async (c, next) => {
     beacon.hit("request")
-    const skipLogging = c.req.path === "/log" || c.req.path.endsWith("/log")
-    if (!skipLogging) {
-      log.info("request", {
-        method: c.req.method,
-        path: c.req.path,
-      })
+    // [log-volume] HTTP request double-log disabled — accounted for ~22% of all log lines.
+    // Re-enable by setting OPENCODE_LOG_HTTP=1 if forensic HTTP tracing is needed.
+    if (process.env.OPENCODE_LOG_HTTP === "1") {
+      const skipLogging = c.req.path === "/log" || c.req.path.endsWith("/log")
+      if (!skipLogging) {
+        log.info("request", { method: c.req.method, path: c.req.path })
+      }
+      const timer = log.time("request", { method: c.req.method, path: c.req.path })
+      await next()
+      if (!skipLogging) timer.stop()
+      return
     }
-    const timer = log.time("request", {
-      method: c.req.method,
-      path: c.req.path,
-    })
     await next()
-    if (!skipLogging) {
-      timer.stop()
-    }
   })
 
   app.use(RateLimit.middleware())

@@ -835,10 +835,11 @@ export async function enqueuePendingContinuation(
 export async function resumePendingContinuations(input?: { maxCount?: number; preferredSessionID?: string }) {
   using _lock = await Lock.write(RESUME_LOCK)
 
-  log.info("resumePendingContinuations: start", {
-    maxCount: input?.maxCount,
-    preferredSessionID: input?.preferredSessionID,
-  })
+  // [log-volume] per-tick resume-start INFO disabled (fires on every workflow heartbeat).
+  // log.info("resumePendingContinuations: start", {
+  //   maxCount: input?.maxCount,
+  //   preferredSessionID: input?.preferredSessionID,
+  // })
 
   // Kill-switch gate: if active, skip all resume attempts (Slice 3: kill-switch blocks dequeue)
   const { KillSwitchService } = await import("@/server/killswitch/service")
@@ -849,10 +850,11 @@ export async function resumePendingContinuations(input?: { maxCount?: number; pr
   }
 
   const items = await listPendingContinuations()
-  log.info("resumePendingContinuations: pending items", {
-    count: items.length,
-    sessionIDs: items.map((i) => i.sessionID),
-  })
+  // [log-volume] per-tick pending-items INFO disabled — only logs when items actually resume below.
+  // log.info("resumePendingContinuations: pending items", {
+  //   count: items.length,
+  //   sessionIDs: items.map((i) => i.sessionID),
+  // })
   const resumable: ResumeCandidate[] = []
   for (const item of items) {
     const inFlightSince = resumeInFlight.get(item.sessionID)

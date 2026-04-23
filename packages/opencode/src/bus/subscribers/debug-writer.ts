@@ -16,8 +16,24 @@ const file = DEBUG_LOG_PATH
 const root = path.dirname(file)
 
 // --- Log rotation ---
-const ROTATE_MAX_BYTES = 1_000_000 // 1 MB
-const ROTATE_KEEP = 5
+const ROTATE_MAX_BYTES = 10_000_000 // 10 MB
+const ROTATE_KEEP = 10 // → ~100 MB forensic window
+
+// --- Event channel denylist ---
+// These high-volume channels dominate debug.log but rarely help RCA:
+//   - message.part.updated: per-token streaming deltas (thousands per response)
+//   - session.diff: full before/after file bodies on every edit
+// Block here; if needed for targeted debugging, comment them out temporarily.
+const EVENT_DENYLIST = new Set<string>([
+  "message.part.updated", // per-token streaming deltas (thousands per response)
+  "session.diff", // full before/after file bodies on every edit
+  "session-cache.invalidated", // ~1k events per session (SSE fan-out churn)
+  "session-cache.hit",
+  "session-cache.miss",
+  "session-cache.evicted",
+  "rate-limit.allowed", // per-allowed-request ack; metrics live in beacon instead
+  "ratelimit.cleared",
+])
 
 function rotateIfNeeded() {
   let size = 0
@@ -138,6 +154,7 @@ function isFileEnabled() {
 
 function handleEvent(event: { type: string; properties?: unknown }) {
   if (!isFileEnabled()) return
+  if (EVENT_DENYLIST.has(event.type)) return
   ensure()
   seq++
   const time = getTimestamp()

@@ -158,7 +158,8 @@ export namespace PermissionNext {
       const { ruleset, ...request } = input
       for (const pattern of request.patterns ?? []) {
         const rule = evaluate(request.permission, pattern, ruleset, s.approved)
-        log.info("evaluated", { permission: request.permission, pattern, action: rule })
+        // [log-volume] per-pattern evaluated INFO disabled (paired with evaluate above).
+        // log.info("evaluated", { permission: request.permission, pattern, action: rule })
         if (rule.action === "deny")
           throw new DeniedError(ruleset.filter((r) => Wildcard.match(request.permission, r.permission)))
         if (rule.action === "ask") {
@@ -266,7 +267,8 @@ export namespace PermissionNext {
 
   export function evaluate(permission: string, pattern: string, ...rulesets: Ruleset[]): Rule {
     const merged = merge(...rulesets)
-    log.info("evaluate", { permission, pattern, ruleset: merged })
+    // [log-volume] per-permission-check evaluate INFO disabled — was ~17% of [log] lines.
+    // log.info("evaluate", { permission, pattern, ruleset: merged })
     const match = merged.findLast(
       (rule) => Wildcard.match(permission, rule.permission) && Wildcard.match(pattern, rule.pattern),
     )

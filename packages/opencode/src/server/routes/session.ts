@@ -419,7 +419,8 @@ export const SessionRoutes = lazy(() =>
             503,
           )
         }
-        log.info("SEARCH", { url: c.req.url })
+        // [log-volume] per-session-GET SEARCH INFO disabled — duplicated by HTTP request log.
+        // log.info("SEARCH", { url: c.req.url })
 
         // Conditional GET short-circuit — if the client already has the
         // latest version we avoid the cache lookup, the loader, and JSON
