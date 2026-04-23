@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "verified",
+  "state": "living",
   "profile": [],
   "history": [
     {
@@ -85,6 +85,14 @@
       "by": "pkcs12",
       "mode": "promote",
       "reason": "Phase 4-7 shipped on beta/autonomous-opt-in-main-ssot (6 commits). 70 autorun tests green, no regressions vs main baseline (118 vs 119 fail, same pre-existing failures). Phase 8 evidence in handoff.md; 8.2 latency probe left open for operator post-deploy monitoring."
+    },
+    {
+      "from": "verified",
+      "to": "living",
+      "at": "2026-04-23T20:59:55.614Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "Fetch-back complete: test/autonomous-opt-in-main-ssot merged into main at 47d7c590b. Beta and test branches deleted per beta-workflow §8. Spec content reflects shipped runtime."
     }
   ]
 }
