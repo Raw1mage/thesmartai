@@ -1266,7 +1266,9 @@ export namespace Provider {
 
     // Initialize Codex Provider (native C transport)
     // @event_2026-03-28:codex_native_provider
-    const codexModels = [
+    const codexModels: Array<{ id: string; name: string; reasoning: boolean; context?: number }> = [
+      // gpt-5.5 on Codex Pro is server-capped at 272K input + 128K output (total 400K)
+      { id: "gpt-5.5", name: "GPT-5.5", reasoning: true, context: 272000 },
       { id: "gpt-5.4", name: "GPT-5.4", reasoning: true },
       { id: "gpt-5.4-mini", name: "GPT-5.4 Mini", reasoning: false },
       { id: "gpt-5.3-codex", name: "GPT-5.3 Codex", reasoning: true },
@@ -1303,7 +1305,7 @@ export namespace Provider {
           toolcall: true,
         },
         cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
-        limit: { context: 400000, output: 128000 },
+        limit: { context: m.context ?? 400000, output: 128000 },
         options: {},
         variants: {},
         headers: {},

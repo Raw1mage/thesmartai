@@ -290,7 +290,13 @@ export function SessionTurn(
         const item = messages[i]
         if (!item) continue
         if (item.role === "user") break
-        if (item.role === "assistant" && item.parentID === msg.id) result.push(item as AssistantMessage)
+        if (item.role === "assistant" && item.parentID === msg.id) {
+          // Hide auto-compaction assistant messages from the UI.
+          // They remain in storage so the AI sees the summary on next turn;
+          // a toast surfaces progress so the user isn't startled by the freeze.
+          if ((item as AssistantMessage).summary === true) continue
+          result.push(item as AssistantMessage)
+        }
       }
       return result
     },

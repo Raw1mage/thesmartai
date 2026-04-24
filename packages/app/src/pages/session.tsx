@@ -45,7 +45,7 @@ import {
 } from "@/context/frontend-tweaks"
 import { ConstrainDragYAxis, getDraggableId } from "@/utils/solid-dnd"
 import { usePermission } from "@/context/permission"
-import { showToast } from "@opencode-ai/ui/toast"
+import { showToast, toaster } from "@opencode-ai/ui/toast"
 import { SessionHeader, SessionContextTab, SortableTab, FileVisual, NewSessionView } from "@/components/session"
 import { navMark, navParams } from "@/utils/perf"
 import { same } from "@/utils/same"
@@ -601,6 +601,39 @@ export default function Page() {
     const assistant = messages().findLast((item) => item.role === "assistant" && item.parentID === user.id)
     const assistantParts = assistant ? (sync.data.part[assistant.id] ?? []) : []
     return getSessionArbitrationChips({ userParts, toolParts: assistantParts })
+  })
+
+  // Auto-compaction is hidden from the turn view; surface progress via toast
+  // so the user knows why the UI pauses streaming during a compact pass.
+  const activeCompactionMessageID = createMemo(() => {
+    const list = messages()
+    for (let i = list.length - 1; i >= 0; i--) {
+      const m = list[i] as any
+      if (m?.role === "assistant" && m.summary === true && !m.time?.completed) return m.id as string
+    }
+    return undefined
+  })
+  let compactionToastId: number | undefined
+  let lastCompactionID: string | undefined
+  createEffect(() => {
+    const activeID = activeCompactionMessageID()
+    if (activeID && activeID !== lastCompactionID) {
+      lastCompactionID = activeID
+      if (compactionToastId !== undefined) toaster.dismiss(compactionToastId)
+      compactionToastId = showToast({
+        title: language.t("toast.session.compact.loading"),
+        variant: "loading",
+        persistent: true,
+      }) as unknown as number
+    } else if (!activeID && compactionToastId !== undefined) {
+      toaster.dismiss(compactionToastId)
+      compactionToastId = undefined
+      lastCompactionID = undefined
+      showToast({
+        title: language.t("toast.session.compact.success"),
+        variant: "success",
+      })
+    }
   })
 
   createEffect(

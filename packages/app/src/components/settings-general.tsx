@@ -1,5 +1,7 @@
 import { Component, Show, createMemo, createResource, createSignal, type JSX } from "solid-js"
 import { Button } from "@opencode-ai/ui/button"
+import { Dialog } from "@opencode-ai/ui/dialog"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Select } from "@opencode-ai/ui/select"
 import { Switch } from "@opencode-ai/ui/switch"
@@ -45,6 +47,7 @@ export const SettingsGeneral: Component = () => {
   const platform = usePlatform()
   const globalSDK = useGlobalSDK()
   const settings = useSettings()
+  const dialog = useDialog()
   const [restartState, setRestartState] = createSignal<"idle" | "restarting" | "waiting" | "error">("idle")
   const [restartMessage, setRestartMessage] = createSignal<string>("")
 
@@ -91,10 +94,7 @@ export const SettingsGeneral: Component = () => {
     setRestartMessage("Web restart was triggered, but automatic reload timed out. Please refresh manually.")
   }
 
-  const restartWeb = async () => {
-    if (restartState() === "restarting" || restartState() === "waiting") return
-    if (!window.confirm("Restart the web runtime now? The page will reload automatically after recovery.")) return
-
+  const performRestart = async () => {
     setRestartState("restarting")
     setRestartMessage("Requesting controlled web restart…")
     try {
@@ -132,6 +132,34 @@ export const SettingsGeneral: Component = () => {
       setRestartState("error")
       setRestartMessage(error instanceof Error ? error.message : String(error))
     }
+  }
+
+  const restartWeb = () => {
+    if (restartState() === "restarting" || restartState() === "waiting") return
+    dialog.show(() => (
+      <Dialog title="Restart web runtime">
+        <div class="flex flex-col gap-4 px-2.5 pb-3">
+          <div class="rounded-lg border border-border-base bg-surface-base p-4 text-14-regular text-text-base">
+            Restart the web runtime now? The page will reload automatically after recovery.
+          </div>
+          <div class="flex justify-end gap-2">
+            <Button size="small" variant="secondary" onClick={() => dialog.close()}>
+              Cancel
+            </Button>
+            <Button
+              size="small"
+              variant="primary"
+              onClick={() => {
+                dialog.close()
+                void performRestart()
+              }}
+            >
+              Restart
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    ))
   }
 
   const themeOptions = createMemo(() =>

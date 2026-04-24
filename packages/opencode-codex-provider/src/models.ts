@@ -14,6 +14,7 @@ export interface CodexModelSpec {
 }
 
 export const MODEL_CATALOG: CodexModelSpec[] = [
+  { id: "gpt-5.5", name: "GPT-5.5", contextWindow: 272_000, maxOutput: 128_000, reasoning: true },
   { id: "gpt-5.4", name: "GPT-5.4", contextWindow: 400_000, maxOutput: 128_000, reasoning: true },
   { id: "gpt-5.4-mini", name: "GPT-5.4 Mini", contextWindow: 200_000, maxOutput: 64_000, reasoning: false },
   { id: "gpt-5.3-codex", name: "GPT-5.3 Codex", contextWindow: 400_000, maxOutput: 128_000, reasoning: true },
