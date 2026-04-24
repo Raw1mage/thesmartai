@@ -191,6 +191,7 @@ class CodexLanguageModel implements LanguageModelV2 {
       turnState: this.turnState,
       body: body as unknown as Record<string, unknown>,
       wsUrl: CODEX_WS_URL,
+      userAgent: this.options.userAgent,
     })
 
     if (wsEvents) {

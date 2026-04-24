@@ -128,6 +128,31 @@ function mapError(event: WrappedErrorEvent): Error | null {
 // § 3  WS connection
 // ---------------------------------------------------------------------------
 
+/**
+ * Build the WS upgrade header set. Phase 1 of codex-fingerprint-alignment:
+ * extracted for testability. Must match upstream codex-rs first-party
+ * fingerprint — UA prefix is tied to `originator` per codex-auth.ts:42-45,
+ * and ChatGPT-Account-Id stays TitleCase to mirror refs/codex
+ * core/src/client.rs. Phase 2 will merge this into the shared
+ * `buildHeaders({ isWebSocket: true })` entry point.
+ */
+export function buildWsUpgradeHeaders(input: {
+  accessToken: string
+  accountId?: string
+  turnState?: string
+  userAgent?: string
+}): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Authorization": `Bearer ${input.accessToken}`,
+    "originator": ORIGINATOR,
+    "OpenAI-Beta": WS_BETA_HEADER,
+  }
+  if (input.userAgent) headers["User-Agent"] = input.userAgent
+  if (input.accountId) headers["ChatGPT-Account-Id"] = input.accountId
+  if (input.turnState) headers["x-codex-turn-state"] = input.turnState
+  return headers
+}
+
 function connectWs(url: string, headers: Record<string, string>): Promise<WebSocket | null> {
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {
@@ -382,6 +407,7 @@ export interface WsTransportInput {
   turnState?: string
   body: Record<string, unknown>
   wsUrl: string
+  userAgent?: string
 }
 
 /**
@@ -456,14 +482,12 @@ export async function tryWsTransport(input: WsTransportInput): Promise<ReadableS
     invalidateContinuation(sessionId)
   }
 
-  // Fresh connection
-  const headers: Record<string, string> = {
-    "Authorization": `Bearer ${accessToken}`,
-    "originator": ORIGINATOR,
-    "OpenAI-Beta": WS_BETA_HEADER,
-  }
-  if (accountId) headers["chatgpt-account-id"] = accountId
-  if (input.turnState) headers["x-codex-turn-state"] = input.turnState
+  const headers = buildWsUpgradeHeaders({
+    accessToken,
+    accountId,
+    turnState: input.turnState,
+    userAgent: input.userAgent,
+  })
 
   const ws = await connectWs(wsUrl, headers)
   if (ws) {
