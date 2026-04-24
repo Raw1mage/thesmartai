@@ -69,6 +69,29 @@ export namespace SessionCache {
   let subscriptionAlive = false
   let unsubscribers: Array<() => void> = []
 
+  // Per-session debounce timers for PartUpdated streaming-delta invalidation.
+  // A burst of N token deltas coalesces into 1 cache sweep instead of N.
+  // Non-delta PartUpdated and all other events still invalidate immediately
+  // so consistency is only weakened for the duration of an active stream.
+  const PART_UPDATED_DEBOUNCE_MS = 100
+  const _partUpdatedTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+  function _scheduleDeltaInvalidate(sessionID: string): void {
+    if (_partUpdatedTimers.has(sessionID)) return
+    const timer = setTimeout(() => {
+      _partUpdatedTimers.delete(sessionID)
+      invalidate(sessionID, MessageV2.Event.PartUpdated.type)
+    }, PART_UPDATED_DEBOUNCE_MS)
+    _partUpdatedTimers.set(sessionID, timer)
+  }
+
+  function _flushDeltaInvalidate(sessionID: string): void {
+    const timer = _partUpdatedTimers.get(sessionID)
+    if (!timer) return
+    clearTimeout(timer)
+    _partUpdatedTimers.delete(sessionID)
+  }
+
   /**
    * Per-process-lifetime epoch — embedded in ETag so that clients holding
    * a stale ETag after a daemon restart (which resets the version counter
@@ -224,6 +247,7 @@ export namespace SessionCache {
   }
 
   export function forgetSession(sessionID: string): void {
+    _flushDeltaInvalidate(sessionID)
     invalidate(sessionID, Session.Event.Deleted.type)
     versions.delete(sessionID)
   }
@@ -269,9 +293,17 @@ export namespace SessionCache {
       )
       unsubscribers.push(
         Bus.subscribeGlobal(MessageV2.Event.PartUpdated.type, 0, (event) => {
-          const sid = (event.properties as { part?: { sessionID?: string } }).part?.sessionID
-          if (sid) {
-            bumpVersion(sid)
+          const props = event.properties as { part?: { sessionID?: string }; delta?: unknown }
+          const sid = props.part?.sessionID
+          if (!sid) return
+          bumpVersion(sid)
+          // Streaming deltas arrive 1000s/response; coalesce into debounced
+          // sweep. Non-delta updates (part-end, tool parts) flush pending
+          // timer and invalidate immediately to preserve at-rest consistency.
+          if (props.delta !== undefined) {
+            _scheduleDeltaInvalidate(sid)
+          } else {
+            _flushDeltaInvalidate(sid)
             invalidate(sid, MessageV2.Event.PartUpdated.type)
           }
         }),
@@ -337,6 +369,8 @@ export namespace SessionCache {
       }
     }
     unsubscribers = []
+    for (const timer of _partUpdatedTimers.values()) clearTimeout(timer)
+    _partUpdatedTimers.clear()
     entries.clear()
     versions.clear()
     hits = 0
