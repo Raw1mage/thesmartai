@@ -79,11 +79,43 @@ export function convertPrompt(prompt: LanguageModelV2Prompt): {
           } else if (Array.isArray(raw)) {
             // Content parts array → pass directly (codex-rs ContentItems variant)
             output = raw
+          } else if (
+            typeof raw === "object" &&
+            (raw as any).type === "text" &&
+            typeof (raw as any).value === "string"
+          ) {
+            // LMv2 string envelope from message-v2.ts toModelOutput:
+            //   { type: "text", value: "<string>" }
+            // Send the string as-is so Codex's function_call_output stores
+            // plain text, not nested JSON. (Was the cause of post-compaction
+            // assistant turns echoing the envelope back as message text.)
+            output = (raw as any).value
+          } else if (
+            typeof raw === "object" &&
+            (raw as any).type === "content" &&
+            Array.isArray((raw as any).value)
+          ) {
+            // LMv2 standard tool result envelope from message-v2.ts:
+            //   { type: "content", value: [{type:"text",text:...},{type:"media",...}] }
+            // Unwrap into Codex content items so the actual tool text reaches
+            // the model — JSON.stringify-ing the envelope made post-compaction
+            // turns regurgitate the protocol JSON as assistant text.
+            output = (raw as any).value.map((item: any) => {
+              if (item?.type === "text") {
+                return { type: "input_text", text: typeof item.text === "string" ? item.text : "" }
+              }
+              if (item?.type === "media" && typeof item.data === "string" && item.mediaType) {
+                return { type: "input_image", image_url: `data:${item.mediaType};base64,${item.data}` }
+              }
+              return { type: "input_text", text: JSON.stringify(item ?? "") }
+            })
+          } else if (typeof raw === "object" && typeof (raw as any).text === "string") {
+            // Bare {text, attachments?} structured output → flatten the text.
+            output = [{ type: "input_text", text: (raw as any).text }]
           } else if (typeof raw === "object") {
-            // Object result (e.g., structured tool output) → wrap as content item
-            // Do NOT JSON.stringify — Codex API needs content items or string
-            const text = JSON.stringify(raw)
-            output = [{ type: "input_text", text }]
+            // Unknown object shape — fall back to JSON. Last-resort path; the
+            // common tool-result shapes are handled above.
+            output = [{ type: "input_text", text: JSON.stringify(raw) }]
           } else {
             output = String(raw)
           }

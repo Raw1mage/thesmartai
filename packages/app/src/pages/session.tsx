@@ -604,36 +604,37 @@ export default function Page() {
   })
 
   // Auto-compaction is hidden from the turn view; surface progress via toast
-  // so the user knows why the UI pauses streaming during a compact pass.
-  const activeCompactionMessageID = createMemo(() => {
-    const list = messages()
-    for (let i = list.length - 1; i >= 0; i--) {
-      const m = list[i] as any
-      if (m?.role === "assistant" && m.summary === true && !m.time?.completed) return m.id as string
-    }
-    return undefined
-  })
+  // so the user isn't left wondering during the slow plugin round-trip
+  // (Codex /responses/compact can take 30s+). Backend publishes
+  // session.compaction.started immediately and session.compacted on finish.
   let compactionToastId: number | undefined
-  let lastCompactionID: string | undefined
-  createEffect(() => {
-    const activeID = activeCompactionMessageID()
-    if (activeID && activeID !== lastCompactionID) {
-      lastCompactionID = activeID
-      if (compactionToastId !== undefined) toaster.dismiss(compactionToastId)
+  const dismissCompactionToast = () => {
+    if (compactionToastId !== undefined) {
+      toaster.dismiss(compactionToastId)
+      compactionToastId = undefined
+    }
+  }
+  const stopCompactionListener = sdk.event.listen((e) => {
+    const event = e.details as { type: string; properties?: { sessionID?: string } }
+    if (!event.properties?.sessionID || event.properties.sessionID !== params.id) return
+    if (event.type === "session.compaction.started") {
+      dismissCompactionToast()
       compactionToastId = showToast({
         title: language.t("toast.session.compact.loading"),
         variant: "loading",
         persistent: true,
       }) as unknown as number
-    } else if (!activeID && compactionToastId !== undefined) {
-      toaster.dismiss(compactionToastId)
-      compactionToastId = undefined
-      lastCompactionID = undefined
+    } else if (event.type === "session.compacted") {
+      dismissCompactionToast()
       showToast({
         title: language.t("toast.session.compact.success"),
         variant: "success",
       })
     }
+  })
+  onCleanup(() => {
+    dismissCompactionToast()
+    stopCompactionListener()
   })
 
   createEffect(

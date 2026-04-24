@@ -329,6 +329,13 @@ export namespace SessionCompaction {
         sessionID: z.string(),
       }),
     ),
+    CompactionStarted: BusEvent.define(
+      "session.compaction.started",
+      z.object({
+        sessionID: z.string(),
+        mode: z.enum(["plugin", "llm"]),
+      }),
+    ),
   }
 
   const COMPACTION_BUFFER = 20_000
@@ -580,9 +587,17 @@ export namespace SessionCompaction {
   }) {
     const userMessage = input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User
 
+    // Announce compaction start immediately so the UI can show a toast even
+    // during the slow plugin round-trip (Codex /responses/compact can take
+    // 30s+). The Compacted event at the tail still fires on completion.
+    Bus.publish(Event.CompactionStarted, { sessionID: input.sessionID, mode: "plugin" })
+
     // --- Plugin-provided server compaction (e.g. Codex /responses/compact) ---
     const serverResult = await tryPluginCompaction(input, userMessage)
     if (serverResult) return serverResult
+
+    // Plugin path bailed — we're falling through to LLM compaction.
+    Bus.publish(Event.CompactionStarted, { sessionID: input.sessionID, mode: "llm" })
 
     // --- LEAGCY RESTORATION: Always trigger true Summary for others (like Gemini) ---
     const agent = await Agent.get("compaction")
