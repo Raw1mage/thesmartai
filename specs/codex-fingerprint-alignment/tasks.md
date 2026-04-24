@@ -26,15 +26,14 @@
 
 ## 2. Phase 3 — refs/codex submodule 同步 + CODEX_CLI_VERSION
 
-- [ ] 2.1 `git -C refs/codex fetch --tags`
-- [ ] 2.2 盤點 diff：`git -C refs/codex log --oneline rust-v0.122.0..rust-v0.125.0-alpha.1 -- codex-rs/core/src/client.rs codex-rs/login/src/auth/default_client.rs`
-- [ ] 2.3 判斷 diff 影響：有無新必要 header / body 欄位？記錄到 `docs/events/event_<YYYYMMDD>_codex_upstream_diff.md`
-  - 若出現破壞性改動 → **stop**，回報使用者，考慮 `revise` 模式
-- [ ] 2.4 `git -C refs/codex checkout rust-v0.125.0-alpha.1`
-- [ ] 2.5 在 main repo `git add refs/codex`（submodule pointer 更新）
-- [ ] 2.6 更新 `packages/opencode-codex-provider/src/protocol.ts` 的 `CODEX_CLI_VERSION`，值依 DD-4（tag 語意版本 `0.125.0-alpha.1`，若 upstream `workspace.package.version` 非 `0.0.0` 則以其為準）
-- [ ] 2.7 跑 `bun test packages/opencode-codex-provider` 全綠
-- [ ] 2.8 在同一 beta worktree 重啟 daemon（透過 `system-manager:restart_self`），跑典型對話
+- [x] 2.1 `git -C refs/codex fetch --tags`（執行於 main，取得 rust-v0.125.0-alpha.* / rust-v0.125.0-alpha.3 新 tag）
+- [x] 2.2 盤點 diff：6 個 commit 覆蓋 AuthProvider 重構 / rollout tracing / AgentIdentity net-zero / CF cookie / guardian
+- [x] 2.3 判斷 diff 影響：**No blocker** — 無新必要 header / body；CF cookie 列 follow-up。記錄於 `docs/events/event_20260424_codex_upstream_diff.md`
+- [x] 2.4 `git -C refs/codex checkout rust-v0.125.0-alpha.1`（主 repo 在 commit `57cde900a` 已執行；beta submodule 已同步）
+- [x] 2.5 main 已 `git add refs/codex` 並 commit（`57cde900a`）
+- [x] 2.6 `CODEX_CLI_VERSION = "0.125.0-alpha.1"` — commit `c8ac6f7ec` on `beta/codex-fingerprint-alignment`
+- [x] 2.7 `bun test packages/opencode-codex-provider`：43 pass / 0 fail
+- [x] 2.8 ~~daemon 重啟跑對話~~ — 改採 fetch-back + beta soak 策略（同 1.7）
 
 ## 3. Beta soak + fetch-back (Phase 1+3 驗收)
 
@@ -42,9 +41,9 @@
 - [ ] 3.2 **operator 手動查看 OpenAI 官網後台**：第一次觀察第三方判定比例
 - [ ] 3.3 間隔後再跑一輪負載
 - [ ] 3.4 **operator 手動查看 OpenAI 官網後台**：第二次觀察第三方判定比例
-- [ ] 3.5 驗收判定：
-  - 連續兩次 < 1% → 通過，進 3.6
-  - ≥ 1% → **stop**，回 Phase 3 盤點（可能觸發 revise mode 或擴大範圍）
+- [ ] 3.5 驗收判定（零容忍）：
+  - 連續兩次 **= 0%** → 通過，進 3.6
+  - > 0% → **stop**，先完成 Phase 2+4 再二次 soak；Phase 1+3+2+4 全做完仍 > 0% 則另開 follow-up spec 處理 TLS/JA3 / Cloudflare cookie 層
 - [ ] 3.6 fetch-back Phase 1+3 的變更回 `main`
 - [ ] 3.7 在 main 的 `docs/events/event_<YYYYMMDD>_codex_fingerprint_merged.md` 留一則完成紀錄
 
