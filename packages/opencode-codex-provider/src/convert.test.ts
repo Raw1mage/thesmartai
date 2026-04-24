@@ -168,6 +168,74 @@ describe("convertPrompt — golden format verification", () => {
     expect(item.output).toBe("glob found 5 files:\nfile1.md\nfile2.md")
   })
 
+  test("tool result LMv2 text envelope → unwrapped string", () => {
+    // {type:"text", value:"<string>"} is the LMv2 envelope wrapping a plain
+    // string output. The fix must strip the envelope; otherwise Codex stores
+    // nested JSON and post-compaction turns echo it as text.
+    const prompt: LanguageModelV2Prompt = [
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call_text_envelope",
+            result: { type: "text", value: "[skip] Error: apply_patch failed" },
+          } as any,
+        ],
+      },
+    ]
+    const { input } = convertPrompt(prompt)
+    const item = input[0] as any
+    expect(item.type).toBe("function_call_output")
+    expect(item.output).toBe("[skip] Error: apply_patch failed")
+  })
+
+  test("tool result LMv2 content envelope → unwrapped input_text array", () => {
+    const prompt: LanguageModelV2Prompt = [
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call_content_envelope",
+            result: {
+              type: "content",
+              value: [
+                { type: "text", text: "<file>\n00001| line one" },
+                { type: "media", data: "AAAA", mediaType: "image/png" },
+              ],
+            },
+          } as any,
+        ],
+      },
+    ]
+    const { input } = convertPrompt(prompt)
+    const item = input[0] as any
+    expect(item.type).toBe("function_call_output")
+    expect(Array.isArray(item.output)).toBe(true)
+    expect(item.output[0]).toEqual({ type: "input_text", text: "<file>\n00001| line one" })
+    expect(item.output[1]).toEqual({ type: "input_image", image_url: "data:image/png;base64,AAAA" })
+  })
+
+  test("tool result with unrecognised envelope shape THROWS (no silent JSON.stringify)", () => {
+    // Fail-loud guard: any new envelope shape must get explicit handling
+    // before reaching convert.ts. Silent JSON.stringify is what poisoned
+    // Codex memory in the gpt-5.5 incident.
+    const prompt: LanguageModelV2Prompt = [
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call_unknown",
+            result: { kind: "future-shape", payload: { foo: "bar" } },
+          } as any,
+        ],
+      },
+    ]
+    expect(() => convertPrompt(prompt)).toThrow(/unrecognised tool-result envelope shape/)
+  })
+
   test("mixed conversation preserves correct order", () => {
     const prompt: LanguageModelV2Prompt = [
       { role: "system", content: "System prompt" },

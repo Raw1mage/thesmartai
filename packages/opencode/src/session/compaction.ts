@@ -1041,10 +1041,22 @@ When constructing the summary, try to stick to this template:
                 arguments:
                   typeof (p as any).input === "string" ? (p as any).input : JSON.stringify((p as any).input ?? {}),
               })
+              const stateOutput = p.state.output
+              if (stateOutput != null && typeof stateOutput !== "string") {
+                // Fail-loud per AGENTS.md "no silent fallback": JSON.stringify
+                // of a structured tool output is what poisoned Codex memory in
+                // the gpt-5.5 envelope incident. Tool authors must store
+                // string output; if a tool ever changes shape, surface it
+                // here instead of silently sending JSON to the compactor.
+                throw new Error(
+                  `tryPluginCompaction: tool ${p.tool} state.output is non-string ` +
+                    `(${typeof stateOutput}); add an explicit unwrap before sending to plugin compact.`,
+                )
+              }
               conversationItems.push({
                 type: "function_call_output",
                 call_id: (p as any).toolCallId ?? p.id,
-                output: typeof p.state.output === "string" ? p.state.output : JSON.stringify(p.state.output ?? ""),
+                output: stateOutput ?? "",
               })
             }
           }

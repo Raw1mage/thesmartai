@@ -113,9 +113,15 @@ export function convertPrompt(prompt: LanguageModelV2Prompt): {
             // Bare {text, attachments?} structured output → flatten the text.
             output = [{ type: "input_text", text: (raw as any).text }]
           } else if (typeof raw === "object") {
-            // Unknown object shape — fall back to JSON. Last-resort path; the
-            // common tool-result shapes are handled above.
-            output = [{ type: "input_text", text: JSON.stringify(raw) }]
+            // Fail-loud per AGENTS.md "no silent fallback": JSON.stringify of an
+            // unknown envelope is exactly what poisoned Codex server memory and
+            // caused post-compaction JSON-as-text leakage. Any new shape must
+            // get an explicit unwrap above before it reaches this point.
+            throw new Error(
+              `codex-provider: unrecognised tool-result envelope shape ` +
+                `(keys=${JSON.stringify(Object.keys(raw as object).slice(0, 8))}). ` +
+                `Add an explicit unwrap branch in convert.ts before sending to Codex.`,
+            )
           } else {
             output = String(raw)
           }

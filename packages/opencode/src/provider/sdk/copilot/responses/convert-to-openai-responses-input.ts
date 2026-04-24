@@ -349,8 +349,20 @@ export async function convertToOpenAIResponsesInput({
               contentValue = output.value
               break
             case "content":
+              // Unwrap LMv2 content array — JSON.stringify-ing the envelope
+              // poisons server-side memory and causes models to echo the JSON
+              // shape as text after compaction (gpt-5.5 envelope incident).
+              contentValue = (output.value as ReadonlyArray<{ type: string; text?: string }>)
+                .map((item) =>
+                  item.type === "text" && typeof item.text === "string"
+                    ? item.text
+                    : JSON.stringify(item),
+                )
+                .join("")
+              break
             case "json":
             case "error-json":
+              // json type intentionally serialises — caller asked for JSON.
               contentValue = JSON.stringify(output.value)
               break
           }
