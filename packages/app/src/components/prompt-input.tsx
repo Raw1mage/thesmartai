@@ -1743,6 +1743,88 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Icon name="photo" class="size-4.5" />
                   </Button>
                 </Tooltip>
+                <Tooltip placement="top" value="Send diagnostic snapshot to server log">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    class="size-6 px-1"
+                    onClick={() => {
+                      // Collect whatever the client knows right now about this
+                      // session and push it to the server log. Useful when the
+                      // user is on mobile (no DevTools) and hits "reply not
+                      // rendering" — they tap this and tell us the HH:MM:SS,
+                      // we grep for `[client-diag]` in the daemon log.
+                      const sessionID = params.id
+                      const messages = sessionID ? (sync.data.message[sessionID] ?? []) : []
+                      const assistantMsgs = messages.filter((m) => m?.info?.role === "assistant")
+                      const lastAssistant = assistantMsgs[assistantMsgs.length - 1]
+                      const lastAssistantId = lastAssistant?.info?.id
+                      const lastAssistantParts = lastAssistantId ? (sync.data.part[lastAssistantId] ?? []) : []
+                      const lastEvt = typeof sdk.lastEventAt === "function" ? sdk.lastEventAt() : 0
+                      const now = Date.now()
+                      const snapshot = {
+                        now,
+                        url: typeof window !== "undefined" ? window.location.href : null,
+                        userAgent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : null,
+                        online: typeof navigator !== "undefined" ? navigator.onLine : null,
+                        visibility: typeof document !== "undefined" ? document.visibilityState : null,
+                        viewport:
+                          typeof window !== "undefined"
+                            ? { w: window.innerWidth, h: window.innerHeight }
+                            : null,
+                        session: {
+                          id: sessionID,
+                          messageCount: messages.length,
+                          assistantCount: assistantMsgs.length,
+                          userCount: messages.filter((m) => m?.info?.role === "user").length,
+                          lastAssistant: lastAssistant
+                            ? {
+                                id: lastAssistant.info.id,
+                                finish: (lastAssistant.info as { finish?: string }).finish ?? null,
+                                partCount: lastAssistantParts.length,
+                                partTypes: lastAssistantParts.map((p: any) => p?.type ?? "?"),
+                                textLen: lastAssistantParts
+                                  .filter((p: any) => p?.type === "text")
+                                  .reduce((n: number, p: any) => n + (p?.text?.length ?? 0), 0),
+                              }
+                            : null,
+                          sessionStatus: sessionID
+                            ? sync.data.session_status?.[sessionID] ?? null
+                            : null,
+                        },
+                        sse: {
+                          lastEventAt: lastEvt,
+                          lastEventAgoMs: lastEvt > 0 ? now - lastEvt : null,
+                        },
+                      }
+                      void sdk
+                        .fetch(`${sdk.url}/api/v2/experimental/client-diag`, {
+                          method: "POST",
+                          headers: { "content-type": "application/json" },
+                          body: JSON.stringify({
+                            sessionID: sessionID ?? undefined,
+                            note: `manual diag tap at ${new Date(now).toLocaleTimeString()}`,
+                            snapshot,
+                          }),
+                        })
+                        .then(() =>
+                          showToast({
+                            title: "Diagnostic sent",
+                            description: `Tap time: ${new Date(now).toLocaleTimeString()}`,
+                          }),
+                        )
+                        .catch((err) =>
+                          showToast({
+                            title: "Diagnostic failed",
+                            description: err instanceof Error ? err.message : String(err),
+                          }),
+                        )
+                    }}
+                    aria-label="Send diagnostic snapshot"
+                  >
+                    <Icon name="console" class="size-4.5" />
+                  </Button>
+                </Tooltip>
               </Show>
             </div>
             <IconButton

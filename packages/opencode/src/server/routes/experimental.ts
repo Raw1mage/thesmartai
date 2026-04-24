@@ -16,7 +16,10 @@ import { RequestUser } from "@/runtime/request-user"
 import { git } from "@/util/git"
 import { debugCheckpoint } from "@/util/debug"
 import { Global } from "@/global"
+import { Log } from "@/util/log"
 import path from "path"
+
+const log = Log.create({ service: "experimental" })
 
 const EXPERIMENTAL_DEBUG_BEACON_ENABLED = process.env.OPENCODE_DEBUG_BEACON === "1"
 const SCROLL_CAPTURE_FILE = path.join(Global.Path.log, "scroll-capture-latest.json")
@@ -110,6 +113,53 @@ export const ExperimentalRoutes = lazy(() =>
           ...(body.payload ?? {}),
         })
         return c.json({ ok: true as const })
+      },
+    )
+    .post(
+      "/client-diag",
+      describeRoute({
+        summary: "Record a one-shot client diagnostic snapshot",
+        description:
+          "Always-on (not gated by OPENCODE_DEBUG_BEACON) endpoint for a mobile-friendly 'diag button' — " +
+          "the client collects its observable state (session message counts, last SSE event age, etc.) and " +
+          "POSTs it here. Server writes an info-level log line tagged [client-diag] so it can be retrieved " +
+          "by grep later during RCA. Intended for cases where the user cannot open browser DevTools (mobile).",
+        operationId: "experimental.clientDiag",
+        responses: {
+          200: {
+            description: "Snapshot recorded",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    ok: z.literal(true),
+                    serverReceivedAt: z.number(),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          sessionID: z.string().optional(),
+          note: z.string().optional(),
+          snapshot: z.record(z.string(), z.any()).optional(),
+        }),
+      ),
+      async (c) => {
+        const body = c.req.valid("json")
+        const serverReceivedAt = Date.now()
+        log.info("[client-diag]", {
+          sessionID: body.sessionID ?? null,
+          note: body.note ?? null,
+          requestUser: RequestUser.username() ?? "local",
+          snapshot: body.snapshot ?? {},
+          serverReceivedAt,
+        })
+        return c.json({ ok: true as const, serverReceivedAt })
       },
     )
     .get(
