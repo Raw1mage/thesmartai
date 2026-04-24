@@ -302,7 +302,13 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       if (document.hidden) return
       reconnect("visibilitychange")
     }
-    const onPageShow = () => reconnect("pageshow")
+    // pageshow fires on every show including initial page load. We only need
+    // to force-reconnect when it's a bfcache restore (event.persisted = true);
+    // a normal initial load already opened a fresh stream and reconnecting
+    // immediately just produces a noisy 65ms-gap "short flap" in the log.
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) reconnect("pageshow-bfcache")
+    }
     const onOnline = () => reconnect("online")
 
     document.addEventListener("visibilitychange", onVisibility)

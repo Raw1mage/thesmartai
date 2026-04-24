@@ -704,6 +704,14 @@ api.route("/admin/kill-switch", KillSwitchRoutes())
             properties: {},
           }),
         })
+        // Track SSE write failures per connection so we can spot the case
+        // where bus DOES publish events but the SSE writeSSE silently rejects
+        // (stream aborted, downstream socket dead). Previously the catch
+        // swallowed every error so "events generated but client never saw
+        // them" was indistinguishable from "events not generated". Logging
+        // the FIRST error (only) keeps log volume bounded — if the channel
+        // is dead, every subsequent write fails the same way.
+        let writeErrorLogged = false
         const unsub = Bus.subscribeAll(async (event) => {
           beacon.hit("event.publish")
           await stream
@@ -714,8 +722,13 @@ api.route("/admin/kill-switch", KillSwitchRoutes())
                 context: event.context,
               }),
             })
-            .catch(() => {
-              // Write failed, stream probably aborted
+            .catch((err) => {
+              if (writeErrorLogged) return
+              writeErrorLogged = true
+              log.warn("SSE writeSSE failed — downstream stream likely aborted", {
+                eventType: event.type,
+                error: err instanceof Error ? err.message : String(err),
+              })
             })
         })
 

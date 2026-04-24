@@ -25,3 +25,6 @@
 [submodule "refs/open-pencil"]
 	path = refs/open-pencil
 	url = https://github.com/open-pencil/open-pencil
+[submodule "refs/guard22-opencode-multi-auth-codex"]
+	path = refs/guard22-opencode-multi-auth-codex
+	url = https://github.com/guard22/opencode-multi-auth-codex.git
