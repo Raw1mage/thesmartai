@@ -49,14 +49,47 @@
   },
   {
     "id": "P4",
-    "title": "Root session is NOT gated (negative case)",
-    "actors": ["root-llm", "runloop-hook"],
+    "title": "Main agent soft rotate — silent switch, conversation continues",
+    "actors": ["main-llm", "runloop-hook", "pick-healthiest", "cache", "pin-api", "bus", "frontend"],
     "messages": [
-      { "id": "MSG1", "from": "root-llm", "to": "runloop-hook", "componentRef": "C11", "label": "tool-call round completed" },
-      { "id": "MSG2", "from": "runloop-hook", "to": "runloop-hook", "componentRef": "C14", "label": "read session.source = null / 'user-initiated' → gate skipped" },
-      { "id": "MSG3", "from": "runloop-hook", "to": "root-llm", "componentRef": "C11", "label": "next provider request dispatched (even if quota low)" }
+      { "id": "MSG1", "from": "main-llm", "to": "runloop-hook", "componentRef": "C11", "label": "tool-call round completed, about to dispatch" },
+      { "id": "MSG2", "from": "runloop-hook", "to": "runloop-hook", "componentRef": "C11", "label": "session.source='user-initiated'; probe → 3% < 5% trip" },
+      { "id": "MSG3", "from": "runloop-hook", "to": "pick-healthiest", "componentRef": "C20", "label": "pick(family='openai', excludeSelf='acc_7')" },
+      { "id": "MSG4", "from": "pick-healthiest", "to": "cache", "componentRef": "C7", "label": "read all family accounts quota" },
+      { "id": "MSG5", "from": "cache", "to": "pick-healthiest", "componentRef": "C20", "label": "acc_3=87%, acc_9=62%, acc_7=3% (self)" },
+      { "id": "MSG6", "from": "pick-healthiest", "to": "runloop-hook", "componentRef": "C11", "label": "candidate = acc_3" },
+      { "id": "MSG7", "from": "runloop-hook", "to": "pin-api", "componentRef": "C21", "label": "pinExecutionIdentity(new=acc_3, {override:'quota-gate-rotate', fromAccount:'acc_7'})" },
+      { "id": "MSG8", "from": "pin-api", "to": "bus", "componentRef": "C22", "label": "publish('session.quotaGateRotated', {sessionID, from, to, newRemainingPercent:87, triggerWindow:'5h'})" },
+      { "id": "MSG9", "from": "bus", "to": "frontend", "componentRef": "C22", "label": "SSE event → render non-blocking info notice in timeline" },
+      { "id": "MSG10", "from": "runloop-hook", "to": "main-llm", "componentRef": "C11", "label": "next provider request dispatched using acc_3" }
     ],
-    "requirementRefs": ["Scenario: Root session 不被攔"]
+    "requirementRefs": ["Scenario: 同 family 有可用備援帳號 → 靜默 rotate", "Scenario: Banner 呈現為 non-blocking system notice"]
+  },
+  {
+    "id": "P6",
+    "title": "Main agent hard-stop — all family accounts low, natural turn finish",
+    "actors": ["main-llm", "runloop-hook", "pick-healthiest", "summary-gen", "session-runloop", "frontend"],
+    "messages": [
+      { "id": "MSG1", "from": "main-llm", "to": "runloop-hook", "componentRef": "C11", "label": "tool-call round completed" },
+      { "id": "MSG2", "from": "runloop-hook", "to": "pick-healthiest", "componentRef": "C20", "label": "pick(family, excludeSelf)" },
+      { "id": "MSG3", "from": "pick-healthiest", "to": "runloop-hook", "componentRef": "C11", "label": "no viable candidate (all probes failed or cooldown)" },
+      { "id": "MSG4", "from": "runloop-hook", "to": "summary-gen", "componentRef": "C24", "label": "generate(audience: 'user')" },
+      { "id": "MSG5", "from": "summary-gen", "to": "runloop-hook", "componentRef": "C11", "label": "structured text: quota alert + completed/read/edited/pending + nextResetAt" },
+      { "id": "MSG6", "from": "runloop-hook", "to": "session-runloop", "componentRef": "C23", "label": "append assistant message + finishReason='quota-gate-hard-stop'" },
+      { "id": "MSG7", "from": "session-runloop", "to": "frontend", "componentRef": "C23", "label": "SSE close normally; user sees alert + summary in timeline" }
+    ],
+    "requirementRefs": ["Scenario: 備援也都低於門檻 → 硬停 fallback"]
+  },
+  {
+    "id": "P7",
+    "title": "MCP-handover session is NOT gated (negative case)",
+    "actors": ["mcp-session-llm", "runloop-hook"],
+    "messages": [
+      { "id": "MSG1", "from": "mcp-session-llm", "to": "runloop-hook", "componentRef": "C11", "label": "tool-call round completed" },
+      { "id": "MSG2", "from": "runloop-hook", "to": "runloop-hook", "componentRef": "C14", "label": "read session.source='mcp-handover' → gate skipped (neither subagent nor main)" },
+      { "id": "MSG3", "from": "runloop-hook", "to": "mcp-session-llm", "componentRef": "C11", "label": "next request dispatched regardless of quota" }
+    ],
+    "requirementRefs": ["Scenario: 其他來源 session 不被 gate 管"]
   },
   {
     "id": "P5",

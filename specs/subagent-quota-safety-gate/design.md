@@ -78,10 +78,56 @@
   - TTL 由 `quota.cache_ttl_seconds` 控制，預設 60。
   - Gate 呼叫 probe 時若 cache 過期會自動 refresh — 這會讓 gate 觸發點可能有一次 live fetch 成本；可接受（1 req/60s/account 上限）。
 
-- **DD-18** `tweaks.cfg` 新增三個 knob：
+- **DD-18** `tweaks.cfg` 新增多個 knob：
   - `subagent.quota_gate_enabled`（default `true`）
   - `subagent.quota_gate_threshold_percent`（default `5`）
+  - `main.quota_gate_enabled`（default `true`）
+  - `main.quota_gate_threshold_percent`（default `5`）
   - `quota.cache_ttl_seconds`（default `60`，gate 與觀測 tool 共用）
+  - `quota.trip_summary.*`（summary 上限，與 subagent / main hard-stop 共用）
+
+### v3 主線（main agent）
+
+- **DD-20** Gate hook 共用一個 module，**以 `session.source` 分派**到兩條 handler：
+  - `session.source === 'task-tool'` → subagent handler（cancel + handover，DD-10~DD-16）
+  - `session.source === 'user-initiated'` 或 null (legacy root) → main handler（rotate-or-stop）
+  - 其他（`'mcp-handover'` 等）→ noop（gate 不管）
+  - 共用 probe 路徑 / threshold 判斷 / cache；差別只在 trip 發生後的「後果」。
+
+- **DD-21** Main agent 觸發 rotate 的候選選擇 = **best-available by 5H remaining**：
+  - 輸入：當前 session pinned accountId、當前 family 下所有 account ids
+  - 過程：
+    1. 排除當前 pinned 自身
+    2. 排除 probe 回 unsupported / 資料缺失的帳號
+    3. 排除已被 rotation3d rate-limit cooldown 的帳號（從現有 `rotation-state.json` 的 `rateLimits` 欄位讀）
+    4. 按 `fiveHourPercent_remaining` 降序排；tie-break 用 `weeklyPercent_remaining` 降序
+    5. 取第一名
+  - **不設絕對門檻** — 即使候選第一名也只剩 6%，仍然 rotate（使用者說的「當下剩最多者」）
+  - 只有當候選集合為空（包含「所有人都低於門檻導致 handler 視同無可用」的邊界情況）才退回 hard-stop
+  - 邊界情況判定：候選集合非空但**所有候選帳號** `fiveHourPercent_remaining < threshold` → 仍 rotate 到最多者（使用者指示）；若連第一名都 < threshold，這是紀錄入 log 的一次「勉強 rotate」，telemetry 標 `marginalRotation: true`
+
+- **DD-22** Pin override 契約擴充：新增 `pinExecutionIdentity(identity, { override?: { reason, fromAccount, triggeredAt } })`。
+  - Override reason 枚舉：`"quota-gate-rotate"` (v3 唯一使用者)、未來可擴（例如 `"user-explicit-switch"`）
+  - Session info.json 的 `execution` 欄位擴充一個 optional `overrideHistory: Array<{reason, fromAccount, atTurn, atTimestamp}>`，append-only，方便追溯
+  - 現有 `pinExecutionIdentity` 的正常呼叫路徑（首次 rotation 選號時）**不**附 override（視同 initial pin）
+
+- **DD-23** Main hard-stop fallback 走 session 的**正常 assistant turn 結束**路徑，不是 cancel：
+  - Runtime 在當前 turn 的 message chain 尾端 append 一則 `role: 'assistant'`（或等價的 system notice）的新 message，內容為結構化配額告急 + 摘要
+  - Mark assistant turn finish（`finishReason: 'quota-gate-hard-stop'` — 新增 finishReason 值）
+  - Session state 轉 idle；SSE 正常關流
+  - **不**觸發 `prompt.ts:390-403` 那條 manual_interrupt 路徑（那是 cancel；這裡是 natural finish）
+  - Summary 由同一個 `quota-trip-summary.ts` 生成器產出，但 framing 不同（給使用者看 vs 給 parent LLM 看），實作上加一個 `audience: 'user' | 'parent-llm'` 參數切換文字
+
+- **DD-24** Banner 事件沿 session bus：
+  - 新 bus event `session.quotaGateRotated` payload `{sessionID, fromAccount, toAccount, newRemainingPercent, triggerWindow, at}`
+  - 前端 SSE 接收後 render 成對話時間線內的 system-notice component
+  - Notice 樣式：info 色 + 小圖示，不 block input、不中斷 streaming
+
+- **DD-25** Legacy root session（`session.source` 為 null，沒標記）視同 `user-initiated`：
+  - Rationale：既有 session 不補 source，用預設值安全處理；否則正式 release 後根 session 全部被當 mcp-handover 而 gate 失效
+  - Migration：spawn-time 標記（新 session 會有），既有 session 讀出 null 時 treat as user-initiated
+
+## Risks / Trade-offs (v3 新增)
 
 ### 支援線（v1 觀測 tool，保留不變）
 
@@ -96,6 +142,10 @@
 
 ## Risks / Trade-offs
 
+- **R-20 (v3)** Pin override 可能破壞 cache / context 連續性：rotate 後新帳號的 provider-side request context / server compaction 狀態不同，使用者可能感覺到答覆風格微變。→ 接受；跟「斷線」相比屬次要體驗問題。用 banner 讓使用者知情。
+- **R-21 (v3)** Legacy root session source = null 被視為 user-initiated → main gate 會管它。如果 source 判定寫錯把 mcp-handover 誤認為 null 也會被 gate 管。→ 緩解：DD-25 明確只把 null 視為 legacy root；其他來源都要有明確 enum 值，missing 視為 legacy root 是 **刻意** 為了防錯漏（gate 管到 > 不管到）。
+- **R-22 (v3)** Marginal rotation（candidate 第一名也 < threshold）可能導致 thrashing：rotate 到 acc_B 結果下一輪又 trip。→ 緩解：rotate cooldown — 同 session 30 秒內最多 rotate 一次；hit cooldown 時退回 hard-stop。寫進 `main.rotate_cooldown_seconds` tweaks。
+- **R-23 (v3)** Banner 在對話歷史累積 → 長對話可能有好幾則 system-notice 佔版面。→ 接受；notice 設計為小尺寸 + 可折疊。
 - **R-10** 5% 門檻在快速燒的情境下仍來不及 — 例如 subagent 一輪 tool-call 就從 6% 燒到 3%。→ tool-call 邊界檢查只能抓到邊界時刻；若單輪消耗 >1% 理論上會穿門檻。緩解：tweaks.cfg 可把門檻調高（例如 10%）。
 - **R-11** Cache TTL 60s 可能讓 gate 看到的是 1 分鐘前的數字，實際帳號其實已耗盡。→ 接受；快速情境下 codex 自己會開始 429 走 rotation 既有路徑。Gate 的目標是「絕大多數情況下避免燒乾」，不是「絕對保證不燒乾」。
 - **R-12** Parent LLM 看到 structured trip result 仍可能「沒讀懂就重派」導致無限迴圈。→ 緩解：tool description 明示 trip 語義；但最終還是人/LLM 行為問題，policy 不在這個 spec 內解決。未來若發現問題可加一個 parent-side 重派計數上限。
@@ -105,13 +155,22 @@
 
 ## Critical Files
 
-### 主線
-- [packages/opencode/src/tool/task.ts](packages/opencode/src/tool/task.ts) — subagent spawn 時標 `source: "task-tool"`；gate check hook 可能加在這裡
-- [packages/opencode/src/session/prompt.ts](packages/opencode/src/session/prompt.ts) OR processor.ts — pre-dispatch gate hook 的實際位置（實作時擇一）
-- [packages/opencode/src/session/prompt-runtime.ts](packages/opencode/src/session/prompt-runtime.ts) — 新增 `CancelReason: "quota-gate-trip"`
-- `packages/opencode/src/session/quota-trip-summary.ts`（**新檔**）— 結構化摘要生成器
-- [packages/opencode/src/session/index.ts](packages/opencode/src/session/index.ts) — Session schema 可能要加 `source` 欄位
-- Task tool result schema — 需要擴充成 union 型別
+### 主線（subagent + main 共用 runloop hook）
+- [packages/opencode/src/session/prompt.ts](packages/opencode/src/session/prompt.ts) OR processor.ts — **共用** pre-dispatch gate hook；依 session.source 分派
+- `packages/opencode/src/session/quota-gate.ts`（**新檔**）— gate 判斷核心，分派 subagent / main handler
+- [packages/opencode/src/session/prompt-runtime.ts](packages/opencode/src/session/prompt-runtime.ts) — 新增 `CancelReason: "quota-gate-trip"`（subagent 用）+ `FinishReason: "quota-gate-hard-stop"`（main hard-stop 用）
+- `packages/opencode/src/session/quota-trip-summary.ts`（**新檔**）— 結構化摘要生成器；支援 `audience: 'user' | 'parent-llm'`
+- [packages/opencode/src/session/index.ts](packages/opencode/src/session/index.ts) — Session schema 加 `source`、`ExecutionIdentity.overrideHistory`；`pinExecutionIdentity` 簽名擴充
+
+### Subagent-specific
+- [packages/opencode/src/tool/task.ts](packages/opencode/src/tool/task.ts) — subagent spawn 時標 `source: "task-tool"`；trip 時組 TaskResult
+- Task tool result schema — 擴成 union 型別
+
+### Main-specific
+- `packages/opencode/src/account/pick-healthiest-account.ts`（**新檔**）— best-available 候選選擇器
+- `packages/opencode/src/session/quota-gate-banner.ts`（**新檔**）— 發 `session.quotaGateRotated` bus event
+- Bus event schema — 新 `session.quotaGateRotated` event type
+- 前端：banner component（system-notice 樣式）+ hard-stop message 呈現
 
 ### 共享 / 支援線
 - `packages/opencode/src/account/quota-probe.ts`（**新檔**）— registry + 介面
@@ -127,33 +186,40 @@
 ## Data Flow（Gate 觸發路徑）
 
 ```
-Subagent LLM 發完一輪 tool_use → tool_result
+Session runloop: 一輪 tool_use → tool_result 完成
     │
     ▼ (pre-dispatch hook)
-Runtime: isSubagent(session)?  ── false → 正常走原路徑
-    │ true
-    ▼
-Runtime: probe quota for session.execution.accountId
+quota-gate.ts: 分派 by session.source
     │
-    │ via AccountQuotaProbe registry (共用 quota-cache.json, TTL 60s)
-    ▼
-remainingPercent = min(5H, weekly)
-    │
-    ├─ >= threshold → 正常繼續，送下一筆 provider request
-    │
-    └─ < threshold → gate trip
-            │
-            ▼
-       Runtime: cancel(session, reason="quota-gate-trip")
-            │
-            ▼
-       Runtime: generate structured summary (quota-trip-summary.ts)
-            │
-            ▼
-       Task tool: 組 TaskResult { tripped: true, ... } 回給 parent
-            │
-            ▼
-       Parent session: 收到 tool_result → parent LLM 自行決定
+    ├─ 'task-tool' → SUBAGENT handler ────────────────────────┐
+    │                                                           │
+    ├─ 'user-initiated' / null → MAIN handler ───────────────┐ │
+    │                                                         │ │
+    └─ 'mcp-handover' / others → noop, proceed                │ │
+                                                              │ │
+    [probe + threshold check 兩條共用]                         │ │
+    probe(provider, accountId) via quota-cache.json TTL 60s   │ │
+    remainingPercent = min(5H, weekly)                        │ │
+    remainingPercent >= threshold → proceed                   │ │
+    remainingPercent < threshold → trip                       │ │
+                                                              │ │
+SUBAGENT trip (DD-10~DD-16):                                  │ │
+    cancel(session, 'quota-gate-trip')                        │ │
+    → quota-trip-summary.ts (audience: 'parent-llm')          │ │
+    → task.ts 組 TaskResult {tripped: true, ...}              │ │
+    → parent session 收 tool_result                            │◀┘
+                                                              │
+MAIN trip (DD-20~DD-24):                                      │
+    pick-healthiest-account.ts                                │
+    if candidate exists:                                       │
+       pinExecutionIdentity(new, {override: 'quota-gate...'}) │
+       bus.publish('session.quotaGateRotated', {...})         │
+       → banner 到前端；next request 用新帳號正常發送              │
+    else (marginal / cooldown / empty):                         │
+       quota-trip-summary.ts (audience: 'user')                 │
+       append assistant message + finishReason='quota-gate-...' │
+       SSE 正常收流；使用者需新 message                           │
+                                                              ◀─┘
 ```
 
 ## Open Questions for Implementation Phase

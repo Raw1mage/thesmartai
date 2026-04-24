@@ -156,16 +156,80 @@
     "session_info_additions": {
       "source": {
         "type": ["string", "null"],
-        "enum": ["task-tool", "mcp-handover", "user-initiated", null]
+        "enum": ["task-tool", "mcp-handover", "user-initiated", null],
+        "description": "null treated as legacy root → user-initiated at gate time (DD-25)"
       },
-      "parentSessionID": { "type": ["string", "null"] }
+      "parentSessionID": { "type": ["string", "null"] },
+      "execution.overrideHistory": {
+        "type": "array",
+        "items": { "$ref": "#/definitions_top/execution_identity_override_history_item" },
+        "description": "append-only record of pin overrides under quota pressure"
+      }
     },
     "tweaks_cfg_additions": {
       "subagent.quota_gate_enabled": { "type": "boolean", "default": true },
       "subagent.quota_gate_threshold_percent": { "type": "number", "default": 5 },
+      "main.quota_gate_enabled": { "type": "boolean", "default": true },
+      "main.quota_gate_threshold_percent": { "type": "number", "default": 5 },
+      "main.rotate_cooldown_seconds": { "type": "integer", "default": 30, "description": "Prevent rotate thrashing when candidate is also marginal" },
       "quota.cache_ttl_seconds": { "type": "integer", "default": 60 },
       "quota.trip_summary.last_message_max_chars": { "type": "integer", "default": 500 },
       "quota.trip_summary.max_tool_calls": { "type": "integer", "default": 20 }
+    },
+    "main_rotation_result": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["action", "fromAccount", "toAccount", "newRemainingPercent", "triggerWindow", "marginal"],
+          "properties": {
+            "action": { "const": "rotated" },
+            "fromAccount": { "type": "string" },
+            "toAccount": { "type": "string" },
+            "newRemainingPercent": { "type": "number" },
+            "triggerWindow": { "$ref": "#/$defs/TriggerWindow" },
+            "marginal": { "type": "boolean", "description": "true when even the best candidate is below threshold" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["action", "reason"],
+          "properties": {
+            "action": { "const": "hard-stopped" },
+            "reason": { "enum": ["no-candidates", "cooldown-active", "all-probes-failed"] }
+          }
+        }
+      ]
+    },
+    "main_hard_stop_message": {
+      "type": "object",
+      "required": ["role", "content", "finishReason"],
+      "properties": {
+        "role": { "enum": ["assistant", "system"] },
+        "content": { "type": "string", "description": "structured text: header + summary bullets + nextResetAt" },
+        "finishReason": { "const": "quota-gate-hard-stop" }
+      }
+    },
+    "session_quotaGateRotated_event": {
+      "type": "object",
+      "required": ["sessionID", "fromAccount", "toAccount", "newRemainingPercent", "triggerWindow", "at"],
+      "properties": {
+        "sessionID": { "type": "string" },
+        "fromAccount": { "type": "string" },
+        "toAccount": { "type": "string" },
+        "newRemainingPercent": { "type": "number" },
+        "triggerWindow": { "$ref": "#/$defs/TriggerWindow" },
+        "at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "execution_identity_override_history_item": {
+      "type": "object",
+      "required": ["reason", "fromAccount", "atTurn", "atTimestamp"],
+      "properties": {
+        "reason": { "enum": ["quota-gate-rotate"] },
+        "fromAccount": { "type": "string" },
+        "atTurn": { "type": "integer" },
+        "atTimestamp": { "type": "string", "format": "date-time" }
+      }
     },
     "quota_cache_file": {
       "description": "~/.config/opencode/quota-cache.json — keyed by '{providerCanonical}:{accountId}'",

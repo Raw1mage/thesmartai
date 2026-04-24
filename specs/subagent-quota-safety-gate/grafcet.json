@@ -40,12 +40,52 @@
   },
   {
     "id": "S4",
-    "label": "Gate: evaluate threshold",
-    "description": "min(5H, weekly) < threshold?",
-    "actions": ["compute remainingPercent", "pick triggerWindow"],
+    "label": "Gate: evaluate threshold + dispatch by source",
+    "description": "min(5H, weekly) < threshold? If trip, dispatch by session.source",
+    "actions": ["compute remainingPercent", "pick triggerWindow", "read session.source"],
     "transitions": [
       { "to": "S1", "condition": "remainingPercent >= threshold", "refs": ["A3"] },
-      { "to": "S5", "condition": "remainingPercent < threshold → trip", "refs": ["A3", "A5"] }
+      { "to": "S5", "condition": "trip AND source='task-tool' → subagent cancel path", "refs": ["A3", "A5"] },
+      { "to": "S_MAIN_PICK", "condition": "trip AND source in ('user-initiated', null) → main rotate path", "refs": ["A3", "A9"] },
+      { "to": "S1", "condition": "trip AND source in ('mcp-handover', other) → noop", "refs": ["A3"] }
+    ]
+  },
+  {
+    "id": "S_MAIN_PICK",
+    "label": "Main: pick healthiest candidate",
+    "description": "Best-available by 5H remaining, exclude self + cooldowned + probe-fail",
+    "actions": ["filter candidates", "sort by 5H desc", "tie-break weekly desc", "check rotate cooldown"],
+    "transitions": [
+      { "to": "S_MAIN_ROTATE", "condition": "candidate exists AND cooldown not active", "refs": ["A9", "A10"] },
+      { "to": "S_MAIN_STOP", "condition": "no candidate OR cooldown active OR all probes failed", "refs": ["A9", "A12"] }
+    ]
+  },
+  {
+    "id": "S_MAIN_ROTATE",
+    "label": "Main: re-pin with override + emit banner",
+    "description": "Silent rotate, conversation continues",
+    "actions": [
+      "pinExecutionIdentity(new, {override:'quota-gate-rotate', fromAccount, ...})",
+      "append overrideHistory entry",
+      "bus.publish('session.quotaGateRotated', ...)",
+      "frontend renders non-blocking notice"
+    ],
+    "transitions": [
+      { "to": "S1", "condition": "next provider request uses new pin", "refs": ["A10", "A11"] }
+    ]
+  },
+  {
+    "id": "S_MAIN_STOP",
+    "label": "Main: hard-stop fallback",
+    "description": "Append user-audience summary as assistant/system message, finish turn",
+    "actions": [
+      "quota-trip-summary (audience: 'user')",
+      "append assistant message with structured quota-alert content",
+      "set finishReason='quota-gate-hard-stop'",
+      "SSE close normally"
+    ],
+    "transitions": [
+      { "to": "S_DONE", "condition": "turn finished", "refs": ["A12"] }
     ]
   },
   {

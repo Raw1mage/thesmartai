@@ -52,24 +52,86 @@
 
 ---
 
-### Requirement: Gate 適用範圍限 task-tool-spawned subagent
+### Requirement: Gate 適用範圍分 subagent vs main，兩條分支不同動作
 
-#### Scenario: Root session 不被攔
-- **GIVEN** 一個根 session（使用者直接對話的）5H 剩 2%
-- **WHEN** 該 session 要發請求
-- **THEN** gate **不**觸發 — 根 session 不在 gate 範圍
-- **AND** 行為回到現有 rotation3d / UI 顯示路徑
+#### Scenario: Subagent 路徑觸發 cancel
+- **GIVEN** session.source = 'task-tool'
+- **WHEN** gate trip
+- **THEN** 走 cancel + handover 路徑（前述 Requirements）
 
-#### Scenario: 非 task-tool 來源的 non-root session 不被攔
-- **GIVEN** 透過 MCP `manage_session create` 開的新 session（非 task tool spawn）5H 剩 2%
-- **WHEN** 該 session 要發請求
-- **THEN** gate **不**觸發
-- **AND** 行為同 root session
+#### Scenario: Main/root session 路徑觸發 rotate-or-stop
+- **GIVEN** session.source = 'user-initiated' 或 null（legacy root）
+- **WHEN** gate trip
+- **THEN** 走 main agent 兩段式路徑（詳下節 Requirement）
+
+#### Scenario: 其他來源 session 不被 gate 管
+- **GIVEN** 透過 MCP `manage_session create` 開的新 session，source = 'mcp-handover'
+- **WHEN** 5H 剩 2%
+- **THEN** gate **不**觸發，行為回到既有 rotation3d / UI 路徑
 
 #### Scenario: 判斷來源的依據
 - **GIVEN** 任何 session
-- **WHEN** gate 檢查要不要管這個 session
-- **THEN** 以 session.parentSessionID 存在且 spawn source 為 task tool 為準（具體欄位由 design.md 決定）
+- **WHEN** gate 檢查
+- **THEN** 以 `session.source` 欄位為準（`'task-tool'`、`'user-initiated'`、`'mcp-handover'`、null）
+
+---
+
+### Requirement: Main agent quota intervention — 兩段式軟/硬策略
+
+**Purpose**：main agent 沒有 parent 可交；不能 cancel，否則對話斷線。用「先試切帳號，切不了才硬停」盡量讓使用者無感。
+
+#### Scenario: 同 family 有可用備援帳號 → 靜默 rotate（軟介入）
+- **GIVEN** main session 當前 pinned `acc_7`，5H 剩 3%
+- **AND** 同 family 內 `acc_3` 5H 剩 87%、`acc_9` 5H 剩 62%
+- **WHEN** gate trip
+- **THEN** runtime 選 `acc_3`（**當下剩最多**）
+- **AND** 對 main session 呼叫 `pinExecutionIdentity({..., accountId: 'acc_3'}, {override: 'quota-gate-rotate', fromAccount: 'acc_7'})`
+- **AND** 前端收到 banner 事件：`{type: 'quota-gate-rotated', fromAccount: 'acc_7', toAccount: 'acc_3', newRemainingPercent: 87, triggerWindow: '5h'}`
+- **AND** 下一筆 provider request 正常使用 `acc_3` 發出，對話繼續
+- **AND** 不 cancel、不產生摘要、不中斷 assistant turn
+
+#### Scenario: 備援選擇規則為 best-available
+- **GIVEN** 同 family 內多個候選帳號
+- **WHEN** runtime 挑選
+- **THEN** 以 `fiveHourPercent_remaining` 降序、tie-break `weeklyPercent_remaining` 降序，取最高者
+- **AND** 候選集合排除當前 pinned 帳號本身
+- **AND** 候選集合排除 probe 回 unsupported / 資料缺失的帳號
+
+#### Scenario: 備援也都低於門檻 → 硬停 fallback
+- **GIVEN** main session 5H 剩 3%
+- **AND** 同 family 所有其他帳號 5H 皆 < 5%（整組告急）
+- **WHEN** gate trip
+- **THEN** runtime **不** rotate
+- **AND** 當次 assistant turn 結尾由 runtime 插入一則結構化 system-notice message：
+  ```
+  ⚠ 配額告急 — 目前 family 內所有帳號 5H 皆剩 <5%。
+  本 turn 被自動結束，進度摘要如下：
+  - 已完成：[runtime 掃出的 completedToolCalls 摘要]
+  - 讀過的檔：[...]
+  - 改過的檔：[...]
+  - 未完成的 todo：[...]
+  下次 reset：<nextResetAt>
+  ```
+- **AND** assistant turn state 設為已結束（`finish`）
+- **AND** 使用者需要繼續時自行送新 message 或開新 session
+
+#### Scenario: Banner 呈現為 non-blocking system notice
+- **GIVEN** rotate 發生
+- **WHEN** 前端收到 banner 事件
+- **THEN** 在對話時間線插入一則 system-level notice（非使用者 / assistant message），樣式為 info 而非 error
+- **AND** notice 不 interrupt 當前 streaming 的 assistant 回應
+- **AND** notice 保留在對話歷史（讓使用者事後能追溯）
+
+#### Scenario: pin override 留痕
+- **GIVEN** runtime 觸發 pin override
+- **WHEN** 寫入 session info.json
+- **THEN** `execution` 欄位內有 `override` 註記：`{reason: 'quota-gate-rotate', fromAccount, atTurn, atTimestamp}`
+- **AND** session history / telemetry 同步紀錄（可被 admin 追溯）
+
+#### Scenario: Main gate 關閉時
+- **GIVEN** `main.quota_gate_enabled = false`
+- **WHEN** 5H 剩 3%
+- **THEN** 不 rotate、不 stop；log 寫 `[quota-gate] disabled, would-have-tripped main session ses_xxx`
 
 ---
 
@@ -142,11 +204,21 @@
 
 ## Acceptance Checks
 
+### Subagent
 - [ ] 單元測試：subagent 5H < 5% 時 gate 觸發、cancel reason 正確
 - [ ] 單元測試：gate 關閉時不觸發，但 would-have-tripped log 有寫
 - [ ] 單元測試：provider 無 probe 時放行 + WARN log
 - [ ] 單元測試：structured summary 從真實 tool-call 歷史產出欄位正確
-- [ ] 整合測試：root session 5H 1% 不被攔（負向案例）
-- [ ] 整合測試：parent 收到 task tool result，LLM 看到後可自行決定（不要斷言 LLM 行為，只驗資料到位）
-- [ ] 觀測 tool acceptance 沿用 v1（get_my_current_usage 在 pinned subagent 拿到正確數字）
-- [ ] tweaks.cfg 三個 knob 有 fallback defaults、能被改寫覆蓋
+- [ ] 整合測試：parent 收到 task tool result，LLM 看到後可自行決定
+
+### Main agent
+- [ ] 單元測試：有備援時 best-available 選擇器挑對帳號（5H 降序、tie-break weekly、排除 self）
+- [ ] 單元測試：無備援時走 hard-stop 路徑、插入 runtime system-notice message
+- [ ] 整合測試：rotate 後 session info.json 有 override 註記
+- [ ] 整合測試：banner 事件送到前端、以 non-blocking notice 呈現
+- [ ] 整合測試：main gate 關閉時不 rotate、不 stop（但有 log）
+
+### 共用
+- [ ] MCP handover spawn 的 session 不進 gate（負向案例）
+- [ ] 觀測 tool acceptance 沿用 v1（get_my_current_usage 在 pinned session 拿到正確數字）
+- [ ] tweaks.cfg 多個 knob 有 fallback defaults、能被覆寫

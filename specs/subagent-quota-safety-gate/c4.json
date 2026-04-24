@@ -21,10 +21,58 @@
     {
       "id": "C11",
       "container": "daemon",
-      "label": "Subagent runloop pre-dispatch hook",
-      "description": "每輪 tool-call 完成、下一次 provider request 前呼叫；判 task-tool subagent、gate 啟用、呼 probe、決定 trip",
-      "moduleRef": "packages/opencode/src/session/prompt.ts or processor.ts (new hook)",
+      "label": "Runloop pre-dispatch gate hook (shared)",
+      "description": "共用 hook：每輪 tool-call 完成、下一次 provider request 前呼叫；依 session.source 分派到 subagent / main handler",
+      "moduleRef": "packages/opencode/src/session/quota-gate.ts (new) + prompt.ts/processor.ts integration",
       "idef0Traces": ["A3"]
+    },
+    {
+      "id": "C20",
+      "container": "daemon",
+      "label": "Main gate handler — pick healthiest account",
+      "description": "Best-available account selector; 排除 self/cooldown/probe-fail；sort by 5H desc",
+      "moduleRef": "packages/opencode/src/account/pick-healthiest-account.ts (new)",
+      "idef0Traces": ["A9"]
+    },
+    {
+      "id": "C21",
+      "container": "daemon",
+      "label": "pinExecutionIdentity with override",
+      "description": "擴充 session/index.ts 的 pin API；支援 override metadata 與 overrideHistory append",
+      "moduleRef": "packages/opencode/src/session/index.ts pinExecutionIdentity (extended)",
+      "idef0Traces": ["A10"]
+    },
+    {
+      "id": "C22",
+      "container": "daemon",
+      "label": "quotaGateRotated bus event + SSE emitter",
+      "description": "Main rotate 時 publish bus event；SSE 橋接到前端",
+      "moduleRef": "packages/opencode/src/session/quota-gate-banner.ts (new) + existing bus/SSE",
+      "idef0Traces": ["A11"]
+    },
+    {
+      "id": "C23",
+      "container": "daemon",
+      "label": "Main hard-stop finisher",
+      "description": "在 session runloop finish path 插入 quota-gate-hard-stop finishReason + 結構化 assistant message",
+      "moduleRef": "packages/opencode/src/session/prompt.ts (natural finish path)",
+      "idef0Traces": ["A12"]
+    },
+    {
+      "id": "C24",
+      "container": "daemon",
+      "label": "Quota trip summary generator (shared)",
+      "description": "runtime 機械掃 session state；audience: 'user' | 'parent-llm' 切換 framing",
+      "moduleRef": "packages/opencode/src/session/quota-trip-summary.ts (new)",
+      "idef0Traces": ["A6", "A12"]
+    },
+    {
+      "id": "C25",
+      "container": "daemon",
+      "label": "rotation-state.json reader (for cooldowns)",
+      "description": "讀現有 ~/.local/state/opencode/rotation-state.json 的 rateLimits 欄位，排除已 cooldown 的候選",
+      "moduleRef": "existing rotation-state consumer",
+      "idef0Traces": ["A9"]
     },
     {
       "id": "C12",
@@ -123,9 +171,19 @@
     { "from": "C3", "to": "C4", "kind": "dispatches", "description": "provider = codex" },
     { "from": "C4", "to": "C7", "kind": "reads-writes", "description": "cache check + refresh" },
     { "from": "C4", "to": "external:openai", "kind": "fetches", "description": "when cache stale" },
-    { "from": "C11", "to": "C12", "kind": "triggers", "description": "gate trip → cancel(quota-gate-trip)" },
+    { "from": "C11", "to": "C12", "kind": "triggers", "description": "subagent trip → cancel(quota-gate-trip)" },
     { "from": "C12", "to": "C13", "kind": "triggers", "description": "cancel completes → summary generator runs" },
     { "from": "C13", "to": "C10", "kind": "produces-input", "description": "StructuredSummary → task result composer" },
+    { "from": "C11", "to": "C20", "kind": "triggers", "description": "main trip → pick healthiest candidate" },
+    { "from": "C20", "to": "C25", "kind": "reads", "description": "check rotation-state.json cooldowns" },
+    { "from": "C20", "to": "C7", "kind": "reads", "description": "quota-cache for candidate 5H/weekly" },
+    { "from": "C20", "to": "C21", "kind": "triggers", "description": "candidate found → pinExecutionIdentity with override" },
+    { "from": "C21", "to": "C8", "kind": "writes", "description": "update session.info execution + overrideHistory" },
+    { "from": "C21", "to": "C22", "kind": "triggers", "description": "emit quotaGateRotated event" },
+    { "from": "C22", "to": "external:frontend", "kind": "sends", "description": "SSE → banner component" },
+    { "from": "C20", "to": "C23", "kind": "triggers", "description": "no candidate → hard-stop fallback" },
+    { "from": "C23", "to": "C24", "kind": "calls", "description": "summary (audience: 'user')" },
+    { "from": "C24", "to": "C13", "kind": "shares-with", "description": "same generator module, different audience framing" },
     { "from": "C1", "to": "C5", "kind": "calls", "description": "injected sessionID → tool" },
     { "from": "C5", "to": "C8", "kind": "reads", "description": "session.execution.accountId" },
     { "from": "C5", "to": "C3", "kind": "calls", "description": "shared probe registry" },
