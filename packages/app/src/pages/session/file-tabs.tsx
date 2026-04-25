@@ -151,8 +151,8 @@ function SvgViewer(props: {
                 <img
                   src={props.svgPreviewUrl()}
                   alt={props.path()}
-                  class="max-w-none select-none"
-                  style={{ transform: `scale(${scale()})`, "transform-origin": "top center" }}
+                  class="select-none block"
+                  style={{ width: `${scale() * 100}%`, "max-width": "none", height: "auto" }}
                   draggable={false}
                 />
               </Show>
