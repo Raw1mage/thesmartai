@@ -131,7 +131,7 @@ export function createFileTreeStore(options: TreeStoreOptions) {
     const dir = options.normalizeDir(input)
     ensureDir(dir)
     setTree("dir", dir, "expanded", true)
-    void listDir(dir)
+    void listDir(dir, { force: true })
   }
 
   const collapseDir = (input: string) => {
