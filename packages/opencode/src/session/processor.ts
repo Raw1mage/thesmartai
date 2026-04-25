@@ -725,6 +725,13 @@ export namespace SessionProcessor {
                   accountId: input.assistantMessage.accountId,
                 },
               })
+              // Account switched mid-stream — drop a rebind anchor for next round.
+              // Why: without this, autonomous loops that thrash accounts grow the
+              // local message tail indefinitely (auto-compaction sees lastFinished
+              // tokens of the failed/empty rotation attempt, never trips). Treating
+              // account-switch as a context-reset peer of provider-switch lets the
+              // next round's rebind compaction path snapshot+truncate properly.
+              SessionCompaction.markRebindCompaction(input.sessionID)
               logSessionAccountAudit({
                 requestPhase: "assistant-persist",
                 sessionID: input.sessionID,

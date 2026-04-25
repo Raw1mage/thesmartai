@@ -902,7 +902,7 @@ export namespace SessionPrompt {
     sessionID: string,
     options?: {
       replaceRuntime?: boolean
-      incomingModel?: { providerId: string; modelID: string }
+      incomingModel?: { providerId: string; modelID: string; accountId?: string }
     },
   ) {
     // Race-condition fix: previously, when start() returned undefined because
@@ -1081,11 +1081,18 @@ export namespace SessionPrompt {
     if (!session.parentID && session.execution?.providerId && options?.incomingModel) {
       const prevProvider = session.execution.providerId
       const nextProvider = options.incomingModel.providerId
-      if (prevProvider !== nextProvider) {
-        log.warn("provider switch detected (pre-loop), forcing context reinit", {
+      const prevAccount = session.execution.accountId
+      const nextAccount = options.incomingModel.accountId
+      const providerChanged = prevProvider !== nextProvider
+      const accountChanged = !providerChanged && prevAccount !== nextAccount && (prevAccount || nextAccount)
+      if (providerChanged || accountChanged) {
+        log.warn("identity switch detected (pre-loop), forcing context reinit", {
           sessionID,
           prevProvider,
           nextProvider,
+          prevAccount,
+          nextAccount,
+          reason: providerChanged ? "provider" : "account",
         })
         // DD-4 order contract: bump rebind epoch FIRST (capability layer will
         // naturally cache-miss on next runLoop iteration and re-read fresh
@@ -1097,7 +1104,9 @@ export namespace SessionPrompt {
         await RebindEpoch.bumpEpoch({
           sessionID,
           trigger: "provider_switch",
-          reason: `provider ${prevProvider} → ${nextProvider}`,
+          reason: providerChanged
+            ? `provider ${prevProvider} → ${nextProvider}`
+            : `account ${prevAccount} → ${nextAccount}`,
         })
         const model = await Provider.getModel(nextProvider, options.incomingModel.modelID).catch(() => undefined)
         if (model) {
@@ -1111,11 +1120,13 @@ export namespace SessionPrompt {
             sessionID,
             snapshot:
               snap ??
-              `[Provider switched from ${prevProvider} to ${nextProvider}. Previous conversation context was not recoverable. The user may re-state their request.]`,
+              (providerChanged
+                ? `[Provider switched from ${prevProvider} to ${nextProvider}. Previous conversation context was not recoverable. The user may re-state their request.]`
+                : `[Account switched on ${nextProvider}. Previous conversation context was not recoverable. The user may re-state their request.]`),
             model,
             auto: true,
           })
-          log.info("provider switch compaction complete, entering main loop", { sessionID })
+          log.info("identity switch compaction complete, entering main loop", { sessionID })
         }
       }
     }
