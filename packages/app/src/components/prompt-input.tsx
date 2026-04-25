@@ -1763,6 +1763,42 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       const lastAssistant = assistantMsgs[assistantMsgs.length - 1] as any
                       const lastAssistantId = lastAssistant?.id
                       const lastAssistantParts = lastAssistantId ? (sync.data.part[lastAssistantId] ?? []) : []
+                      // DOM probe: for the last N messages, check whether
+                      // they are actually rendered in the DOM. Bridges the
+                      // store-vs-UI gap on mobile where DevTools isn't
+                      // available. data-message-id is set by message-timeline,
+                      // data-message by session-turn — try both.
+                      const probeDom = (id: string) => {
+                        if (typeof document === "undefined") return null
+                        const el =
+                          document.querySelector(`[data-message-id="${id}"]`) ??
+                          document.querySelector(`[data-message="${id}"]`)
+                        if (!el) return { inDom: false }
+                        const rect = (el as HTMLElement).getBoundingClientRect()
+                        let hiddenAncestor = false
+                        let walker: HTMLElement | null = el as HTMLElement
+                        while (walker) {
+                          const cs = window.getComputedStyle(walker)
+                          if (cs.display === "none" || cs.visibility === "hidden") {
+                            hiddenAncestor = true
+                            break
+                          }
+                          walker = walker.parentElement
+                        }
+                        return {
+                          inDom: true,
+                          height: (el as HTMLElement).offsetHeight,
+                          width: (el as HTMLElement).offsetWidth,
+                          rect: { top: Math.round(rect.top), height: Math.round(rect.height) },
+                          hiddenAncestor,
+                        }
+                      }
+                      const tail = messages.slice(-10).map((m: any) => ({
+                        id: m?.id,
+                        role: m?.role,
+                        finish: m?.finish ?? null,
+                        dom: probeDom(m?.id),
+                      }))
                       const lastEvt = typeof sdk.lastEventAt === "function" ? sdk.lastEventAt() : 0
                       const now = Date.now()
                       const snapshot = {
@@ -1794,6 +1830,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           sessionStatus: sessionID
                             ? sync.data.session_status?.[sessionID] ?? null
                             : null,
+                          tailDomProbe: tail,
                         },
                         sse: {
                           lastEventAt: lastEvt,
