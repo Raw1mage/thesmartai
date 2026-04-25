@@ -1756,9 +1756,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       // we grep for `[client-diag]` in the daemon log.
                       const sessionID = params.id
                       const messages = sessionID ? (sync.data.message[sessionID] ?? []) : []
-                      const assistantMsgs = messages.filter((m) => m?.info?.role === "assistant")
-                      const lastAssistant = assistantMsgs[assistantMsgs.length - 1]
-                      const lastAssistantId = lastAssistant?.info?.id
+                      // Sync store keeps Message (the .info), not WithParts.
+                      // role lives directly on the entry, NOT on .info.role.
+                      const assistantMsgs = messages.filter((m: any) => m?.role === "assistant")
+                      const userMsgs = messages.filter((m: any) => m?.role === "user")
+                      const lastAssistant = assistantMsgs[assistantMsgs.length - 1] as any
+                      const lastAssistantId = lastAssistant?.id
                       const lastAssistantParts = lastAssistantId ? (sync.data.part[lastAssistantId] ?? []) : []
                       const lastEvt = typeof sdk.lastEventAt === "function" ? sdk.lastEventAt() : 0
                       const now = Date.now()
@@ -1776,11 +1779,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           id: sessionID,
                           messageCount: messages.length,
                           assistantCount: assistantMsgs.length,
-                          userCount: messages.filter((m) => m?.info?.role === "user").length,
+                          userCount: userMsgs.length,
                           lastAssistant: lastAssistant
                             ? {
-                                id: lastAssistant.info.id,
-                                finish: (lastAssistant.info as { finish?: string }).finish ?? null,
+                                id: lastAssistant.id,
+                                finish: lastAssistant.finish ?? null,
                                 partCount: lastAssistantParts.length,
                                 partTypes: lastAssistantParts.map((p: any) => p?.type ?? "?"),
                                 textLen: lastAssistantParts
