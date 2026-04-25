@@ -73,7 +73,6 @@ import {
   getPendingContinuation,
   shouldInterruptAutonomousRun,
 } from "./workflow-runner"
-import { resolveDialogTriggerPolicy } from "./dialog-trigger"
 import { detectAutorunIntent, extractUserText } from "./autorun/detector"
 import { Tweaks } from "@/config/tweaks"
 import { RebindEpoch } from "./rebind-epoch"
@@ -2098,19 +2097,10 @@ export namespace SessionPrompt {
     input: PromptInput,
     session: Session.Info,
   ): Promise<{ info: MessageV2.User; parts: MessageV2.WithParts["parts"] }> {
-    const triggerPolicy = await resolveDialogTriggerPolicy({
-      agent: input.agent,
-      client: Flag.OPENCODE_CLIENT,
-      parts: input.parts,
-      session,
-    })
-    const triggerDecision = triggerPolicy.decision
-
-    const effectiveAgent = triggerDecision.routeAgent ?? input.agent
     const { agent, partsInput, info } = await prepareUserMessageContext({
       sessionID: input.sessionID,
       messageID: input.messageID,
-      agent: effectiveAgent,
+      agent: input.agent,
       model: input.model,
       format: input.format,
       variant: input.variant,

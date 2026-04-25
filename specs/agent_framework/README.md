@@ -22,6 +22,6 @@ This root now spans three layers:
 ## How to Read This Root
 
 - Start at this root for current agent-runtime taxonomy.
-- Use `slices/builder_framework/` for the current planner / `plan_exit` / workflow-runner admission truth.
+- Use `slices/builder_framework/` for the current planner / build-admission / workflow-runner admission truth.
 - Use `specs/architecture.md` when you need concrete module/file ownership rather than semantic architecture.
 - Do not assume every preserved slice is fully normalized into the root yet; some slices still carry more current detail than the root summary files.

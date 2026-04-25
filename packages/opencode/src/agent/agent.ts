@@ -52,6 +52,7 @@ export namespace Agent {
       doom_loop: "ask",
       external_directory: {
         "*": "ask",
+        "~/*": "allow",
         [Truncate.DIR]: "allow",
         [Truncate.GLOB]: "allow",
       },
@@ -170,6 +171,7 @@ export namespace Agent {
             read: "allow",
             external_directory: {
               "*": "ask",
+              "~/*": "allow",
               [Truncate.DIR]: "allow",
               [Truncate.GLOB]: "allow",
             },

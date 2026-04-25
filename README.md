@@ -118,8 +118,8 @@ Session 是 OpenCode 的核心執行單元：
 
 確定性工作流控制，非 AI-based：
 
-- **A51 Detect Dialog Triggers**：rule-first 觸發偵測（plan_enter、replan、approval），round-boundary 評估
-- **A52 Manage Planning Mode**：plan_enter/plan_exit 工具，question-driven clarification，產出 plan + IDEF0/Grafcet artifacts
+- **A51 Detect Dialog Triggers**：rule-first 觸發偵測（replan、approval），round-boundary 評估
+- **A52 Manage Planning**：透過 `plan-builder` skill 進行，question-driven clarification，產出 plan + IDEF0/Grafcet artifacts
 - **A53 Smart Runner Governor**：per-turn 決策引擎（continue/replan/ask_user/pause_for_risk/complete），bounded adoption
 - **A54 Workflow Runner**：continuation queue、blocker detection、supervisor lease/heartbeat、build validation
 - **A55 Builder Admission**：machine-verifiable quiz guard、mission metadata 編譯、reflection-based retry
@@ -198,7 +198,7 @@ Session 是 OpenCode 的核心執行單元：
 - **Smart Runner Governor**：per-turn 決策引擎，bounded adoption + risk pause + replan
 - **Workflow Runner**：continuation queue、blocker detection、supervisor lease
 - **Dialog Trigger Framework**：確定性、rule-first 觸發偵測，非 AI-based
-- **Planning Agent**：plan_enter/plan_exit 工具，結構化 todo + IDEF0/Grafcet companion artifacts
+- **Planning Agent**：透過 `plan-builder` skill 規劃，結構化 todo + IDEF0/Grafcet companion artifacts
 
 ### MCP 整合
 
@@ -356,7 +356,6 @@ templates/             XDG 部署模板
 - [Agent Framework](specs/agent_framework/)
 - [MCP 子系統](specs/mcp_subsystem/)
 - [Daemonization](specs/daemonization/)
-- [Dialog Trigger Framework](specs/dialog_trigger_framework/)
 - [Scheduler Channels](specs/scheduler-channels/)
 - [Codex 協議](specs/codex/)
 - [Google Auth 整合](specs/google-auth-integration/)

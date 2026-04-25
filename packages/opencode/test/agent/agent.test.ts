@@ -54,7 +54,6 @@ test("plan agent remains primary and no longer models plan mode as hard readonly
       expect(plan?.mode).toBe("primary")
       expect(plan?.description).toContain("Planner-first")
       expect(evalPerm(plan, "question")).toBe("allow")
-      expect(evalPerm(plan, "plan_exit")).toBe("allow")
     },
   })
 })

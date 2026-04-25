@@ -48,7 +48,6 @@ Everything else you do yourself:
 - `question()` — ask the user when blocked
 - `skill(name)` — load domain-specific instructions (always do this yourself, never delegate)
 - `read`/`grep`/`glob`/`edit`/`write`/`bash` — use freely for non-coding tasks, verification, documentation
-- `plan_enter()`/`plan_exit()` — enter/exit planning mode
 
 ### 2.2.1 Subagent completion notices (responsive-orchestrator R2)
 
@@ -103,25 +102,24 @@ Both skills MUST be loaded via `skill()`. Reading their `SKILL.md` files does no
 
 - **Discussion-first.** Think, read, search, ask the user, refine artifacts. Do not jump into broad implementation.
 - Small bounded edits that support planning evidence are acceptable.
-- When substantial implementation is needed, complete the artifacts and call `plan_exit` to hand off to build mode.
+- When substantial implementation is needed, complete the artifacts before transitioning into execution mode (see §2.7).
 
 **Runtime tools:**
 
-- `plan_enter()` — set up the active plan directory under `/plans/` using a dated root such as `/plans/YYYYMMDD_<slug>/`, with template files. Call this to initialize plan artifacts.
-- `plan_exit()` — validate all artifacts, materialize `tasks.md` into runtime todos, switch to build mode.
-- `todowrite()` — in plan mode, acts as a working ledger (relaxed policy). This does NOT carry over into build mode.
+- `todowrite()` — todo is always a working ledger; structure may evolve as the plan evolves. The runtime does not lock structure based on agent name; restructure discipline (avoid churn during execution) is a `plan-builder` convention, not a runtime gate.
 - `question()` — use structured multiple-choice for bounded decisions (scope, priority, approval posture). Freeform only for open-ended context.
 
-**Artifact directory:** `plan_enter` creates the active plan package under `/plans/` using a dated root such as `/plans/YYYYMMDD_<slug>/`. The primary artifact is `implementation-spec.md`; keep all companion artifacts aligned.
+**Artifact directory:** The `plan-builder` skill creates the active plan package under `/plans/` using a dated root such as `/plans/YYYYMMDD_<slug>/`. The primary artifact is `implementation-spec.md`; keep all companion artifacts aligned.
 
 **Todo ↔ Tasks alignment:** When `tasks.md` exists, it is the canonical naming source. Use the same task names in runtime todos. Prefer delegation-aware slices (`rewrite`, `delegate`, `integrate`, `validate`, `sync docs`) over vague bullets.
 
 **Clarification rules:** Ask the user when blocked or weighing tradeoffs. Bounded decisions (2-5 options) → structured `question`. Open-ended context → freeform, then converge with `question`.
 
-### 2.6 Todo Authority (Mode-Aware)
+### 2.6 Todo Authority
 
-- **Plan mode** (working ledger): todo may be used freely for exploration and tracking.
-- **Build mode** (execution ledger): update todo ONLY on real status transitions (pending→in_progress→completed). Do not rewrite structure for every utterance.
+- Todo is a working ledger. Restructure freely when scope or plan changes — the runtime no longer locks structure based on agent name.
+- During execution mode, prefer status transitions (pending→in_progress→completed) over structural churn so the visible work plan stays stable for the user.
+- When a `plan-builder` spec is being executed, align todo names with `tasks.md` (see plan-builder SKILL.md §16.2).
 - Use explicit `action` metadata (`kind`, `waitingOn`, `needsApproval`, `canDelegate`, `risk`).
 
 ### 2.7 Execution Modes
@@ -137,7 +135,7 @@ You operate in one of two modes. The active mode determines your turn boundary b
 
 **Execution mode (user-activated)**
 
-- Activated when: the user gives an execution command (e.g., "go", "execute", "build it"), the system injects a build-mode contract, or you receive a synthetic continuation message.
+- Activated when: the user gives an execution command (e.g., "go", "execute", "build it"), the system injects an execution contract, or you receive a synthetic continuation message.
 - In this mode, keep working until all todos are done or a stop gate is hit.
 - After each subagent completion/resume event: update todo → dispatch next. This is ONE continuous turn, not separate exchanges.
 - Do NOT produce text-only responses that end your turn when actionable todos remain. Text without a tool call = handing control back to the user.

@@ -5,12 +5,12 @@
     {
       "id": "A51",
       "title": "偵測 Dialog 觸發",
-      "description": "Rule-first 確定性觸發偵測，於 round 邊界執行：plan_enter、replan、approval。Dirty-flag 延遲至下一輪。"
+      "description": "Rule-first 確定性觸發偵測，於 round 邊界執行：replan、approval。Dirty-flag 延遲至下一輪。"
     },
     {
       "id": "A52",
-      "title": "管理規劃模式",
-      "description": "plan_enter 進入規劃、question-driven 釐清需求、產出 plan + IDEF0/Grafcet artifacts。plan_exit 交接至建構。"
+      "title": "管理規劃",
+      "description": "透過 plan-builder skill 進行規劃、question-driven 釐清需求、產出 plan + IDEF0/Grafcet artifacts，最後交接至建構。"
     },
     {
       "id": "A53",
@@ -38,7 +38,7 @@
     { "id": "C3", "source": "EXTERNAL", "target": "A55:control", "label": "Quiz 答案與校準資料", "type": "control" },
     { "id": "M1", "source": "EXTERNAL", "target": "A52:mechanism", "label": "Plan 儲存 (plans/)", "type": "mechanism" },
     { "id": "M2", "source": "EXTERNAL", "target": "A54:mechanism", "label": "Continuation Queue", "type": "mechanism" },
-    { "id": "F1", "source": "A51:output", "target": "A52:input", "label": "plan_enter 觸發", "type": "input" },
+    { "id": "F1", "source": "A51:output", "target": "A52:input", "label": "規劃觸發", "type": "input" },
     { "id": "F2", "source": "A51:output", "target": "A53:input", "label": "replan 或 approval 觸發", "type": "input" },
     { "id": "F3", "source": "A52:output", "target": "A54:input", "label": "含 Todos 與停止閘門的計畫", "type": "input" },
     { "id": "F4", "source": "A53:output", "target": "A54:control", "label": "Governor 決策與敘述", "type": "control" },

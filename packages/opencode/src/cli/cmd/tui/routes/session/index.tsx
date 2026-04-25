@@ -259,17 +259,6 @@ export function Session() {
     if (token) consumedSessionRouteInitTokens.add(token)
   })
 
-  let lastSwitch: string | undefined = undefined
-  sdk.event.on("message.part.updated", (evt) => {
-    const part = evt.properties.part
-    if (part.type !== "tool") return
-    if (part.sessionID !== route.sessionID) return
-    if (part.state.status !== "completed") return
-    if (part.id === lastSwitch) return
-
-    // plan_enter/plan_exit tools removed — agent switching now handled by skill invocation
-  })
-
   let scroll: ScrollBoxRenderable
   let prompt: PromptRef
   const keybind = useKeybind()

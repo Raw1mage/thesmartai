@@ -50,7 +50,7 @@ Main Agent 啟動時由 runtime 自動 preload + pin 下方 **Mandatory Skills**
 
 1. **Autonomy 依賴計畫，不依賴靈感。**
 2. **計畫不必完美，但必須可執行**（goal / todo / `dependsOn` / stop gates）。
-3. **todo 是 mode-aware runtime contract** — plan mode = working ledger（自由寫）；build mode = execution ledger（嚴格對齊 `plan-builder` tasks.md，詳見 plan-builder SKILL.md §16.2）。
+3. **todo 是 working ledger，紀律由 `plan-builder` skill 規範** — runtime 不再依 agent 名字鎖結構。當 plan-builder 在執行某份 spec 時，todo 應對齊 tasks.md（詳見 plan-builder SKILL.md §16.2）；其他情境 todo 是自由可重寫的工作清單，隨 plan / scope 演進。
 4. **一律對話中可觀測** — 重要進展、阻塞、replan 必須讓使用者理解。
 5. **可持續執行 ≠ 可靜默亂跑** — 遇到 approval / decision / blocker 必停。
 6. **Debug system-first** — 複雜 bug 先看系統邊界、資料流、觀測訊號；詳細 Syslog-style Debug Contract 見 `code-thinker` skill §3。
@@ -261,7 +261,7 @@ Next after reply:
    - 若框架文件不足，應在本次任務中補齊，而不是接受知識缺口常態化。
 
 8. **Plan / Spec Lifecycle Contract（規劃、實作、升格的強制規則）**
-   - **Active plan/build workspace 一律在 `/plans/`**：plan-builder 與 build mode 進行中的 dated plan roots 必須建立於 `/plans/<YYYYMMDD>_<slug>/`；AGENTS 不得再把 dated roots 的進行中計畫導向 `/specs/`。
+   - **Active plan workspace 一律在 `/plans/`**：plan-builder 進行中的 dated plan roots 必須建立於 `/plans/<YYYYMMDD>_<slug>/`；AGENTS 不得再把 dated roots 的進行中計畫導向 `/specs/`。
    - **`specs/architecture.md` 仍是架構單一真相來源**：長期架構、模組邊界、資料流、狀態機、runtime flows 仍以 `specs/architecture.md` 為準，不因 active plans 移到 `/plans/` 而改變。
    - **Formalized specs 採 semantic per-feature roots**：只有已正式沉澱、需長期維護的功能規格才放入 `/specs/<feature>/`；`/specs/` 不承接進行中的 dated execution roots。
    - **Tasks Checklist 即時同步**：當 coding agent 依據 `/plans/<YYYYMMDD>_<slug>/` 下的計畫文件實作時，每完成一個 task item，立即更新對應 `tasks.md` 的 checkbox（`[ ]` → `[x]`）。若 task 不適用或需拆分，標記 `[~] <reason>`。禁止所有工作完成後才一次性勾選。

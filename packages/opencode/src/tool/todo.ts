@@ -3,8 +3,6 @@ import { Tool } from "./tool"
 import DESCRIPTION_WRITE from "./todowrite.txt"
 import { Todo } from "../session/todo"
 
-const PLAN_MODE_AGENTS = new Set(["plan"])
-
 export const TodoWriteTool = Tool.define("todowrite", {
   description: DESCRIPTION_WRITE,
   parameters: z.object({
@@ -12,7 +10,7 @@ export const TodoWriteTool = Tool.define("todowrite", {
       .enum(["status_update", "plan_materialization", "replan_adoption"])
       .optional()
       .describe(
-        "Why this update is happening. status_update = progress/status only (no structure drift). plan_materialization/replan_adoption allow explicit structure changes from planner artifacts. In plan mode, the runtime auto-promotes to working_ledger when structure changes are detected, so you may omit this field.",
+        "Why this update is happening. status_update = progress/status only (no structure drift). plan_materialization/replan_adoption allow explicit structure changes from planner artifacts. The runtime auto-promotes status_update to working_ledger when structure changes are detected, so you may omit this field.",
       ),
     todos: z
       .array(z.object(Todo.Info.shape))
@@ -28,7 +26,6 @@ export const TodoWriteTool = Tool.define("todowrite", {
       metadata: {},
     })
 
-    const inPlanMode = PLAN_MODE_AGENTS.has(ctx.agent)
     const current = await Todo.get(ctx.sessionID)
 
     const signature = (todos: Todo.Info[]) =>
@@ -37,29 +34,16 @@ export const TodoWriteTool = Tool.define("todowrite", {
         .sort()
         .join("||")
 
-    const currentSignature = signature(current)
-    const incomingSignature = signature(params.todos)
-    const structureChanged = currentSignature !== incomingSignature
+    const structureChanged = signature(current) !== signature(params.todos)
 
-    // Mode-aware authority:
-    // - Plan mode: todo is a working ledger. Freeform structure changes are allowed.
-    //   Auto-promote status_update to working_ledger when structure changes are detected.
-    // - Build mode: todo is an execution ledger. Structure changes require explicit
-    //   plan_materialization or replan_adoption mode — EXCEPT when current is empty
-    //   (first-time seeding), which is auto-promoted to replan_adoption so the
-    //   incoming todos don't get silently discarded by applyStatusOnlyUpdate.
-    //   (AGENTS.md 第一條: no silent fallback.)
+    // Harness control (plan-builder skill, agent prompts) decides when structure
+    // edits are appropriate; the runtime just honors what the LLM passes. The
+    // one universal rule: if status_update was passed but the structure actually
+    // changed, promote to working_ledger so the new structure isn't silently
+    // dropped by applyStatusOnlyUpdate.
     let mode: Todo.UpdateMode = params.mode ?? "status_update"
-    if (inPlanMode && structureChanged) {
+    if (mode === "status_update" && structureChanged) {
       mode = "working_ledger"
-    } else if (!inPlanMode && mode === "status_update" && structureChanged) {
-      if (current.length === 0) {
-        mode = "replan_adoption"
-      } else {
-        throw new Error(
-          "todowrite(status_update) cannot rewrite todo structure in build mode. Use mode=plan_materialization or mode=replan_adoption only when planner artifacts changed or a replan was explicitly adopted.",
-        )
-      }
     }
 
     await Todo.update({
