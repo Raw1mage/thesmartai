@@ -1,4 +1,5 @@
 import { Component, Show, createMemo, createResource, createSignal, type JSX } from "solid-js"
+import { useParams } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
 import { Dialog } from "@opencode-ai/ui/dialog"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
@@ -7,6 +8,7 @@ import { Select } from "@opencode-ai/ui/select"
 import { Switch } from "@opencode-ai/ui/switch"
 import { TextField } from "@opencode-ai/ui/text-field"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { showToast } from "@opencode-ai/ui/toast"
 import { useTheme, type ColorScheme } from "@opencode-ai/ui/theme"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
@@ -470,6 +472,133 @@ export const SettingsGeneral: Component = () => {
     </div>
   )
 
+  const DiagnosticsSection = () => {
+    let sync: ReturnType<typeof useSync> | undefined
+    try {
+      sync = useSync()
+    } catch {}
+    let routeParams: { id?: string } = {}
+    try {
+      routeParams = useParams()
+    } catch {}
+
+    const sendDiagnostic = () => {
+      const sessionID = routeParams.id
+      const messages = sessionID && sync ? (sync.data.message[sessionID] ?? []) : []
+      const assistantMsgs = messages.filter((m: any) => m?.role === "assistant")
+      const userMsgs = messages.filter((m: any) => m?.role === "user")
+      const lastAssistant = assistantMsgs[assistantMsgs.length - 1] as any
+      const lastAssistantId = lastAssistant?.id
+      const lastAssistantParts = lastAssistantId && sync ? (sync.data.part[lastAssistantId] ?? []) : []
+      const probeDom = (id: string) => {
+        if (typeof document === "undefined") return null
+        const el =
+          document.querySelector(`[data-message-id="${id}"]`) ??
+          document.querySelector(`[data-message="${id}"]`)
+        if (!el) return { inDom: false }
+        const rect = (el as HTMLElement).getBoundingClientRect()
+        let hiddenAncestor = false
+        let walker: HTMLElement | null = el as HTMLElement
+        while (walker) {
+          const cs = window.getComputedStyle(walker)
+          if (cs.display === "none" || cs.visibility === "hidden") {
+            hiddenAncestor = true
+            break
+          }
+          walker = walker.parentElement
+        }
+        return {
+          inDom: true,
+          height: (el as HTMLElement).offsetHeight,
+          width: (el as HTMLElement).offsetWidth,
+          rect: { top: Math.round(rect.top), height: Math.round(rect.height) },
+          hiddenAncestor,
+        }
+      }
+      const tail = messages.slice(-10).map((m: any) => ({
+        id: m?.id,
+        role: m?.role,
+        finish: m?.finish ?? null,
+        dom: probeDom(m?.id),
+      }))
+      const lastEvt = typeof globalSDK.lastEventAt === "function" ? globalSDK.lastEventAt() : 0
+      const now = Date.now()
+      const snapshot = {
+        now,
+        url: typeof window !== "undefined" ? window.location.href : null,
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : null,
+        online: typeof navigator !== "undefined" ? navigator.onLine : null,
+        visibility: typeof document !== "undefined" ? document.visibilityState : null,
+        viewport:
+          typeof window !== "undefined"
+            ? { w: window.innerWidth, h: window.innerHeight }
+            : null,
+        session: {
+          id: sessionID ?? null,
+          messageCount: messages.length,
+          assistantCount: assistantMsgs.length,
+          userCount: userMsgs.length,
+          lastAssistant: lastAssistant
+            ? {
+                id: lastAssistant.id,
+                finish: lastAssistant.finish ?? null,
+                partCount: lastAssistantParts.length,
+                partTypes: lastAssistantParts.map((p: any) => p?.type ?? "?"),
+                textLen: lastAssistantParts
+                  .filter((p: any) => p?.type === "text")
+                  .reduce((n: number, p: any) => n + (p?.text?.length ?? 0), 0),
+              }
+            : null,
+          sessionStatus: sessionID && sync ? sync.data.session_status?.[sessionID] ?? null : null,
+          tailDomProbe: tail,
+        },
+        sse: {
+          lastEventAt: lastEvt,
+          lastEventAgoMs: lastEvt > 0 ? now - lastEvt : null,
+        },
+      }
+      void globalSDK
+        .fetch(`${globalSDK.url}/api/v2/experimental/client-diag`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            sessionID: sessionID ?? undefined,
+            note: `manual diag tap at ${new Date(now).toLocaleTimeString()}`,
+            snapshot,
+          }),
+        })
+        .then(() =>
+          showToast({
+            title: "Diagnostic sent",
+            description: `Tap time: ${new Date(now).toLocaleTimeString()}`,
+          }),
+        )
+        .catch((err) =>
+          showToast({
+            title: "Diagnostic failed",
+            description: err instanceof Error ? err.message : String(err),
+          }),
+        )
+    }
+
+    return (
+      <div class="flex flex-col gap-1">
+        <h3 class="text-14-medium text-text-strong pb-2">Diagnostics</h3>
+
+        <div class="bg-surface-raised-base px-4 rounded-lg">
+          <SettingsRow
+            title="Send diagnostic snapshot"
+            description="Capture the current session/UI state and post it to the server log under [client-diag]. Useful when a reply isn't rendering — note the tap time so the log can be grepped."
+          >
+            <Button size="small" variant="secondary" onClick={sendDiagnostic}>
+              Send snapshot
+            </Button>
+          </SettingsRow>
+        </div>
+      </div>
+    )
+  }
+
   const RuntimeSection = () => {
     // useSync may not be available — dialog renders outside SyncProvider.
     // The context throws synchronously if no provider is found, so try-catch is safe.
@@ -533,6 +662,8 @@ export const SettingsGeneral: Component = () => {
         <NotificationsSection />
 
         <SoundsSection />
+
+        <DiagnosticsSection />
 
         <Show when={web()}>
           <RuntimeSection />

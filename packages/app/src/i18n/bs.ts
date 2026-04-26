@@ -578,7 +578,7 @@ export const dict = {
   "sidebar.project.recentSessions": "Nedavne sesije",
   "sidebar.project.viewAllSessions": "Prikaži sve sesije",
 
-  "app.name.desktop": "OpenCode Desktop",
+  "app.name.desktop": "CMS",
 
   "settings.section.desktop": "Desktop",
   "settings.section.server": "Server",

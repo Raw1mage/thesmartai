@@ -510,7 +510,7 @@ export const dict = {
   "sidebar.gettingStarted.line2": "قم بتوصيل أي موفر لاستخدام النماذج، بما في ذلك Claude و GPT و Gemini وما إلى ذلك.",
   "sidebar.project.recentSessions": "الجلسات الحديثة",
   "sidebar.project.viewAllSessions": "عرض جميع الجلسات",
-  "app.name.desktop": "OpenCode Desktop",
+  "app.name.desktop": "CMS",
   "settings.section.desktop": "سطح المكتب",
   "settings.section.server": "الخادم",
   "settings.tab.general": "عام",

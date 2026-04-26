@@ -580,7 +580,7 @@ export const dict = {
   "sidebar.project.recentSessions": "Недавние сессии",
   "sidebar.project.viewAllSessions": "Посмотреть все сессии",
 
-  "app.name.desktop": "OpenCode Desktop",
+  "app.name.desktop": "CMS",
   "settings.section.desktop": "Приложение",
   "settings.section.server": "Сервер",
   "settings.tab.general": "Основные",

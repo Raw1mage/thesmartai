@@ -524,7 +524,7 @@ export const dict = {
     "Connectez n'importe quel fournisseur pour utiliser des modèles, y compris Claude, GPT, Gemini etc.",
   "sidebar.project.recentSessions": "Sessions récentes",
   "sidebar.project.viewAllSessions": "Voir toutes les sessions",
-  "app.name.desktop": "OpenCode Desktop",
+  "app.name.desktop": "CMS",
   "settings.section.desktop": "Bureau",
   "settings.section.server": "Serveur",
   "settings.tab.general": "Général",

@@ -573,7 +573,7 @@ export const dict = {
   "sidebar.project.recentSessions": "เซสชันล่าสุด",
   "sidebar.project.viewAllSessions": "ดูเซสชันทั้งหมด",
 
-  "app.name.desktop": "OpenCode Desktop",
+  "app.name.desktop": "CMS",
 
   "settings.section.desktop": "เดสก์ท็อป",
   "settings.section.server": "เซิร์ฟเวอร์",

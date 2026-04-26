@@ -574,7 +574,7 @@ export const dict = {
   "sidebar.project.recentSessions": "Seneste sessioner",
   "sidebar.project.viewAllSessions": "Vis alle sessioner",
 
-  "app.name.desktop": "OpenCode Desktop",
+  "app.name.desktop": "CMS",
   "settings.section.desktop": "Desktop",
   "settings.section.server": "Server",
   "settings.tab.general": "Generelt",

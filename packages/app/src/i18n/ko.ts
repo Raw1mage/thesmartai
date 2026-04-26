@@ -515,7 +515,7 @@ export const dict = {
   "sidebar.gettingStarted.line2": "Claude, GPT, Gemini 등을 포함한 모델을 사용하려면 공급자를 연결하세요.",
   "sidebar.project.recentSessions": "최근 세션",
   "sidebar.project.viewAllSessions": "모든 세션 보기",
-  "app.name.desktop": "OpenCode Desktop",
+  "app.name.desktop": "CMS",
   "settings.section.desktop": "데스크톱",
   "settings.section.server": "서버",
   "settings.tab.general": "일반",
