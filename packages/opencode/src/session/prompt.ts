@@ -2123,7 +2123,7 @@ export namespace SessionPrompt {
       info,
       parts,
       sessionID: input.sessionID,
-      agent: effectiveAgent,
+      agent: input.agent,
       model: input.model,
       messageID: input.messageID,
       variant: input.variant,
