@@ -369,6 +369,8 @@ function createGlobalSync() {
         setStore: child[1],
         vcsCache: cache,
         loadSessions,
+        // @event_20260428_bootstrap_provider_share
+        providerSnapshot: globalStore.provider,
       })
     })()
 

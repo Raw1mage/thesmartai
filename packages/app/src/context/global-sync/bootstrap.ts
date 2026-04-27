@@ -218,6 +218,11 @@ export async function bootstrapDirectory(input: {
   setStore: SetStoreFunction<State>
   vcsCache: VcsCache
   loadSessions: (directory: string) => Promise<void> | void
+  // @event_20260428_bootstrap_provider_share — reuse global's provider snapshot
+  // instead of refetching per directory (would cause N+1 fetches on any UI
+  // that opens N projects). Pass globalStore.provider; falls back to SDK fetch
+  // if snapshot is empty (e.g. global bootstrap hasn't completed yet).
+  providerSnapshot?: ProviderListResponse
 }) {
   if (input.store.status !== "complete") input.setStore("status", "loading")
   // Clear transient runtime state that is in-memory on the daemon side.
@@ -225,12 +230,20 @@ export async function bootstrapDirectory(input: {
   input.setStore("llm_history", [])
   input.setStore("llm_errors", [])
 
+  const snapshot = input.providerSnapshot
+  const snapshotUsable = !!snapshot && Array.isArray(snapshot.all) && snapshot.all.length > 0
+
   const blockingRequests = {
     project: () => input.sdk.project.current().then((x) => input.setStore("project", x.data!.id)),
-    provider: () =>
-      input.sdk.provider.list().then((x) => {
+    provider: () => {
+      if (snapshotUsable) {
+        input.setStore("provider", normalizeProviderList(snapshot!))
+        return Promise.resolve()
+      }
+      return input.sdk.provider.list().then((x) => {
         input.setStore("provider", normalizeProviderList(x.data!))
-      }),
+      })
+    },
     agent: () => input.sdk.app.agents().then((x) => input.setStore("agent", x.data ?? [])),
     config: () => input.sdk.config.get().then((x) => input.setStore("config", x.data!)),
   }
