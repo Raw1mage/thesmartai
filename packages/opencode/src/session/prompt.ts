@@ -253,23 +253,37 @@ export async function deriveObservedCondition(input: {
   pinnedAccountId: string | undefined
   hasUnprocessedCompactionRequest: boolean
   parentID: string | undefined
+  /** DD-11: epoch ms set by codex Bus listener when previous_response_id was rejected. */
+  continuationInvalidatedAt: number | undefined
   isOverflow: () => Promise<boolean>
   isCacheAware: () => Promise<boolean>
 }): Promise<SessionCompaction.Observed | null> {
-  // Subagent sessions don't self-compact (legacy invariant preserved)
-  if (input.parentID) return null
-
   // Cooldown gate. SessionCompaction.run() also checks this and short-circuits;
   // but checking here lets us return null cleanly without going through run().
   if (await SessionCompaction.Cooldown.shouldThrottle(input.sessionID, input.step)) {
     return null
   }
 
-  // Highest priority: explicit user request via compaction-request part
-  if (input.hasUnprocessedCompactionRequest) return "manual"
+  // DD-12: subagents use the same path as parents EXCEPT they do not
+  // accept "manual" (no UI surface). Manual is suppressed for subagents
+  // even if some upstream code accidentally appends a compaction-request
+  // part. All other observed values are evaluated identically.
+  const isSubagent = !!input.parentID
+  if (input.hasUnprocessedCompactionRequest && !isSubagent) return "manual"
+
+  // DD-11: continuation-invalidated takes priority over identity drift.
+  // The signal is fresh iff the timestamp is newer than the most recent
+  // Anchor's time.created (state-driven cooldown via anchor-recency
+  // comparison; no flag-clear step needed).
+  const lastAnchor = findMostRecentAnchor(input.msgs)
+  if (
+    input.continuationInvalidatedAt &&
+    (!lastAnchor || input.continuationInvalidatedAt > (lastAnchor.createdAt ?? 0))
+  ) {
+    return "continuation-invalidated"
+  }
 
   // Identity drift since last anchor
-  const lastAnchor = findMostRecentAnchor(input.msgs)
   if (lastAnchor) {
     if (lastAnchor.providerId && lastAnchor.providerId !== input.pinnedProviderId) {
       return "provider-switched"
@@ -302,7 +316,13 @@ export async function deriveObservedCondition(input: {
  */
 export function findMostRecentAnchor(
   msgs: MessageV2.WithParts[],
-): { providerId: string; modelID: string; accountId: string | undefined; messageId: string } | null {
+): {
+  providerId: string
+  modelID: string
+  accountId: string | undefined
+  messageId: string
+  createdAt: number | undefined
+} | null {
   for (let i = msgs.length - 1; i >= 0; i--) {
     const info = msgs[i].info
     if (info.role === "assistant" && (info as MessageV2.Assistant).summary === true) {
@@ -312,6 +332,7 @@ export function findMostRecentAnchor(
         modelID: a.modelID,
         accountId: a.accountId,
         messageId: a.id,
+        createdAt: a.time?.created,
       }
     }
   }
@@ -1676,6 +1697,7 @@ export namespace SessionPrompt {
       // new path already wrote the anchor for the same condition. Phase 7
       // deletes the flag entirely.
       SessionCompaction.consumeRebindCompaction(sessionID)
+      const sessionExecForCompaction = (await Session.get(sessionID).catch(() => undefined))?.execution
       const observed = await deriveObservedCondition({
         sessionID,
         step,
@@ -1685,6 +1707,7 @@ export namespace SessionPrompt {
         pinnedAccountId: effectiveAccountId ?? undefined,
         hasUnprocessedCompactionRequest: task?.type === "compaction-request",
         parentID: session.parentID,
+        continuationInvalidatedAt: sessionExecForCompaction?.continuationInvalidatedAt,
         isOverflow: () =>
           lastFinished
             ? SessionCompaction.isOverflow({

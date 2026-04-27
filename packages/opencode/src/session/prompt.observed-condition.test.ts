@@ -126,6 +126,7 @@ describe("deriveObservedCondition (DD-1 state-driven)", () => {
       pinnedAccountId: "acc-A",
       hasUnprocessedCompactionRequest: false,
       parentID: undefined,
+      continuationInvalidatedAt: undefined,
       isOverflow: async () => false,
       isCacheAware: async () => false,
       ...overrides,
@@ -137,11 +138,84 @@ describe("deriveObservedCondition (DD-1 state-driven)", () => {
     expect(await deriveObservedCondition(commonInput())).toBeNull()
   })
 
-  it("returns null for subagent sessions (parentID set) — INV: subagents do not self-compact", async () => {
+  it("DD-12: subagent (parentID set) DOES fire rebind via state-driven path", async () => {
     ;(SessionCompaction.Cooldown as any).shouldThrottle = mock(async () => false)
-    expect(
-      await deriveObservedCondition(commonInput({ parentID: "ses_parent" })),
-    ).toBeNull()
+    const result = await deriveObservedCondition(
+      commonInput({
+        parentID: "ses_parent",
+        pinnedAccountId: "acc-B",
+        msgs: [makeAnchor("codex", "gpt-5.5", "acc-A")],
+      }),
+    )
+    expect(result).toBe("rebind")
+  })
+
+  it("DD-12: subagent does NOT trigger manual even with compaction-request part", async () => {
+    ;(SessionCompaction.Cooldown as any).shouldThrottle = mock(async () => false)
+    const result = await deriveObservedCondition(
+      commonInput({
+        parentID: "ses_parent",
+        hasUnprocessedCompactionRequest: true,
+      }),
+    )
+    expect(result).toBeNull()
+  })
+
+  it("DD-11: continuation-invalidated fires when timestamp newer than last anchor", async () => {
+    ;(SessionCompaction.Cooldown as any).shouldThrottle = mock(async () => false)
+    const anchorTime = 1700000000000
+    // Anchor with createdAt = anchorTime; signal at anchorTime + 1000 (newer)
+    const msgs = [makeAnchor("codex", "gpt-5.5", "acc-A")]
+    msgs[0].info.time = { created: anchorTime, completed: anchorTime } as any
+    const result = await deriveObservedCondition(
+      commonInput({
+        msgs,
+        continuationInvalidatedAt: anchorTime + 1000,
+      }),
+    )
+    expect(result).toBe("continuation-invalidated")
+  })
+
+  it("DD-11: continuation-invalidated naturally goes stale once anchor advances past timestamp", async () => {
+    ;(SessionCompaction.Cooldown as any).shouldThrottle = mock(async () => false)
+    const signalTime = 1700000000000
+    const newerAnchorTime = signalTime + 5000
+    const msgs = [makeAnchor("codex", "gpt-5.5", "acc-A")]
+    msgs[0].info.time = { created: newerAnchorTime, completed: newerAnchorTime } as any
+    const result = await deriveObservedCondition(
+      commonInput({
+        msgs,
+        continuationInvalidatedAt: signalTime,
+      }),
+    )
+    // Anchor is newer than signal → signal is stale → no fire (state-driven cooldown)
+    expect(result).toBeNull()
+  })
+
+  it("DD-11: continuation-invalidated takes priority over identity drift", async () => {
+    ;(SessionCompaction.Cooldown as any).shouldThrottle = mock(async () => false)
+    const anchorTime = 1700000000000
+    const msgs = [makeAnchor("codex", "gpt-5.5", "acc-A")]
+    msgs[0].info.time = { created: anchorTime, completed: anchorTime } as any
+    const result = await deriveObservedCondition(
+      commonInput({
+        msgs,
+        pinnedAccountId: "acc-B", // would otherwise be rebind
+        continuationInvalidatedAt: anchorTime + 1000,
+      }),
+    )
+    expect(result).toBe("continuation-invalidated")
+  })
+
+  it("DD-11: continuation-invalidated set without any anchor → fires (first turn after restart)", async () => {
+    ;(SessionCompaction.Cooldown as any).shouldThrottle = mock(async () => false)
+    const result = await deriveObservedCondition(
+      commonInput({
+        msgs: [makeUserText("msg_u1", "hi")],
+        continuationInvalidatedAt: 1700000000000,
+      }),
+    )
+    expect(result).toBe("continuation-invalidated")
   })
 
   it("returns null when cooldown blocks", async () => {

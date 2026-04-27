@@ -31,9 +31,13 @@ const SessionDeletedEvent = BusEvent.define(
   }),
 )
 
-// Subscribe to continuation invalidation: schedule compaction for next round
+// Subscribe to continuation invalidation. compaction-redesign DD-11:
+// state-driven signal — write timestamp onto session.execution; the
+// runloop's deriveObservedCondition compares against the most recent
+// Anchor's time.created and fires run({observed: "continuation-invalidated"})
+// when it sees a fresh signal. Implicit cooldown via anchor-recency.
 Bus.subscribe(ContinuationInvalidatedEvent, (evt) => {
-  SessionCompaction.markRebindCompaction(evt.properties.sessionId)
+  void Session.markContinuationInvalidated(evt.properties.sessionId).catch(() => {})
 })
 
 Bus.subscribe(SessionDeletedEvent, (evt) => {

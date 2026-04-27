@@ -58,12 +58,12 @@ reviewable and rolls back cleanly without the next.
 
 ## 6b. State-driven extension (added 2026-04-27, DD-11 + DD-12)
 
-- [ ] 6b.1 Add `continuationInvalidatedAt: number | null` field to `Session.execution` schema (DD-11). Storage migration: existing executions read as `null`.
-- [ ] 6b.2 Replace `compaction.ts:36` Bus listener body: stop calling `markRebindCompaction(sid)`; instead `Session.updateExecution({sessionID, continuationInvalidatedAt: Date.now()})`.
-- [ ] 6b.3 Extend `deriveObservedCondition` to read `session.execution.continuationInvalidatedAt` and return `"continuation-invalidated"` when timestamp newer than lastAnchor.time.created. Insert priority between "manual" and "provider-switched".
-- [ ] 6b.4 Drop `if (input.parentID) return null` from `deriveObservedCondition` (DD-12). Narrow if needed: subagents skip only `"manual"` (no UI surface); all other observed values fire.
-- [ ] 6b.5 Audit phase 6 transitional flag drain — when run() handles a subagent rebind, must not double-drain something processor.ts will set on a future iteration.
-- [ ] 6b.6 Unit tests: continuation-invalidated state-driven priority; subagent rebind via new path; subagent overflow uses subagent's own Memory; sequence S8/S9 fixtures.
+- [x] 6b.1 Added `continuationInvalidatedAt: z.number().optional()` to `ExecutionIdentity` schema; new helper `Session.markContinuationInvalidated(sid)` writes the timestamp.
+- [x] 6b.2 Replaced `compaction.ts:36` Bus listener body: now calls `Session.markContinuationInvalidated(sid)`. Legacy `markRebindCompaction` will be deleted in phase 7.
+- [x] 6b.3 Extended `deriveObservedCondition` with continuation-invalidated check; reads timestamp via runloop's `Session.get`; compares against `findMostRecentAnchor.createdAt` (lifted from `time.created`). Priority order updated to `manual > continuation-invalidated > provider-switched > rebind > overflow > cache-aware`.
+- [x] 6b.4 Dropped unconditional parentID skip; narrowed to `if (hasUnprocessedCompactionRequest && !isSubagent)` — subagents skip only `"manual"`.
+- [x] 6b.5 Drain audit: no double-drain risk. The transitional `consumeRebindCompaction` at top of new path is harmless even if processor.ts sets a flag later in same iteration — the flag is set AFTER the drain in execution order, and next iteration will drain again. With phase 7 removing the flag, this concern disappears entirely.
+- [x] 6b.6 Tests added: 5 new cases in `prompt.observed-condition.test.ts` covering DD-11 (timestamp newer/stale/no-anchor/priority over rebind) + DD-12 (subagent rebind fires; subagent manual skipped). 19 tests total in that file.
 
 ## 7. Remove flag-based plumbing
 

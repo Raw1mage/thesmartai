@@ -119,6 +119,14 @@
         "packages/opencode/src/session/compaction.regression-2026-04-27.test.ts"
       ],
       "commit": "28866cfacea321594f9d81fa031ea36219aecdd2"
+    },
+    {
+      "at": "2026-04-27T21:07:25.810Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "1bf92f73943220c4bbec3df2e37a62223766ee94"
     }
   ]
 }

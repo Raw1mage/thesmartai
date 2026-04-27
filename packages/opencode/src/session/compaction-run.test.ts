@@ -465,17 +465,19 @@ describe("compaction-redesign phase 4 — run() entry point", () => {
   })
 
   it("phase 5 — replay-tail respects rawTailBudget for token estimation (over-budget falls through)", async () => {
-    // Synthesize 200 rounds of long text so replay-tail goes over 30% budget
-    const longText = "x".repeat(50000)
+    // Synthesize 60 rounds of moderate text so replay-tail goes over 30% budget
+    // (60 × 5000 chars = 300K chars ≈ 75K tokens > 30% of fakeModel's 272K = 81K budget...
+    //  use longer text to be safely over)
+    const longText = "x".repeat(8000)
     const longMsgs = []
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 60; i++) {
       longMsgs.push({
         info: { id: `msg_${i}`, role: i % 2 === 0 ? "user" : "assistant" },
         parts: [{ type: "text", text: longText }],
       })
     }
     setupCommonMocks(
-      { turnSummaries: [], rawTailBudget: 200 }, // budget tells executor to take all 200
+      { turnSummaries: [], rawTailBudget: 60 }, // budget tells executor to take all 60
       "ses_run_replay_overbudget",
     )
     ;(SharedContext as any).snapshot = mock(async () => undefined)
