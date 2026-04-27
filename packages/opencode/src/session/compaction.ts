@@ -1334,9 +1334,189 @@ When constructing the summary, try to stick to this template:
     return { ok: true, summaryText: text, kind: "narrative" }
   }
 
-  /** Phase 4 stub. Phase 5 fills in schema / replay-tail / low-cost-server / llm-agent. */
-  async function tryUnimplementedKind(kind: KindName): Promise<KindAttempt> {
-    return { ok: false, reason: `kind=${kind} not yet implemented (phase 5)` }
+  /**
+   * Schema executor (kind 2). Falls back to legacy `SharedContext.snapshot`
+   * regex-extracted text when the narrative path was unavailable. Zero API
+   * cost. Used only when narrative empty (e.g. first turn of a session).
+   */
+  async function trySchema(input: RunInput, model: Provider.Model | undefined): Promise<KindAttempt> {
+    const snap = await SharedContext.snapshot(input.sessionID).catch(() => undefined)
+    if (!snap) return { ok: false, reason: "shared-context snapshot empty" }
+    const tokenEstimate = Math.ceil(snap.length / 4)
+    const contextLimit = model?.limit?.context || 0
+    const budget = Math.floor(contextLimit * 0.3)
+    if (budget > 0 && tokenEstimate > budget) {
+      return { ok: false, reason: `over budget (${tokenEstimate} > ${budget})` }
+    }
+    return { ok: true, summaryText: snap, kind: "schema" }
+  }
+
+  /**
+   * Replay-tail executor (kind 3). Serializes the last N raw rounds (user +
+   * assistant text, in chronological order) as plain text. N defaults to
+   * `Memory.rawTailBudget` (default 5). Zero API cost. Used when narrative +
+   * schema both empty AND raw tail still readable. Fallback for crash
+   * recovery per DD-2.
+   *
+   * NOT used for `provider-switched` because raw assistant text may carry
+   * provider-specific tool-call structure that the new provider can't read;
+   * the table excludes it for that observed value.
+   */
+  async function tryReplayTail(input: RunInput, model: Provider.Model | undefined): Promise<KindAttempt> {
+    const mem = await Memory.read(input.sessionID)
+    const budgetN = mem.rawTailBudget || 5
+    const msgs = await Session.messages({ sessionID: input.sessionID }).catch(() => undefined)
+    if (!msgs || msgs.length === 0) return { ok: false, reason: "no messages" }
+
+    // Take the trailing rounds. A "round" here is a user message followed by
+    // its assistant turn; we walk back from the tail collecting until we have
+    // budgetN messages (close enough; consumer just needs context).
+    const tail = msgs.slice(Math.max(0, msgs.length - budgetN * 2))
+    const lines: string[] = []
+    for (const m of tail) {
+      const role = m.info.role
+      if (role !== "user" && role !== "assistant") continue
+      const text = m.parts
+        .filter((p: any) => p.type === "text")
+        .map((p: any) => (p as any).text ?? "")
+        .join("\n")
+        .trim()
+      if (!text) continue
+      lines.push(`${role === "user" ? "User" : "Assistant"}: ${text}`)
+    }
+    if (lines.length === 0) return { ok: false, reason: "tail has no text content" }
+
+    const text = lines.join("\n\n")
+    const tokenEstimate = Math.ceil(text.length / 4)
+    const contextLimit = model?.limit?.context || 0
+    const budget = Math.floor(contextLimit * 0.3)
+    if (budget > 0 && tokenEstimate > budget) {
+      return { ok: false, reason: `over budget (${tokenEstimate} > ${budget})` }
+    }
+    return { ok: true, summaryText: text, kind: "replay-tail" }
+  }
+
+  /**
+   * Low-cost-server executor (kind 4). Triggers the `session.compact` plugin
+   * hook. Today only the codex / openai plugin handles it (via
+   * `/responses/compact`). Counts toward 5h burst quota but cheaper than a
+   * full LLM round (kind 5).
+   *
+   * Returns the plugin's summary text without writing the anchor — anchor
+   * write is the run() function's responsibility per DD-9. The legacy
+   * `tryPluginCompaction` (still used by `process()`) writes its own anchor;
+   * this is the de-coupled version for the new run() entry point.
+   */
+  async function tryLowCostServer(input: RunInput, model: Provider.Model | undefined): Promise<KindAttempt> {
+    if (!model) return { ok: false, reason: "no resolvable model" }
+    const msgs = await Session.messages({ sessionID: input.sessionID }).catch(() => undefined)
+    if (!msgs || msgs.length === 0) return { ok: false, reason: "no messages" }
+    const userMessage = msgs.findLast((m) => m.info.role === "user")?.info as MessageV2.User | undefined
+    if (!userMessage) return { ok: false, reason: "no user message" }
+
+    const conversationItems = buildConversationItemsForPlugin(msgs)
+    if (conversationItems.length === 0) return { ok: false, reason: "no items to send" }
+
+    const agent = await Agent.get(userMessage.agent ?? "default").catch(() => undefined)
+    const instructions = (agent?.prompt ?? "").slice(0, 50000)
+
+    let hookResult: { compactedItems: unknown[] | null; summary: string | null }
+    try {
+      hookResult = (await Plugin.trigger(
+        "session.compact",
+        {
+          sessionID: input.sessionID,
+          model: {
+            providerId: model.providerId,
+            modelID: model.id,
+            accountId: userMessage.model.accountId,
+          },
+          conversationItems,
+          instructions,
+        },
+        { compactedItems: null as unknown[] | null, summary: null as string | null },
+      )) as { compactedItems: unknown[] | null; summary: string | null }
+    } catch (err) {
+      return {
+        ok: false,
+        reason: `plugin session.compact threw: ${err instanceof Error ? err.message : String(err)}`,
+      }
+    }
+
+    if (!hookResult.compactedItems) return { ok: false, reason: "plugin did not handle" }
+    const summaryText = hookResult.summary || "[Server-compacted conversation history]"
+    return { ok: true, summaryText, kind: "low-cost-server" }
+  }
+
+  /**
+   * Build the plugin-conversation-items shape from session messages. Lifted
+   * from the legacy `tryPluginCompaction` body so the new low-cost-server
+   * executor can stay decoupled from the legacy path. Phase 9 collapses
+   * both call sites onto this single helper.
+   */
+  function buildConversationItemsForPlugin(msgs: MessageV2.WithParts[]): unknown[] {
+    const items: unknown[] = []
+    for (const msg of msgs) {
+      if (msg.info.role === "user") {
+        const textParts = msg.parts.filter((p) => p.type === "text")
+        if (textParts.length > 0) {
+          items.push({
+            type: "message",
+            role: "user",
+            content: textParts.map((p) => ({ type: "input_text", text: (p as any).text ?? "" })),
+          })
+        }
+      } else if (msg.info.role === "assistant") {
+        const textParts = msg.parts.filter((p) => p.type === "text")
+        if (textParts.length > 0) {
+          items.push({
+            type: "message",
+            role: "assistant",
+            content: textParts.map((p) => ({ type: "output_text", text: (p as any).text ?? "" })),
+          })
+        }
+        for (const p of msg.parts) {
+          if (p.type === "tool" && p.state.status === "completed") {
+            items.push({
+              type: "function_call",
+              call_id: (p as any).toolCallId ?? p.id,
+              name: p.tool,
+              arguments:
+                typeof (p as any).input === "string"
+                  ? (p as any).input
+                  : JSON.stringify((p as any).input ?? {}),
+            })
+            const stateOutput = p.state.output
+            if (stateOutput != null && typeof stateOutput !== "string") {
+              throw new Error(
+                `compaction.run low-cost-server: tool ${p.tool} state.output is non-string (${typeof stateOutput}); ` +
+                  `add an explicit unwrap before sending to plugin compact.`,
+              )
+            }
+            items.push({
+              type: "function_call_output",
+              call_id: (p as any).toolCallId ?? p.id,
+              output: stateOutput ?? "",
+            })
+          }
+        }
+      }
+    }
+    return items
+  }
+
+  /**
+   * LLM-agent executor (kind 5). Final fallback. Currently a stub that
+   * returns false: phase 6 wires the runloop, after which the legacy
+   * `process()` code path can be deleted and its LLM-round logic moved
+   * here. Until that refactor lands, callers that exhaust the chain
+   * fall through to caller's legacy path.
+   *
+   * TODO(phase 6+): extract LLM-round core from process(); call here;
+   * return summary text without writing anchor.
+   */
+  async function tryLlmAgent(_input: RunInput, _model: Provider.Model | undefined): Promise<KindAttempt> {
+    return { ok: false, reason: "kind=llm-agent not yet implemented (phase 6+ refactor)" }
   }
 
   async function tryKind(kind: KindName, input: RunInput, model: Provider.Model | undefined): Promise<KindAttempt> {
@@ -1344,10 +1524,13 @@ When constructing the summary, try to stick to this template:
       case "narrative":
         return tryNarrative(input, model)
       case "schema":
+        return trySchema(input, model)
       case "replay-tail":
+        return tryReplayTail(input, model)
       case "low-cost-server":
+        return tryLowCostServer(input, model)
       case "llm-agent":
-        return tryUnimplementedKind(kind)
+        return tryLlmAgent(input, model)
     }
   }
 

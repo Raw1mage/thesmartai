@@ -1,19 +1,30 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test"
+import { afterEach, describe, expect, it, mock } from "bun:test"
 import { SessionCompaction } from "./compaction"
 import { Memory } from "./memory"
+import { SharedContext } from "./shared-context"
 import { Session } from "."
 import { Provider } from "@/provider/provider"
+import { Agent } from "@/agent/agent"
+import { Plugin } from "@/plugin"
 
 const originalMemoryRead = Memory.read
 const originalMemoryMarkCompacted = Memory.markCompacted
 const originalSessionGet = Session.get
+const originalSessionMessages = Session.messages
+const originalSharedSnapshot = SharedContext.snapshot
 const originalProviderGetModel = Provider.getModel
+const originalAgentGet = Agent.get
+const originalPluginTrigger = Plugin.trigger
 
 afterEach(() => {
   ;(Memory as any).read = originalMemoryRead
   ;(Memory as any).markCompacted = originalMemoryMarkCompacted
   ;(Session as any).get = originalSessionGet
+  ;(Session as any).messages = originalSessionMessages
+  ;(SharedContext as any).snapshot = originalSharedSnapshot
   ;(Provider as any).getModel = originalProviderGetModel
+  ;(Agent as any).get = originalAgentGet
+  ;(Plugin as any).trigger = originalPluginTrigger
   SessionCompaction.__test__.resetAnchorWriter()
 })
 
@@ -339,6 +350,149 @@ describe("compaction-redesign phase 4 — run() entry point", () => {
 
     // Phase 4: schema/replay-tail/low-cost-server/llm-agent are stubs.
     // narrative empty + stubs all fail → "stop".
+    expect(result).toBe("stop")
+    expect(writes).toHaveLength(0)
+  })
+
+  it("phase 5 — schema executor succeeds when narrative empty + SharedContext snapshot present", async () => {
+    setupCommonMocks({ turnSummaries: [] }, "ses_run_schema")
+    ;(SharedContext as any).snapshot = mock(async () => "<shared_context>...</shared_context>")
+    const writes: any[] = []
+    SessionCompaction.__test__.setAnchorWriter(async (input) => {
+      writes.push(input)
+    })
+
+    const result = await SessionCompaction.run({
+      sessionID: "ses_run_schema",
+      observed: "overflow",
+      step: 4,
+    })
+
+    expect(result).toBe("continue")
+    expect(writes).toHaveLength(1)
+    expect(writes[0].kind).toBe("schema")
+    expect(writes[0].summaryText).toContain("shared_context")
+  })
+
+  it("phase 5 — replay-tail executor succeeds when narrative + schema empty + msg stream has text", async () => {
+    setupCommonMocks({ turnSummaries: [] }, "ses_run_replay")
+    ;(SharedContext as any).snapshot = mock(async () => undefined)
+    ;(Session as any).messages = mock(async () => [
+      {
+        info: { id: "msg_u1", role: "user" },
+        parts: [{ type: "text", text: "fix the auth bug" }],
+      },
+      {
+        info: { id: "msg_a1", role: "assistant" },
+        parts: [{ type: "text", text: "Looked at auth.ts, found token issue, patched." }],
+      },
+    ])
+    const writes: any[] = []
+    SessionCompaction.__test__.setAnchorWriter(async (input) => {
+      writes.push(input)
+    })
+
+    const result = await SessionCompaction.run({
+      sessionID: "ses_run_replay",
+      observed: "overflow",
+      step: 5,
+    })
+
+    expect(result).toBe("continue")
+    expect(writes).toHaveLength(1)
+    expect(writes[0].kind).toBe("replay-tail")
+    expect(writes[0].summaryText).toContain("User: fix the auth bug")
+    expect(writes[0].summaryText).toContain("Assistant: Looked at auth.ts")
+  })
+
+  it("phase 5 — low-cost-server executor succeeds when plugin returns compactedItems", async () => {
+    // narrative empty, schema empty, manual chain skips schema/replay-tail
+    setupCommonMocks({ turnSummaries: [] }, "ses_run_lowcost")
+    ;(SharedContext as any).snapshot = mock(async () => undefined)
+    ;(Session as any).messages = mock(async () => [
+      {
+        info: { id: "msg_u1", role: "user", agent: "default", model: { providerId: "codex", modelID: "gpt-5.5", accountId: "acc-A" } },
+        parts: [{ type: "text", text: "do the thing" }],
+      },
+    ])
+    ;(Agent as any).get = mock(async () => ({ prompt: "" }))
+    ;(Plugin as any).trigger = mock(async () => ({
+      compactedItems: [{ stub: true }],
+      summary: "Server-compacted: did the thing.",
+    }))
+    const writes: any[] = []
+    SessionCompaction.__test__.setAnchorWriter(async (input) => {
+      writes.push(input)
+    })
+
+    const result = await SessionCompaction.run({
+      sessionID: "ses_run_lowcost",
+      observed: "manual",
+      step: 2,
+    })
+
+    expect(result).toBe("continue")
+    expect(writes).toHaveLength(1)
+    expect(writes[0].kind).toBe("low-cost-server")
+    expect(writes[0].summaryText).toContain("Server-compacted")
+  })
+
+  it("phase 5 — low-cost-server executor falls through when plugin returns null", async () => {
+    setupCommonMocks({ turnSummaries: [] }, "ses_run_lowcost_null")
+    ;(SharedContext as any).snapshot = mock(async () => undefined)
+    ;(Session as any).messages = mock(async () => [
+      {
+        info: { id: "msg_u1", role: "user", agent: "default", model: { providerId: "codex", modelID: "gpt-5.5" } },
+        parts: [{ type: "text", text: "x" }],
+      },
+    ])
+    ;(Agent as any).get = mock(async () => ({ prompt: "" }))
+    ;(Plugin as any).trigger = mock(async () => ({ compactedItems: null, summary: null }))
+    const writes: any[] = []
+    SessionCompaction.__test__.setAnchorWriter(async () => {
+      writes.push("called")
+    })
+
+    const result = await SessionCompaction.run({
+      sessionID: "ses_run_lowcost_null",
+      observed: "manual",
+      step: 1,
+    })
+
+    // plugin null → low-cost-server fails; chain proceeds to llm-agent which is stub → "stop"
+    expect(result).toBe("stop")
+    expect(writes).toHaveLength(0)
+  })
+
+  it("phase 5 — replay-tail respects rawTailBudget for token estimation (over-budget falls through)", async () => {
+    // Synthesize 200 rounds of long text so replay-tail goes over 30% budget
+    const longText = "x".repeat(50000)
+    const longMsgs = []
+    for (let i = 0; i < 200; i++) {
+      longMsgs.push({
+        info: { id: `msg_${i}`, role: i % 2 === 0 ? "user" : "assistant" },
+        parts: [{ type: "text", text: longText }],
+      })
+    }
+    setupCommonMocks(
+      { turnSummaries: [], rawTailBudget: 200 }, // budget tells executor to take all 200
+      "ses_run_replay_overbudget",
+    )
+    ;(SharedContext as any).snapshot = mock(async () => undefined)
+    ;(Session as any).messages = mock(async () => longMsgs)
+    const writes: any[] = []
+    SessionCompaction.__test__.setAnchorWriter(async (input) => {
+      writes.push(input)
+    })
+
+    // overflow chain: narrative (empty) → schema (empty) → replay-tail (over budget) →
+    // low-cost-server (no plugin mocked → fail) → llm-agent (stub) → stop
+    const result = await SessionCompaction.run({
+      sessionID: "ses_run_replay_overbudget",
+      observed: "overflow",
+      step: 1,
+    })
+
     expect(result).toBe("stop")
     expect(writes).toHaveLength(0)
   })

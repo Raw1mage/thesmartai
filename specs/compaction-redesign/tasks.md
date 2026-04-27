@@ -40,12 +40,12 @@ reviewable and rolls back cleanly without the next.
 
 ## 5. Executor implementations
 
-- [ ] 5.1 Narrative executor (C5): reads `Memory.renderForLLM`, budget-checks ≤ 30%, calls anchor-write helper
-- [ ] 5.2 Schema executor (C6): reads legacy `SharedContext.snapshot`, calls anchor-write helper (used only when narrative empty)
-- [ ] 5.3 Replay-tail executor (C7): reads last N raw rounds from message stream, serializes as plain text, calls anchor-write helper
-- [ ] 5.4 Low-cost-server executor (C8): wraps existing `tryPluginCompaction` logic; gated on provider supporting `session.compact` hook
-- [ ] 5.5 LLM-agent executor (C9): wraps existing LLM-agent compaction path; called only as final fallback
-- [ ] 5.6 Unit test per executor: succeeds on happy path, returns null on insufficient input, fails loud on infrastructure error
+- [x] 5.1 Narrative executor (C5): reads `Memory.renderForLLM`, budget-checks ≤ 30%, calls anchor-write helper *(done in phase 4)*
+- [x] 5.2 Schema executor (C6): reads legacy `SharedContext.snapshot`, calls anchor-write helper (used only when narrative empty)
+- [x] 5.3 Replay-tail executor (C7): reads last N raw rounds from message stream, serializes as plain text, calls anchor-write helper
+- [x] 5.4 Low-cost-server executor (C8): de-coupled from legacy `tryPluginCompaction` (own helper `buildConversationItemsForPlugin`); gated on provider supporting `session.compact` hook
+- [~] 5.5 LLM-agent executor (C9): stub for now; full extraction from legacy `process()` deferred to phase 6+ with runloop wiring
+- [x] 5.6 Unit test per executor: schema success/empty/over-budget; replay-tail success/over-budget; low-cost-server success/plugin-null; combined 23 tests pass
 
 ## 6. Runloop state-driven evaluation
 

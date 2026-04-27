@@ -75,6 +75,17 @@
         "packages/opencode/src/session/prompt.turn-summary-capture.test.ts"
       ],
       "commit": "99a48cba6f4ffbdcf214b92c638314343f9f345e"
+    },
+    {
+      "at": "2026-04-27T20:31:34.979Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "drift detected: packages/opencode/src/session/compaction-run.test.ts",
+      "result": "warned",
+      "drift": [
+        "packages/opencode/src/session/compaction-run.test.ts"
+      ],
+      "commit": "e070350d72e6a8b0d74ca517631e863c1171c9a3"
     }
   ]
 }
