@@ -108,6 +108,17 @@
         "packages/opencode/src/session/prompt.observed-condition.test.ts"
       ],
       "commit": "4affb517421c69eb0ce41614d075a74007f29b12"
+    },
+    {
+      "at": "2026-04-27T21:00:56.303Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "drift detected: packages/opencode/src/session/compaction.regression-2026-04-27.test.ts",
+      "result": "warned",
+      "drift": [
+        "packages/opencode/src/session/compaction.regression-2026-04-27.test.ts"
+      ],
+      "commit": "28866cfacea321594f9d81fa031ea36219aecdd2"
     }
   ]
 }

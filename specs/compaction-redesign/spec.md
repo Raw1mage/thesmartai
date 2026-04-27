@@ -227,6 +227,63 @@ removed entirely in the next release.
 - **AND** emits a `log.warn` with migration-target identifier in the
   message body
 
+### Requirement: R-10 Continuation-invalidated is state-driven, not flag-based (added 2026-04-27 v2)
+
+When the codex provider rejects `previous_response_id`, the recovery
+signal **shall** live in observable session state, not in a module-level
+in-memory flag. Specifically: the codex Bus listener writes
+`session.execution.continuationInvalidatedAt = Date.now()`. The runloop's
+`deriveObservedCondition` returns `"continuation-invalidated"` when this
+timestamp is newer than the most recent `Anchor`'s `time.created`.
+
+#### Scenario: continuation-invalidated fires after codex Bus event
+
+- **GIVEN** the codex provider has just fired `ContinuationInvalidatedEvent`
+  for `sessionID`
+- **AND** the Bus listener has written `session.execution.continuationInvalidatedAt = T`
+- **AND** the most recent `Anchor` has `time.created < T`
+- **WHEN** the next runloop iteration calls `deriveObservedCondition`
+- **THEN** the function returns `"continuation-invalidated"`
+- **AND** `run({observed: "continuation-invalidated"})` writes a fresh
+  Anchor with `time.created > T`
+
+#### Scenario: signal is naturally stale once anchor advances past it
+
+- **GIVEN** `run({observed: "continuation-invalidated"})` has just succeeded
+- **AND** the resulting Anchor's `time.created > continuationInvalidatedAt`
+- **WHEN** the iteration AFTER that one calls `deriveObservedCondition`
+- **THEN** the function returns `null` for the continuation-invalidated
+  branch (the signal is dormant; no flag-clear step is needed)
+
+### Requirement: R-11 Subagent sessions use the state-driven path identically (added 2026-04-27 v2)
+
+`deriveObservedCondition` **shall not** unconditionally skip subagent
+sessions (`session.parentID` set). Subagents trigger compaction via the
+same state-driven path as parents for `rebind`,
+`continuation-invalidated`, `provider-switched`, `overflow`,
+`cache-aware`. Compaction writes to the **subagent's own message
+stream**, not the parent's. The only `observed` value subagents do
+**not** trigger is `"manual"` (subagents have no UI surface).
+
+#### Scenario: subagent rebind writes anchor on subagent's own stream
+
+- **GIVEN** a subagent session whose `pinnedAccountId` differs from its
+  own most-recent `Anchor`'s `accountId`
+- **WHEN** the subagent's runloop iteration calls `deriveObservedCondition`
+- **THEN** the function returns `"rebind"` (parentID does not auto-skip)
+- **AND** `run({sessionID: subagent.id, observed: "rebind"})` writes the
+  anchor on the subagent's stream
+- **AND** the parent session's stream is unchanged
+
+#### Scenario: subagent does not trigger manual
+
+- **GIVEN** a subagent session with an unprocessed `compaction-request`
+  part in its tail (theoretically — subagents shouldn't normally have
+  these, but defence-in-depth)
+- **WHEN** `deriveObservedCondition` is called
+- **THEN** the function returns the next applicable observed value
+  (rebind / overflow / etc.) or `null` — never `"manual"`
+
 ## Acceptance Checks
 
 - All 9 existing test cases in `compaction.test.ts` pass.

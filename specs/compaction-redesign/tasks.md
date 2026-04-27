@@ -56,7 +56,27 @@ reviewable and rolls back cleanly without the next.
 - [x] 6.5 Verify single `run()` call per iteration: deriveObservedCondition is invoked once and only one `observed` value is returned. Cooldown gate inside run() prevents same-iteration double-fire.
 - [x] 6.6 Unit test: deriveObservedCondition fixtures (14 cases) cover null / manual / provider-switched / rebind / overflow / cache-aware / parentID-skip / cooldown-skip / priority ordering. findMostRecentAnchor (3 cases).
 
+## 6b. State-driven extension (added 2026-04-27, DD-11 + DD-12)
+
+- [ ] 6b.1 Add `continuationInvalidatedAt: number | null` field to `Session.execution` schema (DD-11). Storage migration: existing executions read as `null`.
+- [ ] 6b.2 Replace `compaction.ts:36` Bus listener body: stop calling `markRebindCompaction(sid)`; instead `Session.updateExecution({sessionID, continuationInvalidatedAt: Date.now()})`.
+- [ ] 6b.3 Extend `deriveObservedCondition` to read `session.execution.continuationInvalidatedAt` and return `"continuation-invalidated"` when timestamp newer than lastAnchor.time.created. Insert priority between "manual" and "provider-switched".
+- [ ] 6b.4 Drop `if (input.parentID) return null` from `deriveObservedCondition` (DD-12). Narrow if needed: subagents skip only `"manual"` (no UI surface); all other observed values fire.
+- [ ] 6b.5 Audit phase 6 transitional flag drain — when run() handles a subagent rebind, must not double-drain something processor.ts will set on a future iteration.
+- [ ] 6b.6 Unit tests: continuation-invalidated state-driven priority; subagent rebind via new path; subagent overflow uses subagent's own Memory; sequence S8/S9 fixtures.
+
 ## 7. Remove flag-based plumbing
+
+> Phase 7b (LLM-agent extraction) **must complete first**. Without it, deleting the legacy compaction-request branch in prompt.ts removes the only LLM-agent fallback path, regressing empty-Memory `/compact` sessions.
+
+## 7b. LLM-agent extraction (added 2026-04-27 mid-implementation; precedes phase 7)
+
+- [ ] 7b.1 Read `SessionCompaction.process()` carefully and identify the LLM-round core (post-`tryPluginCompaction`, the SessionProcessor.create + processor.process block plus prompt assembly).
+- [ ] 7b.2 Extract the core into a new private helper `runLlmCompactionAgent(input): Promise<string | null>` that returns the resulting summary text without writing the anchor.
+- [ ] 7b.3 Update `tryLlmAgent` (currently stub returning false) to call the new helper. On success: return `{ok: true, summaryText, kind: "llm-agent"}`. On null/error: return `{ok: false, reason}`.
+- [ ] 7b.4 Refactor `process()` to call the same helper internally, eliminating duplicate logic. Anchor write + Continue injection in `process()` remain on the legacy path until phase 7 deletes it.
+- [ ] 7b.5 Verify `run({observed: "manual"})` on empty-Memory session now succeeds via tryLlmAgent (not just narrative/schema/replay-tail/low-cost-server). End-to-end test against synthetic empty-Memory fixture.
+- [ ] 7b.6 Verify existing `compaction.test.ts` (9 cases) still passes — process() refactor must not change observable behaviour for legacy callers.
 
 - [!] 7.1 Delete `pendingRebindCompaction` Set, `markRebindCompaction`, `consumeRebindCompaction` from `compaction.ts` — BLOCKED on DD-11 (state-driven continuation-invalidated signal design)
 - [!] 7.2 Delete `markRebindCompaction` call at `processor.ts:734` — depends on 7.1
