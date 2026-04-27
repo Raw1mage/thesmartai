@@ -21,7 +21,6 @@ import {
   exchangeCodeForTokens,
   generatePKCE,
   generateState,
-  refreshAccessToken,
   revokeRefreshToken,
 } from "@opencode-ai/codex-provider"
 import { createCodex } from "@opencode-ai/codex-provider/provider"
@@ -167,31 +166,15 @@ function buildAuthorizeUrl(redirectUri: string, pkce: PkceCodes, state: string):
   return `${ISSUER}/oauth/authorize?${params.toString()}`
 }
 
-// ── Refresh helper ──
-
-async function refreshIfNeeded(
-  currentAuth: any,
-  authWithAccount: any,
-  providerId: string,
-  client: PluginInput["client"],
-) {
-  if (currentAuth.access && currentAuth.expires >= Date.now()) return
-  log.info("refreshing codex access token", { provider: providerId })
-  const tokens = await refreshAccessToken(currentAuth.refresh)
-  const newAccountId = extractAccountId(tokens) || authWithAccount.accountId
-  await client.auth.set({
-    path: { id: providerId },
-    body: {
-      type: "oauth",
-      refresh: tokens.refresh_token,
-      access: tokens.access_token,
-      expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
-      ...(newAccountId && { accountId: newAccountId }),
-    },
-  })
-  currentAuth.access = tokens.access_token
-  authWithAccount.accountId = newAccountId
-}
+// Refresh is no longer triggered from the auth-plugin loader path.
+// Sole refresh authority is `ensureValidToken` inside @opencode-ai/codex-provider,
+// fired on actual API calls. Persistence happens via the `onTokenRefresh`
+// callback wired in getModel below — that callback writes new tokens back to
+// accounts.json so cross-restart state stays correct.
+//
+// This eliminates the "open N projects → N parallel /provider calls →
+// N parallel refresh attempts → token rotation race kills the account"
+// failure mode entirely: /provider no longer triggers any refresh.
 
 // ── Logout (upstream token revoke) ──
 
@@ -264,10 +247,12 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
         }
 
         const authWithAccount = auth as typeof auth & { accountId?: string }
-        await refreshIfNeeded(auth, authWithAccount, "codex", input.client)
 
         // Initialize continuation file path once
         setContinuationFilePath(path.join(Global.Path.state, "ws-continuation.json"))
+
+        // Capture client for the onTokenRefresh closure below.
+        const authClient = input.client
 
         // Return credentials + getModel factory for native codex provider
         return {
@@ -279,6 +264,7 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
           accountId: authWithAccount.accountId,
           async getModel(_sdk: any, modelID: string, options?: Record<string, any>) {
             const credentials = options as any
+            const persistAccountId = credentials?.accountId ?? authWithAccount.accountId
             const provider = createCodex({
               credentials: isCodexCredentials(credentials)
                 ? credentials
@@ -293,6 +279,22 @@ export async function CodexNativeAuthPlugin(input: PluginInput): Promise<Hooks> 
               sessionId: credentials?.sessionId,
               installationId: credentials?.installationId,
               userAgent: buildCodexUserAgent(),
+              // Persist refreshed (or cleared-on-dead) tokens back to accounts.json
+              // so the next bootstrap reads the fresh state instead of replaying a
+              // rotated-out refresh_token. Without this, lazy refresh would be
+              // memory-only and a process restart would resurrect a dead token.
+              onTokenRefresh: async (creds) => {
+                await authClient.auth.set({
+                  path: { id: persistAccountId ?? "codex" },
+                  body: {
+                    type: "oauth",
+                    refresh: creds.refresh ?? "",
+                    access: creds.access ?? "",
+                    expires: creds.expires ?? 0,
+                    ...(creds.accountId && { accountId: creds.accountId }),
+                  },
+                })
+              },
             })
             return provider.languageModel(modelID)
           },

@@ -11,18 +11,48 @@ import type { CodexCredentials, TokenResponse, IdTokenClaims } from "./types.js"
 // § 1  Token refresh
 // ---------------------------------------------------------------------------
 
-let _refreshPromise: Promise<TokenResponse> | null = null
+// Per-token mutex map. Coalesces concurrent refreshes that hold the SAME
+// refresh_token (the rotation race surface) — multiple sessions or in-flight
+// callers refreshing the same account share one upstream call. Keyed on the
+// refresh_token itself so different accounts never share a promise (the
+// previous module-level single-promise design returned the wrong account's
+// tokens to the loser of a parallel call). Map self-cleans on settle.
+const refreshPromises = new Map<string, Promise<TokenResponse | null>>()
 
-/** Refresh with mutex — prevents concurrent refresh storms. */
-export async function refreshTokenWithMutex(refreshToken: string): Promise<TokenResponse> {
-  if (_refreshPromise) return _refreshPromise
-  _refreshPromise = refreshAccessToken(refreshToken).finally(() => {
-    _refreshPromise = null
+/**
+ * Refresh with per-token mutex — prevents same-account refresh storms inside
+ * one process. Cross-process protection (e.g. opencode + opencode-beta both
+ * holding the same refresh_token) is NOT covered here; that would need a
+ * file-lock or a single-owner persistence layer.
+ */
+export async function refreshTokenWithMutex(refreshToken: string): Promise<TokenResponse | null> {
+  if (!refreshToken) return null
+  const existing = refreshPromises.get(refreshToken)
+  if (existing) return existing
+  const promise = refreshAccessToken(refreshToken).finally(() => {
+    refreshPromises.delete(refreshToken)
   })
-  return _refreshPromise
+  refreshPromises.set(refreshToken, promise)
+  return promise
 }
 
-export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
+/**
+ * Refresh a codex OAuth access token.
+ *
+ * Outcome contract:
+ *   • 2xx  → resolves with TokenResponse (happy path)
+ *   • 4xx  → resolves with null (refresh_token is permanently dead — revoked,
+ *            expired, or signed for a different client). Caller MUST stop
+ *            retrying with this refresh_token; only re-login can recover.
+ *   • 5xx / network error → throws (transient; caller may retry later)
+ *
+ * Returning null on 4xx is the contract that prevents
+ * "dead refresh keeps getting hit" — once the upstream says permanent,
+ * we surface that as a settled value so callers can persist the
+ * dead-state and stop attempting. Throwing for transient failure
+ * preserves real error visibility.
+ */
+export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse | null> {
   const response = await fetch(`${ISSUER}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -32,10 +62,9 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
       client_id: CLIENT_ID,
     }).toString(),
   })
-  if (!response.ok) {
-    throw new Error(`Token refresh failed: ${response.status}`)
-  }
-  return response.json()
+  if (response.ok) return response.json()
+  if (response.status >= 400 && response.status < 500) return null
+  throw new Error(`Token refresh failed: ${response.status}`)
 }
 
 /**

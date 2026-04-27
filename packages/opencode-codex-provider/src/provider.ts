@@ -357,6 +357,16 @@ class CodexLanguageModel implements LanguageModelV2 {
     if (creds.access && creds.expires && creds.expires > Date.now()) return
 
     const tokens = await refreshTokenWithMutex(creds.refresh)
+    if (tokens === null) {
+      // Permanent (4xx) refresh failure. Persist dead-state via onTokenRefresh
+      // (clear refresh) so any subsequent refreshIfNeeded short-circuits, then
+      // surface a clear auth error to the request caller.
+      creds.refresh = ""
+      creds.access = ""
+      creds.expires = 0
+      if (this.options.onTokenRefresh) await this.options.onTokenRefresh(creds)
+      throw new Error("codex auth: refresh_token revoked — re-login required")
+    }
     creds.access = tokens.access_token
     creds.expires = Date.now() + (tokens.expires_in ?? 3600) * 1000
     if (tokens.refresh_token) creds.refresh = tokens.refresh_token
