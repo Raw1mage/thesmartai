@@ -1497,6 +1497,15 @@ export namespace SessionPrompt {
           sessionID,
           auto: task.auto,
         })
+        // Record cooldown so the rebind path can't immediately fire a second
+        // compaction after this one. Without this, manual /compact (which
+        // routes through compaction-request) leaves cooldownState empty —
+        // so any rotation that happens during process() will schedule a
+        // rebind compaction on the very next iteration. Overflow and rebind
+        // paths already record; this one was the gap (event_2026-04-27).
+        if (result !== "stop") {
+          SessionCompaction.recordCompaction(sessionID, step)
+        }
         debugCheckpoint("prompt", "loop:compaction_done", {
           sessionID,
           step,

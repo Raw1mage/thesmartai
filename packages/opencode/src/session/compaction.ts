@@ -618,7 +618,49 @@ export namespace SessionCompaction {
     // 30s+). The Compacted event at the tail still fires on completion.
     Bus.publish(Event.CompactionStarted, { sessionID: input.sessionID, mode: "plugin" })
 
-    // --- Plugin-provided server compaction (e.g. Codex /responses/compact) ---
+    // --- Priority 0: shared-context snapshot (zero API cost) ---------------
+    // The in-memory scratchpad already holds the canonical state we'd be
+    // summarizing. Use it before burning quota on a server-side or LLM round
+    // trip. Mirrors the budget check in the overflow path
+    // (prompt.ts:1594-1633): snapshot must fit within 30% of the user's
+    // active model context window so the next round still has room to run.
+    // Why this matters: a manual /compact that goes straight to plugin
+    // compaction can itself trip the codex 5h burst limit, triggering a
+    // mid-stream rotation, which schedules a rebind compaction on top —
+    // two compactions back to back. The cheap path avoids the trigger.
+    const snapshotModel = await Provider.getModel(
+      userMessage.model.providerId,
+      userMessage.model.modelID,
+    ).catch(() => undefined)
+    if (snapshotModel) {
+      const snap = await SharedContext.snapshot(input.sessionID)
+      if (snap) {
+        const snapTokenEstimate = Math.ceil(snap.length / 4)
+        const snapBudget = Math.floor((snapshotModel.limit?.context || 0) * 0.3)
+        if (snapBudget > 0 && snapTokenEstimate <= snapBudget) {
+          log.info("compaction: shared-context snapshot accepted (priority 0, no API call)", {
+            sessionID: input.sessionID,
+            snapshotChars: snap.length,
+            snapTokenEstimate,
+            snapBudget,
+          })
+          await compactWithSharedContext({
+            sessionID: input.sessionID,
+            snapshot: snap,
+            model: snapshotModel,
+            auto: input.auto,
+          })
+          return "continue"
+        }
+        log.info("compaction: snapshot too large, falling through to plugin/LLM", {
+          sessionID: input.sessionID,
+          snapTokenEstimate,
+          snapBudget,
+        })
+      }
+    }
+
+    // --- Priority 1: plugin-provided server compaction (e.g. Codex /responses/compact) ---
     const serverResult = await tryPluginCompaction(input, userMessage)
     if (serverResult) return serverResult
 
