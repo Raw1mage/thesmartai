@@ -426,10 +426,18 @@ export namespace SessionCompaction {
     return contextLimit >= 16000
   }
 
-  // Phase 7 / DD-7: cooldown state-of-truth lives in Memory.lastCompactedAt.
-  // recordCompaction delegates to Memory.markCompacted for backward compat
-  // until phase 9's deprecation shim layer removes it entirely.
+  /**
+   * @deprecated Phase 7 / DD-7: cooldown state-of-truth lives in
+   * `Memory.lastCompactedAt`. This shim writes through to
+   * `Memory.markCompacted` for any pre-phase-7 caller still importing
+   * the symbol. Phase 12 (next release) removes it. Emits `log.warn` so
+   * any forgotten caller surfaces in CI logs.
+   */
   export async function recordCompaction(sessionID: string, round: number) {
+    log.warn("SessionCompaction.recordCompaction is deprecated; use Memory.markCompacted", {
+      sessionID,
+      round,
+    })
     await Memory.markCompacted(sessionID, { round }).catch(() => {})
   }
 

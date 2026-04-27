@@ -178,6 +178,14 @@
         "packages/opencode/src/session/compaction-run.test.ts"
       ],
       "commit": "c5cac386b82f939baff01e8ca084a2f78b0edba2"
+    },
+    {
+      "at": "2026-04-27T21:43:08.484Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "5c7cce1c7c66ea80868a89ead55ddfddeb1ceacf"
     }
   ]
 }

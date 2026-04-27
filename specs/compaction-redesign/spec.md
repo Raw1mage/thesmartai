@@ -210,22 +210,48 @@ returning compact provider-agnostic text for the next LLM call, and
 - **AND** changes to one render's output format do not affect the other
 - **AND** both functions read from the same underlying `Memory` data
 
-### Requirement: R-9 Deprecation shim window: 1 release
+### Requirement: R-9 Deprecation shim window: 1 release (actual surface revised at phase 9)
 
-The legacy API surface (`SharedContext.snapshot`, `saveRebindCheckpoint`,
-`loadRebindCheckpoint`, `SessionCompaction.process`, `compactWithSharedContext`,
-`markRebindCompaction`, `consumeRebindCompaction`, `recordCompaction`)
-**shall** be replaced by deprecation shims in this plan's release, then
-removed entirely in the next release.
+**Initial framing** (proposal): all of `SharedContext.snapshot`,
+`saveRebindCheckpoint`, `loadRebindCheckpoint`,
+`SessionCompaction.process`, `compactWithSharedContext`,
+`markRebindCompaction`, `consumeRebindCompaction`, `recordCompaction`
+**shall** be deprecation shims, removed next release.
 
-#### Scenario: legacy API call emits deprecation warning
+**Phase 9 realignment** (2026-04-27): the original list conflated
+internal-helper APIs (still actively used by the new path) with
+truly-dead public surface. Final scope:
 
-- **GIVEN** a caller invokes any legacy API listed above
+| API | Status |
+|---|---|
+| `markRebindCompaction` / `consumeRebindCompaction` | **Deleted** in phase 7 (no shim, removed entirely — flag plumbing replaced by `session.execution.continuationInvalidatedAt` per DD-11) |
+| `SessionCompaction.process` | **Deprecated shim** — delegates to `run({observed: input.auto ? "overflow" : "manual"})` + `log.warn`. Phase 12 deletes. |
+| `SessionCompaction.recordCompaction` | **Deprecated shim** — delegates to `Memory.markCompacted` + `log.warn`. Phase 12 deletes. |
+| `SessionCompaction.compactWithSharedContext` | **Kept (internal helper)** — production anchor-write path used by `_writeAnchor` + pre-loop identity-switch compaction. Not deprecated. |
+| `SharedContext.snapshot` | **Kept (executor source)** — `trySchema` reads it for the schema kind. Not deprecated. |
+| `saveRebindCheckpoint` / `loadRebindCheckpoint` | **Kept (rebind recovery)** — disk file still drives restart/rebind context restoration. `lastMessageId` made optional in phase 8 (DD-8). Not deprecated. |
+| `getCooldownState` | **Kept (cooldown read path)** — used by `isOverflow` / `shouldCacheAwareCompact`. Not deprecated. |
+
+#### Scenario: deprecated API call emits warning
+
+- **GIVEN** a caller invokes `SessionCompaction.process` or
+  `SessionCompaction.recordCompaction`
 - **WHEN** the call is made
-- **THEN** the shim delegates to the corresponding `Memory.*` /
-  `SessionCompaction.run` API
-- **AND** emits a `log.warn` with migration-target identifier in the
-  message body
+- **THEN** the shim delegates to the new equivalent and emits a
+  `log.warn` containing the migration-target identifier
+- **AND** the caller's behaviour is preserved (`process` returns
+  `"continue" | "stop"`, `recordCompaction` writes to
+  `Memory.markCompacted`)
+
+#### Scenario: kept-helper APIs do NOT emit deprecation warnings
+
+- **GIVEN** the new path's executors call `SharedContext.snapshot`,
+  `compactWithSharedContext`, `loadRebindCheckpoint`, etc., as part of
+  normal operation
+- **WHEN** these internal helpers are invoked
+- **THEN** no `log.warn` fires
+- **AND** the call site is documented as "internal helper, not
+  deprecated"
 
 ### Requirement: R-10 Continuation-invalidated is state-driven, not flag-based (added 2026-04-27 v2)
 

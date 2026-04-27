@@ -94,12 +94,17 @@ reviewable and rolls back cleanly without the next.
 
 ## 9. Deprecation shim layer
 
-- [ ] 9.1 Create `packages/opencode/src/session/compaction-shims.ts` housing all deprecated APIs
-- [ ] 9.2 `SharedContext.snapshot` → delegates to `Memory.renderForLLM`; emits `log.warn`
-- [ ] 9.3 `saveRebindCheckpoint` / `loadRebindCheckpoint` → delegate to `Memory.write/read` with snapshot projection; emit `log.warn`
-- [ ] 9.4 `SessionCompaction.process` → delegates to `SessionCompaction.run({observed: "manual"})`; emit `log.warn`
-- [ ] 9.5 `compactWithSharedContext` → delegates to `SessionCompaction.run` with appropriate trigger; emit `log.warn`
-- [ ] 9.6 CI grep: `log.warn` from shims appears zero times in CI test output (proves all in-repo callers migrated)
+> **Phase 9 realignment 2026-04-27**: original task list conflated
+> internal-helper APIs with truly-dead public surface. Spec R-9 updated
+> to reflect actual scope. Deprecated set narrowed to **2 functions**;
+> the rest are kept as documented internal helpers.
+
+- [x] 9.1 Skipped: separate `compaction-shims.ts` file would have housed only 2 functions; inlining the deprecation pattern in `compaction.ts` is cleaner. Both `process()` and `recordCompaction` carry `@deprecated` JSDoc tags + `log.warn` on call.
+- [~] 9.2 `SharedContext.snapshot` — **kept**, not deprecated. Used by `trySchema` executor. Spec R-9 updated to reflect.
+- [~] 9.3 `saveRebindCheckpoint` / `loadRebindCheckpoint` — **kept**, not deprecated. Disk-file rebind recovery is still the canonical restart-restoration path. Phase 8 narrowed `lastMessageId` to optional but did not deprecate.
+- [x] 9.4 `SessionCompaction.process` — already deprecated in phase 7b (delegates to `run` with `observed: input.auto ? "overflow" : "manual"`, `log.warn` fires).
+- [~] 9.5 `compactWithSharedContext` — **kept**, not deprecated. Used by `_writeAnchor` default impl + pre-loop identity-switch compaction.
+- [x] 9.6 Code grep verified: `process()` and `recordCompaction` have **zero in-repo callers**. Their `log.warn` traps any out-of-repo or future-callers.
 
 ## 10. UI consumption of renderForHuman
 
