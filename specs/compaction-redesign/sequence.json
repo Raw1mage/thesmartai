@@ -1,0 +1,431 @@
+[
+  {
+    "id": "S1",
+    "name": "Manual /compact happy path (free narrative)",
+    "trigger": "User invokes /compact via TUI/web",
+    "preconditions": [
+      "Memory.turnSummaries non-empty",
+      "renderForLLM output ≤ 30% of model.limit.context",
+      "Cooldown not active"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "user",
+        "to": "routes/session.ts:1708",
+        "description": "POST /session/:id/compact {auto: false}"
+      },
+      {
+        "id": "MSG2",
+        "from": "routes/session.ts",
+        "to": "Memory",
+        "componentRef": "C1",
+        "description": "Memory.requestCompaction(sid) — appends compaction-request user message"
+      },
+      {
+        "id": "MSG3",
+        "from": "routes/session.ts",
+        "to": "SessionPrompt.loop",
+        "description": "kicks runloop"
+      },
+      {
+        "id": "MSG4",
+        "from": "runloop",
+        "to": "C10 RunloopStateEvaluator",
+        "description": "deriveObservedCondition reads message stream tail"
+      },
+      {
+        "id": "MSG5",
+        "from": "C10",
+        "to": "runloop",
+        "description": "returns observed='manual'"
+      },
+      {
+        "id": "MSG6",
+        "from": "runloop",
+        "to": "C4 SessionCompaction.run",
+        "description": "run({sessionID, observed: 'manual', step})"
+      },
+      {
+        "id": "MSG7",
+        "from": "C4",
+        "to": "C3 Cooldown",
+        "description": "shouldThrottle? → false"
+      },
+      {
+        "id": "MSG8",
+        "from": "C4",
+        "to": "C5 NarrativeExecutor",
+        "description": "first kind: narrative"
+      },
+      {
+        "id": "MSG9",
+        "from": "C5",
+        "to": "C1 Memory",
+        "description": "renderForLLM(sid)"
+      },
+      {
+        "id": "MSG10",
+        "from": "C5",
+        "to": "C2 Anchor",
+        "description": "writes Anchor with kind='narrative', summaryText=renderForLLM output"
+      },
+      {
+        "id": "MSG11",
+        "from": "C4",
+        "to": "C1 Memory",
+        "description": "markCompacted({round: step})"
+      },
+      {
+        "id": "MSG12",
+        "from": "C4",
+        "to": "runloop",
+        "description": "returns 'continue'"
+      }
+    ],
+    "outcome": "One Anchor written. No API call. Memory.lastCompactedAt set. Runloop continues to next iteration."
+  },
+  {
+    "id": "S2",
+    "name": "Manual /compact falls through narrative → low-cost-server",
+    "trigger": "User invokes /compact",
+    "preconditions": [
+      "Memory.turnSummaries empty (first turn) OR renderForLLM output exceeds 30% budget",
+      "Active provider is codex/openai (supports low-cost-server)"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "user",
+        "to": "routes/session.ts",
+        "description": "POST /session/:id/compact {auto: false}"
+      },
+      {
+        "id": "MSG2",
+        "from": "runloop",
+        "to": "C4 run",
+        "description": "observed='manual'"
+      },
+      {
+        "id": "MSG3",
+        "from": "C4",
+        "to": "C5 NarrativeExecutor",
+        "description": "attempt narrative"
+      },
+      {
+        "id": "MSG4",
+        "from": "C5",
+        "to": "C4",
+        "description": "returns null (insufficient narrative)"
+      },
+      {
+        "id": "MSG5",
+        "from": "C4",
+        "to": "log",
+        "description": "log.info 'kind=narrative skipped: turnSummaries empty'"
+      },
+      {
+        "id": "MSG6",
+        "from": "C4",
+        "to": "C8 LowCostServerExecutor",
+        "description": "next kind in manual chain"
+      },
+      {
+        "id": "MSG7",
+        "from": "C8",
+        "to": "Plugin.trigger",
+        "description": "session.compact hook → codex /responses/compact"
+      },
+      {
+        "id": "MSG8",
+        "from": "Plugin",
+        "to": "C8",
+        "description": "returns compactedItems + summary"
+      },
+      {
+        "id": "MSG9",
+        "from": "C8",
+        "to": "C2 Anchor",
+        "description": "writes Anchor with kind='low-cost-server'"
+      },
+      {
+        "id": "MSG10",
+        "from": "C4",
+        "to": "runloop",
+        "description": "returns 'continue'"
+      }
+    ],
+    "outcome": "One Anchor written via paid path. Quota counted. Synthetic Continue NOT injected (manual + non-overflow)."
+  },
+  {
+    "id": "S3",
+    "name": "Overflow auto-compaction",
+    "trigger": "Runloop iteration detects token overflow",
+    "preconditions": [
+      "lastFinished.tokens.total exceeds model overflow threshold",
+      "Cooldown not active",
+      "Memory.turnSummaries fits 30% budget"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "runloop",
+        "to": "C10",
+        "description": "deriveObservedCondition"
+      },
+      {
+        "id": "MSG2",
+        "from": "C10",
+        "to": "runloop",
+        "description": "returns observed='overflow'"
+      },
+      {
+        "id": "MSG3",
+        "from": "runloop",
+        "to": "C4 run",
+        "description": "run({observed: 'overflow', step})"
+      },
+      {
+        "id": "MSG4",
+        "from": "C4",
+        "to": "C5 NarrativeExecutor",
+        "description": "first kind succeeds"
+      },
+      {
+        "id": "MSG5",
+        "from": "C5",
+        "to": "C2 Anchor",
+        "description": "writes Anchor with kind='narrative', auto=true"
+      },
+      {
+        "id": "MSG6",
+        "from": "C4",
+        "to": "message-stream",
+        "description": "INJECT_CONTINUE['overflow']=true → append synthetic Continue user message"
+      },
+      {
+        "id": "MSG7",
+        "from": "C4",
+        "to": "C1 Memory",
+        "description": "markCompacted"
+      },
+      {
+        "id": "MSG8",
+        "from": "C4",
+        "to": "runloop",
+        "description": "returns 'continue'"
+      }
+    ],
+    "outcome": "Anchor written. Synthetic Continue user message appended. Next iteration sees the Continue and resumes work autonomously."
+  },
+  {
+    "id": "S4",
+    "name": "Mid-stream account rotation → next-iteration rebind",
+    "trigger": "processor.ts:707 detects account changed mid-LLM-stream",
+    "preconditions": [
+      "session.execution.accountId differs after LLM.stream returns",
+      "Most recent Anchor's accountId differs from new pinned"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "processor.ts",
+        "to": "session.execution",
+        "description": "pinExecutionIdentity(newAccount) — updates pinned identity ONLY"
+      },
+      {
+        "id": "MSG2",
+        "from": "processor.ts",
+        "to": "log",
+        "description": "log: 'syslog.session: post-stream account changed' (audit only; NO markRebindCompaction call — DD-1)"
+      },
+      {
+        "id": "MSG3",
+        "from": "runloop",
+        "to": "next iteration",
+        "description": "loop continues"
+      },
+      {
+        "id": "MSG4",
+        "from": "runloop",
+        "to": "C10",
+        "description": "deriveObservedCondition reads pinned vs Anchor"
+      },
+      {
+        "id": "MSG5",
+        "from": "C10",
+        "to": "runloop",
+        "description": "returns observed='rebind' (pinned.accountId ≠ lastAnchor.accountId)"
+      },
+      {
+        "id": "MSG6",
+        "from": "runloop",
+        "to": "C4 run",
+        "description": "run({observed: 'rebind', step})"
+      },
+      {
+        "id": "MSG7",
+        "from": "C4",
+        "to": "INJECT_CONTINUE table",
+        "description": "['rebind']=false → no Continue"
+      },
+      {
+        "id": "MSG8",
+        "from": "C4",
+        "to": "C5 NarrativeExecutor",
+        "description": "first allowed kind for rebind"
+      },
+      {
+        "id": "MSG9",
+        "from": "C5",
+        "to": "C2 Anchor",
+        "description": "writes Anchor (carrying new accountId for future state-driven detection)"
+      },
+      {
+        "id": "MSG10",
+        "from": "C4",
+        "to": "runloop",
+        "description": "returns 'continue'"
+      }
+    ],
+    "outcome": "Exactly one rebind Anchor per real rotation. Next iteration's deriveObservedCondition sees new Anchor matches new pinned identity → no further rebind triggered. The 2026-04-27 infinite-loop bug is structurally impossible: there's no flag to phantom-fire."
+  },
+  {
+    "id": "S5",
+    "name": "Provider switch — narrative-only path",
+    "trigger": "User changes provider mid-session (e.g. codex → claude)",
+    "preconditions": [
+      "session.execution.providerId changes",
+      "Memory.turnSummaries non-empty"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "runloop",
+        "to": "C10",
+        "description": "deriveObservedCondition"
+      },
+      {
+        "id": "MSG2",
+        "from": "C10",
+        "to": "runloop",
+        "description": "returns observed='provider-switched' (pinned.providerId ≠ lastAnchor.providerId)"
+      },
+      {
+        "id": "MSG3",
+        "from": "runloop",
+        "to": "C4 run",
+        "description": "run({observed: 'provider-switched'})"
+      },
+      {
+        "id": "MSG4",
+        "from": "C4",
+        "to": "KIND_CHAIN['provider-switched']",
+        "description": "= [narrative, schema] only"
+      },
+      {
+        "id": "MSG5",
+        "from": "C4",
+        "to": "C5 NarrativeExecutor",
+        "description": "first kind"
+      },
+      {
+        "id": "MSG6",
+        "from": "C5",
+        "to": "C2 Anchor",
+        "description": "writes Anchor with kind='narrative' (provider-agnostic plain text)"
+      },
+      {
+        "id": "MSG7",
+        "from": "C4",
+        "to": "runloop",
+        "description": "returns 'continue'"
+      }
+    ],
+    "outcome": "Anchor written using narrative form (safe across providers). Replay-tail and low-cost-server kinds rejected because they carry provider-specific format."
+  },
+  {
+    "id": "S6",
+    "name": "Daemon restart recovery",
+    "trigger": "Daemon process restarts; user resumes session",
+    "preconditions": [
+      "Memory persisted to session_memory/<sid> Storage key",
+      "Most recent Anchor present in message stream"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "daemon-startup",
+        "to": "Storage",
+        "description": "Storage.read(['session_memory', sid])"
+      },
+      {
+        "id": "MSG2",
+        "from": "Storage",
+        "to": "C1 Memory",
+        "description": "returns SessionMemory blob"
+      },
+      {
+        "id": "MSG3",
+        "from": "runloop-step1",
+        "to": "C10",
+        "description": "deriveObservedCondition reads message stream + pinned identity"
+      },
+      {
+        "id": "MSG4",
+        "from": "C10",
+        "to": "runloop",
+        "description": "if pinned matches lastAnchor → returns null (no compaction needed); else returns 'rebind'"
+      },
+      {
+        "id": "MSG5",
+        "from": "filterCompacted",
+        "to": "message-stream",
+        "description": "truncates history at most-recent compaction part"
+      },
+      {
+        "id": "MSG6",
+        "from": "runloop",
+        "to": "LLM",
+        "description": "next call uses truncated history (Anchor as boundary)"
+      }
+    ],
+    "outcome": "No special restart code path. Restart is just 'next iteration' from the perspective of state-driven evaluation. Memory + Anchor in message stream are both already persisted."
+  },
+  {
+    "id": "S7",
+    "name": "Mid-run autonomous crash recovery (DD-2)",
+    "trigger": "Daemon crashes mid-autonomous-run; user reopens",
+    "preconditions": [
+      "Last completed runloop exit may be many turns back",
+      "Mid-run TurnSummary was NOT captured (per DD-2)"
+    ],
+    "messages": [
+      {
+        "id": "MSG1",
+        "from": "daemon-restart",
+        "to": "Storage",
+        "description": "load Memory"
+      },
+      {
+        "id": "MSG2",
+        "from": "C10",
+        "to": "runloop",
+        "description": "evaluates: lastAssistant has no finish (mid-run) → use raw tail fallback"
+      },
+      {
+        "id": "MSG3",
+        "from": "runloop",
+        "to": "message-stream",
+        "description": "reads last N raw rounds (rawTailBudget, default 5)"
+      },
+      {
+        "id": "MSG4",
+        "from": "runloop",
+        "to": "LLM",
+        "description": "next call uses raw tail as recovery context (alongside last completed Anchor for older history)"
+      }
+    ],
+    "outcome": "Mid-run interruption gracefully degrades to raw-tail recovery. No partial TurnSummary pollution; older context still survives via last completed Anchor."
+  }
+]

@@ -1,0 +1,275 @@
+[
+  {
+    "id": "TV-R1-1",
+    "requirementRef": "Requirement: R-1 Single entry point with state-driven evaluation",
+    "description": "deriveObservedCondition returns null when nothing requires compaction",
+    "input": {
+      "session": {
+        "lastFinishedTokens": {"total": 50000},
+        "modelContext": 200000,
+        "execution": {"providerId": "codex", "accountId": "acc-A"},
+        "lastAnchor": {"providerId": "codex", "accountId": "acc-A"},
+        "messageStreamTail": [{"role": "assistant", "finish": "stop"}]
+      }
+    },
+    "expected": {"observed": null},
+    "notes": "Quiet state: tokens low, no provider/account drift, no manual request, no overflow"
+  },
+  {
+    "id": "TV-R1-2",
+    "requirementRef": "Requirement: R-1 Single entry point with state-driven evaluation",
+    "description": "Manual request takes priority over other observed conditions",
+    "input": {
+      "session": {
+        "lastFinishedTokens": {"total": 250000},
+        "modelContext": 200000,
+        "execution": {"providerId": "codex", "accountId": "acc-A"},
+        "lastAnchor": {"providerId": "codex", "accountId": "acc-A"},
+        "messageStreamTail": [{"role": "user", "parts": [{"type": "compaction-request"}]}]
+      }
+    },
+    "expected": {"observed": "manual"},
+    "notes": "Even with overflow, manual takes priority because user intent is highest signal"
+  },
+  {
+    "id": "TV-R1-3",
+    "requirementRef": "Requirement: R-1 Single entry point with state-driven evaluation",
+    "description": "Previous-iteration flag must NOT be consulted (DD-1)",
+    "input": {
+      "session": {
+        "_legacyFlag_pendingRebindCompaction": true,
+        "lastFinishedTokens": {"total": 50000},
+        "modelContext": 200000,
+        "execution": {"providerId": "codex", "accountId": "acc-A"},
+        "lastAnchor": {"providerId": "codex", "accountId": "acc-A"}
+      }
+    },
+    "expected": {"observed": null},
+    "notes": "Even with the legacy flag injected, deriveObservedCondition must not return non-null. State is the only source of truth."
+  },
+  {
+    "id": "TV-R2-1",
+    "requirementRef": "Requirement: R-2 Cost-monotonic kind selection",
+    "description": "Free narrative path succeeds, no API call made",
+    "input": {
+      "memory": {"turnSummaries": [{"text": "Did X, found Y"}]},
+      "renderForLLMOutput": "compact narrative text",
+      "tokenEstimate": 1500,
+      "modelContextLimit": 200000,
+      "observed": "overflow"
+    },
+    "expected": {
+      "anchorWritten": true,
+      "anchorKind": "narrative",
+      "apiCallsMade": 0,
+      "result": "continue"
+    },
+    "notes": "1500 tokens ≤ 30% of 200000 (60000) → narrative kind chosen"
+  },
+  {
+    "id": "TV-R2-2",
+    "requirementRef": "Requirement: R-2 Cost-monotonic kind selection",
+    "description": "Narrative empty, fall through to schema with log line",
+    "input": {
+      "memory": {"turnSummaries": []},
+      "sharedContextSnapshot": "## Files\n- foo.ts (read)",
+      "observed": "overflow"
+    },
+    "expected": {
+      "anchorWritten": true,
+      "anchorKind": "schema",
+      "apiCallsMade": 0,
+      "result": "continue",
+      "logLines": [{"level": "info", "containsAll": ["narrative", "skipped", "empty"]}]
+    },
+    "notes": "Fail-loud transition per AGENTS.md rule 1"
+  },
+  {
+    "id": "TV-R2-3",
+    "requirementRef": "Requirement: R-2 Cost-monotonic kind selection",
+    "description": "Rebind refuses paid kinds even when free chain exhausted",
+    "input": {
+      "memory": {"turnSummaries": []},
+      "sharedContextSnapshot": null,
+      "messageStreamTail": [],
+      "observed": "rebind"
+    },
+    "expected": {
+      "anchorWritten": false,
+      "result": "stop",
+      "logLines": [{"level": "warn", "containsAll": ["all kinds exhausted", "rebind"]}],
+      "apiCallsMade": 0
+    },
+    "notes": "rebind chain is [narrative, schema, replay-tail] only; never escalates to paid"
+  },
+  {
+    "id": "TV-R3-1",
+    "requirementRef": "Requirement: R-3 Memory backed by TurnSummary, captured at runloop exit",
+    "description": "Runloop exit appends a TurnSummary",
+    "input": {
+      "lastAssistant": {
+        "id": "msg_5",
+        "finish": "stop",
+        "modelID": "gpt-5.5",
+        "providerId": "codex",
+        "accountId": "acc-A",
+        "parts": [{"type": "text", "text": "Done. Summary: edited foo.ts and ran tests; all green."}]
+      },
+      "lastUser": {"id": "msg_4"}
+    },
+    "expected": {
+      "memoryAppendCalled": true,
+      "appendedTurnSummary": {
+        "userMessageId": "msg_4",
+        "assistantMessageId": "msg_5",
+        "text": "Done. Summary: edited foo.ts and ran tests; all green.",
+        "modelID": "gpt-5.5",
+        "providerId": "codex",
+        "accountId": "acc-A"
+      }
+    },
+    "notes": "DD-2 capture timing: only at runloop exit"
+  },
+  {
+    "id": "TV-R3-2",
+    "requirementRef": "Requirement: R-3 Memory backed by TurnSummary, captured at runloop exit",
+    "description": "Mid-run interruption does NOT append partial summary",
+    "input": {
+      "lastAssistant": {
+        "finish": "tool-calls",
+        "parts": [{"type": "text", "text": "Now I'll run the test..."}]
+      }
+    },
+    "expected": {
+      "memoryAppendCalled": false
+    },
+    "notes": "finish=tool-calls means autonomous mode mid-run; no capture per DD-2"
+  },
+  {
+    "id": "TV-R4-1",
+    "requirementRef": "Requirement: R-4 Manual /compact uses same entry, narrative-preferred",
+    "description": "Default manual /compact prefers narrative, skips schema",
+    "input": {
+      "memory": {"turnSummaries": [{"text": "x"}]},
+      "renderForLLMOutput": "compact text",
+      "observed": "manual",
+      "intent": "default"
+    },
+    "expected": {
+      "kindAttempted": ["narrative"],
+      "anchorKind": "narrative",
+      "kindsSkipped": ["schema"],
+      "apiCallsMade": 0
+    },
+    "notes": "Schema kind is NOT in manual chain because schema doesn't preserve reasoning"
+  },
+  {
+    "id": "TV-R4-2",
+    "requirementRef": "Requirement: R-4 Manual /compact uses same entry, narrative-preferred",
+    "description": "/compact --rich skips kinds 1-3 and goes to LLM agent",
+    "input": {
+      "memory": {"turnSummaries": [{"text": "x"}]},
+      "observed": "manual",
+      "intent": "rich"
+    },
+    "expected": {
+      "kindAttempted": ["llm-agent"],
+      "anchorKind": "llm-agent"
+    },
+    "notes": "DD-10: --rich forces full LLM round regardless of cost"
+  },
+  {
+    "id": "TV-R5-1",
+    "requirementRef": "Requirement: R-5 Provider switch uses narrative only",
+    "description": "Provider switch with non-empty memory writes narrative anchor",
+    "input": {
+      "memory": {"turnSummaries": [{"text": "did stuff"}]},
+      "execution": {"providerId": "claude", "accountId": "acc-X"},
+      "lastAnchor": {"providerId": "codex", "accountId": "acc-A"},
+      "observed": "provider-switched"
+    },
+    "expected": {
+      "anchorKind": "narrative",
+      "kindsRejected": ["replay-tail", "low-cost-server", "llm-agent"]
+    },
+    "notes": "replay-tail rejected: raw tail has codex-specific tool format unreadable by claude. low-cost-server rejected: codex /compact returns codex format. llm-agent acceptable in principle but provider-switched chain stops at schema."
+  },
+  {
+    "id": "TV-R6-1",
+    "requirementRef": "Requirement: R-6 Rebind never injects synthetic Continue",
+    "description": "Rebind run with successful narrative does NOT append Continue",
+    "input": {
+      "observed": "rebind",
+      "memory": {"turnSummaries": [{"text": "x"}]}
+    },
+    "expected": {
+      "anchorWritten": true,
+      "syntheticContinueAppended": false
+    },
+    "notes": "INJECT_CONTINUE['rebind']=false. The 2026-04-27 infinite-loop bug is structurally unrepresentable here."
+  },
+  {
+    "id": "TV-R6-2",
+    "requirementRef": "Requirement: R-6 Rebind never injects synthetic Continue",
+    "description": "Overflow run DOES append synthetic Continue",
+    "input": {
+      "observed": "overflow",
+      "memory": {"turnSummaries": [{"text": "x"}]}
+    },
+    "expected": {
+      "anchorWritten": true,
+      "syntheticContinueAppended": true,
+      "continueText": "Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed."
+    },
+    "notes": "INJECT_CONTINUE['overflow']=true. Existing autonomous-continue behaviour preserved."
+  },
+  {
+    "id": "TV-R7-1",
+    "requirementRef": "Requirement: R-7 Memory persistence is single-write, fallback-read",
+    "description": "Read of session with no new-path data falls back to legacy",
+    "input": {
+      "newPath": null,
+      "legacySharedContext": {"goal": "g", "files": [{"path": "a.ts", "operation": "read", "updatedAt": 1}]},
+      "legacyCheckpoint": {"snapshot": "snap text", "lastMessageId": "msg_5"}
+    },
+    "expected": {
+      "readResult": {
+        "turnSummaries": [],
+        "fileIndex": [{"path": "a.ts", "operation": "read"}],
+        "actionLog": []
+      },
+      "lazyMigrationWritten": true
+    },
+    "notes": "First read of legacy session triggers projected write to new path"
+  },
+  {
+    "id": "TV-R8-1",
+    "requirementRef": "Requirement: R-8 Two-form render",
+    "description": "renderForLLM and renderForHuman produce different strings",
+    "input": {
+      "memory": {
+        "turnSummaries": [
+          {"turnIndex": 0, "endedAt": 1700000000000, "text": "edited foo.ts"},
+          {"turnIndex": 1, "endedAt": 1700000060000, "text": "ran tests, all green"}
+        ]
+      }
+    },
+    "expected": {
+      "llmOutputContains": ["edited foo.ts", "ran tests"],
+      "humanOutputContains": ["edited foo.ts", "ran tests", "Turn 0", "Turn 1"],
+      "outputsAreDifferent": true
+    },
+    "notes": "DD-5: independent render functions; human form has timeline annotations LLM form doesn't"
+  },
+  {
+    "id": "TV-R9-1",
+    "requirementRef": "Requirement: R-9 Deprecation shim window: 1 release",
+    "description": "Legacy SharedContext.snapshot call emits warn and delegates",
+    "input": {"call": "SharedContext.snapshot('ses_x')"},
+    "expected": {
+      "delegatesTo": "Memory.renderForLLM('ses_x')",
+      "logLines": [{"level": "warn", "containsAll": ["deprecated", "Memory.renderForLLM"]}]
+    },
+    "notes": "Every legacy API in the shim layer must surface in CI logs"
+  }
+]

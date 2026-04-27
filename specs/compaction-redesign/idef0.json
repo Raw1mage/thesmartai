@@ -1,0 +1,195 @@
+{
+  "diagram_title": "Compact session context",
+  "node_reference": "A0",
+  "description": "Reduce a session's effective message-stream size before next LLM call, using the cheapest available kind that fits constraints.",
+  "icoms": {
+    "inputs": [
+      "session.id",
+      "current message stream",
+      "current Memory state",
+      "session.execution (pinned identity)",
+      "lastFinished assistant tokens"
+    ],
+    "controls": [
+      "AGENTS.md rule 1 (no silent fallback)",
+      "DD-1 state-driven discipline",
+      "DD-9 single entry-point signature",
+      "model.limit.context budget"
+    ],
+    "outputs": [
+      "new Anchor in message stream",
+      "updated Memory.lastCompactedAt",
+      "optional synthetic Continue user message",
+      "log lines for kind transitions"
+    ],
+    "mechanisms": [
+      "C4 SessionCompaction.run",
+      "C1 Memory module",
+      "Storage backend",
+      "Plugin.trigger session.compact hook (codex/openai)",
+      "SessionProcessor (LLM agent path)"
+    ]
+  },
+  "activities": [
+    {
+      "id": "A1",
+      "name": "Evaluate compaction need (state-driven)",
+      "parent": "A0",
+      "description": "Each runloop iteration reads observable state and returns Optional<Observed>. Sets no flags. DD-1.",
+      "icoms": {
+        "inputs": ["session state snapshot", "most-recent Anchor"],
+        "controls": ["DD-1 state-driven", "Cooldown threshold"],
+        "outputs": ["Observed enum value or null"],
+        "mechanisms": ["C10 deriveObservedCondition"]
+      }
+    },
+    {
+      "id": "A2",
+      "name": "Maintain Memory",
+      "parent": "A0",
+      "description": "Per-session persistent memory artifact. Primary content TurnSummary; auxiliary file/action metadata.",
+      "icoms": {
+        "inputs": ["runloop exit signal", "tool invocation parts"],
+        "controls": ["DD-2 capture timing", "DD-3 migration", "rawTailBudget"],
+        "outputs": ["SessionMemory persisted to Storage", "render outputs (LLM/Human)"],
+        "mechanisms": ["C1 Memory module"]
+      }
+    },
+    {
+      "id": "A21",
+      "name": "Capture TurnSummary at runloop exit",
+      "parent": "A2",
+      "description": "DD-2: only at runloop exit, not mid-run. lastAssistant final text appended to Memory.turnSummaries.",
+      "icoms": {
+        "inputs": ["lastAssistant.finish ≠ tool-calls", "lastAssistant final text part"],
+        "controls": ["DD-2"],
+        "outputs": ["new TurnSummary entry"],
+        "mechanisms": ["C11 TurnSummary capture"]
+      }
+    },
+    {
+      "id": "A22",
+      "name": "Track file/action auxiliary metadata",
+      "parent": "A2",
+      "description": "Legacy SharedContext role retained as auxiliary. Not primary memory content.",
+      "icoms": {
+        "inputs": ["completed tool parts each turn"],
+        "controls": [],
+        "outputs": ["fileIndex[] entries", "actionLog[] entries"],
+        "mechanisms": ["C1 Memory module"]
+      }
+    },
+    {
+      "id": "A23",
+      "name": "Render Memory for consumer",
+      "parent": "A2",
+      "description": "Two independent functions per DD-5.",
+      "icoms": {
+        "inputs": ["SessionMemory state"],
+        "controls": ["DD-5"],
+        "outputs": ["renderForLLM string (compact, provider-agnostic)", "renderForHuman string (timeline)"],
+        "mechanisms": ["C1 Memory module"]
+      }
+    },
+    {
+      "id": "A24",
+      "name": "Persist Memory + read with legacy fallback",
+      "parent": "A2",
+      "description": "DD-3: write only to new path; read with fallback to SharedContext + checkpoint if new path empty.",
+      "icoms": {
+        "inputs": ["SessionMemory in-memory state"],
+        "controls": ["DD-3"],
+        "outputs": ["Storage write", "legacy fallback read"],
+        "mechanisms": ["Storage backend"]
+      }
+    },
+    {
+      "id": "A3",
+      "name": "Throttle (Cooldown)",
+      "parent": "A0",
+      "description": "Prevent repeated compaction within window. Reads Memory.lastCompactedAt; no separate state. DD-7.",
+      "icoms": {
+        "inputs": ["Memory.lastCompactedAt", "currentRound", "threshold"],
+        "controls": ["DD-7"],
+        "outputs": ["throttled boolean"],
+        "mechanisms": ["C3 Cooldown helper (lives in memory.ts)"]
+      }
+    },
+    {
+      "id": "A4",
+      "name": "Execute compaction kind",
+      "parent": "A0",
+      "description": "Walk KIND_CHAIN table indexed by observed; first kind that succeeds writes the Anchor.",
+      "icoms": {
+        "inputs": ["RunInput", "KIND_CHAIN[observed]", "INJECT_CONTINUE[observed]"],
+        "controls": ["AGENTS.md rule 1", "DD-9", "R-2 cost-monotonic"],
+        "outputs": ["new Anchor", "optional synthetic Continue", "kind-transition logs"],
+        "mechanisms": ["C5..C9 executors"]
+      }
+    },
+    {
+      "id": "A41",
+      "name": "Free narrative",
+      "parent": "A4",
+      "description": "Use Memory.renderForLLM as Anchor body. Zero API. C5.",
+      "icoms": {
+        "inputs": ["Memory.renderForLLM(sid)"],
+        "controls": ["budget: ≤ 30% model.limit.context"],
+        "outputs": ["Anchor with kind='narrative'"],
+        "mechanisms": ["C5 Narrative executor"]
+      }
+    },
+    {
+      "id": "A42",
+      "name": "Free schema",
+      "parent": "A4",
+      "description": "Legacy SharedContext.snapshot output. Zero API. Used only when narrative empty. C6.",
+      "icoms": {
+        "inputs": ["SharedContext.snapshot output"],
+        "controls": [],
+        "outputs": ["Anchor with kind='schema'"],
+        "mechanisms": ["C6 Schema executor"]
+      }
+    },
+    {
+      "id": "A43",
+      "name": "Free replay-tail",
+      "parent": "A4",
+      "description": "Last N raw rounds serialized as plain text. Zero API. C7.",
+      "icoms": {
+        "inputs": ["message-stream tail (last N rounds)"],
+        "controls": ["rawTailBudget"],
+        "outputs": ["Anchor with kind='replay-tail'"],
+        "mechanisms": ["C7 Replay-tail executor"]
+      }
+    },
+    {
+      "id": "A44",
+      "name": "Low-cost server-side",
+      "parent": "A4",
+      "description": "Plugin.trigger session.compact (codex/openai /responses/compact). Cheaper than full LLM round but counts toward 5h burst. C8.",
+      "icoms": {
+        "inputs": ["conversation items built from message stream", "agent prompt"],
+        "controls": ["provider supports session.compact hook", "observed admits paid kinds"],
+        "outputs": ["Anchor with kind='low-cost-server'", "compactedItems opaque payload"],
+        "mechanisms": ["Plugin.trigger session.compact"]
+      }
+    },
+    {
+      "id": "A45",
+      "name": "LLM agent",
+      "parent": "A4",
+      "description": "Full LLM round with custom compaction prompt. Most expensive; final fallback. C9.",
+      "icoms": {
+        "inputs": ["full conversation history", "compaction agent prompt template"],
+        "controls": ["observed admits paid kinds"],
+        "outputs": ["Anchor with kind='llm-agent'"],
+        "mechanisms": ["SessionProcessor", "compaction agent"]
+      }
+    }
+  ],
+  "removed_activities": [
+    {"id": "X-A-Schedule", "name": "Schedule next-round compaction", "reason": "DD-1 — replaced by A1 state-driven evaluation"},
+    {"id": "X-A-PendingFlag", "name": "Mark pending rebind compaction", "reason": "DD-1 — flag deleted; processor.ts only updates pinned identity"}
+  ]
+}

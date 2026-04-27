@@ -1,0 +1,167 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://plan-builder.local/specs/compaction-redesign/data-schema.json",
+  "title": "Data schema — compaction-redesign",
+  "description": "Canonical type contracts for the redesigned compaction subsystem (Memory, Anchor, Cooldown, run() entry point).",
+  "type": "object",
+  "definitions": {
+    "SessionMemory": {
+      "type": "object",
+      "description": "Per-session memory artifact. Single Storage path: session_memory/<sessionID>. Replaces SharedContext.Space and rebind-checkpoint disk file.",
+      "required": ["sessionID", "version", "updatedAt", "turnSummaries", "fileIndex", "actionLog"],
+      "properties": {
+        "sessionID": {"type": "string", "description": "stable session identifier, format ses_<id>"},
+        "version": {"type": "integer", "minimum": 0, "description": "monotonic counter; bumps on every successful append/update"},
+        "updatedAt": {"type": "integer", "description": "epoch milliseconds of most recent update"},
+        "turnSummaries": {
+          "type": "array",
+          "description": "per-turn AI self-summaries captured at runloop exit; primary narrative content",
+          "items": {"$ref": "#/definitions/TurnSummary"}
+        },
+        "fileIndex": {
+          "type": "array",
+          "description": "auxiliary file metadata (read/edit/write history); subset of legacy SharedContext.files",
+          "items": {"$ref": "#/definitions/FileEntry"}
+        },
+        "actionLog": {
+          "type": "array",
+          "description": "auxiliary action one-liners (bash, grep, glob, task); subset of legacy SharedContext.actions",
+          "items": {"$ref": "#/definitions/ActionEntry"}
+        },
+        "lastCompactedAt": {
+          "type": ["object", "null"],
+          "description": "cooldown source-of-truth; null until first compaction",
+          "required": ["round", "timestamp"],
+          "properties": {
+            "round": {"type": "integer", "description": "runloop step value when last compaction succeeded"},
+            "timestamp": {"type": "integer", "description": "epoch milliseconds"}
+          }
+        },
+        "rawTailBudget": {
+          "type": "integer",
+          "description": "max raw rounds preserved as crash-recovery fallback; default 5",
+          "default": 5
+        }
+      }
+    },
+    "TurnSummary": {
+      "type": "object",
+      "description": "AI's natural turn-end self-summary; captured at runloop exit (DD-2)",
+      "required": ["turnIndex", "userMessageId", "endedAt", "text", "modelID", "providerId"],
+      "properties": {
+        "turnIndex": {"type": "integer", "minimum": 0, "description": "ordinal of this turn within the session, starting at 0"},
+        "userMessageId": {"type": "string", "description": "id of the user message that initiated this turn"},
+        "assistantMessageId": {"type": "string", "description": "id of the assistant message whose final text was captured"},
+        "endedAt": {"type": "integer", "description": "epoch milliseconds when runloop exited"},
+        "text": {"type": "string", "description": "AI-written final text part; the narrative summary itself"},
+        "modelID": {"type": "string", "description": "model that produced the summary"},
+        "providerId": {"type": "string", "description": "provider that produced the summary"},
+        "accountId": {"type": ["string", "null"], "description": "account that produced the summary, if known"},
+        "tokens": {
+          "type": "object",
+          "description": "token accounting for the summary text itself",
+          "properties": {
+            "input": {"type": "integer"},
+            "output": {"type": "integer"}
+          }
+        }
+      }
+    },
+    "FileEntry": {
+      "type": "object",
+      "description": "auxiliary file metadata; not the primary memory content",
+      "required": ["path", "operation", "updatedAt"],
+      "properties": {
+        "path": {"type": "string", "description": "absolute or workspace-relative path"},
+        "operation": {"type": "string", "enum": ["read", "edit", "write", "grep_match", "glob_match"]},
+        "lines": {"type": ["integer", "null"], "description": "line count if known"},
+        "summary": {"type": ["string", "null"], "description": "brief description if available"},
+        "updatedAt": {"type": "integer", "description": "epoch milliseconds"}
+      }
+    },
+    "ActionEntry": {
+      "type": "object",
+      "description": "auxiliary one-liner of a tool invocation",
+      "required": ["tool", "summary", "turn", "addedAt"],
+      "properties": {
+        "tool": {"type": "string", "description": "tool name (bash, grep, glob, task, ...)"},
+        "summary": {"type": "string", "maxLength": 200, "description": "one-line summary of the action"},
+        "turn": {"type": "integer", "description": "turn index when action occurred"},
+        "addedAt": {"type": "integer", "description": "epoch milliseconds"}
+      }
+    },
+    "Anchor": {
+      "type": "object",
+      "description": "compaction boundary marker; lives in the session message stream as an assistant message with summary:true and a part of type 'compaction'",
+      "required": ["sessionID", "messageId", "summaryText", "providerId", "modelID", "createdAt", "kind"],
+      "properties": {
+        "sessionID": {"type": "string"},
+        "messageId": {"type": "string", "description": "id of the assistant summary message"},
+        "summaryText": {"type": "string", "description": "the narrative summary content (= renderForLLM output at the time of compaction)"},
+        "providerId": {"type": "string", "description": "provider active when this anchor was written"},
+        "modelID": {"type": "string", "description": "model active when this anchor was written"},
+        "accountId": {"type": ["string", "null"]},
+        "createdAt": {"type": "integer", "description": "epoch milliseconds"},
+        "kind": {
+          "type": "string",
+          "enum": ["narrative", "schema", "replay-tail", "low-cost-server", "llm-agent"],
+          "description": "which compaction kind produced this anchor"
+        },
+        "auto": {"type": "boolean", "description": "whether the trigger permitted synthetic-Continue injection"}
+      }
+    },
+    "RunInput": {
+      "type": "object",
+      "description": "input to SessionCompaction.run (DD-9)",
+      "required": ["sessionID", "observed", "step"],
+      "properties": {
+        "sessionID": {"type": "string"},
+        "observed": {
+          "type": "string",
+          "enum": ["overflow", "cache-aware", "rebind", "continuation-invalidated", "provider-switched", "manual", "idle"],
+          "description": "what observable condition triggered this run; log/event attribution"
+        },
+        "step": {"type": "integer", "description": "current runloop step (round counter)"},
+        "intent": {
+          "type": "string",
+          "enum": ["default", "rich"],
+          "description": "only meaningful for observed=manual; rich skips kinds 1-3 and goes to llm-agent",
+          "default": "default"
+        }
+      }
+    },
+    "RunResult": {
+      "type": "string",
+      "enum": ["continue", "stop"],
+      "description": "continue = next runloop iteration may proceed to LLM call; stop = exit runloop"
+    },
+    "KindStep": {
+      "type": "object",
+      "description": "one entry in KIND_CHAIN table (DD-9)",
+      "required": ["kind", "available"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["narrative", "schema", "replay-tail", "low-cost-server", "llm-agent"]
+        },
+        "available": {
+          "type": "string",
+          "description": "predicate name evaluated against current state to decide if this step can run"
+        }
+      }
+    },
+    "Observed": {
+      "type": "string",
+      "enum": ["overflow", "cache-aware", "rebind", "continuation-invalidated", "provider-switched", "manual", "idle"]
+    }
+  },
+  "properties": {
+    "rootEntities": {
+      "type": "array",
+      "description": "top-level data entities introduced by this redesign",
+      "items": {
+        "enum": ["SessionMemory", "TurnSummary", "Anchor", "RunInput", "RunResult"]
+      }
+    }
+  }
+}

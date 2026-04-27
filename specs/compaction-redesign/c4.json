@@ -1,0 +1,209 @@
+{
+  "$schema": "https://plan-builder.local/schemas/c4.json",
+  "title": "C4 model — compaction-redesign",
+  "level": "component",
+  "systems": [
+    {
+      "id": "opencode-session",
+      "name": "opencode session subsystem",
+      "description": "Per-session state, runloop, LLM streaming, compaction"
+    }
+  ],
+  "containers": [
+    {
+      "id": "opencode-daemon",
+      "name": "opencode daemon (bun)",
+      "technology": "bun + TypeScript",
+      "description": "Single long-running process serving sessions over Unix socket"
+    },
+    {
+      "id": "storage",
+      "name": "Storage layer",
+      "technology": "filesystem-backed key-value (Storage namespace)",
+      "description": "Persists per-session structured data; survives daemon restart"
+    },
+    {
+      "id": "message-stream",
+      "name": "Session message stream",
+      "technology": "filesystem-backed append log",
+      "description": "Authoritative chronological record of user/assistant/tool messages and parts"
+    }
+  ],
+  "components": [
+    {
+      "id": "C1",
+      "name": "Memory",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/memory.ts",
+      "idef0Ref": "A2",
+      "description": "Per-session memory artifact: TurnSummary[], FileEntry[], ActionEntry[], lastCompactedAt. Single Storage path. Two render functions (renderForLLM, renderForHuman). DD-4, DD-5.",
+      "responsibilities": [
+        "Append TurnSummary at runloop exit",
+        "Track auxiliary file/action metadata (auxiliary, not primary)",
+        "Persist to session_memory/<sid> Storage key (single path)",
+        "Read with fallback to legacy SharedContext + checkpoint per DD-3",
+        "Render two forms: renderForLLM (compact, provider-agnostic) and renderForHuman (timeline)",
+        "Track lastCompactedAt for Cooldown derivation (DD-7)"
+      ]
+    },
+    {
+      "id": "C2",
+      "name": "Anchor",
+      "container": "message-stream",
+      "moduleRef": "packages/opencode/src/session/compaction.ts (anchor write helper)",
+      "idef0Ref": "A4",
+      "description": "Compaction boundary marker in the session message stream. Single representation: assistant message with summary:true + part of type 'compaction'. Read by filterCompacted to truncate history. DD-8.",
+      "responsibilities": [
+        "Mark history truncation point",
+        "Carry providerId/modelID/accountId of the time of compaction (used for state-driven rebind detection)",
+        "Carry kind metadata (which compaction kind produced this anchor)"
+      ]
+    },
+    {
+      "id": "C3",
+      "name": "Cooldown",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/memory.ts (cooldown helper)",
+      "idef0Ref": "A3",
+      "description": "Throttles repeated compaction within a window. Source-of-truth: Memory.lastCompactedAt (DD-7). Provides shouldThrottle(sid, currentRound, threshold).",
+      "responsibilities": [
+        "Read Memory.lastCompactedAt",
+        "Return true if currentRound - lastCompactedRound < threshold",
+        "Default threshold: 4 rounds (preserved from existing REBIND_COOLDOWN_ROUNDS)"
+      ]
+    },
+    {
+      "id": "C4",
+      "name": "SessionCompaction.run",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/compaction.ts (entry point)",
+      "idef0Ref": "A0",
+      "description": "Single entry point for every compaction execution. Walks KIND_CHAIN table indexed by observed. Routes to one of four executors. DD-9.",
+      "responsibilities": [
+        "Accept RunInput, return RunResult",
+        "Consult Cooldown before walking chain",
+        "Walk kinds in priority order, attempting each",
+        "On first success: write Anchor, optionally inject synthetic Continue per INJECT_CONTINUE table",
+        "Emit log.info on every kind transition (fail-loud per AGENTS.md rule 1)",
+        "Update Memory.lastCompactedAt on success"
+      ]
+    },
+    {
+      "id": "C5",
+      "name": "Narrative executor",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/compaction.ts (executor: narrative)",
+      "idef0Ref": "A4.1",
+      "description": "Executes the free-narrative kind: takes Memory.renderForLLM output and writes it as Anchor.summaryText. Zero API cost.",
+      "responsibilities": [
+        "Read Memory.renderForLLM(sid)",
+        "Check budget: text token estimate ≤ 30% of model.limit.context",
+        "Write Anchor with kind='narrative'"
+      ]
+    },
+    {
+      "id": "C6",
+      "name": "Schema executor",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/shared-context.ts (legacy regex-extracted snapshot, retained as fallback)",
+      "idef0Ref": "A4.2",
+      "description": "Executes the free-schema kind: takes legacy SharedContext.snapshot output. Used only when narrative is empty (e.g. first turn of session). Zero API cost.",
+      "responsibilities": [
+        "Render SharedContext.Space via legacy formatSnapshot",
+        "Write Anchor with kind='schema'"
+      ]
+    },
+    {
+      "id": "C7",
+      "name": "Replay-tail executor",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/compaction.ts (executor: replayTail)",
+      "idef0Ref": "A4.3",
+      "description": "Executes the free-replay-tail kind: serializes the last N raw rounds as Anchor.summaryText. Used when narrative+schema empty AND raw tail still readable.",
+      "responsibilities": [
+        "Read last N rounds from message stream",
+        "Serialize as plain text (provider-agnostic format)",
+        "Write Anchor with kind='replay-tail'"
+      ]
+    },
+    {
+      "id": "C8",
+      "name": "Low-cost-server executor",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/compaction.ts (executor: lowCostServer; delegates to Plugin.trigger session.compact)",
+      "idef0Ref": "A4.4",
+      "description": "Executes the low-cost-server kind: invokes plugin's session.compact hook (codex/openai /responses/compact). Counts toward 5h burst quota but cheaper than LLM agent. Provider-specific format — only used when next call is to the same provider.",
+      "responsibilities": [
+        "Build conversation items from message stream",
+        "Trigger session.compact plugin hook",
+        "If plugin returns compactedItems, write Anchor with kind='low-cost-server' and persist opaqueItems"
+      ]
+    },
+    {
+      "id": "C9",
+      "name": "LLM-agent executor",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/compaction.ts (executor: llmAgent)",
+      "idef0Ref": "A4.5",
+      "description": "Executes the LLM-agent kind: full LLM round with the compaction agent's custom prompt template. Most expensive. Final fallback.",
+      "responsibilities": [
+        "Build compaction prompt with default template",
+        "Invoke LLM via SessionProcessor",
+        "Write Anchor with kind='llm-agent'"
+      ]
+    },
+    {
+      "id": "C10",
+      "name": "Runloop state evaluator",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/prompt.ts (deriveObservedCondition)",
+      "idef0Ref": "A1",
+      "description": "Each runloop iteration calls this; it reads observable session state and returns Optional<Observed> to feed into SessionCompaction.run. State-driven; sets no flags. DD-1.",
+      "responsibilities": [
+        "Read session.execution (pinned identity)",
+        "Read most-recent Anchor",
+        "Read message-stream tail for compaction-request",
+        "Read lastFinished assistant tokens",
+        "Return Observed enum value or null"
+      ]
+    },
+    {
+      "id": "C11",
+      "name": "TurnSummary capture",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/prompt.ts (runloop exit handler)",
+      "idef0Ref": "A2.1",
+      "description": "At runloop exit, append a TurnSummary to Memory using lastAssistant's final text. DD-2. Mid-run not captured.",
+      "responsibilities": [
+        "Detect runloop exit",
+        "Read lastAssistant final text part",
+        "Memory.appendTurnSummary({turnIndex, userMessageId, text, modelID, providerId, accountId, endedAt})"
+      ]
+    }
+  ],
+  "relationships": [
+    {"from": "C10", "to": "C4", "description": "calls run() with derived observed condition"},
+    {"from": "C4", "to": "C3", "description": "consults shouldThrottle before kind chain"},
+    {"from": "C4", "to": "C5", "description": "first kind in chain (narrative)"},
+    {"from": "C4", "to": "C6", "description": "second kind (schema)"},
+    {"from": "C4", "to": "C7", "description": "third kind (replay-tail)"},
+    {"from": "C4", "to": "C8", "description": "fourth kind (low-cost-server)"},
+    {"from": "C4", "to": "C9", "description": "fifth kind (llm-agent)"},
+    {"from": "C5", "to": "C1", "description": "reads renderForLLM output"},
+    {"from": "C5", "to": "C2", "description": "writes Anchor"},
+    {"from": "C6", "to": "C2", "description": "writes Anchor"},
+    {"from": "C7", "to": "C2", "description": "writes Anchor"},
+    {"from": "C8", "to": "C2", "description": "writes Anchor"},
+    {"from": "C9", "to": "C2", "description": "writes Anchor"},
+    {"from": "C11", "to": "C1", "description": "appends TurnSummary entries"},
+    {"from": "C1", "to": "storage", "description": "single Storage path: session_memory/<sid>"},
+    {"from": "C2", "to": "message-stream", "description": "anchor lives in message stream"},
+    {"from": "C3", "to": "C1", "description": "reads lastCompactedAt"},
+    {"from": "C4", "to": "C1", "description": "calls Memory.markCompacted on success"}
+  ],
+  "removed": [
+    {"id": "X1", "name": "pendingRebindCompaction", "reason": "DD-1 — Schedule concept eliminated; state-driven evaluation replaces flag"},
+    {"id": "X2", "name": "rebind-checkpoint disk file", "reason": "DD-8 — unified into Anchor in message stream"},
+    {"id": "X3", "name": "cooldownState Map", "reason": "DD-7 — collapsed into Memory.lastCompactedAt"}
+  ]
+}
