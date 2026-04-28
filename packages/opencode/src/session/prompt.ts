@@ -305,7 +305,7 @@ export async function deriveObservedCondition(input: {
 }): Promise<SessionCompaction.Observed | null> {
   // Cooldown gate. SessionCompaction.run() also checks this and short-circuits;
   // but checking here lets us return null cleanly without going through run().
-  if (await SessionCompaction.Cooldown.shouldThrottle(input.sessionID, input.step)) {
+  if (await SessionCompaction.Cooldown.shouldThrottle(input.sessionID)) {
     return null
   }
 

@@ -45,12 +45,14 @@ import { Provider } from "@/provider/provider"
 const originalMemoryRead = Memory.read
 const originalMemoryMarkCompacted = Memory.markCompacted
 const originalSessionGet = Session.get
+const originalSessionMessages = Session.messages
 const originalProviderGetModel = Provider.getModel
 
 afterEach(() => {
   ;(Memory as any).read = originalMemoryRead
   ;(Memory as any).markCompacted = originalMemoryMarkCompacted
   ;(Session as any).get = originalSessionGet
+  ;(Session as any).messages = originalSessionMessages
   ;(Provider as any).getModel = originalProviderGetModel
   SessionCompaction.__test__.resetAnchorWriter()
 })
@@ -81,6 +83,7 @@ describe("regression: 2026-04-27 rebind-compaction infinite loop", () => {
     ;(Session as any).get = mock(async () => ({
       execution: { providerId: "codex", modelID: "gpt-5.5", accountId: "acc-yeatsraw" },
     }))
+    ;(Session as any).messages = mock(async () => []) // Phase 13: cooldown reads anchor from messages
     ;(Provider as any).getModel = mock(async () => ({
       id: "gpt-5.5",
       providerId: "codex",
@@ -108,9 +111,10 @@ describe("regression: 2026-04-27 rebind-compaction infinite loop", () => {
   })
 
   it("INV-2: real rotation produces exactly one rebind anchor (cooldown blocks rapid re-fire)", async () => {
-    // Setup: session with Memory + lastCompactedAt freshly set (simulates the
-    // moment immediately after the first rebind anchor was written)
-    let lastCompacted: { round: number; timestamp: number } | null = null
+    // Phase 13 REVISED: cooldown reads the most recent anchor message's
+    // time.created from Session.messages, not Memory.lastCompactedAt.
+    // Simulate the anchor going from "absent" (first compact OK) to "1s ago"
+    // (rapid retry throttled) to "31s ago" (cooldown expired).
     ;(Memory as any).read = mock(async () => ({
       sessionID: "ses_regression_cooldown",
       version: 1,
@@ -127,12 +131,10 @@ describe("regression: 2026-04-27 rebind-compaction infinite loop", () => {
       ],
       fileIndex: [],
       actionLog: [],
-      lastCompactedAt: lastCompacted,
+      lastCompactedAt: null,
       rawTailBudget: 5,
     }))
-    ;(Memory as any).markCompacted = mock(async (_sid: string, at: { round: number; timestamp?: number }) => {
-      lastCompacted = { round: at.round, timestamp: at.timestamp ?? Date.now() }
-    })
+    ;(Memory as any).markCompacted = mock(async () => {})
     ;(Session as any).get = mock(async () => ({
       execution: { providerId: "codex", modelID: "gpt-5.5", accountId: "acc-A" },
     }))
@@ -143,12 +145,31 @@ describe("regression: 2026-04-27 rebind-compaction infinite loop", () => {
       cost: { input: 1 },
     }))
 
+    let anchorTime: number | null = null
+    ;(Session as any).messages = mock(async () => {
+      if (anchorTime === null) return []
+      return [
+        {
+          info: {
+            id: "msg_anchor",
+            role: "assistant",
+            sessionID: "ses_regression_cooldown",
+            summary: true,
+            time: { created: anchorTime },
+          },
+          parts: [],
+        },
+      ]
+    })
+
     const writes: any[] = []
     SessionCompaction.__test__.setAnchorWriter(async (input) => {
       writes.push(input)
+      // Anchor would be written into the message stream; simulate by setting time.
+      anchorTime = Date.now()
     })
 
-    // First rebind: succeeds, writes anchor, sets lastCompactedAt
+    // First rebind: no anchor yet → cooldown false → succeeds.
     const r1 = await SessionCompaction.run({
       sessionID: "ses_regression_cooldown",
       observed: "rebind",
@@ -157,44 +178,24 @@ describe("regression: 2026-04-27 rebind-compaction infinite loop", () => {
     expect(r1).toBe("continue")
     expect(writes).toHaveLength(1)
 
-    // Now Memory.read returns the updated lastCompactedAt
-    ;(Memory as any).read = mock(async () => ({
-      sessionID: "ses_regression_cooldown",
-      version: 2,
-      updatedAt: 1,
-      turnSummaries: [
-        {
-          turnIndex: 0,
-          userMessageId: "msg_u1",
-          endedAt: 1,
-          text: "x",
-          modelID: "gpt-5.5",
-          providerId: "codex",
-        },
-      ],
-      fileIndex: [],
-      actionLog: [],
-      lastCompactedAt: lastCompacted, // = { round: 10, ... }
-      rawTailBudget: 5,
-    }))
-
-    // Immediate retry (within cooldown 4 rounds): should be throttled
+    // Immediate retry: anchor is ~0ms ago, well within 30s window → throttled.
     const r2 = await SessionCompaction.run({
       sessionID: "ses_regression_cooldown",
       observed: "rebind",
       step: 11,
     })
-    expect(r2).toBe("continue") // continue, not stop, because cooldown returns
+    expect(r2).toBe("continue")
     expect(writes).toHaveLength(1) // still only one write — second was throttled
 
-    // 4 rounds later: cooldown expired, second anchor allowed
+    // Simulate 31s passing: shift anchor 31s into the past.
+    anchorTime = Date.now() - 31_000
     const r3 = await SessionCompaction.run({
       sessionID: "ses_regression_cooldown",
       observed: "rebind",
       step: 14,
     })
     expect(r3).toBe("continue")
-    expect(writes).toHaveLength(2) // now two anchors — but each from a real condition past cooldown
+    expect(writes).toHaveLength(2) // cooldown expired → second anchor allowed
   })
 
   it("structural defense: INJECT_CONTINUE table denies rebind even if a future caller forgets the cooldown", () => {

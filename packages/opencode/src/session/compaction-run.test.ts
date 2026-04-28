@@ -54,12 +54,38 @@ function setupCommonMocks(memory: Partial<Memory.SessionMemory>, sid: string) {
   ;(Session as any).get = mock(async () => ({
     execution: { providerId: "codex", modelID: "gpt-5.5", accountId: "acc-A" },
   }))
+  ;(Session as any).messages = mock(async () => [])
   ;(Provider as any).getModel = mock(async () => fakeModel())
+}
+
+/**
+ * Stub Session.messages to return a stream containing an anchor (assistant
+ * message with summary:true) at `anchorAgeMs` milliseconds ago. Phase 13
+ * cooldown reads anchor.time.created, not Memory.lastCompactedAt.
+ */
+function stubAnchorMessage(sid: string, anchorAgeMs: number | null) {
+  if (anchorAgeMs === null) {
+    ;(Session as any).messages = mock(async () => [])
+    return
+  }
+  const anchorTime = Date.now() - anchorAgeMs
+  ;(Session as any).messages = mock(async () => [
+    {
+      info: {
+        id: "msg_anchor",
+        role: "assistant",
+        sessionID: sid,
+        summary: true,
+        time: { created: anchorTime },
+      },
+      parts: [],
+    },
+  ])
 }
 
 describe("compaction-redesign phase 4 — KIND_CHAIN + INJECT_CONTINUE table structure", () => {
   it("KIND_CHAIN entries are cost-monotonic for every observed (INV-4)", () => {
-    const COST = { narrative: 0, schema: 0, "replay-tail": 0, "low-cost-server": 1, "llm-agent": 2 } as const
+    const COST = { narrative: 0, "replay-tail": 0, "low-cost-server": 1, "llm-agent": 2 } as const
     const chains = SessionCompaction.__test__.KIND_CHAIN
     for (const [observed, kinds] of Object.entries(chains)) {
       let prev = -1
@@ -82,17 +108,20 @@ describe("compaction-redesign phase 4 — KIND_CHAIN + INJECT_CONTINUE table str
     }
   })
 
-  it("manual chain skips schema (preserves user intent for narrative)", () => {
+  it("manual chain has narrative + paid kinds (no replay-tail since manual user wants real compression)", () => {
     const kinds = SessionCompaction.__test__.KIND_CHAIN["manual"]
     expect(kinds).toEqual(["narrative", "low-cost-server", "llm-agent"])
-    expect(kinds).not.toContain("schema")
   })
 
-  it("provider-switched chain stops at schema (no replay-tail, no codex)", () => {
-    expect(SessionCompaction.__test__.KIND_CHAIN["provider-switched"]).toEqual([
-      "narrative",
-      "schema",
-    ])
+  it("provider-switched chain stops at narrative (Phase 13 REVISED — schema kind removed)", () => {
+    expect(SessionCompaction.__test__.KIND_CHAIN["provider-switched"]).toEqual(["narrative"])
+  })
+
+  it("Phase 13 REVISED — no chain contains 'schema' kind", () => {
+    const chains = SessionCompaction.__test__.KIND_CHAIN
+    for (const [, kinds] of Object.entries(chains)) {
+      expect(kinds).not.toContain("schema" as any)
+    }
   })
 
   it("INJECT_CONTINUE: rebind / continuation-invalidated / provider-switched / manual = false (R-6)", () => {
@@ -111,55 +140,47 @@ describe("compaction-redesign phase 4 — KIND_CHAIN + INJECT_CONTINUE table str
   })
 })
 
-describe("compaction-redesign phase 4 — Cooldown.shouldThrottle (DD-7)", () => {
-  it("returns false when Memory.lastCompactedAt is null (never compacted)", async () => {
-    setupCommonMocks({ lastCompactedAt: null }, "ses_cooldown_null")
-    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_null", 5)).toBe(false)
+describe("compaction-redesign phase 4 — Cooldown.shouldThrottle (DD-13 REVISED)", () => {
+  it("returns false when no anchor message exists (never compacted)", async () => {
+    setupCommonMocks({}, "ses_cooldown_null")
+    stubAnchorMessage("ses_cooldown_null", null)
+    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_null")).toBe(false)
   })
 
-  it("returns true when current round - lastCompactedRound < threshold", async () => {
-    setupCommonMocks({ lastCompactedAt: { round: 10, timestamp: 1 } }, "ses_cooldown_within")
-    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_within", 12)).toBe(true)
-    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_within", 13)).toBe(true)
+  it("returns true when most recent anchor is within COOLDOWN_MS (30s)", async () => {
+    setupCommonMocks({}, "ses_cooldown_within")
+    stubAnchorMessage("ses_cooldown_within", 5_000) // 5s ago
+    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_within")).toBe(true)
   })
 
-  it("returns false when current round - lastCompactedRound >= threshold", async () => {
-    // Set lastCompactedAt timestamp to recent so round-based check is the
-    // determining factor (timestamp fallback only fires when currentRound
-    // <= lastCompactedRound, which doesn't apply here).
-    setupCommonMocks({ lastCompactedAt: { round: 10, timestamp: Date.now() } }, "ses_cooldown_past")
-    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_past", 14)).toBe(false)
-    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_past", 100)).toBe(false)
+  it("returns false when most recent anchor is older than COOLDOWN_MS", async () => {
+    setupCommonMocks({}, "ses_cooldown_past")
+    stubAnchorMessage("ses_cooldown_past", 60_000) // 60s ago
+    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_past")).toBe(false)
   })
 
-  it("cross-runloop boundary: timestamp window kicks in when currentRound <= lastCompactedRound", async () => {
-    // Simulates new SessionPrompt.loop call (step counter reset) after a
-    // previous call recorded compaction at round 5. Round-based comparison
-    // alone (1 - 5 = -4 < 4) would mis-throttle forever; the timestamp
-    // fallback corrects this.
-    const now = Date.now()
-    setupCommonMocks(
-      { lastCompactedAt: { round: 5, timestamp: now } },
-      "ses_cooldown_cross_recent",
-    )
-    // 0s elapsed, well within the 30s cross-loop window → still throttled
-    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_cross_recent", 1)).toBe(true)
+  it("uses single timestamp rule across runloop boundaries (round counter is irrelevant)", async () => {
+    // Phase 13 collapses the round-vs-timestamp dual logic. Whether the
+    // current step counter is fresh (1) or advanced (12) doesn't matter —
+    // only the wall-clock distance to the most recent anchor.
+    setupCommonMocks({}, "ses_cooldown_cross_recent")
+    stubAnchorMessage("ses_cooldown_cross_recent", 1_000) // 1s ago
+    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_cross_recent")).toBe(true)
 
-    setupCommonMocks(
-      { lastCompactedAt: { round: 5, timestamp: now - 60_000 } },
-      "ses_cooldown_cross_stale",
-    )
-    // 60s elapsed, past the 30s cross-loop window → NOT throttled even
-    // though round-based comparison would say throttled
-    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_cross_stale", 1)).toBe(false)
+    setupCommonMocks({}, "ses_cooldown_cross_stale")
+    stubAnchorMessage("ses_cooldown_cross_stale", 60_000) // 60s ago
+    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_cross_stale")).toBe(false)
   })
 
-  it("respects custom threshold parameter", async () => {
-    setupCommonMocks({ lastCompactedAt: { round: 10, timestamp: 1 } }, "ses_cooldown_custom")
-    // Default threshold 4: round 13 throttled
-    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_custom", 13)).toBe(true)
-    // Custom threshold 2: round 13 not throttled
-    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_custom", 13, 2)).toBe(false)
+  it("ignores anchor with missing time.created (defensive against malformed messages)", async () => {
+    setupCommonMocks({}, "ses_cooldown_malformed")
+    ;(Session as any).messages = mock(async () => [
+      {
+        info: { id: "msg_anchor", role: "assistant", sessionID: "ses_cooldown_malformed", summary: true },
+        parts: [],
+      },
+    ])
+    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_malformed")).toBe(false)
   })
 })
 
@@ -231,9 +252,9 @@ describe("compaction-redesign phase 4 — run() entry point", () => {
     expect(writes[0].auto).toBe(false) // manual never injects Continue
   })
 
-  it("R-5: run({observed: 'provider-switched'}) rejects kinds 3-5", async () => {
-    // Memory has empty turnSummaries → narrative fails. Schema would be next
-    // (but with stub it returns false). Provider-switched chain stops here.
+  it("R-5: run({observed: 'provider-switched'}) rejects replay-tail + paid kinds", async () => {
+    // Phase 13 REVISED: provider-switched chain is just ["narrative"]. Empty
+    // memory → narrative fails → chain exhausts → "stop".
     setupCommonMocks({ turnSummaries: [] }, "ses_run_pswitch")
     const writes: any[] = []
     SessionCompaction.__test__.setAnchorWriter(async (input) => {
@@ -246,13 +267,9 @@ describe("compaction-redesign phase 4 — run() entry point", () => {
       step: 3,
     })
 
-    // No anchor written; chain returned "stop" because all attempted kinds
-    // (narrative + schema stub) failed and replay-tail / low-cost-server /
-    // llm-agent are NOT in provider-switched's chain.
     expect(result).toBe("stop")
     expect(writes).toHaveLength(0)
 
-    // Verify chain doesn't contain replay-tail / paid kinds
     const chain = SessionCompaction.__test__.KIND_CHAIN["provider-switched"]
     expect(chain).not.toContain("replay-tail")
     expect(chain).not.toContain("low-cost-server")
@@ -272,10 +289,11 @@ describe("compaction-redesign phase 4 — run() entry point", () => {
             providerId: "codex",
           },
         ],
-        lastCompactedAt: { round: 5, timestamp: 1 },
       },
       "ses_run_throttled",
     )
+    // Phase 13 REVISED: cooldown reads anchor message timestamp, not Memory.
+    stubAnchorMessage("ses_run_throttled", 1_000) // anchor 1s ago → within 30s window
     const writes: any[] = []
     SessionCompaction.__test__.setAnchorWriter(async (input) => {
       writes.push(input)
@@ -284,7 +302,7 @@ describe("compaction-redesign phase 4 — run() entry point", () => {
     const result = await SessionCompaction.run({
       sessionID: "ses_run_throttled",
       observed: "overflow",
-      step: 6, // step - lastRound = 1, < default threshold 4 → throttled
+      step: 6,
     })
 
     expect(result).toBe("continue")
@@ -379,27 +397,7 @@ describe("compaction-redesign phase 4 — run() entry point", () => {
     expect(writes).toHaveLength(0)
   })
 
-  it("phase 5 — schema executor succeeds when narrative empty + SharedContext snapshot present", async () => {
-    setupCommonMocks({ turnSummaries: [] }, "ses_run_schema")
-    ;(SharedContext as any).snapshot = mock(async () => "<shared_context>...</shared_context>")
-    const writes: any[] = []
-    SessionCompaction.__test__.setAnchorWriter(async (input) => {
-      writes.push(input)
-    })
-
-    const result = await SessionCompaction.run({
-      sessionID: "ses_run_schema",
-      observed: "overflow",
-      step: 4,
-    })
-
-    expect(result).toBe("continue")
-    expect(writes).toHaveLength(1)
-    expect(writes[0].kind).toBe("schema")
-    expect(writes[0].summaryText).toContain("shared_context")
-  })
-
-  it("phase 5 — replay-tail executor succeeds when narrative + schema empty + msg stream has text", async () => {
+  it("phase 5 — replay-tail executor succeeds when narrative empty + msg stream has text", async () => {
     setupCommonMocks({ turnSummaries: [] }, "ses_run_replay")
     ;(SharedContext as any).snapshot = mock(async () => undefined)
     ;(Session as any).messages = mock(async () => [

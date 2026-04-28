@@ -57,11 +57,6 @@ export namespace SessionCompaction {
   // rebind detection happens via deriveObservedCondition's accountId / providerId
   // comparison against the most recent Anchor's identity.
 
-  // Default cooldown for compaction (rounds). Used by isOverflow and
-  // shouldCacheAwareCompact to throttle repeated triggers. Source-of-truth
-  // is Memory.lastCompactedAt per DD-7 — no separate cooldownState Map.
-  const REBIND_COOLDOWN_ROUNDS = 4
-
   // ── Rebind Checkpoint ──
   // Quietly snapshots compacted context to disk for restart recovery.
   // Does NOT touch the live message chain — cache stays intact.
@@ -647,7 +642,7 @@ export namespace SessionCompaction {
 
   /** Local (zero-API-cost) kinds — these get the target-cap escalation path. */
   function isLocalKind(k: KindName): boolean {
-    return k === "narrative" || k === "schema" || k === "replay-tail"
+    return k === "narrative" || k === "replay-tail"
   }
 
   const PRUNE_PROTECTED_TOOLS = ["skill"]
@@ -1055,7 +1050,7 @@ export namespace SessionCompaction {
     | "manual"
     | "idle"
 
-  export type KindName = "narrative" | "schema" | "replay-tail" | "low-cost-server" | "llm-agent"
+  export type KindName = "narrative" | "replay-tail" | "low-cost-server" | "llm-agent"
 
   export type RunInput = {
     sessionID: string
@@ -1082,17 +1077,21 @@ export namespace SessionCompaction {
    * `rebind` / `continuation-invalidated` chains stop at kind 3 — these
    * triggers are maintenance, not enrichment, so the runloop should not
    * burn quota on them. `provider-switched` stops at kind 2 because raw
-   * tail (3) and codex format (4) carry provider-specific tool format.
-   * `manual` skips schema (no narrative preserved → defeats user intent)
-   * and goes free → low-cost → expensive.
+   * tail (2 in new chain) carries provider-specific tool format, so
+   * `provider-switched` stops at narrative.
+   *
+   * Phase 13 (REVISED 2026-04-28): `schema` kind removed. Its sole role was
+   * scavenging text from legacy SharedContext when narrative was empty —
+   * but a fresh session should be empty, not back-filled from regex extracts.
+   * Narrative empty → chain falls through to next kind naturally.
    */
   const KIND_CHAIN: Readonly<Record<Observed, ReadonlyArray<KindName>>> = Object.freeze({
-    "overflow": Object.freeze(["narrative", "schema", "replay-tail", "low-cost-server", "llm-agent"] as const),
-    "cache-aware": Object.freeze(["narrative", "schema", "replay-tail", "low-cost-server", "llm-agent"] as const),
-    "idle": Object.freeze(["narrative", "schema", "replay-tail"] as const),
-    "rebind": Object.freeze(["narrative", "schema", "replay-tail"] as const),
-    "continuation-invalidated": Object.freeze(["narrative", "schema", "replay-tail"] as const),
-    "provider-switched": Object.freeze(["narrative", "schema"] as const),
+    "overflow": Object.freeze(["narrative", "replay-tail", "low-cost-server", "llm-agent"] as const),
+    "cache-aware": Object.freeze(["narrative", "replay-tail", "low-cost-server", "llm-agent"] as const),
+    "idle": Object.freeze(["narrative", "replay-tail"] as const),
+    "rebind": Object.freeze(["narrative", "replay-tail"] as const),
+    "continuation-invalidated": Object.freeze(["narrative", "replay-tail"] as const),
+    "provider-switched": Object.freeze(["narrative"] as const),
     "manual": Object.freeze(["narrative", "low-cost-server", "llm-agent"] as const),
   })
 
@@ -1114,43 +1113,46 @@ export namespace SessionCompaction {
   })
 
   /**
-   * Cooldown helper. DD-7: Memory.lastCompactedAt is the source-of-truth;
-   * the legacy in-memory `cooldownState` Map is removed in phase 7.
+   * Cooldown helper. DD-13 (REVISED 2026-04-28): the source-of-truth is the
+   * most recent anchor message's `time.created` in the messages stream.
+   *
+   * DD-7's `Memory.lastCompactedAt` (round + timestamp dual) is superseded.
+   * The messages stream is the single durable record; no Memory file, no
+   * round counter. A 30-second timestamp window prevents oscillation —
+   * within or across runloop invocations, the rule is the same: if the
+   * latest anchor was written less than 30s ago, throttle.
+   *
+   * No anchor exists → never throttle (first-ever compaction always
+   * proceeds).
    */
   export namespace Cooldown {
-    /** Default rebind cooldown window (rounds). Mirrors REBIND_COOLDOWN_ROUNDS. */
-    export const DEFAULT_THRESHOLD = REBIND_COOLDOWN_ROUNDS
-
     /**
-     * Cross-runloop-invocation timestamp window. The runloop's `step`
-     * counter resets to 0 on every new SessionPrompt.loop call, so a
-     * `step=1` after a previous call ended at `lastCompactedRound=5`
-     * would mis-trigger throttle (1-5=-4 < 4) forever — until step
-     * eventually exceeded the stored round, which often never happens
-     * for short turns. The timestamp fallback fires only when we detect
-     * we've crossed a runloop boundary (currentRound <= lastCompactedRound).
-     * 30 seconds is plenty to absorb genuine within-loop oscillation
-     * while letting fresh runloop calls re-evaluate normally.
+     * Single cooldown window. 30 seconds absorbs both within-runloop
+     * oscillation (where `step` advances rapidly) and the cross-runloop
+     * case (where `step` resets) using the same rule, eliminating the
+     * round-vs-timestamp dual logic from the previous design.
      */
-    export const CROSS_LOOP_COOLDOWN_MS = 30_000
+    export const COOLDOWN_MS = 30_000
 
-    export async function shouldThrottle(
-      sessionID: string,
-      currentRound: number,
-      threshold = DEFAULT_THRESHOLD,
-    ): Promise<boolean> {
-      const mem = await Memory.read(sessionID)
-      if (!mem.lastCompactedAt) return false
-      // Same-runloop case: current step is past the recorded compaction
-      // step. Use round-based round-distance comparison.
-      if (currentRound > mem.lastCompactedAt.round) {
-        return currentRound - mem.lastCompactedAt.round < threshold
+    export async function shouldThrottle(sessionID: string): Promise<boolean> {
+      const messages = await Session.messages({ sessionID }).catch(() => [] as MessageV2.WithParts[])
+      const anchor = findMostRecentAnchorMessage(messages)
+      if (!anchor) return false
+      const anchorTime = (anchor.info as MessageV2.Assistant).time?.created ?? 0
+      if (!anchorTime) return false
+      return Date.now() - anchorTime < COOLDOWN_MS
+    }
+
+    function findMostRecentAnchorMessage(
+      messages: MessageV2.WithParts[],
+    ): MessageV2.WithParts | undefined {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i]
+        if (m.info.role === "assistant" && (m.info as MessageV2.Assistant).summary === true) {
+          return m
+        }
       }
-      // Cross-runloop boundary: the step counter has reset (new
-      // SessionPrompt.loop invocation). Fall back to timestamp-based
-      // cooldown. If the previous compaction was within 30s, throttle;
-      // otherwise let the new evaluation proceed.
-      return Date.now() - mem.lastCompactedAt.timestamp < CROSS_LOOP_COOLDOWN_MS
+      return undefined
     }
   }
 
@@ -1186,24 +1188,7 @@ export namespace SessionCompaction {
   }
 
   /**
-   * Schema executor (kind 2). Falls back to legacy `SharedContext.snapshot`
-   * regex-extracted text when the narrative path was unavailable. Zero API
-   * cost. Used only when narrative empty (e.g. first turn of a session).
-   */
-  async function trySchema(input: RunInput, model: Provider.Model | undefined): Promise<KindAttempt> {
-    const snap = await SharedContext.snapshot(input.sessionID).catch(() => undefined)
-    if (!snap) return { ok: false, reason: "shared-context snapshot empty" }
-    const tokenEstimate = Math.ceil(snap.length / 4)
-    const contextLimit = model?.limit?.context || 0
-    const budget = Math.floor(contextLimit * 0.3)
-    if (budget > 0 && tokenEstimate > budget) {
-      return { ok: false, reason: `over budget (${tokenEstimate} > ${budget})` }
-    }
-    return { ok: true, summaryText: snap, kind: "schema" }
-  }
-
-  /**
-   * Replay-tail executor (kind 3). Serializes the last N raw rounds (user +
+   * Replay-tail executor. Serializes the last N raw rounds (user +
    * assistant text, in chronological order) as plain text. N defaults to
    * `Memory.rawTailBudget` (default 5). Zero API cost. Used when narrative +
    * schema both empty AND raw tail still readable. Fallback for crash
@@ -1577,8 +1562,6 @@ When constructing the summary, try to stick to this template:
     switch (kind) {
       case "narrative":
         return tryNarrative(input, model)
-      case "schema":
-        return trySchema(input, model)
       case "replay-tail":
         return tryReplayTail(input, model)
       case "low-cost-server":
@@ -1622,12 +1605,12 @@ When constructing the summary, try to stick to this template:
     const { sessionID, observed, step } = input
     const intent = input.intent ?? "default"
 
-    if (await Cooldown.shouldThrottle(sessionID, step)) {
+    if (await Cooldown.shouldThrottle(sessionID)) {
       log.info("compaction.throttled", {
         sessionID,
         observed,
         step,
-        threshold: Cooldown.DEFAULT_THRESHOLD,
+        cooldownMs: Cooldown.COOLDOWN_MS,
       })
       return "continue"
     }

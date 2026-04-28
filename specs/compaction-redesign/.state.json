@@ -194,6 +194,14 @@
       "by": "pkcs12",
       "mode": "promote",
       "reason": "phases 1-10 implemented + tested; 77 tests pass; tsc clean; manual smoke (11.3/11.4) deferred to user post-rebuild"
+    },
+    {
+      "from": "verified",
+      "to": "implementing",
+      "at": "2026-04-28T08:00:00.000Z",
+      "by": "pkcs12",
+      "mode": "revise",
+      "reason": "soak revealed phase 9 was over-conservative: kept SessionMemory journal file + RebindCheckpoint disk file + SharedContext.snapshot regex extractor as 'still useful'. User clarified original intent — single source of truth = messages stream. Phase 13 added: delete journal file (render at read-time), delete rebind disk file (scan stream for anchor), delete schema kind. Cooldown switches from round to anchor.createdAt. State machine doesn't allow verified→revise so manual edit; spec.md/design.md inline-delta'd to reflect."
     }
   ]
 }

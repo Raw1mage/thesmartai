@@ -127,3 +127,69 @@ reviewable and rolls back cleanly without the next.
 - [ ] 12.1 Delete `compaction-shims.ts` and all deprecated API symbols (DD-6: 1-release window)
 - [ ] 12.2 Delete legacy `shared_context/<sid>` Storage reads after configurable threshold (e.g. 90 days idle)
 - [ ] 12.3 Run plan-archive.ts to mark this spec `archived`
+
+## 13. Single-source-of-truth consolidation (REVISED 2026-04-28)
+
+> **Why this phase exists**: Phase 9 was over-conservative — kept three "still
+> useful" pieces (SessionMemory journal file, RebindCheckpoint disk file,
+> SharedContext.snapshot regex extractor) that all encode "what already
+> happened in this session". User clarified original intent: the **messages
+> stream is the single source of truth**. journal is a render-time view;
+> rebind/restart/rotation all read the same stream. This phase finishes what
+> 7→3 conceptual collapse promised but phase 9 stopped short of.
+>
+> **Path A**: zero new flags / part fields. Journal entries identified by
+> position convention (last text part of each finished assistant message,
+> excluding narration / anchors / subagent narration). Existing predicates
+> reused.
+>
+> **Supersedes**: 9.2 (snapshot kept → DELETED), 9.3 (RebindCheckpoint kept →
+> DELETED). DD-3 cooldown (round-based) superseded by DD-13 (anchor.createdAt-based).
+
+### 13.1 Memory module — render-time journal
+- [ ] 13.1.1 `Memory.read(sessionID)`: drop SessionMemory file IO; reconstruct from messages stream by scanning finished assistant messages, extracting last text part per message, building TurnSummary[] in chronological order, slicing at most-recent anchor boundary
+- [ ] 13.1.2 Delete `Memory.write` / `Memory.appendTurnSummary` / `Memory.markCompacted` (no more file persistence)
+- [ ] 13.1.3 `Memory.renderForLLMSync(messages, maxTokens?)` — accepts already-loaded messages instead of SessionMemory shape; same newest-first cap behaviour
+- [ ] 13.1.4 Delete `captureTurnSummaryOnExit` from prompt.ts (capture path no longer needed)
+- [ ] 13.1.5 Delete `Memory.requestCompaction` if no remaining callers (or keep as message-stream compaction-request part marker)
+- [ ] 13.1.6 Migrate Memory tests to render-from-stream model
+
+### 13.2 RebindCheckpoint disk file removal
+- [ ] 13.2.1 Delete `saveRebindCheckpoint` / `loadRebindCheckpoint` / `applyRebindCheckpoint` / `deleteRebindCheckpoint` / `pruneStaleCheckpoints`
+- [ ] 13.2.2 Delete `RebindCheckpoint` type + `getRebindCheckpointPath` helper
+- [ ] 13.2.3 Delete `findRebindBoundaryIndex` legacy fallback branch (keeps anchor-scan path; lastMessageId field gone)
+- [ ] 13.2.4 Rewrite prompt.ts step==1 rebind block: scan filteredResult.messages for most-recent `summary: true` anchor, slice from there onward; no disk file read
+- [ ] 13.2.5 Delete `saveCheckpointAfterCompaction` (anchor write itself is now the marker)
+- [ ] 13.2.6 Silently ignore residual rebind-checkpoint-*.json files on disk (don't read, don't delete — user backup safety)
+
+### 13.3 Schema kind retirement
+- [ ] 13.3.1 Delete `trySchema` from compaction.ts
+- [ ] 13.3.2 Remove `"schema"` from every `KIND_CHAIN[observed]` entry
+- [ ] 13.3.3 Delete `SharedContext.snapshot` function
+- [ ] 13.3.4 Audit other `SharedContext.snapshot` call sites in prompt.ts (lines ~1229, ~1351-1352) and replace with stream-derived equivalents
+- [ ] 13.3.5 Delete `tryPluginCompaction`'s legacy snapshot-input path if it had one; switch to messages-stream input only
+- [ ] 13.3.6 Delete or simplify `SharedContext` namespace if `snapshot` was its main export
+
+### 13.4 Cooldown — anchor-based
+- [ ] 13.4.1 `Cooldown.shouldThrottle(sessionID, ...)`: read messages stream, find most-recent `summary: true` assistant message, use its `time.created` as the cooldown anchor
+- [ ] 13.4.2 Delete `CROSS_LOOP_COOLDOWN_MS` round-vs-timestamp dual logic (single timestamp path: now < anchor.createdAt + 30s = throttle)
+- [ ] 13.4.3 Drop `currentRound` parameter from `shouldThrottle` callsites
+- [ ] 13.4.4 Update DD-3 in design.md to DD-13 (anchor-based) with [SUPERSEDED] note on DD-3
+- [ ] 13.4.5 Migrate cooldown tests to anchor-stream model
+
+### 13.5 Test migration
+- [ ] 13.5.1 `compaction.test.ts` — drop `stubMemoryCooldown`, replace with `stubAnchorMessage` helper that injects a fake assistant message with `summary: true` + chosen `time.created`
+- [ ] 13.5.2 `compaction-run.test.ts` — replace `setupCommonMocks({ turnSummaries })` with `setupCommonMocks({ messages: [...] })`; no more SessionMemory shape
+- [ ] 13.5.3 Delete `prompt.turn-summary-capture.test.ts` (capture path gone)
+- [ ] 13.5.4 Delete `memory.test.ts` file IO tests; replace with render-from-stream tests
+- [ ] 13.5.5 Add new test: cooldown anchor-message-only (no SessionMemory file at all in fixture)
+- [ ] 13.5.6 Add new test: rebind recovery via anchor scan when no disk file exists
+- [ ] 13.5.7 Verify all phase 1-12 tests still pass on the new model
+
+### 13.6 Deletion verification + commit
+- [ ] 13.6.1 `grep -rE "SharedContext\.snapshot|saveRebindCheckpoint|loadRebindCheckpoint|applyRebindCheckpoint|appendTurnSummary|markCompacted|captureTurnSummaryOnExit|RebindCheckpoint|trySchema|CROSS_LOOP_COOLDOWN_MS"` in src/ — zero matches
+- [ ] 13.6.2 tsc clean
+- [ ] 13.6.3 Full test suite passes
+- [ ] 13.6.4 Commit on test/compaction-redesign branch
+- [ ] 13.6.5 Update `specs/architecture.md` Compaction section: 7→3 collapse complete, single source of truth = messages stream
+- [ ] 13.6.6 Daemon restart smoke; verify journal renders correctly + rebind works without disk file
