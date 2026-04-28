@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { applyStreamAnchorRebind, findMostRecentAnchorIndex } from "./prompt"
+import { applyStreamAnchorRebind, estimateMsgsTokenCount, findMostRecentAnchorIndex } from "./prompt"
 
 // Phase 13.2-B: stream-anchor rebind tests. Replaces the deleted
 // `applyRebindCheckpoint` Phase 8 tests in compaction.test.ts. These exercise
@@ -130,5 +130,89 @@ describe("applyStreamAnchorRebind", () => {
     expect(result.applied).toBe(true)
     expect(result.messages).toHaveLength(1)
     expect(result.messages[0].info.id).toBe("m2")
+  })
+})
+
+describe("estimateMsgsTokenCount", () => {
+  it("counts text part bodies", () => {
+    const msgs = [
+      userMsg("m1", "s", "x".repeat(400)),
+      assistantMsg("m2", "s", "y".repeat(800)),
+    ]
+    // 400/4 + 800/4 = 100 + 200 = 300
+    expect(estimateMsgsTokenCount(msgs)).toBe(300)
+  })
+
+  it("counts tool-call input AND output text — bloated tool result inflates the estimate", () => {
+    // Reproduces the 2026-04-28 bug pattern: a tool returns a huge text blob
+    // that gets appended to msgs. lastFinished.tokens.input still reports the
+    // pre-tool-output figure; the about-to-send prompt is much larger.
+    // estimateMsgsTokenCount must see the tool output so the state-driven
+    // overflow check fires before the request goes out.
+    const sid = "s_bloat"
+    const huge = "z".repeat(120_000) // ~30K tokens of tool output
+    const msgs = [
+      userMsg("m_u1", sid, "go"), // ~0 tokens
+      {
+        info: {
+          id: "m_a1",
+          sessionID: sid,
+          role: "assistant",
+          mode: "default",
+          agent: "default",
+          modelID: "gpt-5.5",
+          providerId: "codex",
+          path: { cwd: "/tmp", root: "/tmp" },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: 1, completed: 2 },
+        },
+        parts: [
+          {
+            id: "p_a1_t",
+            messageID: "m_a1",
+            sessionID: sid,
+            type: "tool",
+            state: {
+              status: "completed",
+              input: { sid: "ses_other" }, // ~10 chars JSON
+              output: huge, // ~120K chars
+            },
+          },
+        ],
+      } as any,
+    ]
+    const estimate = estimateMsgsTokenCount(msgs)
+    // 120K chars / 4 = 30K tokens (plus a tiny bit for input + user text)
+    expect(estimate).toBeGreaterThanOrEqual(30_000)
+    expect(estimate).toBeLessThan(31_000)
+  })
+
+  it("returns 0 for empty stream", () => {
+    expect(estimateMsgsTokenCount([])).toBe(0)
+  })
+
+  it("counts reasoning parts", () => {
+    const msgs = [
+      {
+        info: {
+          id: "m1",
+          sessionID: "s",
+          role: "assistant",
+          mode: "default",
+          agent: "default",
+          modelID: "gpt-5.5",
+          providerId: "codex",
+          path: { cwd: "/tmp", root: "/tmp" },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          time: { created: 1, completed: 1 },
+        },
+        parts: [
+          { id: "p1", messageID: "m1", sessionID: "s", type: "reasoning", text: "r".repeat(200) },
+        ],
+      } as any,
+    ]
+    expect(estimateMsgsTokenCount(msgs)).toBe(50) // 200/4
   })
 })

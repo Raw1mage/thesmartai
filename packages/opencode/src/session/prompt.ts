@@ -237,7 +237,7 @@ export function captureTurnSummaryOnExit(input: {
  * Cheap to compute (string length / 4) and runs at most once per
  * runloop iteration; not a hot path.
  */
-function estimateMsgsTokenCount(msgs: MessageV2.WithParts[]): number {
+export function estimateMsgsTokenCount(msgs: MessageV2.WithParts[]): number {
   let total = 0
   for (const m of msgs) {
     for (const p of m.parts) {
@@ -1771,14 +1771,40 @@ export namespace SessionPrompt {
 
       // ── compaction-redesign — state-driven evaluation (DD-1) ──────────
       // Each runloop iteration re-evaluates whether compaction is warranted
-      // from current observable state (Memory cooldown, pinned identity vs
-      // most recent Anchor's identity, lastFinished tokens, message-stream
-      // tail, session.execution.continuationInvalidatedAt). No flags
-      // persisted across iterations. If deriveObservedCondition returns
-      // non-null, route through SessionCompaction.run; on "continue" skip
-      // the rest of this iteration's body, on "stop" carry on without
+      // from current observable state (cooldown anchor, pinned identity vs
+      // most recent Anchor's identity, current msgs token estimate,
+      // message-stream tail, session.execution.continuationInvalidatedAt).
+      // No flags persisted across iterations. If deriveObservedCondition
+      // returns non-null, route through SessionCompaction.run; on "continue"
+      // skip the rest of this iteration's body, on "stop" carry on without
       // compacting this round.
+      //
+      // Phase 13 hotfix: tokens for isOverflow / isCacheAware come from
+      // `estimateMsgsTokenCount(msgs)` — the SIZE OF THE PROMPT WE'RE ABOUT
+      // TO SEND — not from `lastFinished.tokens.input` (the previous LLM
+      // call's actual input, which is stale once tool results have been
+      // appended this iteration). Without this, a tool that returns a huge
+      // text blob (e.g. system-manager_read_subsession dumping a whole
+      // session transcript) inflates the about-to-send prompt by 100K+ in
+      // one step while lastFinished still reports the pre-tool-output
+      // figure — overflow check misses, request goes out, provider rejects.
+      // We take the max of (estimated, lastFinished.tokens.input) so cache
+      // counters from lastFinished are preserved when it's the larger
+      // signal.
       const sessionExecForCompaction = (await Session.get(sessionID).catch(() => undefined))?.execution
+      const promptInputEstimate = estimateMsgsTokenCount(msgs)
+      const overflowInputTokens = Math.max(
+        promptInputEstimate,
+        lastFinished?.tokens?.input ?? 0,
+      )
+      const overflowTokens = lastFinished
+        ? { ...lastFinished.tokens, input: overflowInputTokens }
+        : ({
+            input: overflowInputTokens,
+            output: 0,
+            reasoning: 0,
+            cache: { read: 0, write: 0 },
+          } as MessageV2.Assistant["tokens"])
       const observed = await deriveObservedCondition({
         sessionID,
         step,
@@ -1791,23 +1817,19 @@ export namespace SessionPrompt {
         parentID: session.parentID,
         continuationInvalidatedAt: sessionExecForCompaction?.continuationInvalidatedAt,
         isOverflow: () =>
-          lastFinished
-            ? SessionCompaction.isOverflow({
-                tokens: lastFinished.tokens,
-                model,
-                sessionID,
-                currentRound: step,
-              })
-            : Promise.resolve(false),
+          SessionCompaction.isOverflow({
+            tokens: overflowTokens,
+            model,
+            sessionID,
+            currentRound: step,
+          }),
         isCacheAware: () =>
-          lastFinished
-            ? SessionCompaction.shouldCacheAwareCompact({
-                tokens: lastFinished.tokens,
-                model,
-                sessionID,
-                currentRound: step,
-              })
-            : Promise.resolve(false),
+          SessionCompaction.shouldCacheAwareCompact({
+            tokens: overflowTokens,
+            model,
+            sessionID,
+            currentRound: step,
+          }),
       })
 
       if (observed) {
