@@ -17,6 +17,13 @@ export type ToolContext = {
   abort: AbortSignal
   metadata(input: { title?: string; metadata?: { [key: string]: any } }): void
   ask(input: AskInput): Promise<void>
+  /**
+   * Per-invocation token budget for this tool's output (Layer 2 of
+   * opencode's context-management subsystem). When set, plugins SHOULD
+   * cap output to this many tokens and append a natural-language
+   * truncation hint. May be undefined on older opencode runtimes.
+   */
+  outputBudget?: number
 }
 
 type AskInput = {

@@ -142,6 +142,26 @@ export namespace Tweaks {
     disarmPhrases: string[]
   }
 
+  /**
+   * tool-output-chunking spec / context-management Layer 2 (DD-2).
+   * Per-invocation token budget for variable-size tools (read / glob /
+   * grep / bash / webfetch / apply_patch / task / read_subsession). Each
+   * tool computes its budget as
+   *   min(round(model.contextWindow * contextRatio), absoluteCap)
+   * floored at minimumFloor. Two per-tool overrides (taskOverride,
+   * bashOverride) replace absoluteCap when the tool is `task` or `bash`
+   * respectively, because their natural output density differs from the
+   * generic case. Reading the budget is on the tool execute hot path so
+   * the synchronous accessor (toolOutputBudgetSync) is the canonical one.
+   */
+  export interface ToolOutputBudgetConfig {
+    absoluteCap: number
+    contextRatio: number
+    minimumFloor: number
+    taskOverride: number
+    bashOverride: number
+  }
+
   export interface Effective {
     sessionCache: SessionCacheConfig
     rateLimit: RateLimitConfig
@@ -151,6 +171,7 @@ export namespace Tweaks {
     partPersistence: PartPersistenceConfig
     subagent: SubagentConfig
     autorun: AutorunConfig
+    toolOutputBudget: ToolOutputBudgetConfig
     source: { path: string; present: boolean }
   }
 
@@ -202,6 +223,14 @@ export namespace Tweaks {
   const AUTORUN_DEFAULTS: AutorunConfig = {
     triggerPhrases: ["接著跑", "自動跑", "開 autonomous", "autorun", "keep going", "continue autonomously"],
     disarmPhrases: ["停", "暫停", "stop", "halt"],
+  }
+
+  const TOOL_OUTPUT_BUDGET_DEFAULTS: ToolOutputBudgetConfig = {
+    absoluteCap: 50_000,
+    contextRatio: 0.30,
+    minimumFloor: 8_000,
+    taskOverride: 60_000,
+    bashOverride: 40_000,
   }
 
   const PART_PERSISTENCE_DEFAULTS: PartPersistenceConfig = {
@@ -304,6 +333,11 @@ export namespace Tweaks {
     "subagent_quota_low_red_line_percent",
     "autorun_trigger_phrases",
     "autorun_disarm_phrases",
+    "tool_output_budget_absolute_cap",
+    "tool_output_budget_context_ratio",
+    "tool_output_budget_minimum_floor",
+    "tool_output_budget_task_override",
+    "tool_output_budget_bash_override",
   ])
 
   function parseFlag01(raw: string, key: string): 0 | 1 | undefined {
@@ -373,6 +407,7 @@ export namespace Tweaks {
           partPersistence: PART_PERSISTENCE_DEFAULTS,
           subagent: SUBAGENT_DEFAULTS,
           autorun: AUTORUN_DEFAULTS,
+          toolOutputBudget: TOOL_OUTPUT_BUDGET_DEFAULTS,
         },
       })
       return {
@@ -384,6 +419,7 @@ export namespace Tweaks {
         partPersistence: { ...PART_PERSISTENCE_DEFAULTS },
         subagent: { ...SUBAGENT_DEFAULTS },
         autorun: { triggerPhrases: [...AUTORUN_DEFAULTS.triggerPhrases], disarmPhrases: [...AUTORUN_DEFAULTS.disarmPhrases] },
+        toolOutputBudget: { ...TOOL_OUTPUT_BUDGET_DEFAULTS },
         source: { path: cfgPath, present: false },
       }
     }
@@ -614,9 +650,43 @@ export namespace Tweaks {
       autorun.disarmPhrases = parsePhraseList(disarmRaw, "autorun_disarm_phrases")
     }
 
+    const toolOutputBudget: ToolOutputBudgetConfig = { ...TOOL_OUTPUT_BUDGET_DEFAULTS }
+    const tobAbsRaw = parsed.get("tool_output_budget_absolute_cap")
+    if (tobAbsRaw !== undefined) {
+      const v = parseIntRange(tobAbsRaw, "tool_output_budget_absolute_cap", 1_000, 1_000_000)
+      if (v !== undefined) toolOutputBudget.absoluteCap = v
+    }
+    const tobRatioRaw = parsed.get("tool_output_budget_context_ratio")
+    if (tobRatioRaw !== undefined) {
+      const v = parseFloatPositive(tobRatioRaw, "tool_output_budget_context_ratio")
+      if (v !== undefined) {
+        if (v > 1) {
+          log.warn("tweaks.cfg tool_output_budget_context_ratio > 1, clamping to 1", { raw: tobRatioRaw, value: v })
+          toolOutputBudget.contextRatio = 1
+        } else {
+          toolOutputBudget.contextRatio = v
+        }
+      }
+    }
+    const tobFloorRaw = parsed.get("tool_output_budget_minimum_floor")
+    if (tobFloorRaw !== undefined) {
+      const v = parseIntRange(tobFloorRaw, "tool_output_budget_minimum_floor", 100, 100_000)
+      if (v !== undefined) toolOutputBudget.minimumFloor = v
+    }
+    const tobTaskRaw = parsed.get("tool_output_budget_task_override")
+    if (tobTaskRaw !== undefined) {
+      const v = parseIntRange(tobTaskRaw, "tool_output_budget_task_override", 1_000, 1_000_000)
+      if (v !== undefined) toolOutputBudget.taskOverride = v
+    }
+    const tobBashRaw = parsed.get("tool_output_budget_bash_override")
+    if (tobBashRaw !== undefined) {
+      const v = parseIntRange(tobBashRaw, "tool_output_budget_bash_override", 1_000, 1_000_000)
+      if (v !== undefined) toolOutputBudget.bashOverride = v
+    }
+
     log.info("tweaks.cfg loaded", {
       path: cfgPath,
-      effective: { sessionCache, rateLimit, frontendLazyload, sessionUiFreshness, codexRotation, partPersistence, subagent, autorun },
+      effective: { sessionCache, rateLimit, frontendLazyload, sessionUiFreshness, codexRotation, partPersistence, subagent, autorun, toolOutputBudget },
     })
     return {
       sessionCache,
@@ -627,6 +697,7 @@ export namespace Tweaks {
       partPersistence,
       subagent,
       autorun,
+      toolOutputBudget,
       source: { path: cfgPath, present: true },
     }
   }
@@ -669,6 +740,10 @@ export namespace Tweaks {
     return (await effective()).autorun
   }
 
+  export async function toolOutputBudget(): Promise<ToolOutputBudgetConfig> {
+    return (await effective()).toolOutputBudget
+  }
+
   /**
    * Synchronous accessor for hot paths (e.g. updatePart). Returns defaults
    * until loadEffective() completes; after that returns the loaded values.
@@ -686,6 +761,16 @@ export namespace Tweaks {
    */
   export function autorunSync(): AutorunConfig {
     return _effective?.autorun ?? AUTORUN_DEFAULTS
+  }
+
+  /**
+   * Synchronous accessor for the tool execute hot path. Returns defaults
+   * until loadEffective() completes; after that returns the loaded
+   * values. Tools call this every invocation (Layer 2 self-bounding) so
+   * an async accessor would add a microtask per tool call.
+   */
+  export function toolOutputBudgetSync(): ToolOutputBudgetConfig {
+    return _effective?.toolOutputBudget ?? TOOL_OUTPUT_BUDGET_DEFAULTS
   }
 
   export async function loadEffective(): Promise<Effective> {
