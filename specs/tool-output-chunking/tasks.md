@@ -11,10 +11,10 @@
 Goal: every variable-size tool caps its own output to `ctx.outputBudget`.
 Carried over from refactor-2026-04-29 prior designed-state spec.
 
-- [ ] 1.1 Add `outputBudget` field to `ctx` in `packages/opencode/src/tool/types.ts` (R-1, DD-2)
-- [ ] 1.2 Add 5 `tool.outputBudget.*` knobs to `packages/opencode/src/config/tweaks.ts` with defaults (DD-2)
-- [ ] 1.3 Document new knobs in `templates/etc/opencode/tweaks.cfg.example`
-- [ ] 1.4 Implement `outputBudget` computation helper in `tool/types.ts` (formula per DD-2)
+- [x] 1.1 Add `outputBudget` field to `ctx` in `packages/opencode/src/tool/types.ts` (R-1, DD-2)
+- [x] 1.2 Add 5 `tool.outputBudget.*` knobs to `packages/opencode/src/config/tweaks.ts` with defaults (DD-2)
+- [x] 1.3 Document new knobs in `templates/etc/opencode/tweaks.cfg.example` (actual path: `templates/system/tweaks.cfg`)
+- [x] 1.4 Implement `outputBudget` computation helper in `tool/types.ts` (formula per DD-2; actual file: `packages/opencode/src/tool/budget.ts` namespace `ToolBudget`)
 - [ ] 1.5 Bound `read.ts`: slice on line boundary from `offset`; trailing hint `[... truncated; call read again with offset=<N> ...]` (R-1, INV-8 byte-identity for natural-fit)
 - [ ] 1.6 Bound `glob.ts`: cap match list; hint suggests narrower pattern
 - [ ] 1.7 Bound `grep.ts`: cap match list; hint suggests narrower pattern
