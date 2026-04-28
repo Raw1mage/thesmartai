@@ -344,7 +344,7 @@ export const BashTool = Tool.define("bash", async () => {
           ? `Layer 2 budget (~${budget.tokens} tokens, ${budget.source}) exceeded`
           : `output > ${threshold} chars`
         const hint = truncated.truncated
-          ? `This output (${reason}) is redirected to ${truncated.outputPath}. ` +
+          ? `This output is redirected to ${truncated.outputPath} (${reason}). ` +
             `For long-running commands, redirect stdout to a file (e.g. '> /tmp/out.log') ` +
             `then read the file in slices.`
           : "This output is redirected to internal error"

@@ -182,7 +182,7 @@ export const GrepTool = Tool.define("grep", {
         ? `Layer 2 budget (~${budget.tokens} tokens, ${budget.source}) exceeded`
         : "output > 2000 chars"
       const hint = result.truncated
-        ? `This output (${reason}) is redirected to ${result.outputPath}. ` +
+        ? `This output is redirected to ${result.outputPath} (${reason}). ` +
           `Consider a more specific pattern or path to narrow results.`
         : "This output is redirected to internal error"
 
