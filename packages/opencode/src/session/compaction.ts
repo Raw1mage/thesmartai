@@ -1833,6 +1833,255 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
       return lines.join("\n")
     }
 
+    // ─── runLlmCompactChunkAndMerge (Phase 2.7 internal mode) ─────────
+
+    /**
+     * Cold-start path: when a single LLM_compact call's input would
+     * exceed the model's per-request budget (typically 200K-round
+     * legacy sessions with no anchor yet), split journal into chunks
+     * and build the digest sequentially. Each iteration's priorAnchor
+     * is the previous iteration's output digest.
+     *
+     * Internal mode (DD-3) — externally still appears as 'hybrid_llm';
+     * the difference shows up only in the CompactionEvent's
+     * internalMode='chunk-and-merge' field for telemetry.
+     *
+     * Walks journal in chunks sized to fit `llmInputBudget`. Last
+     * chunk's output is the final anchor body, written via the same
+     * SessionProcessor pattern as single-pass. Validation runs only on
+     * the FINAL digest — intermediate digests are internal scratch.
+     */
+    async function runLlmCompactChunkAndMerge(
+      sessionID: string,
+      request: LLMCompactRequest,
+      opts: { abort: AbortSignal },
+      ctx: {
+        model: Provider.Model
+        parentID: string
+        userMessage: MessageV2.User
+        accountId?: string
+        systemText: string
+        llmInputBudget: number
+        startedAt: number
+      },
+    ): Promise<LlmCompactResult> {
+      log.info("hybrid_llm chunk-and-merge entering", {
+        sessionID,
+        journalRounds: request.journalUnpinned.length,
+        llmInputBudget: ctx.llmInputBudget,
+        priorAnchorTokens: request.priorAnchor ? Math.ceil(request.priorAnchor.content.length / 4) : 0,
+      })
+
+      // Estimate per-round token cost for chunk sizing. Average over the
+      // journal so a few outlier-large rounds don't tank the chunk size.
+      const perRoundEst =
+        request.journalUnpinned.length > 0
+          ? Math.max(
+              500,
+              Math.ceil(
+                request.journalUnpinned.reduce((sum, je) => {
+                  try { return sum + JSON.stringify(je.messages).length } catch { return sum }
+                }, 0) / request.journalUnpinned.length / 4,
+              ),
+            )
+          : 500
+      // Reserve room for the running digest (assumed ≤ targetTokens) +
+      // framing overhead. Each chunk gets the rest.
+      const chunkBudget = Math.max(2_000, ctx.llmInputBudget - request.targetTokens - 1_000)
+      const roundsPerChunk = Math.max(1, Math.floor(chunkBudget / perRoundEst))
+
+      let runningDigest: Anchor | null = request.priorAnchor
+      const chunks: JournalEntry[][] = []
+      for (let i = 0; i < request.journalUnpinned.length; i += roundsPerChunk) {
+        chunks.push(request.journalUnpinned.slice(i, i + roundsPerChunk))
+      }
+      log.info("hybrid_llm chunk-and-merge plan", {
+        sessionID,
+        totalChunks: chunks.length,
+        roundsPerChunk,
+        perRoundEst,
+      })
+
+      // Last chunk index — only that one's anchor message gets persisted
+      // to the stream; intermediates are LLM-only scratch.
+      const lastIdx = chunks.length - 1
+      let finalAnchorBody = ""
+      let finalMessageId = ""
+
+      for (let i = 0; i < chunks.length; i++) {
+        const isLast = i === lastIdx
+        const chunkRequest: LLMCompactRequest = {
+          priorAnchor: runningDigest,
+          journalUnpinned: chunks[i],
+          framing: { mode: "phase1", strict: false },
+          targetTokens: request.targetTokens,
+        }
+        const userText = buildUserPayload(chunkRequest, {
+          generatedAt: new Date().toISOString(),
+          provider: ctx.model.providerId ?? ctx.userMessage.model.providerId,
+          model: ctx.model.id ?? ctx.userMessage.model.modelID,
+        })
+
+        if (isLast) {
+          // Persist as the actual anchor message via SessionProcessor.
+          const stub = (await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "assistant",
+            parentID: ctx.parentID,
+            sessionID,
+            mode: "compaction",
+            agent: "compaction",
+            variant: ctx.userMessage.variant,
+            summary: true,
+            path: { cwd: Instance.directory, root: Instance.worktree },
+            cost: 0,
+            tokens: { output: 0, input: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            modelID: ctx.model.id,
+            providerId: ctx.model.providerId,
+            accountId: ctx.accountId,
+            time: { created: Date.now() },
+          } as any)) as MessageV2.Assistant
+          const processor = SessionProcessor.create({
+            assistantMessage: stub,
+            sessionID,
+            model: ctx.model,
+            accountId: ctx.accountId,
+            abort: opts.abort,
+          })
+          try {
+            const result = await processor.process({
+              user: ctx.userMessage,
+              agent: await Agent.get("compaction"),
+              abort: opts.abort,
+              sessionID,
+              tools: {},
+              system: [ctx.systemText],
+              messages: sanitizeOrphanedToolCalls([
+                { role: "user", content: [{ type: "text", text: userText }] },
+              ]),
+              model: ctx.model,
+            })
+            if (processor.message.error || result !== "continue") {
+              return {
+                ok: false,
+                reason: "llm_threw",
+                detail: processor.message.error ? "processor reported error" : `result=${result}`,
+                latencyMs: Date.now() - ctx.startedAt,
+              }
+            }
+          } catch (err) {
+            return {
+              ok: false,
+              reason: "llm_threw",
+              detail: err instanceof Error ? err.message : String(err),
+              latencyMs: Date.now() - ctx.startedAt,
+            }
+          }
+          const fresh = (await Session.messages({ sessionID })).findLast((m) => m.info.id === processor.message.id)
+          finalAnchorBody = fresh?.parts.filter((p) => p.type === "text").map((p) => (p as any).text ?? "").join("\n") ?? ""
+          finalMessageId = processor.message.id
+        } else {
+          // Intermediate chunk — call the LLM but DON'T persist the
+          // result as a session anchor. Use a throwaway processor.
+          // (Implementation note: the simplest way to get a one-shot
+          // LLM call without session-mutation in opencode is to still
+          // create+drop a stub message. We do it but mark the result
+          // for cleanup. For now this is a pragmatic shortcut — a
+          // future refactor could expose a lower-level Provider call.)
+          const stub = (await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "assistant",
+            parentID: ctx.parentID,
+            sessionID,
+            mode: "compaction",
+            agent: "compaction-chunk",
+            variant: ctx.userMessage.variant,
+            summary: true,  // mark to keep prompt-build behaviour consistent
+            path: { cwd: Instance.directory, root: Instance.worktree },
+            cost: 0,
+            tokens: { output: 0, input: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            modelID: ctx.model.id,
+            providerId: ctx.model.providerId,
+            accountId: ctx.accountId,
+            time: { created: Date.now() },
+          } as any)) as MessageV2.Assistant
+          const processor = SessionProcessor.create({
+            assistantMessage: stub,
+            sessionID,
+            model: ctx.model,
+            accountId: ctx.accountId,
+            abort: opts.abort,
+          })
+          try {
+            await processor.process({
+              user: ctx.userMessage,
+              agent: await Agent.get("compaction"),
+              abort: opts.abort,
+              sessionID,
+              tools: {},
+              system: [ctx.systemText],
+              messages: sanitizeOrphanedToolCalls([
+                { role: "user", content: [{ type: "text", text: userText }] },
+              ]),
+              model: ctx.model,
+            })
+          } catch (err) {
+            return {
+              ok: false,
+              reason: "llm_threw",
+              detail: `chunk ${i}: ${err instanceof Error ? err.message : String(err)}`,
+              latencyMs: Date.now() - ctx.startedAt,
+            }
+          }
+          const fresh = (await Session.messages({ sessionID })).findLast((m) => m.info.id === processor.message.id)
+          const intermediateBody = fresh?.parts.filter((p) => p.type === "text").map((p) => (p as any).text ?? "").join("\n") ?? ""
+          // Use intermediate as next iteration's priorAnchor.
+          runningDigest = {
+            role: "assistant",
+            summary: true,
+            content: intermediateBody,
+            metadata: {
+              anchorVersion: 1,
+              generatedAt: new Date().toISOString(),
+              generatedBy: {
+                provider: ctx.model.providerId ?? "",
+                model: ctx.model.id ?? "",
+                accountId: ctx.accountId ?? "",
+              },
+              coversRounds: { earliest: 0, latest: chunks[i].length },
+              inputTokens: 0,
+              outputTokens: Math.ceil(intermediateBody.length / 4),
+              phase: 1,
+              internalMode: "chunk-and-merge",
+            },
+          }
+        }
+      }
+
+      const validation = validateAnchorBody(finalAnchorBody, request)
+      if (!validation.ok) {
+        return {
+          ok: false,
+          reason: validation.reason ?? "header_missing",
+          detail: typeof validation.reason === "string" ? validation.reason : JSON.stringify(validation.reason),
+          latencyMs: Date.now() - ctx.startedAt,
+        }
+      }
+      log.info("hybrid_llm chunk-and-merge completed", {
+        sessionID,
+        chunks: chunks.length,
+        finalBodyTokens: Math.ceil(finalAnchorBody.length / 4),
+      })
+      return {
+        ok: true,
+        anchorBody: finalAnchorBody,
+        anchorMessageId: finalMessageId,
+        latencyMs: Date.now() - ctx.startedAt,
+        provider: ctx.model.providerId ?? "",
+        model: ctx.model.id ?? "",
+      }
+    }
+
     // ─── runLlmCompact (Phase 2.6 single-pass core) ───────────────────
 
     /**
@@ -1895,23 +2144,9 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
         }
       }
 
-      // Phase 2.7 TODO — when input exceeds LLM input budget, switch to
-      // chunk-and-merge mode. Until that lands, signal up to the caller
-      // so the graceful-degradation fallback can run instead of attempting
-      // a doomed call.
-      const inputTokens = inputTokenEstimate(request)
-      const llmInputBudget = (model.limit?.context ?? 200_000) - request.targetTokens - 4_000 // safety margin
-      if (inputTokens > llmInputBudget) {
-        return {
-          ok: false,
-          reason: "no_response",
-          detail: `chunk_and_merge_unimplemented: input ${inputTokens} > llm_budget ${llmInputBudget}`,
-          latencyMs: Date.now() - startedAt,
-        }
-      }
-
       // Build the chat-completion payload. Framing template is the
-      // system message; user payload renders the request.
+      // system message; user payload renders the request. Computed
+      // up-front so chunk-and-merge dispatch (below) can re-use them.
       const framingRaw = await loadFramingTemplate()
       const framing = applyFramingPlaceholders(framingRaw, {
         targetTokens: request.targetTokens,
@@ -1927,6 +2162,27 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
       const systemText = framing + stricterAddendum
       const accountId =
         agentModel?.accountId ?? userMessage.model.accountId ?? session?.execution?.accountId
+
+      // Phase 2.7 chunk-and-merge: when single-pass input exceeds the
+      // LLM's per-request budget, switch to sequential digest building.
+      // Walk journal in chunks; each chunk's LLM_compact takes the
+      // running digest as priorAnchor + chunk_k as journal. Final digest
+      // is returned as the new anchor body. Internal mode — caller does
+      // not see this (DD-3).
+      const inputTokens = inputTokenEstimate(request)
+      const llmInputBudget = (model.limit?.context ?? 200_000) - request.targetTokens - 4_000 // safety margin
+      if (inputTokens > llmInputBudget) {
+        return runLlmCompactChunkAndMerge(sessionID, request, opts, {
+          model,
+          parentID,
+          userMessage,
+          accountId,
+          systemText,
+          llmInputBudget,
+          startedAt,
+        })
+      }
+
       const userText = buildUserPayload(request, {
         generatedAt: new Date().toISOString(),
         provider: model.providerId ?? userMessage.model.providerId,
@@ -1950,9 +2206,11 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
         path: { cwd: Instance.directory, root: Instance.worktree },
         cost: 0,
         tokens: { output: 0, input: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        modelID: model.id,
+        providerId: model.providerId,
         accountId,
         time: { created: Date.now() },
-      })) as MessageV2.Assistant
+      } as any)) as MessageV2.Assistant
 
       const processor = SessionProcessor.create({
         assistantMessage: stub,
@@ -2081,7 +2339,7 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
         voluntary?: boolean
       },
     ): Promise<CompactionEvent> {
-      const eventId = Identifier.ascending("compaction-event")
+      const eventId = `cev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
       const startedAt = Date.now()
       const request: LLMCompactRequest = {
         priorAnchor: opts.priorAnchor,
@@ -2139,6 +2397,79 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
             result: "success",
           })
         }
+      }
+
+      // Phase 2 absorb-pinned-zone path (2.10, DD-5/DD-9). Triggers when:
+      //   (a) Phase 1 attempts both failed AND pinned_zone is non-empty
+      //       (absorbing it might reduce input enough to fit), OR
+      //   (b) Phase 1 succeeded but the resulting prompt is still over
+      //       budget (caller responsibility — not detected here).
+      // For (a) we attempt Phase 2 with stricter framing and an
+      // absorbed pinned_zone. Telemetry records phase2_fired=true via
+      // the phase=2 field in CompactionEvent.
+      if (opts.pinnedZone && opts.pinnedZone.length > 0) {
+        const phase2TargetTokens = Tweaks.compactionSync().phase2MaxAnchorTokens
+        const phase2Request: LLMCompactRequest = {
+          priorAnchor: opts.priorAnchor,
+          journalUnpinned: opts.journalUnpinned,
+          pinnedZone: opts.pinnedZone,
+          dropMarkers: opts.dropMarkers,
+          framing: { mode: "phase2", strict: true },
+          targetTokens: phase2TargetTokens,
+        }
+        log.info("hybrid-llm Phase 2 firing (absorbing pinned_zone)", {
+          sessionID,
+          pinnedCount: opts.pinnedZone.length,
+          phase2TargetTokens,
+        })
+        const phase2 = await runLlmCompact(sessionID, phase2Request, { abort: opts.abort })
+        if (phase2.ok) {
+          // Pinned_zone is now absorbed into the new anchor. Caller is
+          // responsible for clearing the live pinned_zone state (e.g.,
+          // by clearing pin markers in assistant metadata) — runtime
+          // contract: a successful Phase 2 implies pinned_zone reset.
+          return makeEvent({
+            eventId,
+            sessionID,
+            phase: 2,
+            internalMode: "single-pass",
+            inputTokens: inputTokenEstimate(phase2Request),
+            outputTokens: Math.ceil(phase2.anchorBody.length / 4),
+            pinnedCountIn: opts.pinnedZone.length,
+            pinnedCountOut: 0,  // absorbed
+            droppedCountIn: opts.dropMarkers?.length,
+            recallCountIn: 0,
+            voluntary: opts.voluntary,
+            latencyMs: Date.now() - startedAt,
+            result: "success",
+          })
+        }
+        // Phase 2 also failed → starvation (2.11, INV-6). Bounded chain
+        // length = 2; no Phase 3 by design. Surface to runloop as
+        // E_OVERFLOW_UNRECOVERABLE so the user gets a remediation
+        // message instead of silent degradation.
+        log.error("hybrid-llm Phase 2 starvation — E_OVERFLOW_UNRECOVERABLE", {
+          sessionID,
+          phase1Reason: first.reason,
+          phase2Reason: phase2.reason,
+          phase2Detail: phase2.detail,
+        })
+        return makeEvent({
+          eventId,
+          sessionID,
+          phase: 2,
+          internalMode: "single-pass",
+          inputTokens: inputTokenEstimate(phase2Request),
+          outputTokens: 0,
+          pinnedCountIn: opts.pinnedZone.length,
+          pinnedCountOut: opts.pinnedZone.length,  // not absorbed
+          droppedCountIn: opts.dropMarkers?.length,
+          recallCountIn: 0,
+          voluntary: opts.voluntary,
+          latencyMs: Date.now() - startedAt,
+          result: "unrecoverable",
+          errorCode: "E_OVERFLOW_UNRECOVERABLE",
+        })
       }
 
       // Graceful degradation. TODO Phase 2.9 follow-up: fallback provider.
@@ -2248,6 +2579,7 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
       inputTokens: number
       outputTokens: number
       pinnedCountIn?: number
+      pinnedCountOut?: number
       droppedCountIn?: number
       recallCountIn?: number
       voluntary?: boolean
@@ -2264,6 +2596,7 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
         inputTokens: input.inputTokens,
         outputTokens: input.outputTokens,
         pinnedCountIn: input.pinnedCountIn,
+        pinnedCountOut: input.pinnedCountOut,
         droppedCountIn: input.droppedCountIn,
         recallCountIn: input.recallCountIn,
         voluntary: input.voluntary,
