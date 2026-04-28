@@ -1097,6 +1097,19 @@ export namespace SessionCompaction {
     /** Default rebind cooldown window (rounds). Mirrors REBIND_COOLDOWN_ROUNDS. */
     export const DEFAULT_THRESHOLD = REBIND_COOLDOWN_ROUNDS
 
+    /**
+     * Cross-runloop-invocation timestamp window. The runloop's `step`
+     * counter resets to 0 on every new SessionPrompt.loop call, so a
+     * `step=1` after a previous call ended at `lastCompactedRound=5`
+     * would mis-trigger throttle (1-5=-4 < 4) forever — until step
+     * eventually exceeded the stored round, which often never happens
+     * for short turns. The timestamp fallback fires only when we detect
+     * we've crossed a runloop boundary (currentRound <= lastCompactedRound).
+     * 30 seconds is plenty to absorb genuine within-loop oscillation
+     * while letting fresh runloop calls re-evaluate normally.
+     */
+    export const CROSS_LOOP_COOLDOWN_MS = 30_000
+
     export async function shouldThrottle(
       sessionID: string,
       currentRound: number,
@@ -1104,7 +1117,16 @@ export namespace SessionCompaction {
     ): Promise<boolean> {
       const mem = await Memory.read(sessionID)
       if (!mem.lastCompactedAt) return false
-      return currentRound - mem.lastCompactedAt.round < threshold
+      // Same-runloop case: current step is past the recorded compaction
+      // step. Use round-based round-distance comparison.
+      if (currentRound > mem.lastCompactedAt.round) {
+        return currentRound - mem.lastCompactedAt.round < threshold
+      }
+      // Cross-runloop boundary: the step counter has reset (new
+      // SessionPrompt.loop invocation). Fall back to timestamp-based
+      // cooldown. If the previous compaction was within 30s, throttle;
+      // otherwise let the new evaluation proceed.
+      return Date.now() - mem.lastCompactedAt.timestamp < CROSS_LOOP_COOLDOWN_MS
     }
   }
 

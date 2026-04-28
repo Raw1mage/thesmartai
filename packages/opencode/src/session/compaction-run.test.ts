@@ -124,9 +124,34 @@ describe("compaction-redesign phase 4 — Cooldown.shouldThrottle (DD-7)", () =>
   })
 
   it("returns false when current round - lastCompactedRound >= threshold", async () => {
-    setupCommonMocks({ lastCompactedAt: { round: 10, timestamp: 1 } }, "ses_cooldown_past")
+    // Set lastCompactedAt timestamp to recent so round-based check is the
+    // determining factor (timestamp fallback only fires when currentRound
+    // <= lastCompactedRound, which doesn't apply here).
+    setupCommonMocks({ lastCompactedAt: { round: 10, timestamp: Date.now() } }, "ses_cooldown_past")
     expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_past", 14)).toBe(false)
     expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_past", 100)).toBe(false)
+  })
+
+  it("cross-runloop boundary: timestamp window kicks in when currentRound <= lastCompactedRound", async () => {
+    // Simulates new SessionPrompt.loop call (step counter reset) after a
+    // previous call recorded compaction at round 5. Round-based comparison
+    // alone (1 - 5 = -4 < 4) would mis-throttle forever; the timestamp
+    // fallback corrects this.
+    const now = Date.now()
+    setupCommonMocks(
+      { lastCompactedAt: { round: 5, timestamp: now } },
+      "ses_cooldown_cross_recent",
+    )
+    // 0s elapsed, well within the 30s cross-loop window → still throttled
+    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_cross_recent", 1)).toBe(true)
+
+    setupCommonMocks(
+      { lastCompactedAt: { round: 5, timestamp: now - 60_000 } },
+      "ses_cooldown_cross_stale",
+    )
+    // 60s elapsed, past the 30s cross-loop window → NOT throttled even
+    // though round-based comparison would say throttled
+    expect(await SessionCompaction.Cooldown.shouldThrottle("ses_cooldown_cross_stale", 1)).toBe(false)
   })
 
   it("respects custom threshold parameter", async () => {
