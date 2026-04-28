@@ -228,7 +228,7 @@ export function captureTurnSummaryOnExit(input: {
  * input, tool output, and reasoning bodies.
  *
  * Why this exists: `lastFinished.tokens.total` reflects the PREVIOUS LLM
- * call's input size — it's stale once `applyRebindCheckpoint` reshapes
+ * call's input size — it's stale once `applyStreamAnchorRebind` reshapes
  * `msgs` into `[syntheticSummary, ...postBoundary]`. The state-driven
  * compaction trigger needs to know "what's the UPCOMING prompt going to
  * weigh?", which is a function of the current `msgs`, not the last
@@ -386,6 +386,50 @@ export function findMostRecentAnchor(
     }
   }
   return null
+}
+
+/**
+ * Index variant of `findMostRecentAnchor` — returns the message stream
+ * position so callers can slice. Phase 13.2: stream-anchor-based rebind
+ * recovery uses this directly; no disk file needed.
+ */
+export function findMostRecentAnchorIndex(msgs: MessageV2.WithParts[]): number {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const info = msgs[i].info
+    if (info.role === "assistant" && (info as MessageV2.Assistant).summary === true) {
+      return i
+    }
+  }
+  return -1
+}
+
+/**
+ * Phase 13.2: rebind by stream-anchor scan. Slices the message stream from
+ * the most recent anchor onward (anchor included — its text is the
+ * compacted summary). Drops everything before the anchor since that
+ * history is no longer live context.
+ *
+ * Safety: refuses to slice if the first post-anchor message is an
+ * assistant with completed/orphaned tool calls (would error on next LLM
+ * call). Returns the original input unchanged in that case.
+ *
+ * No anchor in stream → returns input unchanged. Caller treats this as
+ * "fresh session, nothing to rebind".
+ */
+export function applyStreamAnchorRebind(msgs: MessageV2.WithParts[]): {
+  applied: boolean
+  messages: MessageV2.WithParts[]
+  anchorIndex: number
+  reason?: "no_anchor" | "unsafe_boundary"
+} {
+  const anchorIdx = findMostRecentAnchorIndex(msgs)
+  if (anchorIdx === -1) return { applied: false, messages: msgs, anchorIndex: -1, reason: "no_anchor" }
+  const firstPost = msgs[anchorIdx + 1]
+  const unsafe =
+    firstPost?.info.role === "assistant" &&
+    firstPost.parts.some((p) => p.type === "tool" && (p as any).state?.status && (p as any).state.status !== "pending")
+  if (unsafe) return { applied: false, messages: msgs, anchorIndex: anchorIdx, reason: "unsafe_boundary" }
+  return { applied: true, messages: msgs.slice(anchorIdx), anchorIndex: anchorIdx }
 }
 
 /**
@@ -1189,39 +1233,28 @@ export namespace SessionPrompt {
     const environmentCache = new Map<string, string[]>()
 
     // Context Sharing v3: lightweight parent context for child sessions.
-    // Priority: checkpoint → SharedContext snapshot → last 10 rounds.
+    // Priority: parent stream-anchor slice → SharedContext snapshot → last 10 rounds.
     // Subagents always receive a task instruction, so parent context is
     // supplementary — full history is wasteful and risks overflow.
     const PARENT_CONTEXT_MAX_ROUNDS = 10
     let parentMessagePrefix: MessageV2.WithParts[] | undefined
     let parentContextSource: "checkpoint" | "shared_context" | "recent_history" | "none" = "none"
     if (session.parentID) {
-      // Priority 1: checkpoint-based reduction (~4K tokens)
-      const checkpoint = await SessionCompaction.loadRebindCheckpoint(session.parentID)
-      if (checkpoint) {
-        const parentFiltered = await MessageV2.filterCompacted(MessageV2.stream(session.parentID))
-        const parentSession = await Session.get(session.parentID).catch(() => undefined)
-        const exec = parentSession?.execution
-        const stubModel = {
-          id: exec?.modelID ?? "unknown",
-          providerId: exec?.providerId ?? "unknown",
-        } as Provider.Model
-        const result = SessionCompaction.applyRebindCheckpoint({
-          sessionID: session.parentID,
-          checkpoint,
-          messages: parentFiltered.messages,
-          model: stubModel,
+      // Priority 1 (Phase 13.2): scan parent's filtered stream for the most
+      // recent compaction anchor; slice from there onward as parent context.
+      // The anchor message itself contains the compacted summary text — no
+      // disk file involved. Replaces legacy RebindCheckpoint-based reduction.
+      const parentFiltered = await MessageV2.filterCompacted(MessageV2.stream(session.parentID))
+      const parentRebind = applyStreamAnchorRebind(parentFiltered.messages)
+      if (parentRebind.applied) {
+        parentMessagePrefix = parentRebind.messages
+        parentContextSource = "checkpoint"
+        log.info("context sharing: parent stream-anchor applied", {
+          sessionID,
+          parentID: session.parentID,
+          fullCount: parentFiltered.messages.length,
+          reducedCount: parentMessagePrefix.length,
         })
-        if (result.applied) {
-          parentMessagePrefix = result.messages
-          parentContextSource = "checkpoint"
-          log.info("context sharing: checkpoint applied", {
-            sessionID,
-            parentID: session.parentID,
-            fullCount: parentFiltered.messages.length,
-            reducedCount: parentMessagePrefix.length,
-          })
-        }
       }
 
       // Priority 2: SharedContext snapshot (structured summary, no message history)
@@ -1345,11 +1378,25 @@ export namespace SessionPrompt {
         })
         const model = await Provider.getModel(nextProvider, options.incomingModel.modelID).catch(() => undefined)
         if (model) {
-          // Resolution chain: SharedContext (in-memory) → rebind checkpoint (disk) → minimal stub.
-          // LLM compaction is NOT safe because old provider's tool call history is incompatible.
-          const snap =
-            (await SharedContext.snapshot(sessionID)) ??
-            (await SessionCompaction.loadRebindCheckpoint(sessionID))?.snapshot
+          // Phase 13.2: resolution chain is now SharedContext (in-memory) →
+          // most recent stream anchor's text → minimal stub. The disk-file
+          // checkpoint path is gone; the anchor message in the stream
+          // already carries the same content.
+          // LLM compaction is NOT safe because old provider's tool call
+          // history is incompatible.
+          let snap = await SharedContext.snapshot(sessionID).catch(() => undefined)
+          if (!snap) {
+            const filtered = await MessageV2.filterCompacted(MessageV2.stream(sessionID))
+            const anchorIdx = findMostRecentAnchorIndex(filtered.messages)
+            if (anchorIdx !== -1) {
+              const anchor = filtered.messages[anchorIdx]
+              snap = anchor.parts
+                .filter((p): p is MessageV2.TextPart => p.type === "text")
+                .map((p) => p.text)
+                .join("\n")
+                .trim() || undefined
+            }
+          }
           await Memory.markCompacted(sessionID, { round: 1 }).catch(() => {})
           await SessionCompaction.compactWithSharedContext({
             sessionID,
@@ -1504,77 +1551,50 @@ export namespace SessionPrompt {
       })
 
       if (step === 1 && !session.parentID) {
+        // Phase 13.2: rebind recovery via stream-anchor scan only. The
+        // messages stream is the single source of truth — no disk
+        // checkpoint file. The anchor message itself contains the compacted
+        // summary text; slice from there onward to drop pre-anchor history
+        // that the resumed session no longer needs as live context.
         try {
-          const checkpoint = await SessionCompaction.loadRebindCheckpoint(sessionID)
-          if (checkpoint) {
-            const boundaryIndex = msgs.findIndex((message) => message.info.id === checkpoint.lastMessageId)
-            const postBoundary = boundaryIndex === -1 ? [] : msgs.slice(boundaryIndex + 1)
-            debugCheckpoint("prompt", "loop:rebind_checkpoint_loaded", {
+          const before = msgs.length
+          const result = applyStreamAnchorRebind(msgs)
+          if (result.applied) {
+            msgs = result.messages
+            // Refresh lastFinished.tokens.input so the state-driven
+            // evaluator below sees the RECONSTRUCTED prompt size, not the
+            // pre-rebind assistant message's stale `tokens.input`.
+            if (lastFinished) {
+              const reconstructedTokens = estimateMsgsTokenCount(msgs)
+              lastFinished = {
+                ...lastFinished,
+                tokens: { ...lastFinished.tokens, input: reconstructedTokens },
+              }
+            }
+            debugCheckpoint("prompt", "loop:rebind_stream_anchor_applied", {
               sessionID,
               step,
-              boundaryId: checkpoint.lastMessageId,
-              boundaryFound: boundaryIndex !== -1,
-              postBoundaryCount: postBoundary.length,
-              postBoundaryFirstId: postBoundary[0]?.info.id,
-              postBoundaryLastId: postBoundary.at(-1)?.info.id,
+              anchorMessageId: msgs[0]?.info.id,
+              messagesBefore: before,
+              messagesAfter: msgs.length,
+              reconstructedTokens: lastFinished?.tokens?.input,
             })
-            const applied = SessionCompaction.applyRebindCheckpoint({
+            log.info("rebind from stream anchor", {
               sessionID,
-              checkpoint,
-              messages: msgs,
-              model,
+              anchorMessageId: msgs[0]?.info.id,
+              messageCount: msgs.length,
+              reconstructedTokens: lastFinished?.tokens?.input,
             })
-            const skipReason = "reason" in applied ? applied.reason : undefined
-            if (!applied.applied) {
-              debugCheckpoint("prompt", "loop:rebind_checkpoint_skipped", {
-                sessionID,
-                step,
-                reason: skipReason,
-                boundaryId: checkpoint.lastMessageId,
-                postBoundaryCount: postBoundary.length,
-              })
-              log.warn("rebind checkpoint skipped", {
-                sessionID,
-                reason: skipReason,
-                boundaryId: checkpoint.lastMessageId,
-              })
-            } else {
-              msgs = applied.messages
-              // Refresh lastFinished.tokens.input so the state-driven evaluator
-              // below sees the RECONSTRUCTED prompt size, not the pre-rebind
-              // assistant message's stale `tokens.input`. Without this, an
-              // already-massive resumed session reports the OLD turn's tokens
-              // and isOverflow misses, so compaction never re-fires on the
-              // resumed (still-overflowing) tail.
-              if (lastFinished) {
-                const reconstructedTokens = estimateMsgsTokenCount(msgs)
-                lastFinished = {
-                  ...lastFinished,
-                  tokens: {
-                    ...lastFinished.tokens,
-                    input: reconstructedTokens,
-                  },
-                }
-              }
-              // Checkpoint is persistent — new compactions overwrite it, not consumed on read.
-              debugCheckpoint("prompt", "loop:rebind_checkpoint_applied", {
-                sessionID,
-                step,
-                boundaryId: checkpoint.lastMessageId,
-                messageCount: msgs.length,
-                postBoundaryCount: postBoundary.length,
-                reconstructedTokens: lastFinished?.tokens?.input,
-              })
-              log.info("rebind checkpoint applied", {
-                sessionID,
-                boundaryId: checkpoint.lastMessageId,
-                messageCount: msgs.length,
-                reconstructedTokens: lastFinished?.tokens?.input,
-              })
-            }
+          } else if (result.reason === "unsafe_boundary") {
+            log.warn("rebind skipped: unsafe boundary at first post-anchor message", {
+              sessionID,
+              anchorIndex: result.anchorIndex,
+            })
           }
+          // result.reason === "no_anchor" is the common case for fresh sessions
+          // — silent no-op.
         } catch (error) {
-          log.warn("failed to apply rebind checkpoint", { sessionID, error: String(error) })
+          log.warn("failed to apply stream-anchor rebind", { sessionID, error: String(error) })
         }
       }
       const task = tasks.pop()
@@ -1825,28 +1845,10 @@ export namespace SessionPrompt {
       // "stop", the runloop simply continues without compacting this round.
       // Next iteration re-evaluates from observable state.
 
-      // Rebind checkpoint: quietly snapshot context for restart recovery.
-      // Kept here (not part of compaction kind chain): produces a disk
-      // checkpoint file used at startup recovery, not a live anchor.
-      // Phase 8 (DD-8) will collapse this into the unified Memory artifact.
-      if (
-        lastFinished &&
-        lastFinished.summary !== true &&
-        !session.parentID &&
-        SessionCompaction.shouldRebindBudgetCompact({ tokens: lastFinished.tokens, sessionID, currentRound: step })
-      ) {
-        debugCheckpoint("prompt", "loop:rebind_checkpoint_save_scheduled", {
-          sessionID,
-          step,
-          boundaryId: msgs.at(-1)?.info.id,
-        })
-        // Phase 8 / DD-8: lastMessageId no longer required. Recovery scans
-        // the message stream for the most recent summary anchor.
-        SessionCompaction.saveRebindCheckpoint({
-          sessionID,
-          currentRound: step,
-        }).catch(() => {})
-      }
+      // Phase 13.2: rebind disk-file checkpoint write removed. The anchor
+      // message itself (written by compactWithSharedContext when compaction
+      // succeeds) is the durable record. Stream-anchor scan at restart
+      // recovers the same context without a separate file.
 
       // normal processing
       const userMsg = msgs.findLast((m) => m.info.role === "user")
