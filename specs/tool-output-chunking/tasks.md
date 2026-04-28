@@ -19,14 +19,14 @@ Carried over from refactor-2026-04-29 prior designed-state spec.
 - [x] 1.6 Bound `glob.ts`: cap match list; hint suggests narrower pattern
 - [x] 1.7 Bound `grep.ts`: cap match list; hint suggests narrower pattern
 - [x] 1.8 Bound `bash.ts`: cap stdout/stderr by line+token; hint suggests redirect-to-file; respect `tool.outputBudget.bashOverride`
-- [ ] 1.9 Bound `webfetch.ts`: cap response body by token; hint includes byte-range header example
-- [ ] 1.10 Bound `apply_patch.ts`: bound patch summary (not patch input); hint references batch-mode
-- [ ] 1.11 Bound `task.ts`: bound child final assistant message; hint references `system-manager_read_subsession msgIdx_from`; respect `tool.outputBudget.taskOverride`
-- [ ] 1.12 Bound `system-manager_read_subsession.ts`: honour outputBudget by reducing default page size
-- [ ] 1.13 Add per-tool fixtures to `test-vectors.json` for TV-1, TV-2 (read byte-identity baseline + oversize slice)
-- [ ] 1.14 Run `bun test` against all bounded tools with both natural-fit and oversize fixtures
-- [ ] 1.15 Update `specs/architecture.md` Tool Subsystem section with self-bounding contract
-- [ ] 1.16 Phase 1 summary: write `docs/events/event_<YYYYMMDD>_layer2-self-bounding.md`
+- [x] 1.9 Bound `webfetch.ts`: cap response body by token; hint includes byte-range header example
+- [x] 1.10 Bound `apply_patch.ts`: bound patch summary (not patch input); hint references batch-mode
+- [x] 1.11 Bound `task.ts`: bound child final assistant message; hint references `system-manager_read_subsession msgIdx_from`; respect `tool.outputBudget.taskOverride`
+- [x] 1.12 Bound `system-manager_read_subsession.ts`: honour outputBudget by reducing default page size
+- [x] 1.13 Add per-tool fixtures to `test-vectors.json` for TV-1, TV-2 (read byte-identity baseline + oversize slice); also added TV-21/TV-22 covering all 7 bounded tools generically
+- [x] 1.14 Run `bun test` against all bounded tools with both natural-fit and oversize fixtures
+- [x] 1.15 Update `specs/architecture.md` Tool Subsystem section with self-bounding contract
+- [x] 1.16 Phase 1 summary: write `docs/events/event_<YYYYMMDD>_layer2-self-bounding.md`
 
 ## 2. Phase 2 — Layer 1 hybrid-llm + retire kind chain (highest risk)
 

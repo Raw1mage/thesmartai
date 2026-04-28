@@ -4,16 +4,18 @@
       "verifies": ["R-1"],
       "category": "layer2-bounding",
       "tool": "read",
+      "implementedBy": "packages/opencode/src/tool/read.ts (Phase 1.5)",
       "given": {
         "model.contextWindow": 200000,
-        "tweaks.tool.outputBudget.contextRatio": 0.30,
-        "tweaks.tool.outputBudget.absoluteCap": 50000,
+        "tweaks.tool_output_budget_context_ratio": 0.30,
+        "tweaks.tool_output_budget_absolute_cap": 50000,
         "file": {"path": "fixtures/minified-bundle.js", "approxTokens": 120000}
       },
       "when": "ai.call(read, {path: 'fixtures/minified-bundle.js'})",
       "then": {
         "result.tokenCount": "<= 50000",
-        "result.endsWith": "[... truncated; call read again with offset=<N> to continue, or limit=<K> for a window]",
+        "result.contains": "Output bounded at ~50000 tokens by Layer 2",
+        "result.contains.next_slice_args": "offset=<N> to read beyond line <N>",
         "result.sliceBoundary": "line"
       },
       "status": "draft"
@@ -23,13 +25,57 @@
       "verifies": ["R-1", "INV-8"],
       "category": "layer2-byte-identity",
       "tool": "read",
+      "implementedBy": "packages/opencode/src/tool/read.ts (Phase 1.5)",
       "given": {
         "model.contextWindow": 200000,
         "file": {"path": "fixtures/small-config.json", "approxTokens": 800}
       },
       "when": "ai.call(read, {path: 'fixtures/small-config.json'})",
       "then": {
-        "result": "byte-equal to pre-Layer2 baseline implementation"
+        "result": "byte-equal to pre-Layer-2 baseline (the Layer 2 token check is skipped because naturalTokens <= budget.tokens)"
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-21",
+      "verifies": ["R-1", "INV-8"],
+      "category": "layer2-coverage",
+      "implementedBy": [
+        "tool/glob.ts (Phase 1.6)",
+        "tool/grep.ts (Phase 1.7)",
+        "tool/bash.ts (Phase 1.8)",
+        "tool/webfetch.ts (Phase 1.9)",
+        "tool/apply_patch.ts (Phase 1.10)",
+        "tool/task.ts (Phase 1.11)",
+        "mcp/system-manager/src/index.ts read_subsession (Phase 1.12)"
+      ],
+      "given": "for each bounded tool, output naturally fits ToolBudget.resolve(ctx, toolId).tokens",
+      "when": "tool executes",
+      "then": {
+        "INV-8": "result is byte-identical to pre-Layer-2 baseline (the post-hoc token check returns the unmodified output)"
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-22",
+      "verifies": ["R-1", "DD-2"],
+      "category": "layer2-coverage",
+      "implementedBy": [
+        "tool/glob.ts",
+        "tool/grep.ts",
+        "tool/bash.ts",
+        "tool/webfetch.ts",
+        "tool/apply_patch.ts",
+        "tool/task.ts",
+        "mcp/system-manager/src/index.ts read_subsession"
+      ],
+      "given": "for each bounded tool, naturally large output exceeding ToolBudget.resolve(ctx, toolId).tokens",
+      "when": "tool executes",
+      "then": {
+        "result.tokenCount": "<= budget.tokens (with up to ~15% slack from the shrink loop)",
+        "result.contains.layer2Marker": "Layer 2",
+        "result.contains.budgetSource": "one of [ctx, tweaks-default, tweaks-task-override, tweaks-bash-override]",
+        "result.contains.nextSliceArg": "tool-natural pagination arg (offset / pattern / sinceMessageID / Range header etc.)"
       },
       "status": "draft"
     },
