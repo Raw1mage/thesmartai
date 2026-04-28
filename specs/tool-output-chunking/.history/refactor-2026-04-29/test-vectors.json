@@ -1,0 +1,312 @@
+{
+  "$schema": "https://plan-builder.local/schemas/test-vectors.json",
+  "title": "Test vectors — tool-output-chunking",
+  "vectors": [
+    {
+      "id": "TV-R1-budget-default-272k",
+      "requirement": "R-1",
+      "scenario": "default budget is derived from active model context",
+      "input": {
+        "model": { "limit": { "context": 272000 } },
+        "tweaks": {}
+      },
+      "expected": { "ctx.outputBudget": 50000 },
+      "note": "min(round(272000 * 0.3), 50000) = min(81600, 50000) = 50000"
+    },
+    {
+      "id": "TV-R1-budget-default-32k",
+      "requirement": "R-1",
+      "scenario": "small-context model gets ratio-bound budget",
+      "input": {
+        "model": { "limit": { "context": 32000 } },
+        "tweaks": {}
+      },
+      "expected": { "ctx.outputBudget": 9600 },
+      "note": "min(round(32000 * 0.3), 50000) = min(9600, 50000) = 9600"
+    },
+    {
+      "id": "TV-R1-budget-default-1m",
+      "requirement": "R-1",
+      "scenario": "very-large-context model still capped by absolute 50K",
+      "input": {
+        "model": { "limit": { "context": 1000000 } },
+        "tweaks": {}
+      },
+      "expected": { "ctx.outputBudget": 50000 }
+    },
+    {
+      "id": "TV-R1-tweaks-per-tool-override",
+      "requirement": "R-1",
+      "scenario": "tweaks.cfg per-tool override",
+      "input": {
+        "model": { "limit": { "context": 272000 } },
+        "tweaks": {
+          "tool_output_budget_default": 30000,
+          "tool_output_budget.read_subsession": 15000
+        },
+        "toolName": "read_subsession"
+      },
+      "expected": { "ctx.outputBudget": 15000 }
+    },
+    {
+      "id": "TV-R1-tweaks-ratio-form",
+      "requirement": "R-1",
+      "scenario": "ratio-form override resolves against model context",
+      "input": {
+        "model": { "limit": { "context": 200000 } },
+        "tweaks": { "tool_output_budget_default": "0.25" },
+        "toolName": "read"
+      },
+      "expected": { "ctx.outputBudget": 50000 }
+    },
+    {
+      "id": "TV-R2-natural-fits",
+      "requirement": "R-2",
+      "scenario": "natural output fits — pass through unchanged",
+      "input": {
+        "tool": "read",
+        "args": { "filePath": "/tmp/small.txt", "limit": 2000 },
+        "naturalOutput": "first 500 lines of small file...",
+        "naturalTokenEstimate": 8000,
+        "outputBudget": 50000
+      },
+      "expected": {
+        "result.text": "first 500 lines of small file...",
+        "containsTruncationAnchor": false
+      }
+    },
+    {
+      "id": "TV-R2-over-budget-slice",
+      "requirement": "R-2",
+      "scenario": "over-budget — slice on line boundary, append hint",
+      "input": {
+        "tool": "read",
+        "args": { "filePath": "/tmp/large.txt", "limit": 2000 },
+        "fileLines": 8421,
+        "naturalTokenEstimate": 120000,
+        "outputBudget": 50000
+      },
+      "expected": {
+        "result.tokensEstimate": "<=50000",
+        "result.lastLines.containsAnchor": "[Truncated]",
+        "result.lastLines.containsFraction": "lines 1-",
+        "result.lastLines.containsAdjustment": "offset="
+      }
+    },
+    {
+      "id": "TV-R2-over-budget-grep",
+      "requirement": "R-2",
+      "scenario": "grep over-budget cuts on match boundary",
+      "input": {
+        "tool": "grep",
+        "args": { "pattern": "function", "path": "src/" },
+        "totalMatches": 412,
+        "naturalTokenEstimate": 80000,
+        "outputBudget": 50000
+      },
+      "expected": {
+        "result.tokensEstimate": "<=50000",
+        "result.lastLines.containsAnchor": "[Truncated]",
+        "result.lastLines.containsAdjustment": ["Narrow your pattern", "path filter"]
+      }
+    },
+    {
+      "id": "TV-R2-over-budget-subsession",
+      "requirement": "R-2",
+      "scenario": "read_subsession over-budget cuts on message boundary",
+      "input": {
+        "tool": "system-manager_read_subsession",
+        "args": { "sessionID": "ses_abc" },
+        "totalMessages": 423,
+        "naturalTokenEstimate": 170000,
+        "outputBudget": 50000
+      },
+      "expected": {
+        "result.tokensEstimate": "<=50000",
+        "result.lastLines.containsAnchor": "[Truncated]",
+        "result.lastLines.containsAdjustment": "msgIdx_from="
+      }
+    },
+    {
+      "id": "TV-R3-no-wrapper-fields",
+      "requirement": "R-3",
+      "scenario": "tool result schema unchanged across truncation",
+      "input": {
+        "tool": "read",
+        "naturalTokenEstimate": 120000,
+        "outputBudget": 50000
+      },
+      "expected": {
+        "result.shape": "single string under .text",
+        "result.hasField.cursor": false,
+        "result.hasField.hasMore": false,
+        "result.hasField.block": false
+      }
+    },
+    {
+      "id": "TV-R4-chunked-digest-round-boundary",
+      "requirement": "R-4",
+      "scenario": "chunked-digest never splits inside a round",
+      "input": {
+        "messageStream": [
+          { "role": "user", "id": "u1" },
+          { "role": "assistant", "id": "a1", "tool_calls": ["tc1"] },
+          { "role": "tool", "id": "tr1", "for": "tc1" },
+          { "role": "assistant", "id": "a1", "final": true },
+          { "role": "user", "id": "u2" },
+          { "role": "assistant", "id": "a2", "final": true }
+        ]
+      },
+      "expected": {
+        "rounds.count": 2,
+        "rounds[0].userMsg": "u1",
+        "rounds[0].assistantMsgs": ["a1"],
+        "rounds[0].toolMsgs": ["tr1"],
+        "rounds[1].userMsg": "u2",
+        "rounds[1].assistantMsgs": ["a2"]
+      }
+    },
+    {
+      "id": "TV-R4-chunked-digest-excludes-trailing-unfinished",
+      "requirement": "R-4",
+      "scenario": "chunked-digest excludes trailing round with unresolved tool_calls",
+      "input": {
+        "messageStream": [
+          { "role": "user", "id": "u1" },
+          { "role": "assistant", "id": "a1", "final": true },
+          { "role": "user", "id": "u2" },
+          { "role": "assistant", "id": "a2", "tool_calls": ["tc1"] }
+        ]
+      },
+      "expected": {
+        "rounds.count": 1,
+        "excludedSuffix.userMsg": "u2"
+      }
+    },
+    {
+      "id": "TV-R4-framing-tool-call-retry",
+      "requirement": "R-4",
+      "scenario": "tool_call response triggers stricter framing retry",
+      "input": {
+        "chunkResponses": [
+          { "tool_calls": [{ "name": "read" }] },
+          { "tool_calls": [{ "name": "grep" }] },
+          { "digest": { "entities": [], "decisions": [], "file_refs": [], "open_threads": [] } }
+        ]
+      },
+      "expected": {
+        "framingVariantSequence": ["standard", "stricter", "stricter"],
+        "result": "success",
+        "retryCount": 2
+      }
+    },
+    {
+      "id": "TV-R4-framing-tool-call-abort",
+      "requirement": "R-4",
+      "scenario": "3 consecutive tool_call responses raise E_DIGEST_TOOL_CALL",
+      "input": {
+        "chunkResponses": [
+          { "tool_calls": [{ "name": "read" }] },
+          { "tool_calls": [{ "name": "read" }] },
+          { "tool_calls": [{ "name": "read" }] }
+        ]
+      },
+      "expected": {
+        "errorCode": "E_DIGEST_TOOL_CALL"
+      }
+    },
+    {
+      "id": "TV-R5-chain-cost-monotonic",
+      "requirement": "R-5",
+      "scenario": "chunked-digest reached only after every cheaper kind fails",
+      "input": {
+        "kindResults": {
+          "narrative": { "ok": true, "verifiedTokens": 290000 },
+          "replay-tail": { "ok": true, "verifiedTokens": 285000 },
+          "low-cost-server": { "ok": true, "verifiedTokens": 280000 },
+          "llm-agent": { "ok": true, "verifiedTokens": 275000 }
+        },
+        "modelBudget": 272000
+      },
+      "expected": {
+        "kindsAttempted": ["narrative", "replay-tail", "low-cost-server", "llm-agent", "chunked-digest"],
+        "terminalKind": "chunked-digest"
+      }
+    },
+    {
+      "id": "TV-R6-verify-escalates",
+      "requirement": "R-6",
+      "scenario": "narrative succeeds but verify reports too-large → escalate",
+      "input": {
+        "kind": "narrative",
+        "kindResult": "ok",
+        "postCompactionEstimate": 290000,
+        "modelBudget": 272000
+      },
+      "expected": {
+        "verifyVerdict": "still-too-large",
+        "nextAction": "escalate to replay-tail"
+      }
+    },
+    {
+      "id": "TV-R6-terminal-unrecoverable",
+      "requirement": "R-6",
+      "scenario": "all 5 kinds fail verify → E_OVERFLOW_UNRECOVERABLE",
+      "input": {
+        "verifyResults": {
+          "narrative": "still-too-large",
+          "replay-tail": "still-too-large",
+          "low-cost-server": "still-too-large",
+          "llm-agent": "still-too-large",
+          "chunked-digest": "still-too-large"
+        }
+      },
+      "expected": {
+        "errorCode": "E_OVERFLOW_UNRECOVERABLE",
+        "lastTriedKind": "chunked-digest"
+      }
+    },
+    {
+      "id": "TV-R6-no-infinite-verify-loop",
+      "requirement": "R-6",
+      "scenario": "verify runs at most once per kind invocation",
+      "input": {
+        "kind": "narrative",
+        "kindResult": "ok",
+        "postCompactionEstimate": 290000
+      },
+      "expected": {
+        "verifyCallCount": 1,
+        "kindReinvokeCount": 0
+      }
+    },
+    {
+      "id": "TV-R7-tweaks-defaults",
+      "requirement": "R-7",
+      "scenario": "missing tweaks.cfg keys produce documented defaults",
+      "input": { "tweaks": {} },
+      "expected": {
+        "tool_output_budget_default": "computed: min(C*0.3, 50000)",
+        "chunked_digest_chunk_target_tokens": 40000,
+        "chunked_digest_max_chunks": 8,
+        "verify_after_compact": true
+      }
+    },
+    {
+      "id": "TV-R7-ratio-and-absolute-coexist",
+      "requirement": "R-7",
+      "scenario": "ratio + absolute keys parse via shared parser",
+      "input": {
+        "tweaks": {
+          "tool_output_budget_default": "0.3",
+          "chunked_digest_chunk_target_tokens": 40000
+        },
+        "model": { "limit": { "context": 200000 } }
+      },
+      "expected": {
+        "tool_output_budget_default.resolved": 50000,
+        "chunked_digest_chunk_target_tokens.resolved": 40000
+      }
+    }
+  ]
+}

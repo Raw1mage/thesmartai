@@ -1,0 +1,284 @@
+[
+  {
+    "id": "T0",
+    "name": "ToolDispatch",
+    "moduleRef": "A1",
+    "type": "initial",
+    "description": "Tool framework receives a tool call and populates ctx.outputBudget",
+    "actions": [
+      "Read active model.limit.context",
+      "Read tweaks.cfg tool_output_budget_default and per-tool override",
+      "Compute ctx.outputBudget = parsed override or min(round(C*0.3), 50_000)",
+      "Hand off to tool implementation"
+    ]
+  },
+  {
+    "id": "T1",
+    "name": "ProduceNaturalOutput",
+    "moduleRef": "A11",
+    "description": "Tool runs its read/exec/fetch and produces the would-be output string",
+    "actions": [
+      "Run primary tool work",
+      "Estimate token count of natural output via estimateTokenCount"
+    ]
+  },
+  {
+    "id": "T2",
+    "name": "DecideBudgetVerdict",
+    "moduleRef": "A12",
+    "description": "Compare natural-output token estimate against ctx.outputBudget",
+    "transitions": [
+      { "guard": "estimate <= budget", "next": "T3" },
+      { "guard": "estimate > budget AND tool is sliceable", "next": "T4" },
+      { "guard": "estimate > budget AND tool refuses to slice (apply_patch)", "next": "T7" }
+    ]
+  },
+  {
+    "id": "T3",
+    "name": "PassThrough",
+    "moduleRef": "A12",
+    "description": "Output fits; return verbatim, no hint appended",
+    "actions": [
+      "Return natural output string unchanged"
+    ],
+    "next": "TX_END_TOOL"
+  },
+  {
+    "id": "T4",
+    "name": "SliceOnSemanticBoundary",
+    "moduleRef": "A13",
+    "description": "Cut on tool-natural unit (line/match/message/paragraph)",
+    "actions": [
+      "Choose semantic unit per tool (read=line, grep=match, read_subsession=message, etc.)",
+      "Greedily accumulate units until token budget reached",
+      "Stop on last full unit that fits"
+    ]
+  },
+  {
+    "id": "T5",
+    "name": "FormatTruncationHint",
+    "moduleRef": "A14",
+    "description": "Append plain-language hint with literal anchor token",
+    "actions": [
+      "Compute fraction (e.g. lines 1-1500 of 8421)",
+      "Compose exact arg adjustment text (offset=1500 / msgIdx_from=200 / narrow pattern)",
+      "Append [Truncated] anchor + fraction + adjustment as trailing 1-3 lines"
+    ],
+    "next": "TX_END_TOOL"
+  },
+  {
+    "id": "T7",
+    "name": "RaiseToolError",
+    "moduleRef": "A13",
+    "description": "Tool cannot produce a useful slice (e.g. apply_patch diff is atomic)",
+    "actions": [
+      "Raise structured error with tool name, requested size, budget"
+    ],
+    "next": "TX_END_TOOL"
+  },
+  {
+    "id": "TX_END_TOOL",
+    "name": "ToolReturn",
+    "moduleRef": "A1",
+    "type": "final",
+    "description": "Tool result string forwarded to runtime; runloop appends to message stream"
+  },
+  {
+    "id": "C0",
+    "name": "CompactionEntry",
+    "moduleRef": "A2",
+    "type": "initial",
+    "description": "SessionCompaction.run({sessionID, observed, step}) called by runloop",
+    "actions": [
+      "Bind KIND_CHAIN = [narrative, replay-tail, low-cost-server, llm-agent, chunked-digest]",
+      "Set kindIndex = 0"
+    ],
+    "next": "C1"
+  },
+  {
+    "id": "C1",
+    "name": "PickNextKind",
+    "moduleRef": "A21",
+    "description": "Walk to the next kind in KIND_CHAIN",
+    "transitions": [
+      { "guard": "kindIndex < KIND_CHAIN.length", "next": "C2" },
+      { "guard": "kindIndex >= KIND_CHAIN.length", "next": "C9" }
+    ]
+  },
+  {
+    "id": "C2",
+    "name": "AttemptKind",
+    "moduleRef": "A21",
+    "description": "Invoke the kind's executor; for chunked-digest enter dedicated subgrafcet",
+    "transitions": [
+      { "guard": "kind == chunked-digest", "next": "D0" },
+      { "guard": "kind != chunked-digest AND executor returned summary", "next": "C3" },
+      { "guard": "executor failed structurally", "next": "C8" }
+    ]
+  },
+  {
+    "id": "C3",
+    "name": "WriteAnchorFromKind",
+    "moduleRef": "A21",
+    "description": "Append assistant message with summary===true holding the digest",
+    "actions": [
+      "Append Anchor message to stream",
+      "Record kind metadata"
+    ],
+    "next": "C4"
+  },
+  {
+    "id": "C4",
+    "name": "VerifyAfterCompact",
+    "moduleRef": "A22",
+    "description": "Re-estimate prompt size against per-request budget",
+    "actions": [
+      "Call estimateMsgsTokenCount(currentMsgs)",
+      "Compare against model per-request budget"
+    ],
+    "transitions": [
+      { "guard": "estimate <= budget", "next": "C5" },
+      { "guard": "estimate > budget AND verify_after_compact enabled", "next": "C8" },
+      { "guard": "estimate > budget AND verify_after_compact disabled", "next": "C5" }
+    ]
+  },
+  {
+    "id": "C5",
+    "name": "FinaliseSuccess",
+    "moduleRef": "A2",
+    "type": "final",
+    "description": "Compaction succeeded and verified; runloop continues",
+    "actions": [
+      "Emit telemetry: compaction.succeeded kind=K verified=true",
+      "Return success to runloop"
+    ]
+  },
+  {
+    "id": "C8",
+    "name": "EscalateToNextKind",
+    "moduleRef": "A21",
+    "description": "Current kind failed verify-after-compact or structurally; advance",
+    "actions": [
+      "Emit telemetry: compaction.kind_failed kind=K reason=verified-too-large|structural",
+      "kindIndex += 1"
+    ],
+    "next": "C1"
+  },
+  {
+    "id": "C9",
+    "name": "TerminalUnrecoverable",
+    "moduleRef": "A24",
+    "type": "final",
+    "description": "All kinds exhausted; raise structured error to runloop",
+    "actions": [
+      "Raise E_OVERFLOW_UNRECOVERABLE",
+      "Include hint: an individual round exceeds digest per-chunk floor"
+    ]
+  },
+  {
+    "id": "D0",
+    "name": "ChunkedDigestStart",
+    "moduleRef": "A23",
+    "description": "Enter chunked-digest path",
+    "actions": [
+      "Identify system prompt and trailing unfinished round (excluded)",
+      "Identify closed rounds (user msg + assistant with all tool_calls resolved)"
+    ],
+    "next": "D1"
+  },
+  {
+    "id": "D1",
+    "name": "SplitIntoChunks",
+    "moduleRef": "A231",
+    "description": "Group rounds into chunks of ~chunked_digest_chunk_target_tokens",
+    "actions": [
+      "Walk rounds, accumulate until chunk ~= target tokens, emit chunk, repeat",
+      "Compute N = number of chunks"
+    ],
+    "transitions": [
+      { "guard": "N <= chunked_digest_max_chunks", "next": "D2" },
+      { "guard": "N > chunked_digest_max_chunks", "next": "D9" }
+    ]
+  },
+  {
+    "id": "D2",
+    "name": "DigestChunkLoop",
+    "moduleRef": "A232",
+    "description": "For k = 1..N, request digest of chunk k under framing prompt",
+    "actions": [
+      "Build [digest_so_far, chunk_k, framing_prompt]",
+      "Call Digesting LLM",
+      "Set retryCount = 0"
+    ],
+    "next": "D3"
+  },
+  {
+    "id": "D3",
+    "name": "ValidateDigestResponse",
+    "moduleRef": "A232",
+    "description": "Check response shape and absence of tool_calls",
+    "transitions": [
+      { "guard": "response is valid JSON digest, no tool_calls", "next": "D4" },
+      { "guard": "response contains tool_call AND retryCount < 2", "next": "D31" },
+      { "guard": "response contains tool_call AND retryCount >= 2", "next": "D8" }
+    ]
+  },
+  {
+    "id": "D31",
+    "name": "RetryWithStricterFraming",
+    "moduleRef": "A232",
+    "description": "Re-issue chunk k with stricter framing prompt",
+    "actions": [
+      "retryCount += 1",
+      "Build with stricter framing variant"
+    ],
+    "next": "D3"
+  },
+  {
+    "id": "D4",
+    "name": "MergeDigest",
+    "moduleRef": "A232",
+    "description": "Merge digest_chunk_k into digest_so_far",
+    "actions": [
+      "digest_so_far := merge(digest_so_far, digest_chunk_k)",
+      "k += 1"
+    ],
+    "transitions": [
+      { "guard": "k <= N", "next": "D2" },
+      { "guard": "k > N", "next": "D5" }
+    ]
+  },
+  {
+    "id": "D5",
+    "name": "FinaliseDigestAnchor",
+    "moduleRef": "A233",
+    "description": "Write merged digest as Anchor; re-attach trailing unfinished round",
+    "actions": [
+      "Append assistant message with summary===true holding merged digest",
+      "Re-append original triggering user request after Anchor"
+    ],
+    "next": "C4"
+  },
+  {
+    "id": "D8",
+    "name": "RaiseDigestToolCallError",
+    "moduleRef": "A23",
+    "type": "final",
+    "description": "Digesting LLM persistently emitted tool_calls despite framing",
+    "actions": [
+      "Emit telemetry: chunked_digest.tool_call_failure",
+      "Raise E_DIGEST_TOOL_CALL"
+    ]
+  },
+  {
+    "id": "D9",
+    "name": "RaiseDigestTooLarge",
+    "moduleRef": "A23",
+    "type": "final",
+    "description": "Round set exceeds chunked_digest_max_chunks even at target chunk size",
+    "actions": [
+      "Emit telemetry: chunked_digest.too_large",
+      "Raise E_DIGEST_TOO_LARGE"
+    ]
+  }
+]

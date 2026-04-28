@@ -1,0 +1,126 @@
+[
+  {
+    "id": "P1",
+    "name": "Read large file — happy slice path",
+    "trigger": "AI calls read on an 8421-line file with default args",
+    "preconditions": [
+      "Active model.limit.context = 272_000",
+      "ctx.outputBudget computed = 50_000 (DD-2 cap)"
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "Runloop", "to": "ToolFramework", "componentRef": "C1", "description": "dispatch tool call read(file=large.txt)" },
+      { "id": "MSG2", "from": "ToolFramework", "to": "TweaksConfigParser", "componentRef": "C3", "description": "resolve tool_output_budget for read" },
+      { "id": "MSG3", "from": "TweaksConfigParser", "to": "ToolFramework", "componentRef": "C3", "description": "returns 50_000 (default cap)" },
+      { "id": "MSG4", "from": "ToolFramework", "to": "VariableSizeTool[read]", "componentRef": "C2", "description": "invoke with ctx.outputBudget=50_000" },
+      { "id": "MSG5", "from": "VariableSizeTool[read]", "to": "TokenEstimator", "componentRef": "C8", "description": "estimate full-file token count" },
+      { "id": "MSG6", "from": "TokenEstimator", "to": "VariableSizeTool[read]", "componentRef": "C8", "description": "returns 120_000 (over budget)" },
+      { "id": "MSG7", "from": "VariableSizeTool[read]", "to": "VariableSizeTool[read]", "componentRef": "C2", "description": "slice to lines 1-1500 (greedy line-boundary fit)" },
+      { "id": "MSG8", "from": "VariableSizeTool[read]", "to": "VariableSizeTool[read]", "componentRef": "C2", "description": "append [Truncated] hint with offset=1500 instruction" },
+      { "id": "MSG9", "from": "VariableSizeTool[read]", "to": "Runloop", "componentRef": "C2", "description": "return result string (slice + hint)" }
+    ],
+    "postconditions": [
+      "Result string ≤ ctx.outputBudget tokens",
+      "Trailing line contains literal '[Truncated]' anchor token",
+      "AI sees offset=1500 instruction and may re-call with offset=1500 to continue"
+    ]
+  },
+  {
+    "id": "P2",
+    "name": "Compaction overflow — narrative kind succeeds and verifies",
+    "trigger": "Runloop state-driven evaluator detects tokens.total ≥ 90% of model context",
+    "preconditions": [
+      "Memory.turnSummaries non-empty",
+      "Narrative renderForLLM produces fitting summary"
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "Runloop", "to": "SessionCompactionRun", "componentRef": "C4", "description": "run({observed: overflow, step, sessionID})" },
+      { "id": "MSG2", "from": "SessionCompactionRun", "to": "SessionCompactionRun", "componentRef": "C4", "description": "kindIndex=0 (narrative); call narrative handler" },
+      { "id": "MSG3", "from": "SessionCompactionRun", "to": "message-stream", "componentRef": "C4", "description": "append Anchor with narrative summary" },
+      { "id": "MSG4", "from": "SessionCompactionRun", "to": "VerifyAfterCompact", "componentRef": "C7", "description": "verify resulting prompt size" },
+      { "id": "MSG5", "from": "VerifyAfterCompact", "to": "TokenEstimator", "componentRef": "C8", "description": "estimateMsgsTokenCount(currentMsgs)" },
+      { "id": "MSG6", "from": "TokenEstimator", "to": "VerifyAfterCompact", "componentRef": "C8", "description": "returns 180_000 (under budget)" },
+      { "id": "MSG7", "from": "VerifyAfterCompact", "to": "SessionCompactionRun", "componentRef": "C7", "description": "verified-success" },
+      { "id": "MSG8", "from": "SessionCompactionRun", "to": "Runloop", "componentRef": "C4", "description": "return success" }
+    ],
+    "postconditions": [
+      "Single Anchor written by narrative kind",
+      "Telemetry records compaction.succeeded kind=narrative verified=true",
+      "Runloop continues with next iteration"
+    ]
+  },
+  {
+    "id": "P3",
+    "name": "Verify-after-compact catches still-too-large; escalates through chain",
+    "trigger": "Narrative kind succeeds but resulting prompt still over budget (large unfinished tail)",
+    "preconditions": [
+      "Multiple oversized tool outputs accumulated despite self-bounding",
+      "Narrative summary produces small Anchor but tool outputs remain in tail"
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "Runloop", "to": "SessionCompactionRun", "componentRef": "C4", "description": "run({observed: overflow, ...})" },
+      { "id": "MSG2", "from": "SessionCompactionRun", "to": "SessionCompactionRun", "componentRef": "C4", "description": "narrative kind: write Anchor, succeed structurally" },
+      { "id": "MSG3", "from": "SessionCompactionRun", "to": "VerifyAfterCompact", "componentRef": "C7", "description": "verify resulting prompt" },
+      { "id": "MSG4", "from": "VerifyAfterCompact", "to": "SessionCompactionRun", "componentRef": "C7", "description": "still-too-large signal" },
+      { "id": "MSG5", "from": "SessionCompactionRun", "to": "SessionCompactionRun", "componentRef": "C4", "description": "escalate: kindIndex=1 (replay-tail), then 2 (low-cost-server), then 3 (llm-agent) — each fails verify" },
+      { "id": "MSG6", "from": "SessionCompactionRun", "to": "ChunkedDigestKind", "componentRef": "C5", "description": "tryChunkedDigest" },
+      { "id": "MSG7", "from": "ChunkedDigestKind", "to": "ChunkedDigestKind", "componentRef": "C5", "description": "split into 4 chunks at round boundaries" },
+      { "id": "MSG8", "from": "ChunkedDigestKind", "to": "FramingPromptSource", "componentRef": "C6", "description": "load standard framing prompt" },
+      { "id": "MSG9", "from": "ChunkedDigestKind", "to": "external-llm", "componentRef": "C5", "description": "issue chunk 1 with framing" },
+      { "id": "MSG10", "from": "external-llm", "to": "ChunkedDigestKind", "componentRef": "C5", "description": "JSON digest response (no tool_calls)" },
+      { "id": "MSG11", "from": "ChunkedDigestKind", "to": "ChunkedDigestKind", "componentRef": "C5", "description": "merge into digest_so_far; iterate chunks 2..4" },
+      { "id": "MSG12", "from": "ChunkedDigestKind", "to": "message-stream", "componentRef": "C5", "description": "write merged digest as Anchor; re-attach trigger user request" },
+      { "id": "MSG13", "from": "ChunkedDigestKind", "to": "SessionCompactionRun", "componentRef": "C5", "description": "return success" },
+      { "id": "MSG14", "from": "SessionCompactionRun", "to": "VerifyAfterCompact", "componentRef": "C7", "description": "verify final result" },
+      { "id": "MSG15", "from": "VerifyAfterCompact", "to": "SessionCompactionRun", "componentRef": "C7", "description": "verified-success" },
+      { "id": "MSG16", "from": "SessionCompactionRun", "to": "Runloop", "componentRef": "C4", "description": "return success" }
+    ],
+    "postconditions": [
+      "Telemetry records all 5 kinds tried; first 4 emitted compaction.kind_failed reason=verified-too-large; chunked-digest emitted compaction.succeeded",
+      "Single Anchor written by chunked-digest",
+      "Runloop continues with bounded prompt"
+    ]
+  },
+  {
+    "id": "P4",
+    "name": "Chunked-digest tool_call retry then abort",
+    "trigger": "Digesting LLM emits tool_call despite framing prompt",
+    "preconditions": [
+      "Chunk k issued with standard framing"
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "ChunkedDigestKind", "to": "external-llm", "componentRef": "C5", "description": "issue chunk k with standard framing" },
+      { "id": "MSG2", "from": "external-llm", "to": "ChunkedDigestKind", "componentRef": "C5", "description": "response contains tool_call" },
+      { "id": "MSG3", "from": "ChunkedDigestKind", "to": "FramingPromptSource", "componentRef": "C6", "description": "load stricter variant" },
+      { "id": "MSG4", "from": "ChunkedDigestKind", "to": "external-llm", "componentRef": "C5", "description": "retry chunk k (retry=1)" },
+      { "id": "MSG5", "from": "external-llm", "to": "ChunkedDigestKind", "componentRef": "C5", "description": "still tool_call" },
+      { "id": "MSG6", "from": "ChunkedDigestKind", "to": "external-llm", "componentRef": "C5", "description": "retry chunk k (retry=2)" },
+      { "id": "MSG7", "from": "external-llm", "to": "ChunkedDigestKind", "componentRef": "C5", "description": "still tool_call" },
+      { "id": "MSG8", "from": "ChunkedDigestKind", "to": "SessionCompactionRun", "componentRef": "C5", "description": "raise E_DIGEST_TOOL_CALL" },
+      { "id": "MSG9", "from": "SessionCompactionRun", "to": "Runloop", "componentRef": "C4", "description": "raise E_OVERFLOW_UNRECOVERABLE (chain exhausted)" }
+    ],
+    "postconditions": [
+      "Telemetry records chunked_digest.tool_call_failure",
+      "Runloop surfaces E_OVERFLOW_UNRECOVERABLE to user-facing path"
+    ]
+  },
+  {
+    "id": "P5",
+    "name": "apply_patch over budget — hard error path",
+    "trigger": "AI calls apply_patch with a diff whose token count exceeds ctx.outputBudget",
+    "preconditions": [
+      "ctx.outputBudget = 50_000",
+      "Diff would yield 70_000 tokens"
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "Runloop", "to": "ToolFramework", "componentRef": "C1", "description": "dispatch apply_patch tool call" },
+      { "id": "MSG2", "from": "ToolFramework", "to": "VariableSizeTool[apply_patch]", "componentRef": "C2", "description": "invoke with ctx.outputBudget=50_000" },
+      { "id": "MSG3", "from": "VariableSizeTool[apply_patch]", "to": "TokenEstimator", "componentRef": "C8", "description": "estimate diff token count" },
+      { "id": "MSG4", "from": "TokenEstimator", "to": "VariableSizeTool[apply_patch]", "componentRef": "C8", "description": "returns 70_000 (over budget; atomic)" },
+      { "id": "MSG5", "from": "VariableSizeTool[apply_patch]", "to": "Runloop", "componentRef": "C2", "description": "raise structured tool error: diff atomic and exceeds budget; AI must split commit" }
+    ],
+    "postconditions": [
+      "No partial application occurs",
+      "AI receives error message describing the constraint and the suggested action (split into smaller patches)"
+    ]
+  }
+]

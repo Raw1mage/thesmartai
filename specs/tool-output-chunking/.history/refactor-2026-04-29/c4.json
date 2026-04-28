@@ -1,0 +1,179 @@
+{
+  "$schema": "https://plan-builder.local/schemas/c4.json",
+  "title": "C4 model — tool-output-chunking",
+  "level": "component",
+  "systems": [
+    {
+      "id": "opencode-session",
+      "name": "opencode session subsystem",
+      "description": "Per-session state, runloop, LLM streaming, tool dispatch, compaction"
+    }
+  ],
+  "containers": [
+    {
+      "id": "opencode-daemon",
+      "name": "opencode daemon (bun)",
+      "technology": "bun + TypeScript",
+      "description": "Single long-running process serving sessions over Unix socket"
+    },
+    {
+      "id": "tweaks-cfg",
+      "name": "tweaks.cfg",
+      "technology": "/etc/opencode/tweaks.cfg (key-value text)",
+      "description": "Operator-tunable thresholds; ratio-or-absolute syntax"
+    },
+    {
+      "id": "message-stream",
+      "name": "Session message stream",
+      "technology": "filesystem-backed append log",
+      "description": "Authoritative chronological record of user/assistant/tool messages"
+    },
+    {
+      "id": "external-llm",
+      "name": "External LLM provider",
+      "technology": "codex / openai / anthropic / google",
+      "description": "Used both for primary task execution and as the digesting LLM in chunked-digest"
+    }
+  ],
+  "components": [
+    {
+      "id": "C1",
+      "name": "ToolFramework",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/tool/index.ts (or framework dispatch)",
+      "idef0Ref": "A0+A3",
+      "description": "Populates ctx.outputBudget on every tool dispatch; reads tweaks.cfg + active model context.",
+      "responsibilities": [
+        "Compute ctx.outputBudget per call using DD-2 formula and DD-10 overrides",
+        "Inject ctx.outputBudget into tool invocation context",
+        "Forward tool result string to runtime unchanged"
+      ]
+    },
+    {
+      "id": "C2",
+      "name": "VariableSizeTool",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/tool/{read,glob,grep,bash,webfetch,apply_patch,task,subsession}.ts",
+      "idef0Ref": "A1",
+      "description": "Set of tools that self-bound their output to ctx.outputBudget. Each implements its own semantic-boundary slicer.",
+      "responsibilities": [
+        "Run primary tool work (read/exec/fetch)",
+        "Estimate natural output token count",
+        "If over budget, slice on tool-natural unit (line/match/message/paragraph)",
+        "Append plain-language hint with [Truncated] anchor token, fraction, and exact arg adjustment",
+        "If output is atomic and unsliceable (apply_patch diff), raise structured tool error instead of sliding"
+      ]
+    },
+    {
+      "id": "C3",
+      "name": "TweaksConfigParser",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/config/tweaks.ts",
+      "idef0Ref": "A3",
+      "description": "Reads tweaks.cfg keys with ratio-or-absolute syntax.",
+      "responsibilities": [
+        "Parse tool_output_budget_default and tool_output_budget.<name>",
+        "Parse chunked_digest_chunk_target_tokens, chunked_digest_max_chunks, verify_after_compact",
+        "Resolve ratio strings against active model context",
+        "Apply documented defaults when key absent"
+      ]
+    },
+    {
+      "id": "C4",
+      "name": "SessionCompactionRun",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/compaction.ts",
+      "idef0Ref": "A2 / A21 / A22 / A24",
+      "description": "Single entry point for compaction execution; extended with KIND_CHAIN tail entry chunked-digest and verify-after-compact step.",
+      "responsibilities": [
+        "Walk KIND_CHAIN narrative → replay-tail → low-cost-server → llm-agent → chunked-digest",
+        "Call kind handler; if success, run verify-after-compact",
+        "Escalate to next kind when verification fails or kind fails structurally",
+        "Raise E_OVERFLOW_UNRECOVERABLE when chain exhausts",
+        "Emit per-kind telemetry"
+      ]
+    },
+    {
+      "id": "C5",
+      "name": "ChunkedDigestKind",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/compaction.ts (tryChunkedDigest function)",
+      "idef0Ref": "A23 / A231 / A232 / A233",
+      "description": "Terminal compaction kind: drives the digesting LLM through chunk-by-chunk digestion of round-aligned history; finalises as a normal Anchor.",
+      "responsibilities": [
+        "Identify closed rounds and exclude system prompt + trailing unfinished round",
+        "Split rounds into N chunks of ~chunked_digest_chunk_target_tokens",
+        "Issue (digest_so_far, chunk_k, framing_prompt) per chunk",
+        "Validate response (JSON digest, no tool_calls); retry up to 2x with stricter framing on tool_call",
+        "Merge digests across chunks",
+        "Write merged digest as Anchor message; re-attach triggering user request"
+      ]
+    },
+    {
+      "id": "C6",
+      "name": "FramingPromptSource",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/prompt/chunked-digest-framing.md",
+      "idef0Ref": "A23",
+      "description": "Source of the framing prompt that re-roles the model from executor to digester. Two variants: standard and stricter (used on retry).",
+      "responsibilities": [
+        "Hold canonical prompt text",
+        "Provide standard and stricter variants",
+        "Specify required digest output JSON shape (entities, decisions, file refs, open threads)"
+      ]
+    },
+    {
+      "id": "C7",
+      "name": "VerifyAfterCompact",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/compaction.ts (verifyAfterCompact function)",
+      "idef0Ref": "A22",
+      "description": "Re-estimates resulting prompt size after each kind succeeds.",
+      "responsibilities": [
+        "Call estimateMsgsTokenCount on resulting message stream",
+        "Compare against model per-request budget",
+        "Return verified-success or escalation signal",
+        "Honour tweaks.verify_after_compact toggle"
+      ]
+    },
+    {
+      "id": "C8",
+      "name": "TokenEstimator",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/util/token-estimate.ts",
+      "idef0Ref": "A11 / A22",
+      "description": "Existing token estimator from compaction-redesign; reused unchanged for both tool self-bounding and verify-after-compact.",
+      "responsibilities": [
+        "Estimate token count for a single string",
+        "Estimate token count for a message-stream array"
+      ]
+    },
+    {
+      "id": "C9",
+      "name": "Runloop",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/prompt.ts",
+      "idef0Ref": "A0",
+      "description": "Existing runloop. Receives compaction success or E_OVERFLOW_UNRECOVERABLE from SessionCompaction.run; surfaces terminal error to user-facing path.",
+      "responsibilities": [
+        "Call SessionCompaction.run when state-driven evaluator reports overflow",
+        "On success, continue with next iteration",
+        "On E_OVERFLOW_UNRECOVERABLE, surface to user with hint"
+      ]
+    }
+  ],
+  "relationships": [
+    { "from": "C9", "to": "C4", "label": "calls run({observed, step, sessionID}) on overflow", "type": "sync" },
+    { "from": "C9", "to": "C1", "label": "every tool call goes through framework", "type": "sync" },
+    { "from": "C1", "to": "C3", "label": "reads tweaks.cfg for budget knobs", "type": "sync" },
+    { "from": "C1", "to": "C2", "label": "dispatches with ctx.outputBudget", "type": "sync" },
+    { "from": "C2", "to": "C8", "label": "estimates natural output size", "type": "sync" },
+    { "from": "C4", "to": "C5", "label": "delegates to tryChunkedDigest as terminal kind", "type": "sync" },
+    { "from": "C4", "to": "C7", "label": "calls verifyAfterCompact after each kind succeeds", "type": "sync" },
+    { "from": "C5", "to": "C6", "label": "loads framing prompt text", "type": "sync" },
+    { "from": "C5", "to": "external-llm", "label": "sends per-chunk digest request", "type": "sync" },
+    { "from": "C5", "to": "message-stream", "label": "writes Anchor with merged digest", "type": "sync" },
+    { "from": "C7", "to": "C8", "label": "estimates resulting prompt size", "type": "sync" },
+    { "from": "C7", "to": "C3", "label": "reads verify_after_compact toggle", "type": "sync" }
+  ]
+}
