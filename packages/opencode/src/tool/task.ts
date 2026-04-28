@@ -1,4 +1,5 @@
 import { Tool } from "./tool"
+import { ToolBudget } from "./budget"
 import DESCRIPTION from "./task.txt"
 import z from "zod"
 import { readdir, readFile } from "node:fs/promises"
@@ -2436,7 +2437,34 @@ export const TaskTool = Tool.define("task", async (ctx) => {
             }).catch(() => undefined)
           }
 
-          // Extract child session output so parent LLM has the actual results
+          // Extract child session output so parent LLM has the actual results.
+          // Layer 2 (specs/tool-output-chunking/, DD-2): child output reaches
+          // parent context; bound it via taskOverride budget. Hint points at
+          // system-manager_read_subsession for full pagination. INV-8: when
+          // the natural recent-3 assistant texts fit, output is byte-identical
+          // to pre-Layer-2 behaviour.
+          // Note: childOutput is currently built but not consumed (Bus event
+          // payload omits it; Phase 5 of context-management wires the
+          // pending-notice path). Bounding here means whichever Phase wires
+          // it inherits Layer 2 compliance for free.
+          const childBudget = ToolBudget.resolve(ctx, "task")
+          const boundChildBlock = (raw: string, source: "messages" | "shared_context"): string => {
+            const sourceAttr = source === "shared_context" ? ' source="shared_context"' : ""
+            const opening = `\n\n<child_session_output session="${session.id}"${sourceAttr}>\n`
+            const closing = `\n</child_session_output>`
+            const naturalTokens = ToolBudget.estimateTokens(opening + raw + closing)
+            if (naturalTokens <= childBudget.tokens) {
+              return opening + raw + closing
+            }
+            const targetChars = Math.max(0, childBudget.tokens * 4 - 400)
+            const head = raw.slice(0, targetChars)
+            const hint =
+              `\n\n[child output bounded at ~${childBudget.tokens} tokens by Layer 2 (${childBudget.source}); ` +
+              `~${naturalTokens - ToolBudget.estimateTokens(opening + head + closing)} tokens omitted from tail. ` +
+              `Use system-manager_read_subsession with sessionId="${session.id}" and msgIdx_from=<N> ` +
+              `to read the full child transcript in slices.]`
+            return opening + head + hint + closing
+          }
           let childOutput = ""
           if (workerOk) {
             try {
@@ -2452,7 +2480,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
               }
               if (assistantTexts.length > 0) {
                 const recent = assistantTexts.slice(-3)
-                childOutput = `\n\n<child_session_output session="${session.id}">\n${recent.join("\n\n---\n\n")}\n</child_session_output>`
+                childOutput = boundChildBlock(recent.join("\n\n---\n\n"), "messages")
               }
             } catch {
               // Non-fatal: parent continues without child output detail
@@ -2472,7 +2500,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
                   if (childCtx.files.length > 0)
                     parts.push(`Files touched: ${childCtx.files.map((f: any) => f.path).join(", ")}`)
                   if (parts.length > 0) {
-                    childOutput = `\n\n<child_session_output session="${session.id}" source="shared_context">\n${parts.join("\n\n")}\n</child_session_output>`
+                    childOutput = boundChildBlock(parts.join("\n\n"), "shared_context")
                   }
                 }
               } catch {
