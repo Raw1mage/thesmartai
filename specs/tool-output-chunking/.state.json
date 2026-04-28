@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "proposed",
+  "state": "planned",
   "profile": [],
   "history": [
     {
@@ -26,6 +26,22 @@
       "by": "pkcs12",
       "mode": "refactor",
       "reason": "Paradigm shift: harness-managed compaction → AI-managed context with hybrid-llm formula context(n) = journal(n) + LLM_compact(context(n-1)). New total scope subsumes original tool-output-chunking, narrative-decay fix, mid-work continuity protection, AI self-management primitives, and 4-layer defense against AI forgetfulness. State-machine does not allow refactor from designed (only from living), so equivalent operation performed manually: artifacts moved to .history/refactor-2026-04-29/, state reset to proposed, proposal.md preserved (will be substantially revised). Path B chosen over splitting into two specs because the four problems (type-2 single-tool overflow, narrative cross-generation decay, mid-multi-step-work loss, AI self-management) all share root cause: bounded context as resource."
+    },
+    {
+      "from": "proposed",
+      "to": "designed",
+      "at": "2026-04-28T16:47:25.646Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "spec/design/data-schema/c4/sequence/idef0/grafcet/invariants drafted; G-1..G-9 resolved via DD-1..DD-15"
+    },
+    {
+      "from": "designed",
+      "to": "planned",
+      "at": "2026-04-28T17:04:01.679Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "tasks.md (5 phases, 56 slices) + handoff.md + errors.md + observability.md drafted; ready for build"
     }
   ]
 }

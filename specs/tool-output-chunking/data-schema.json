@@ -1,0 +1,269 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://opencode/specs/tool-output-chunking/data-schema.json",
+  "title": "Context-Management Data Contracts",
+  "description": "Canonical types for the 5-layer context-management subsystem (refactor-2026-04-29). Each definition cross-references DD-N in design.md and R-N in spec.md.",
+  "definitions": {
+    "TokenCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Token count as estimated by util/token-estimate.ts"
+    },
+    "MsgId": {
+      "type": "string",
+      "pattern": "^msg_[A-Za-z0-9]{6,}$",
+      "description": "Stable on-disk message identifier"
+    },
+    "ToolCallId": {
+      "type": "string",
+      "pattern": "^toolu_[A-Za-z0-9]{6,}$",
+      "description": "Provider-issued tool_call identifier"
+    },
+    "SessionId": {
+      "type": "string",
+      "pattern": "^ses_[A-Za-z0-9]{6,}$"
+    },
+    "Anchor": {
+      "type": "object",
+      "description": "DD-3, DD-11. Compaction output; provider-agnostic plain text wrapped in assistant+summary message.",
+      "required": ["role", "summary", "content", "metadata"],
+      "properties": {
+        "role": {"const": "assistant"},
+        "summary": {"const": true},
+        "content": {
+          "type": "string",
+          "description": "Markdown-only body. MUST start with header line: '[Context Anchor v1] generated at <ISO-8601> by <provider>:<model> covering rounds [<earliest>..<latest>]'. MUST NOT contain provider-specific tokens, <thinking> tags, or embedded tool_call/tool_result JSON."
+        },
+        "metadata": {
+          "type": "object",
+          "required": ["anchorVersion", "generatedAt", "generatedBy", "coversRounds", "inputTokens", "outputTokens", "phase"],
+          "properties": {
+            "anchorVersion": {"const": 1},
+            "generatedAt": {"type": "string", "format": "date-time"},
+            "generatedBy": {
+              "type": "object",
+              "required": ["provider", "model", "accountId"],
+              "properties": {
+                "provider": {"type": "string"},
+                "model": {"type": "string"},
+                "accountId": {"type": "string"}
+              }
+            },
+            "coversRounds": {
+              "type": "object",
+              "required": ["earliest", "latest"],
+              "properties": {
+                "earliest": {"type": "integer", "minimum": 0},
+                "latest": {"type": "integer", "minimum": 0}
+              }
+            },
+            "inputTokens": {"$ref": "#/definitions/TokenCount"},
+            "outputTokens": {"$ref": "#/definitions/TokenCount"},
+            "phase": {"enum": [1, 2]},
+            "internalMode": {"enum": ["single-pass", "chunk-and-merge"]}
+          }
+        }
+      }
+    },
+    "JournalEntry": {
+      "type": "object",
+      "description": "DD-1. Raw round content. Append-only between compactions.",
+      "required": ["roundIndex", "messages"],
+      "properties": {
+        "roundIndex": {"type": "integer", "minimum": 0},
+        "messages": {
+          "type": "array",
+          "description": "Native message-v2 messages (user / assistant / tool_call / tool_result). tool_call and tool_result MUST be adjacent.",
+          "items": {"type": "object"}
+        }
+      }
+    },
+    "PinnedZoneEntry": {
+      "type": "object",
+      "description": "DD-4 (closes G-1). Synthesised user-role wrapper of a pinned tool_result. Lives in pinned_zone, separate from journal's original tool_call/tool_result pair.",
+      "required": ["role", "content", "metadata"],
+      "properties": {
+        "role": {"const": "user"},
+        "content": {
+          "type": "string",
+          "description": "Format: '[Pinned earlier output] tool \\'<tool_name>\\' (round <K>, tool_call_id=<TID>) returned:\\n<verbatim>'"
+        },
+        "metadata": {
+          "type": "object",
+          "required": ["pinSource", "tokens", "pinnedAt"],
+          "properties": {
+            "pinSource": {
+              "type": "object",
+              "required": ["toolCallId", "toolName", "roundIndex"],
+              "properties": {
+                "toolCallId": {"$ref": "#/definitions/ToolCallId"},
+                "toolName": {"type": "string"},
+                "roundIndex": {"type": "integer"}
+              }
+            },
+            "tokens": {"$ref": "#/definitions/TokenCount"},
+            "pinnedAt": {"type": "string", "format": "date-time"},
+            "pinnedBy": {
+              "enum": ["ai", "human"],
+              "description": "ai = via assistant metadata marker; human = via admin/TUI button"
+            }
+          }
+        }
+      }
+    },
+    "ContextMarkers": {
+      "type": "object",
+      "description": "DD-15. Lives in assistant message metadata (`message.metadata.contextMarkers`). Parsed pre-prompt-build.",
+      "additionalProperties": false,
+      "properties": {
+        "pin": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/ToolCallId"},
+          "description": "tool_results to materialise into pinned_zone at next prompt-build"
+        },
+        "drop": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/ToolCallId"},
+          "description": "tool_results to exclude from next compaction's LLM_compact input"
+        },
+        "recall": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["msgId"],
+            "properties": {
+              "sessionId": {
+                "$ref": "#/definitions/SessionId",
+                "description": "Optional. Defaults to current session. Cross-session recall = subagent recall (DD-8)."
+              },
+              "msgId": {"$ref": "#/definitions/MsgId"}
+            }
+          }
+        }
+      }
+    },
+    "ContextStatus": {
+      "type": "object",
+      "description": "R-5. Budget snapshot delivered to AI in system-role message (or dedicated metadata channel; DD-S2 deferred). Populated each prompt-build round.",
+      "required": ["totalBudget", "currentUsage", "roomRemaining", "anchorCoverageRounds", "journalDepthRounds"],
+      "properties": {
+        "totalBudget": {"$ref": "#/definitions/TokenCount"},
+        "currentUsage": {"$ref": "#/definitions/TokenCount"},
+        "roomRemaining": {"$ref": "#/definitions/TokenCount"},
+        "anchorCoverageRounds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of historical rounds folded into the current anchor"
+        },
+        "journalDepthRounds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of raw rounds currently in journal"
+        },
+        "pinnedZoneTokens": {"$ref": "#/definitions/TokenCount"},
+        "pinnedZoneCap": {"$ref": "#/definitions/TokenCount"}
+      }
+    },
+    "LLMCompactRequest": {
+      "type": "object",
+      "description": "DD-3. Input to LLM_compact (sent to a provider as system+user messages constructed from these fields).",
+      "required": ["priorAnchor", "journalUnpinned", "framing", "targetTokens"],
+      "properties": {
+        "priorAnchor": {
+          "oneOf": [
+            {"$ref": "#/definitions/Anchor"},
+            {"type": "null", "description": "null = cold-start (no prior anchor)"}
+          ]
+        },
+        "journalUnpinned": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/JournalEntry"}
+        },
+        "pinnedZone": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/PinnedZoneEntry"},
+          "description": "Phase 2 only. Phase 1 omits this field."
+        },
+        "dropMarkers": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/ToolCallId"},
+          "description": "Tool_results in journalUnpinned that should be replaced with placeholders"
+        },
+        "framing": {
+          "type": "object",
+          "required": ["mode", "strict"],
+          "properties": {
+            "mode": {"enum": ["phase1", "phase2"]},
+            "strict": {
+              "type": "boolean",
+              "description": "Phase 2 sets true → maxTokens 5000, ruthless drop instruction"
+            }
+          }
+        },
+        "targetTokens": {
+          "$ref": "#/definitions/TokenCount",
+          "description": "Phase 1: round(model.contextWindow * 0.30); Phase 2: compaction.phase2.maxAnchorTokens (default 5000)"
+        }
+      }
+    },
+    "CompactionEvent": {
+      "type": "object",
+      "description": "R-13. Telemetry record emitted per compaction.",
+      "required": ["eventId", "sessionId", "kind", "phase", "internalMode", "inputTokens", "outputTokens", "result", "latencyMs", "emittedAt"],
+      "properties": {
+        "eventId": {"type": "string"},
+        "sessionId": {"$ref": "#/definitions/SessionId"},
+        "kind": {"const": "hybrid_llm"},
+        "phase": {"enum": [1, 2]},
+        "internalMode": {"enum": ["single-pass", "chunk-and-merge"]},
+        "inputTokens": {"$ref": "#/definitions/TokenCount"},
+        "outputTokens": {"$ref": "#/definitions/TokenCount"},
+        "pinnedCountIn": {"type": "integer", "minimum": 0},
+        "pinnedCountOut": {"type": "integer", "minimum": 0},
+        "droppedCountIn": {"type": "integer", "minimum": 0},
+        "recallCountIn": {"type": "integer", "minimum": 0},
+        "voluntary": {"type": "boolean", "description": "true = invoked via compact_now tool (DD-14)"},
+        "latencyMs": {"type": "integer", "minimum": 0},
+        "costUsdEstimate": {"type": "number", "minimum": 0},
+        "result": {
+          "enum": ["success", "failed_then_fallback", "unrecoverable"],
+          "description": "fallback = DD-6 graceful-degradation path ran"
+        },
+        "errorCode": {
+          "enum": [null, "E_HYBRID_LLM_FAILED", "E_HYBRID_LLM_TIMEOUT", "E_HYBRID_LLM_MALFORMED", "E_OVERFLOW_UNRECOVERABLE"]
+        },
+        "emittedAt": {"type": "string", "format": "date-time"}
+      }
+    },
+    "ToolOutputContext": {
+      "type": "object",
+      "description": "R-1, DD-2. Per-tool-invocation context fields used by Layer 2 self-bounding.",
+      "required": ["outputBudget"],
+      "properties": {
+        "outputBudget": {
+          "$ref": "#/definitions/TokenCount",
+          "description": "ctx.outputBudget = min(round(model.contextWindow * tool.outputBudget.contextRatio), tool.outputBudget.absoluteCap)"
+        },
+        "absoluteCap": {"$ref": "#/definitions/TokenCount"},
+        "contextRatio": {"type": "number", "minimum": 0, "maximum": 1},
+        "minimumFloor": {"$ref": "#/definitions/TokenCount"}
+      }
+    },
+    "TruncationHint": {
+      "type": "object",
+      "description": "R-1. Tool-side bounding hint appended to truncated output. Tool-natural language; this schema documents the canonical fields a hint MUST express.",
+      "required": ["truncated", "nextSliceArgs"],
+      "properties": {
+        "truncated": {"const": true},
+        "nextSliceArgs": {
+          "type": "object",
+          "description": "Tool-specific arg fragment that retrieves the next slice. Examples: {offset: 5000} for read; {pattern: 'foo bar'} for grep narrowing; {msgIdx_from: 120} for read_subsession."
+        },
+        "remainingApprox": {
+          "$ref": "#/definitions/TokenCount",
+          "description": "Optional: estimated remaining tokens not returned"
+        }
+      }
+    }
+  }
+}

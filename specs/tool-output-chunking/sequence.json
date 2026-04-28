@@ -1,0 +1,146 @@
+[
+    {
+      "id": "P1",
+      "name": "Phase 1 normal-path compaction",
+      "reqRef": ["R-2", "R-4"],
+      "trigger": "Overflow gate fires (cumulative tokens > threshold from compaction-redesign)",
+      "messages": [
+        {"id": "MSG1", "from": "Runloop", "to": "C3 HybridCompactor", "label": "runHybridLlm(sessionId)"},
+        {"id": "MSG2", "from": "C3", "to": "C2 Memory", "label": "loadPriorAnchor(), loadJournalUnpinned(), loadDropMarkers()"},
+        {"id": "MSG3", "from": "C3", "to": "C8 TweaksConfig", "label": "read targetTokens, llmTimeoutMs"},
+        {"id": "MSG4", "from": "C3", "to": "EXT-LLM", "label": "LLMCompactRequest{phase:1, strict:false, priorAnchor, journalUnpinned, dropMarkers, targetTokens}"},
+        {"id": "MSG5", "from": "EXT-LLM", "to": "C3", "label": "anchor body text (Markdown only)"},
+        {"id": "MSG6", "from": "C3", "to": "C3", "label": "sanity check: outputTokens < (anchor + journal_input)"},
+        {"id": "MSG7", "from": "C3", "to": "C2", "label": "writeNewAnchor(anchor)"},
+        {"id": "MSG8", "from": "C3", "to": "C9 TelemetryEmitter", "label": "emit CompactionEvent{phase:1, result:success}"},
+        {"id": "MSG9", "from": "C3", "to": "Runloop", "label": "return"}
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "Phase 2 fallback when Phase 1 still overflows",
+      "reqRef": ["R-3", "R-8"],
+      "trigger": "Phase 1 returned but [system, anchor_new, pinned_zone, journal, current] still > per-request budget OR pinnedZoneTokens > pinnedZoneCap",
+      "messages": [
+        {"id": "MSG1", "from": "C3", "to": "C3", "label": "evaluatePostPhase1Fit() → still over"},
+        {"id": "MSG2", "from": "C3", "to": "C2", "label": "loadPinnedZone()"},
+        {"id": "MSG3", "from": "C3", "to": "EXT-LLM", "label": "LLMCompactRequest{phase:2, strict:true, priorAnchor, journalAll+pinnedZone, targetTokens=5000}"},
+        {"id": "MSG4", "from": "EXT-LLM", "to": "C3", "label": "compact anchor body"},
+        {"id": "MSG5", "from": "C3", "to": "C2", "label": "writeNewAnchor + clearPinnedZone"},
+        {"id": "MSG6", "from": "C3", "to": "C9", "label": "emit phase2_fired event"},
+        {"id": "MSG7", "from": "C3", "to": "C3", "label": "evaluatePostPhase2Fit()"},
+        {"id": "MSG8alt-fail", "from": "C3", "to": "Runloop", "label": "raise E_OVERFLOW_UNRECOVERABLE (no Phase 3)"},
+        {"id": "MSG8alt-ok", "from": "C3", "to": "Runloop", "label": "return success"}
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "Voluntary summarize via compact_now tool",
+      "reqRef": ["R-6"],
+      "trigger": "AI emits tool_call compact_now({reason: '...'})",
+      "messages": [
+        {"id": "MSG1", "from": "AI", "to": "C7 CompactNowTool", "label": "tool_call compact_now(reason)"},
+        {"id": "MSG2", "from": "C7", "to": "C3", "label": "runHybridLlm(sessionId, voluntary:true)"},
+        {"id": "MSG3", "from": "C3", "to": "...same as P1 MSG2..MSG8...", "label": "(same path)"},
+        {"id": "MSG4", "from": "C7", "to": "C5 ContextStatusBuilder", "label": "computePostCompactionStatus()"},
+        {"id": "MSG5", "from": "C7", "to": "AI", "label": "tool_result {room_remaining_after, anchor_size, status}"}
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "Pin marker honored across compaction",
+      "reqRef": ["R-7", "DD-4"],
+      "trigger": "AI emits assistant message with metadata.contextMarkers.pin = [T7]",
+      "messages": [
+        {"id": "MSG1", "from": "PromptBuilder C1", "to": "C4 OverrideParser", "label": "parseRecentMarkers()"},
+        {"id": "MSG2", "from": "C4", "to": "C2", "label": "lookupToolResult(T7)"},
+        {"id": "MSG3", "from": "C4", "to": "C2", "label": "appendPinnedZoneEntry(wrap as user message)"},
+        {"id": "MSG4", "from": "C1", "to": "C2", "label": "loadPinnedZone() for next prompt"},
+        {"id": "MSG5", "from": "C1", "to": "AI", "label": "prompt = [system, anchor, pinned_zone(...wrapped T7...), journal(...native T7 still here...), current]"},
+        {"id": "MSG6note", "from": "_", "to": "_", "label": "Original tool_call/tool_result pair UNTOUCHED in journal — adjacency rule preserved (DD-4)"},
+        {"id": "MSG7", "from": "Runloop", "to": "C3", "label": "(later) Phase 1 compaction fires"},
+        {"id": "MSG8", "from": "C3", "to": "C2", "label": "loadJournalUnpinned() — T7 included as journal entry; loadPinnedZone() — wrapped T7 still present"},
+        {"id": "MSG9", "from": "C3", "to": "EXT-LLM", "label": "LLMCompactRequest does NOT include pinned_zone in input (Phase 1)"},
+        {"id": "MSG10", "from": "EXT-LLM", "to": "C3", "label": "new anchor (T7 may be summarised; pinned_zone copy survives independently)"},
+        {"id": "MSG11", "from": "C1", "to": "AI", "label": "post-compaction prompt = [system, new_anchor, pinned_zone(wrapped T7 still here), journal_recent, current]"}
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "Recall from disk into journal tail",
+      "reqRef": ["R-7", "DD-7"],
+      "trigger": "AI emits metadata.contextMarkers.recall = [{msgId: M3}]",
+      "messages": [
+        {"id": "MSG1", "from": "C1", "to": "C4", "label": "parseRecentMarkers()"},
+        {"id": "MSG2", "from": "C4", "to": "C4", "label": "idempotency check: M3 already in journal? → no-op"},
+        {"id": "MSG3", "from": "C4", "to": "EXT-DISK", "label": "loadOriginalContent(msgId=M3)"},
+        {"id": "MSG4", "from": "C4", "to": "C6 ToolFramework", "label": "applyOutputBudget(content) if oversize"},
+        {"id": "MSG5", "from": "C4", "to": "C2", "label": "appendJournalEntry(wrap as user message: '[Recalled from earlier] tool X (round 3)...')"},
+        {"id": "MSG6", "from": "C1", "to": "AI", "label": "prompt with recalled content at journal tail"}
+      ]
+    },
+    {
+      "id": "P6",
+      "name": "Cross-session recall (parent → completed subagent)",
+      "reqRef": ["R-9", "DD-8"],
+      "trigger": "Parent AI emits metadata.contextMarkers.recall = [{sessionId: S2, msgId: M9}]",
+      "messages": [
+        {"id": "MSG1", "from": "C4", "to": "EXT-DISK", "label": "loadOriginalContent(sessionId=S2, msgId=M9)"},
+        {"id": "MSG2", "from": "C4", "to": "C2", "label": "appendJournalEntry(wrap: '[Recalled from subagent S2] ...')"}
+      ]
+    },
+    {
+      "id": "P7",
+      "name": "LLM_compact failure → graceful degradation",
+      "reqRef": ["R-10", "DD-6"],
+      "trigger": "EXT-LLM returns 429 / timeout / malformed",
+      "messages": [
+        {"id": "MSG1", "from": "C3", "to": "EXT-LLM", "label": "LLMCompactRequest (attempt 1)"},
+        {"id": "MSG2alt-429", "from": "EXT-LLM", "to": "C3", "label": "HTTP 429"},
+        {"id": "MSG3", "from": "C3", "to": "EXT-LLM", "label": "retry attempt 2 (stricter framing)"},
+        {"id": "MSG4alt-429", "from": "EXT-LLM", "to": "C3", "label": "HTTP 429 again"},
+        {"id": "MSG5opt", "from": "C3", "to": "EXT-LLM", "label": "if compaction.fallbackProvider configured, attempt on fallback"},
+        {"id": "MSG6", "from": "C3", "to": "C2", "label": "graceful degradation: keepPriorAnchor() + truncateJournalFromOldest() until fits"},
+        {"id": "MSG7", "from": "C3", "to": "C9", "label": "emit CompactionEvent{result:failed_then_fallback, errorCode:E_HYBRID_LLM_FAILED}"},
+        {"id": "MSG8", "from": "C3", "to": "Runloop", "label": "return (runloop never stalls)"}
+      ]
+    },
+    {
+      "id": "P8",
+      "name": "Cold-start on legacy 1000-round session",
+      "reqRef": ["R-2", "R-12", "DD-3"],
+      "trigger": "First compaction trigger on a session with no anchor and journal_input > LLM_input_budget",
+      "messages": [
+        {"id": "MSG1", "from": "C3", "to": "C2", "label": "loadPriorAnchor() → null; loadJournal() → 1000 rounds"},
+        {"id": "MSG2", "from": "C3", "to": "C3", "label": "internalMode = chunk-and-merge"},
+        {"id": "MSG3loop", "from": "C3", "to": "EXT-LLM", "label": "for each chunk: LLMCompactRequest{priorAnchor=digest_so_far, journalUnpinned=chunk_k}"},
+        {"id": "MSG4", "from": "C3", "to": "C2", "label": "writeNewAnchor(final merged digest)"},
+        {"id": "MSG5", "from": "C3", "to": "C9", "label": "emit CompactionEvent{internalMode:chunk-and-merge}"}
+      ]
+    },
+    {
+      "id": "P9",
+      "name": "Layer 2 self-bounding on read of 200KB minified bundle",
+      "reqRef": ["R-1"],
+      "trigger": "AI calls read({path: 'dist/bundle.js'})",
+      "messages": [
+        {"id": "MSG1", "from": "AI", "to": "C6 ToolFramework", "label": "tool_call read(path)"},
+        {"id": "MSG2", "from": "C6", "to": "C8 TweaksConfig", "label": "read tool.outputBudget.* knobs"},
+        {"id": "MSG3", "from": "C6", "to": "C6", "label": "outputBudget = min(round(model.contextWindow * 0.30), 50000)"},
+        {"id": "MSG4", "from": "C6", "to": "EXT-DISK", "label": "read file content"},
+        {"id": "MSG5", "from": "C6", "to": "C6", "label": "slice on line-boundary up to outputBudget tokens"},
+        {"id": "MSG6", "from": "C6", "to": "AI", "label": "tool_result = slice + '[... truncated; call read again with offset=N to continue]'"}
+      ]
+    },
+    {
+      "id": "P10",
+      "name": "ContextStatus injection per round",
+      "reqRef": ["R-5"],
+      "trigger": "Every prompt-build round (Layer 3)",
+      "messages": [
+        {"id": "MSG1", "from": "C1", "to": "C5 ContextStatusBuilder", "label": "computeStatus(sessionState)"},
+        {"id": "MSG2", "from": "C5", "to": "C1", "label": "ContextStatus{totalBudget, currentUsage, roomRemaining, anchorCoverageRounds, journalDepthRounds, pinnedZoneTokens, pinnedZoneCap}"},
+        {"id": "MSG3", "from": "C1", "to": "AI", "label": "system message includes status block + agent-budget-guideline.md fragment"}
+      ]
+    }
+]

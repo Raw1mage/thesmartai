@@ -15,7 +15,7 @@ with reference; `DEFERRED` = explicitly deferred with telemetry plan; `WONTFIX`
 ## Critical (must resolve in design.md)
 
 ### G-1 Pinned_zone violates tool_call/tool_result pairing rule
-**Status**: OPEN
+**Status**: RESOLVED — design.md DD-4 (synthesised user-message envelope; original pair untouched in journal). invariants.md INV-4 enforces. Per-provider compatibility test in test-vectors.json.
 
 All major LLM providers (OpenAI, Anthropic, Codex, Google) require
 `tool_call` and its corresponding `tool_result` to be adjacent in the message
@@ -33,7 +33,7 @@ prompt as malformed.
   links a per-provider compatibility test vector
 
 ### G-2 AI does not auto-learn pin / drop / summarize protocol
-**Status**: OPEN
+**Status**: RESOLVED — design.md DD-13 (Layer 1+2 self-sufficiency, phased rollout). invariants.md INV-3 documents the fall-through invariant. spec.md acceptance gate verifies a Layer-1+2-only baseline.
 
 Assumption "AI sees system prompt teaching → AI uses Layer 4-5 primitives"
 will not hold without explicit prompt engineering. Default LLM behaviour:
@@ -50,7 +50,7 @@ ignore unfamiliar protocols.
 - Acceptance: invariant.md states "no Layer 4-5 dependency for correctness"
 
 ### G-3 LLM_compact failure / timeout / malformed output
-**Status**: OPEN
+**Status**: RESOLVED — design.md DD-6 (sanity-check + 1 retry + optional fallback provider + graceful-degradation truncate-from-oldest). errors.md catalogues E_HYBRID_LLM_FAILED / TIMEOUT / MALFORMED. Failure-mode fixtures in test-vectors.json.
 
 Network drops, provider rate limits, OAuth expiry, malformed JSON responses
 are common occurrences, not corner cases.
@@ -69,7 +69,7 @@ are common occurrences, not corner cases.
 - Acceptance: errors.md + a failure-mode test in test-vectors.json
 
 ### G-4 AI defensive over-pinning blows pinned_zone budget
-**Status**: OPEN
+**Status**: RESOLVED — design.md DD-5 (hard cap 30% of model context; over-cap forces Phase 2; system-prompt teaching; pin_density telemetry). data-schema.json defines pinnedZoneCap. invariants.md INV-2 bounds the input.
 
 Natural LLM reaction to "pin protects from compaction": pin everything as
 defence. Pinned_zone becomes second unbounded growth.
@@ -84,7 +84,7 @@ defence. Pinned_zone becomes second unbounded growth.
   invariants.md states the cap; observability.md tracks pin density
 
 ### G-5 Recall semantics underspecified
-**Status**: OPEN
+**Status**: RESOLVED — design.md DD-7 (full disk content; journal-tail wrapped append; idempotent; subject to Layer 2 self-bounding; cross-session via sessionId param). sequence.json P5/P6 cover both single-session and cross-session paths. invariants.md INV-9 enforces idempotency.
 
 Three sub-questions:
 1. Does `recall(msg_id)` retrieve the Layer 2-truncated version (already in
@@ -104,7 +104,7 @@ Three sub-questions:
   has recall flow; test-vectors.json covers three sub-questions
 
 ### G-6 Anchor must be provider-agnostic for switch resilience
-**Status**: OPEN
+**Status**: RESOLVED — design.md DD-11 (Markdown-only body, no provider tokens, [Context Anchor v1] header line). invariants.md INV-5. Cross-provider regression test in test-vectors.json. Framing prompt source at packages/opencode/src/session/prompt/hybrid-llm-framing.md (build-phase artifact).
 
 Session may switch provider mid-life (gpt-5.4 → gpt-5.5; codex →
 anthropic). The anchor was written by the previous provider. New provider
@@ -125,7 +125,7 @@ quality.
 ## Important (design must lock; misjudgement = bad implementation)
 
 ### G-7 Subagent context management ownership
-**Status**: OPEN
+**Status**: RESOLVED — design.md DD-8 (identical hybrid-llm machinery; subagent compaction billed to subagent's account; subagent stream persists; parent recall via cross-session). spec.md R-9. sequence.json P6.
 
 TaskTool subagents have their own session and their own context window.
 Open questions:
@@ -144,7 +144,7 @@ Open questions:
   subagent-overflow flow
 
 ### G-8 Phase 2 starvation (Phase 2 itself fails to fit)
-**Status**: OPEN
+**Status**: RESOLVED — design.md DD-9 (Phase 2 stricter framing 5K target; raise E_OVERFLOW_UNRECOVERABLE; bounded chain, no Phase 3). invariants.md INV-6. errors.md catalogues E_OVERFLOW_UNRECOVERABLE with user-facing remediation message.
 
 Extreme rare case: Phase 1 over budget → Phase 2 absorbs pinned + journal
 → result still over budget (because prior_anchor is itself overweight and
@@ -160,7 +160,7 @@ LLM cannot compress further).
   message guides remediation
 
 ### G-9 Migration matrix for in-flight live sessions
-**Status**: OPEN
+**Status**: RESOLVED — design.md DD-10 (per-state handling table: old narrative anchor accepted as-is; no-anchor → cold-start; SharedContext relics ignored; corrupted anchor → cold-start; new tweaks defaults). spec.md R-12. invariants.md INV-10 (single SSOT). Test fixtures in test-vectors.json cover each row.
 
 At deployment, live sessions exist with various pre-existing states:
 SharedContext relics, narrative anchors from compaction-redesign, no

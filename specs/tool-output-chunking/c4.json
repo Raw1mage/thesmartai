@@ -1,0 +1,145 @@
+{
+  "$schema": "https://opencode/specs/c4.schema.json",
+  "title": "Context-Management Subsystem (5-layer)",
+  "level": "component",
+  "description": "Components inside the opencode runtime that implement the 5-layer bounded context-management model. Traceability: each component lists its IDEF0 moduleRef and the spec.md Requirement(s) it satisfies.",
+  "systems": [
+    {
+      "id": "opencode-runtime",
+      "name": "opencode runtime",
+      "description": "The opencode daemon hosting sessions, runloops, prompt-build, and compaction. Context-management is a cross-cutting subsystem within this runtime."
+    }
+  ],
+  "containers": [
+    {
+      "id": "C0",
+      "name": "opencode-daemon",
+      "description": "The single long-lived process that hosts all sessions, runloops, and the prompt-build pipeline.",
+      "components": ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10"]
+    }
+  ],
+  "components": [
+    {
+      "id": "C1",
+      "name": "PromptBuilder",
+      "moduleRef": "A1",
+      "satisfies": ["R-4", "R-5", "R-7"],
+      "description": "Owns the canonical 5-zone assembly [system, anchor, pinned_zone, journal, current_round]. Materialises pinned_zone from ContextMarkers. Injects ContextStatus into system prompt. Pre-prompt-build runs the marker parser.",
+      "criticalFiles": ["packages/opencode/src/session/prompt.ts"]
+    },
+    {
+      "id": "C2",
+      "name": "Memory",
+      "moduleRef": "A2",
+      "satisfies": ["R-2", "R-12", "DD-7", "DD-8"],
+      "description": "First-class concepts: anchor, journal, pinned_zone. Reads from on-disk message stream (single source of truth). Provides recallMessage(sessionId?, msgId).",
+      "criticalFiles": ["packages/opencode/src/session/memory.ts"]
+    },
+    {
+      "id": "C3",
+      "name": "HybridCompactor",
+      "moduleRef": "A3",
+      "satisfies": ["R-2", "R-3", "R-10", "R-11"],
+      "description": "Implements tryHybridLlm with Phase 1 / Phase 2 + internal single-pass / chunk-and-merge modes. Wraps LLM_compact with sanity-check, retry, fallback per DD-6. Owns the framing prompt.",
+      "criticalFiles": [
+        "packages/opencode/src/session/compaction.ts",
+        "packages/opencode/src/session/prompt/hybrid-llm-framing.md"
+      ]
+    },
+    {
+      "id": "C4",
+      "name": "OverrideParser",
+      "moduleRef": "A4",
+      "satisfies": ["R-7", "DD-15"],
+      "description": "Walks recent assistant messages, extracts ContextMarkers (pin/drop/recall), applies them to PromptBuilder state and HybridCompactor input.",
+      "criticalFiles": ["packages/opencode/src/session/prompt.ts"]
+    },
+    {
+      "id": "C5",
+      "name": "ContextStatusBuilder",
+      "moduleRef": "A5",
+      "satisfies": ["R-5"],
+      "description": "Computes total/used/remaining/anchor-cover/journal-depth/pinned-tokens at each prompt-build round; injects into system prompt or metadata channel (DD-S2).",
+      "criticalFiles": ["packages/opencode/src/session/prompt.ts"]
+    },
+    {
+      "id": "C6",
+      "name": "ToolFramework",
+      "moduleRef": "A6",
+      "satisfies": ["R-1"],
+      "description": "Provides ctx.outputBudget to every tool invocation. Hosts the bounded variants of read / glob / grep / bash / webfetch / apply_patch / task / system-manager_read_subsession.",
+      "criticalFiles": [
+        "packages/opencode/src/tool/types.ts",
+        "packages/opencode/src/tool/read.ts",
+        "packages/opencode/src/tool/glob.ts",
+        "packages/opencode/src/tool/grep.ts",
+        "packages/opencode/src/tool/bash.ts",
+        "packages/opencode/src/tool/webfetch.ts",
+        "packages/opencode/src/tool/apply_patch.ts",
+        "packages/opencode/src/tool/task.ts"
+      ]
+    },
+    {
+      "id": "C7",
+      "name": "CompactNowTool",
+      "moduleRef": "A7",
+      "satisfies": ["R-6", "DD-14"],
+      "description": "Layer 4 voluntary summarize. Tool call dispatched through ToolFramework; handler invokes HybridCompactor and returns post-compaction budget stats.",
+      "criticalFiles": ["packages/opencode/src/tool/compact-now.ts"]
+    },
+    {
+      "id": "C8",
+      "name": "TweaksConfig",
+      "moduleRef": "A8",
+      "satisfies": ["DD-2", "DD-5", "DD-6", "DD-9"],
+      "description": "Reads /etc/opencode/tweaks.cfg with hardcoded defaults. Knobs: tool.outputBudget.* / compaction.pinnedZone.maxTokensRatio / compaction.llmTimeoutMs / compaction.fallbackProvider / compaction.phase2.maxAnchorTokens.",
+      "criticalFiles": ["packages/opencode/src/config/tweaks.ts"]
+    },
+    {
+      "id": "C9",
+      "name": "TelemetryEmitter",
+      "moduleRef": "A9",
+      "satisfies": ["R-13"],
+      "description": "Emits CompactionEvent records to the structured telemetry stream. Synchronous: event MUST land before runloop continues to next round.",
+      "criticalFiles": ["packages/opencode/src/session/compaction.ts"]
+    },
+    {
+      "id": "C10",
+      "name": "AdminOverrideUI",
+      "moduleRef": "A10",
+      "satisfies": ["R-7"],
+      "description": "Phase 5 surface. Admin panel + TUI buttons translate clicks into ContextMarkers attached to a synthesised assistant message.",
+      "criticalFiles": ["packages/web/admin/...", "packages/tui/..."],
+      "phase": 5
+    }
+  ],
+  "relationships": [
+    {"from": "C1", "to": "C2", "label": "reads anchor / journal / pinned_zone"},
+    {"from": "C1", "to": "C4", "label": "invokes pre-build"},
+    {"from": "C1", "to": "C5", "label": "embeds status"},
+    {"from": "C4", "to": "C2", "label": "applies pin (synthesise PinnedZoneEntry), recall (re-load from disk)"},
+    {"from": "C4", "to": "C3", "label": "passes drop markers to LLM_compact input"},
+    {"from": "C3", "to": "C2", "label": "reads prior_anchor + journal_unpinned + (Phase 2) pinned_zone"},
+    {"from": "C3", "to": "C8", "label": "reads timeout / fallback / target tokens"},
+    {"from": "C3", "to": "C9", "label": "emits CompactionEvent"},
+    {"from": "C3", "to": "C2", "label": "writes new anchor"},
+    {"from": "C7", "to": "C3", "label": "invokes runHybridLlm voluntarily"},
+    {"from": "C7", "to": "C5", "label": "returns post-compaction status"},
+    {"from": "C6", "to": "C8", "label": "reads outputBudget knobs"},
+    {"from": "C10", "to": "C4", "label": "produces ContextMarkers via synthesised assistant message"}
+  ],
+  "externals": [
+    {
+      "id": "EXT-LLM",
+      "name": "LLM Provider (gpt / anthropic / codex / google)",
+      "description": "Receives LLMCompactRequest as a normal chat completion; returns the new anchor body.",
+      "interactsWith": ["C3"]
+    },
+    {
+      "id": "EXT-DISK",
+      "name": "On-disk Message Stream",
+      "description": "Append-only persistent message log. Single source of truth for session state.",
+      "interactsWith": ["C2"]
+    }
+  ]
+}

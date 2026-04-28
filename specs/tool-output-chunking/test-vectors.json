@@ -1,0 +1,331 @@
+[
+    {
+      "id": "TV-1",
+      "verifies": ["R-1"],
+      "category": "layer2-bounding",
+      "tool": "read",
+      "given": {
+        "model.contextWindow": 200000,
+        "tweaks.tool.outputBudget.contextRatio": 0.30,
+        "tweaks.tool.outputBudget.absoluteCap": 50000,
+        "file": {"path": "fixtures/minified-bundle.js", "approxTokens": 120000}
+      },
+      "when": "ai.call(read, {path: 'fixtures/minified-bundle.js'})",
+      "then": {
+        "result.tokenCount": "<= 50000",
+        "result.endsWith": "[... truncated; call read again with offset=<N> to continue, or limit=<K> for a window]",
+        "result.sliceBoundary": "line"
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-2",
+      "verifies": ["R-1", "INV-8"],
+      "category": "layer2-byte-identity",
+      "tool": "read",
+      "given": {
+        "model.contextWindow": 200000,
+        "file": {"path": "fixtures/small-config.json", "approxTokens": 800}
+      },
+      "when": "ai.call(read, {path: 'fixtures/small-config.json'})",
+      "then": {
+        "result": "byte-equal to pre-Layer2 baseline implementation"
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-3",
+      "verifies": ["R-2", "INV-2"],
+      "category": "phase1-normal-path",
+      "given": {
+        "session.priorAnchor.tokens": 30000,
+        "session.journal.rounds": 12,
+        "session.journal.tokens": 40000,
+        "session.pinnedZone.entries": 3,
+        "session.pinnedZone.tokens": 6000,
+        "currentRound.tokens": 5000,
+        "model.contextWindow": 200000,
+        "overflow.gate": "fires"
+      },
+      "when": "runtime.triggerCompaction(sessionId)",
+      "then": {
+        "llm_compact.input.tokens": "<= (priorAnchor + journal_unpinned)  // pinned_zone NOT in input",
+        "anchor.new.tokens": "<= 60000  // ~30% of contextWindow",
+        "log.line.matches": "[compaction] kind=hybrid_llm phase=1 input_tokens=\\d+ output_tokens=\\d+ pinned_count=3"
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-4",
+      "verifies": ["R-3", "R-8", "INV-6"],
+      "category": "phase2-fallback",
+      "given": {
+        "session.pinnedZone.tokens": 80000,
+        "session.pinnedZoneCap": 60000
+      },
+      "when": "runtime.buildPrompt() → detects pinnedZone over cap",
+      "then": {
+        "compaction.phase": 2,
+        "compaction.framing.strict": true,
+        "compaction.targetTokens": 5000,
+        "telemetry.event": "phase2_fired",
+        "session.pinnedZone.afterCompaction": "[]"
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-5",
+      "verifies": ["R-3", "INV-6"],
+      "category": "unrecoverable",
+      "given": {
+        "phase2.output.stillExceedsBudget": true
+      },
+      "when": "compaction.runPhase2() → result still over per-request budget",
+      "then": {
+        "error": "E_OVERFLOW_UNRECOVERABLE",
+        "phase3.attempted": false,
+        "user.message.contains": "structural bloat"
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-6",
+      "verifies": ["R-4", "INV-1"],
+      "category": "cache-placement",
+      "given": {
+        "session.steadyState": true,
+        "rounds.captured": ["N", "N+1", "N+2"]
+      },
+      "when": "compute byteHash([system, anchor, pinned_zone]) for each round",
+      "then": {
+        "byteHash[N+1] == byteHash[N]": true,
+        "byteHash[N+2] == byteHash[N]": true
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-7",
+      "verifies": ["R-7", "INV-4", "DD-4"],
+      "category": "pin-envelope",
+      "given": {
+        "round": "K",
+        "tool_call.id": "T7",
+        "tool_call.name": "read",
+        "tool_result.content": "<verbatim 4000-token config>"
+      },
+      "when": "ai.emit(metadata.contextMarkers.pin = ['T7'])",
+      "then": {
+        "pinnedZone.entries[0].role": "user",
+        "pinnedZone.entries[0].content.startsWith": "[Pinned earlier output] tool 'read' (round K, tool_call_id=T7) returned:",
+        "journal.tool_call_T7.adjacent_to.tool_result_T7": true,
+        "providerValidation.openai": "accept",
+        "providerValidation.anthropic": "accept",
+        "providerValidation.codex": "accept",
+        "providerValidation.google": "accept"
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-8",
+      "verifies": ["R-7", "DD-7", "INV-9"],
+      "category": "recall-idempotent",
+      "given": {
+        "diskMessage": {"msgId": "M3", "content": "<original 8K tool_result>"},
+        "journal.alreadyContains": "[Recalled from earlier] M3 ..."
+      },
+      "when": "ai.emit(metadata.contextMarkers.recall = [{msgId: 'M3'}])  // second time",
+      "then": {
+        "journal.recalledEntries.count": 1
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-9",
+      "verifies": ["R-9", "DD-8"],
+      "category": "cross-session-recall",
+      "given": {
+        "subagentSession": "S2",
+        "subagentMessage": "M9",
+        "subagent.status": "completed"
+      },
+      "when": "parent.emit(metadata.contextMarkers.recall = [{sessionId: 'S2', msgId: 'M9'}])",
+      "then": {
+        "parent.journal.tail.startsWith": "[Recalled from subagent S2] tool '<name>' (round <K>, msg_id=M9) returned:"
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-10",
+      "verifies": ["R-10", "DD-6"],
+      "category": "failure-injection",
+      "given": {
+        "llmStub.behavior": "return HTTP 429 on attempt 1 and 2"
+      },
+      "when": "runtime.runHybridLlm()",
+      "then": {
+        "retries.count": 1,
+        "fallback.applied": "keepPriorAnchor + truncateJournalFromOldest",
+        "telemetry.errorCode": "E_HYBRID_LLM_FAILED",
+        "runloop.stalled": false
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-11",
+      "verifies": ["R-10"],
+      "category": "failure-injection",
+      "given": {
+        "llmStub.behavior": "delay > 30s"
+      },
+      "when": "runtime.runHybridLlm() with compaction.llmTimeoutMs=30000",
+      "then": {
+        "request.aborted": true,
+        "telemetry.errorCode": "E_HYBRID_LLM_TIMEOUT",
+        "fallback.applied": true
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-12",
+      "verifies": ["R-10", "DD-6"],
+      "category": "failure-injection",
+      "given": {
+        "llmStub.behavior": "return body larger than (anchor + journal_input)"
+      },
+      "when": "runtime.runHybridLlm()",
+      "then": {
+        "sanityCheck.failed": true,
+        "retries.count": 1,
+        "telemetry.errorCode": "E_HYBRID_LLM_MALFORMED",
+        "fallback.applied": true
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-13",
+      "verifies": ["R-11", "INV-5"],
+      "category": "xprovider/regression",
+      "description": "Identical (prior_anchor, journal) input run against gpt-5.x / anthropic / codex / google must each produce a schema-compliant anchor whose content covers the same key facts.",
+      "given": {
+        "fixture.input": "fixtures/xprovider/12round-snapshot.json",
+        "providers": ["openai/gpt-5.4", "anthropic/claude-4.6", "openai/codex-gpt-5", "google/gemini-2"]
+      },
+      "when": "for each provider: runHybridLlm(input, providerOverride=p)",
+      "then": {
+        "all_outputs.match.headerLine.regex": "^\\[Context Anchor v1\\] generated at \\S+ by \\S+:\\S+ covering rounds \\[\\d+\\.\\.\\d+\\]$",
+        "all_outputs.coverage.entities": ">= 80% of named entities in input present in output",
+        "all_outputs.coverage.decisions": "100% of decision lines in input present (verbatim or paraphrased)",
+        "all_outputs.coverage.filePaths": "100% of file paths still mentioned in recent journal present",
+        "all_outputs.forbidden.tokens.notFound": ["<thinking>", "<scratchpad>", "<|im_start|>", "tool_calls"]
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-14",
+      "verifies": ["R-12", "DD-10"],
+      "category": "migration",
+      "given": {
+        "session.priorState": "old narrative anchor (assistant + summary === true) from compaction-redesign"
+      },
+      "when": "new runtime opens session and triggers compaction",
+      "then": {
+        "anchor.acceptedAsValid": true,
+        "compaction.kind": "hybrid_llm",
+        "compaction.input.priorAnchor": "<the old narrative anchor>"
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-15",
+      "verifies": ["R-2", "R-12", "DD-10"],
+      "category": "migration",
+      "description": "Cold-start on no-anchor 1000-round legacy session triggers chunk-and-merge mode internally.",
+      "given": {
+        "session.rounds": 1000,
+        "session.anchor": null
+      },
+      "when": "runtime.triggerCompaction()",
+      "then": {
+        "compaction.internalMode": "chunk-and-merge",
+        "telemetry.event.internalMode": "chunk-and-merge",
+        "anchor.persistedToDisk": true,
+        "secondOpen.coldStart.skipped": true
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-16",
+      "verifies": ["R-12"],
+      "category": "migration",
+      "given": {
+        "session.disk": "contains stale SharedContext / rebind-checkpoint state"
+      },
+      "when": "runtime.loadSession()",
+      "then": {
+        "errors.parse": "none",
+        "prompt.built.from": "message-stream SSOT only",
+        "shared_context.referenced": false
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-17",
+      "verifies": ["INV-3", "DD-13"],
+      "category": "fall-through",
+      "description": "Layer 1+2 self-sufficiency: AI never uses Layer 3-5; system remains correct.",
+      "given": {
+        "ai.behavior": "ignores ContextStatus, never emits compact_now, never emits any contextMarkers"
+      },
+      "when": "run a 50-round session that crosses overflow gate twice",
+      "then": {
+        "compactions.fired": 2,
+        "compactions.kind": ["hybrid_llm", "hybrid_llm"],
+        "session.completedSuccessfully": true,
+        "errors": []
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-18",
+      "verifies": ["R-13", "INV-7"],
+      "category": "telemetry",
+      "given": {
+        "compaction.fires": "any kind/phase"
+      },
+      "when": "compaction event completes",
+      "then": {
+        "telemetry.event.matchesSchema": "data-schema.json#/definitions/CompactionEvent",
+        "telemetry.event.appendedBeforeRunloopContinues": true
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-19",
+      "verifies": ["R-6", "DD-14"],
+      "category": "voluntary-summarize",
+      "given": {
+        "session.budget.roomRemaining": 27000
+      },
+      "when": "ai.tool_call(compact_now, {reason: 'next read likely 30K, summarising first'})",
+      "then": {
+        "compaction.fired": true,
+        "compaction.voluntary": true,
+        "tool_result.contains": ["room_remaining_after", "anchor_size"]
+      },
+      "status": "draft"
+    },
+    {
+      "id": "TV-20",
+      "verifies": ["INV-10"],
+      "category": "daemon-restart",
+      "given": {
+        "session.steadyState": true,
+        "compaction.justFinished": true
+      },
+      "when": "kill -9 daemon, restart, build next round's prompt",
+      "then": {
+        "prompt.byteEqual": "to the prompt that would have been built without restart"
+      },
+      "status": "draft"
+    }
+]
