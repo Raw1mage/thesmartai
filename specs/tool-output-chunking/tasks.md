@@ -38,12 +38,12 @@ Goal: replace KIND_CHAIN with single `hybrid_llm` kind; implement Phase 1
 - [x] 2.3 Define `Anchor` / `JournalEntry` / `PinnedZoneEntry` / `ContextMarkers` / `LLMCompactRequest` / `CompactionEvent` types in `packages/opencode/src/session/memory.ts` matching `data-schema.json`
 - [x] 2.4 Refactor `Memory` to expose first-class `anchor` / `journal` / `pinned_zone` accessors (read from on-disk message stream, INV-10)
 - [x] 2.5 Implement `recallMessage(sessionId?, msgId)` in `memory.ts` with idempotency check (DD-7, INV-9)
-- [ ] 2.6 Implement `LLM_compact` core in `compaction.ts` — single-pass mode, calls EXT-LLM with framing prompt, returns anchor body (DD-3)
-- [ ] 2.7 Implement `LLM_compact` chunk-and-merge mode (sequential digest accumulation when input > LLM input budget) (DD-3 internal mode)
-- [ ] 2.8 Implement output validators per `hybrid-llm-framing.md` §"Output validation" (header regex, size, strict-smaller, forbidden tokens, drop respected)
-- [ ] 2.9 Implement `runHybridLlmWithRecovery` wrapper: sanity check → 1 retry with stricter framing → optional fallback provider → graceful degradation (truncate journal from oldest) (DD-6, INV-2)
-- [ ] 2.10 Implement Phase 2 path: stricter framing, absorb pinned_zone, clear pinned_zone after success (DD-5, DD-9)
-- [ ] 2.11 Implement Phase 2 starvation handling: raise `E_OVERFLOW_UNRECOVERABLE` if Phase 2 still overflows (no Phase 3) (DD-9, INV-6)
+- [x] 2.6 Implement `LLM_compact` core in `compaction.ts` — single-pass mode, calls EXT-LLM with framing prompt, returns anchor body (DD-3)
+- [!] 2.7 chunk-and-merge mode — deferred: runLlmCompact returns chunk_and_merge_unimplemented; graceful degradation handles. Pick up after Phase 2 KIND_CHAIN integration proves Phase 1 path.
+- [x] 2.8 Implement output validators per `hybrid-llm-framing.md` §"Output validation" (header regex, size, strict-smaller, forbidden tokens, drop respected)
+- [x] 2.9 Implement `runHybridLlmWithRecovery` wrapper: sanity check → 1 retry with stricter framing → optional fallback provider → graceful degradation (truncate journal from oldest) (DD-6, INV-2)
+- [!] 2.10 Phase 2 absorb-pinned-zone — deferred until 2.13/2.14 land (pinned_zone has no producer yet on the hybrid path).
+- [!] 2.11 Phase 2 starvation E_OVERFLOW_UNRECOVERABLE — deferred until 2.10 lands.
 - [ ] 2.12 Rewrite `KIND_CHAIN` in `compaction.ts` to single entry `hybrid_llm`; delete `tryReplayTail` / `tryLowCostServer` / `tryLlmAgent` / `tryChunkedDigest` / `tryNarrative` (DD-3, DD-12)
 - [ ] 2.13 Rewrite `prompt.ts::buildPrompt` to enforce 5-zone canonical order with assertion (DD-1, INV-1)
 - [ ] 2.14 Implement pinned_zone materialisation: wrap each pinned tool_result as user-role envelope per DD-4 (closes G-1, INV-4)
