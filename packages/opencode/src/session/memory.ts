@@ -271,19 +271,47 @@ export namespace Memory {
   /**
    * Append a new TurnSummary entry, bump version, and persist.
    *
-   * Caller is the runloop exit handler at prompt.ts:1230 (the `exiting loop`
+   * Caller is the runloop exit handler at prompt.ts (the `exiting loop`
    * site). Per INV-6, the append must be durable before the next runloop
    * iteration (or daemon return) — implementation: Storage.write completes
    * before this function resolves. Caller may still treat the call as
    * fire-and-forget for UX latency, but we do not return early on partial
    * persistence.
+   *
+   * Two normalisations applied centrally so callers don't have to think:
+   *
+   * 1. **turnIndex**: derived from the array position at append time
+   *    (`mem.turnSummaries.length` BEFORE push). Caller's `summary.turnIndex`
+   *    is overwritten. Reason: the runloop's `step` counter is 0 when
+   *    SessionPrompt.loop re-enters a finished session and immediately hits
+   *    the exit branch — `step` does not measure "which turn this is in
+   *    the session". Array position does, and matches the field's
+   *    documented meaning ("ordinal of this turn within the session").
+   *
+   * 2. **Idempotency on assistantMessageId**: if a TurnSummary with the
+   *    same `assistantMessageId` already exists, the append is a no-op.
+   *    Protects against the runloop re-entering an already-captured turn
+   *    (e.g. resume on a finished session followed by exit-branch fires
+   *    capture again with the same lastAssistant). Without this, Memory
+   *    would accumulate duplicate entries for the same turn.
    */
   export async function appendTurnSummary(
     sessionID: string,
     summary: TurnSummary,
   ): Promise<void> {
     const mem = await read(sessionID)
-    mem.turnSummaries.push(summary)
+    if (
+      summary.assistantMessageId &&
+      mem.turnSummaries.some((t) => t.assistantMessageId === summary.assistantMessageId)
+    ) {
+      // Already captured — skip silently.
+      return
+    }
+    const normalized: TurnSummary = {
+      ...summary,
+      turnIndex: mem.turnSummaries.length,
+    }
+    mem.turnSummaries.push(normalized)
     mem.version += 1
     mem.updatedAt = Date.now()
     await write(sessionID, mem)

@@ -215,8 +215,9 @@ describe("Memory", () => {
     ;(SharedContext as any).get = mock(async () => undefined)
 
     const ts: Memory.TurnSummary = {
-      turnIndex: 0,
+      turnIndex: 999, // any value — overridden by appendTurnSummary
       userMessageId: "msg_u1",
+      assistantMessageId: "msg_a1",
       endedAt: 100,
       text: "did stuff",
       modelID: "gpt-5.5",
@@ -227,13 +228,81 @@ describe("Memory", () => {
     expect(stored).toBeDefined()
     expect(stored?.turnSummaries).toHaveLength(1)
     expect(stored?.turnSummaries[0].text).toBe("did stuff")
+    // turnIndex normalised to array position regardless of caller value
+    expect(stored?.turnSummaries[0].turnIndex).toBe(0)
     expect(stored?.version).toBe(1)
 
-    // second append accumulates
-    const ts2: Memory.TurnSummary = { ...ts, turnIndex: 1, userMessageId: "msg_u2", text: "more" }
+    // second append accumulates with auto-incremented turnIndex
+    const ts2: Memory.TurnSummary = {
+      ...ts,
+      turnIndex: 999,
+      userMessageId: "msg_u2",
+      assistantMessageId: "msg_a2",
+      text: "more",
+    }
     await Memory.appendTurnSummary(sid, ts2)
     expect(stored?.turnSummaries).toHaveLength(2)
+    expect(stored?.turnSummaries[1].turnIndex).toBe(1)
     expect(stored?.version).toBe(2)
+  })
+
+  it("appendTurnSummary is idempotent on assistantMessageId (skips duplicate)", async () => {
+    const sid = "ses_memory_idempotent_test"
+    let stored: Memory.SessionMemory | undefined
+    ;(Storage as any).read = mock(async () => stored)
+    ;(Storage as any).write = mock(async (_k: string[], v: Memory.SessionMemory) => {
+      stored = v
+    })
+    ;(SharedContext as any).get = mock(async () => undefined)
+
+    const ts: Memory.TurnSummary = {
+      turnIndex: 0,
+      userMessageId: "msg_u1",
+      assistantMessageId: "msg_a1",
+      endedAt: 100,
+      text: "did stuff",
+      modelID: "gpt-5.5",
+      providerId: "codex",
+    }
+    await Memory.appendTurnSummary(sid, ts)
+    expect(stored?.turnSummaries).toHaveLength(1)
+    expect(stored?.version).toBe(1)
+
+    // Re-append the same assistantMessageId → no-op
+    await Memory.appendTurnSummary(sid, ts)
+    expect(stored?.turnSummaries).toHaveLength(1)
+    expect(stored?.version).toBe(1) // version unchanged
+
+    // Different assistantMessageId → goes through
+    await Memory.appendTurnSummary(sid, { ...ts, assistantMessageId: "msg_a2", text: "next" })
+    expect(stored?.turnSummaries).toHaveLength(2)
+    expect(stored?.version).toBe(2)
+  })
+
+  it("appendTurnSummary without assistantMessageId always appends (no dedup key)", async () => {
+    const sid = "ses_memory_noassistant_test"
+    let stored: Memory.SessionMemory | undefined
+    ;(Storage as any).read = mock(async () => stored)
+    ;(Storage as any).write = mock(async (_k: string[], v: Memory.SessionMemory) => {
+      stored = v
+    })
+    ;(SharedContext as any).get = mock(async () => undefined)
+
+    const tsNoAssistant: Memory.TurnSummary = {
+      turnIndex: 0,
+      userMessageId: "msg_u1",
+      // assistantMessageId intentionally omitted — defensive case
+      endedAt: 100,
+      text: "skeleton",
+      modelID: "gpt-5.5",
+      providerId: "codex",
+    }
+    await Memory.appendTurnSummary(sid, tsNoAssistant)
+    await Memory.appendTurnSummary(sid, tsNoAssistant)
+    // Two appends, no dedup key → both kept; turnIndex auto-incremented
+    expect(stored?.turnSummaries).toHaveLength(2)
+    expect(stored?.turnSummaries[0].turnIndex).toBe(0)
+    expect(stored?.turnSummaries[1].turnIndex).toBe(1)
   })
 
   it("markCompacted writes lastCompactedAt", async () => {
