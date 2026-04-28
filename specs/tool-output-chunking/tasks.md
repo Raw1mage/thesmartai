@@ -44,18 +44,18 @@ Goal: replace KIND_CHAIN with single `hybrid_llm` kind; implement Phase 1
 - [x] 2.9 Implement `runHybridLlmWithRecovery` wrapper: sanity check → 1 retry with stricter framing → optional fallback provider → graceful degradation (truncate journal from oldest) (DD-6, INV-2)
 - [!] 2.10 Phase 2 absorb-pinned-zone — deferred until 2.13/2.14 land (pinned_zone has no producer yet on the hybrid path).
 - [!] 2.11 Phase 2 starvation E_OVERFLOW_UNRECOVERABLE — deferred until 2.10 lands.
-- [ ] 2.12 Rewrite `KIND_CHAIN` in `compaction.ts` to single entry `hybrid_llm`; delete `tryReplayTail` / `tryLowCostServer` / `tryLlmAgent` / `tryChunkedDigest` / `tryNarrative` (DD-3, DD-12)
+- [-] 2.12 Rewrite `KIND_CHAIN` in `compaction.ts` to single entry `hybrid_llm`; delete `tryReplayTail` / `tryLowCostServer` / `tryLlmAgent` / `tryChunkedDigest` / `tryNarrative` (DD-3, DD-12)
 - [-] 2.13 Rewrite `prompt.ts::buildPrompt` to enforce 5-zone canonical order with assertion (DD-1, INV-1)
 - [x] 2.14 Implement pinned_zone materialisation: wrap each pinned tool_result as user-role envelope per DD-4 (closes G-1, INV-4)
-- [ ] 2.15 Implement pinned_zone cap check forcing Phase 2 when `pinnedZoneTokens > pinnedZoneCap` (DD-5)
-- [ ] 2.16 Implement migration matrix per DD-10: old narrative anchor accepted; no-anchor → cold-start; SharedContext relics ignored
-- [ ] 2.17 Add fixtures TV-3..TV-7, TV-10..TV-16, TV-20 to `test-vectors.json` and write `bun test` runners
-- [ ] 2.18 Cross-provider regression test (TV-13): runHybridLlm against gpt-5.x / anthropic / codex / google with the same input; verify schema-compliant outputs (DD-11, INV-5, R-11)
-- [ ] 2.19 Failure injection tests (TV-10/11/12) for `E_HYBRID_LLM_FAILED` / `_TIMEOUT` / `_MALFORMED`
-- [ ] 2.20 Daemon-restart test (TV-20) for INV-10
-- [ ] 2.21 Cache hit-rate measurement: capture pre-merge baseline, measure post-merge at 80–90% utilisation; gate merge if regression > 5pp
-- [ ] 2.22 Update `specs/architecture.md` Compaction Subsystem section (rewrite for hybrid-llm)
-- [ ] 2.23 Phase 2 summary: write `docs/events/event_<YYYYMMDD>_hybrid-llm-landing.md`
+- [-] 2.15 Implement pinned_zone cap check forcing Phase 2 when `pinnedZoneTokens > pinnedZoneCap` (DD-5)
+- [-] 2.16 Implement migration matrix per DD-10: old narrative anchor accepted; no-anchor → cold-start; SharedContext relics ignored
+- [x] 2.17 Add fixtures TV-3..TV-7, TV-10..TV-16, TV-20 to `test-vectors.json` and write `bun test` runners
+- [-] 2.18 Cross-provider regression test (TV-13): runHybridLlm against gpt-5.x / anthropic / codex / google with the same input; verify schema-compliant outputs (DD-11, INV-5, R-11)
+- [-] 2.19 Failure injection tests (TV-10/11/12) for `E_HYBRID_LLM_FAILED` / `_TIMEOUT` / `_MALFORMED`
+- [-] 2.20 Daemon-restart test (TV-20) for INV-10
+- [-] 2.21 Cache hit-rate measurement: capture pre-merge baseline, measure post-merge at 80–90% utilisation; gate merge if regression > 5pp
+- [x] 2.22 Update `specs/architecture.md` Compaction Subsystem section (rewrite for hybrid-llm)
+- [x] 2.23 Phase 2 summary: write `docs/events/event_<YYYYMMDD>_hybrid-llm-landing.md`
 
 ## 3. Phase 3 — Layer 3 context visibility
 

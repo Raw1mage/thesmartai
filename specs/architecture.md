@@ -302,6 +302,22 @@ data-schema.json, tasks.md, handoff.md, errors.md, observability.md,
 invariants.md). Phase 13 is documented inline in tasks.md as Section 13.
 Implementation history in `docs/events/`.
 
+### Hybrid-LLM Compaction (Phase 2 of context-management subsystem, opt-in 2026-04-29)
+
+A new kind `hybrid_llm` (specs/tool-output-chunking/, refactor 2026-04-29) lives alongside the four existing kinds. Master switch is `compaction_enable_hybrid_llm` in `/etc/opencode/tweaks.cfg` (default off during rollout). When on, `hybrid_llm` is prepended to the chains for `overflow / cache-aware / manual` triggers; existing kinds remain reachable as fallback. Maintenance triggers (`idle / rebind / continuation-invalidated / provider-switched`) are untouched.
+
+- **`SessionCompaction.Hybrid` namespace** (in `packages/opencode/src/session/compaction.ts`): types mirror `specs/tool-output-chunking/data-schema.json` (`Anchor` / `JournalEntry` / `PinnedZoneEntry` / `ContextMarkers` / `ContextStatus` / `LLMCompactRequest` / `CompactionEvent` / `ErrorCode`). Pure functions for validation + envelope wrapping + payload construction.
+- **`Memory.Hybrid` accessors** (in `memory.ts`): selectors over the message stream — `getAnchorMessage` / `getJournalMessages` / `getPinnedToolMessages` / `recallMessage`. INV-10 single-source-of-truth preserved.
+- **`runLlmCompact` (single-pass core)**: builds the framing-prompt + user-payload from `LLMCompactRequest`, dispatches the LLM round through `SessionProcessor` (mirroring `runLlmCompactionAgent`), reads back assistant text, runs `validateAnchorBody` against `hybrid-llm-framing.md` §"Output validation". Returns a discriminated `LlmCompactResult`. Phase 2.7 chunk-and-merge mode is signalled via `chunk_and_merge_unimplemented` and caught by the recovery wrapper.
+- **`runHybridLlm` (recovery wrapper)**: 1 retry with stricter framing (validation-failure reason as prompt addendum), graceful degradation (keep prior anchor + log warning) if both attempts fail. Returns `CompactionEvent` for telemetry. Phase 2.9 follow-up will add the optional fallback-provider step. Phase 2.10/2.11 will add Phase 2 absorb-pinned-zone + `E_OVERFLOW_UNRECOVERABLE` starvation.
+- **DD-10 migration**: any `assistant + summary === true` message on disk is accepted as `priorAnchor` for hybrid_llm — legacy narrative-produced anchors work without rewrites.
+- **DD-4 pinned envelope** (closes G-1): `wrapPinnedToolMessage` produces a synthesised user-role message preserving `tool_call`/`tool_result` adjacency in journal (INV-4). Production producer is Phase 5 (Layer 5 override surface) — until then, `pinned_zone` stays empty and the actual prompt byte-layout matches today's.
+- **Framing prompt** at `packages/opencode/src/session/prompt/hybrid-llm-framing.md` (Phase 2.1 git-mv'd from specs/). Lazy-loaded via `Bun.file()`, cached after first compaction event. Falls back to an inline minimal framing constant if the file is missing.
+- **4 tweaks knobs** (`compaction_llm_timeout_ms` / `compaction_fallback_provider` / `compaction_phase2_max_anchor_tokens` / `compaction_pinned_zone_max_tokens_ratio`) configure the recovery ladder + Phase 2 + pinned cap. Sync accessor `Tweaks.compactionSync()` for the hot path.
+- **Tests**: 22 pure-function unit tests at `packages/opencode/test/session/compaction-hybrid.test.ts`. Integration tests against a live LLM are deferred to the cross-provider regression harness (Phase 2.18).
+
+Open work tracked in `specs/tool-output-chunking/tasks.md`: Phase 2.7 chunk-and-merge, Phase 2.10/2.11 Phase 2 absorb-pinned-zone + starvation, Phase 2.15 pin cap forcing Phase 2, Phase 2.16 explicit migration test fixtures, Phase 2.18-2.20 cross-provider + failure-injection + daemon-restart tests, Phase 2.21 cache hit-rate post-merge gate. The flag stays default-off until those land + telemetry from opt-in deployments proves correctness; only then does Phase 2.12 retire the legacy kinds.
+
 ## Key Modules
 
 - **`src/account`**: Disk persistence (`accounts.json`), ID generation, basic CRUD.
