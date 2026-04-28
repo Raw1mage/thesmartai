@@ -478,7 +478,7 @@ export namespace SessionCompaction {
         ),
       )
 
-    const usable = input.model.limit.input
+    const reservedBasedUsable = input.model.limit.input
       ? input.model.limit.input - reserved
       : context -
         ProviderTransform.maxOutputTokens(
@@ -487,6 +487,26 @@ export namespace SessionCompaction {
           input.model.limit.output || 32_000,
           SessionPrompt.OUTPUT_TOKEN_MAX,
         )
+
+    // Threshold-based usable: when `compaction.overflowThreshold` is set
+    // (fraction of context, e.g. 0.9), it OVERRIDES the legacy
+    // reserved-based formula. Compaction fires when count crosses
+    // `context * threshold` regardless of how much output headroom
+    // remains. This is safe because compaction runs BEFORE the next LLM
+    // call: the round that triggers overflow doesn't make an API call,
+    // it writes an anchor and the next iteration's prompt is dramatically
+    // smaller. The default (undefined) keeps the legacy reserved-based
+    // formula for backward compatibility.
+    //
+    // Recommended values:
+    //   0.9 — fire compaction at 90% of context (user's preferred default
+    //         for codex/byToken billing where the legacy 80K headroom
+    //         produced overly-aggressive ~70% triggers)
+    const overflowThreshold = config.compaction?.overflowThreshold
+    const usable =
+      typeof overflowThreshold === "number"
+        ? Math.floor(context * overflowThreshold)
+        : reservedBasedUsable
 
     // Emergency ceiling: hard limit that ignores cooldown
     const emergencyCeiling = input.model.limit.input
@@ -608,14 +628,73 @@ export namespace SessionCompaction {
 
   const PRUNE_PROTECTED_TOOLS = ["skill"]
 
-  // goes backwards through parts until there are 40_000 tokens worth of tool
-  // calls. then erases output of previous tool calls. idea is to throw away old
-  // tool calls that are no longer relevant.
+  /** Default context utilization gate: prune fires only when ≥ 80% of context. */
+  const PRUNE_UTILIZATION_FLOOR = 0.8
+
+  /**
+   * Tool-output garbage collector. NOT semantic compaction (that's
+   * SessionCompaction.run). Erases old tool-result `output` strings so they
+   * stop counting against the next LLM call's prompt budget.
+   *
+   * Two safety rails on top of the legacy 40K-protect / 20K-minimum logic:
+   *
+   * 1. **Utilization floor (default 0.8)** — skip when context is under
+   *    80% full. Tool-output GC has no value at low utilization; running it
+   *    every loop exit just confuses observers and erases information that
+   *    isn't actually crowding the budget.
+   *
+   * 2. **TurnSummary safety** — only prune tool outputs from turns whose
+   *    `userMessageId` already has a captured `TurnSummary` in `Memory`.
+   *    The narrative summary is the semantic preservation; without it,
+   *    erasing tool outputs is destructive memory loss with no recovery
+   *    path. Combined with the legacy `turns < 2` guard, this means the
+   *    most-recent-2-turns and any in-progress / un-summarized turn are
+   *    both protected.
+   */
   export async function prune(input: { sessionID: string }) {
     const config = await Config.get()
     if (config.compaction?.prune === false) return
+
+    // Gate 1: utilization floor.
+    const tokens = await getLastAssistantTokens(input.sessionID)
+    const model = await resolveActiveModel(input.sessionID)
+    const utilizationFloor = config.compaction?.pruneUtilizationFloor ?? PRUNE_UTILIZATION_FLOOR
+    if (tokens && model?.limit?.context) {
+      const count =
+        tokens.total ||
+        tokens.input + tokens.output + tokens.cache.read + tokens.cache.write
+      const utilization = count / model.limit.context
+      if (utilization < utilizationFloor) {
+        log.info("pruning skipped (utilization below floor)", {
+          sessionID: input.sessionID,
+          utilization: utilization.toFixed(3),
+          floor: utilizationFloor,
+        })
+        return
+      }
+    }
+
     log.info("pruning")
     const msgs = await Session.messages({ sessionID: input.sessionID })
+    if (msgs.length === 0) return
+
+    // Gate 2: build the set of "narratively-summarized" userMessageIds from
+    // Memory. Turns whose userMessageId is not in this set retain their tool
+    // outputs because there's no narrative preservation to fall back on.
+    const mem = await Memory.read(input.sessionID).catch(() => undefined)
+    const summarizedTurnIds = new Set(
+      (mem?.turnSummaries ?? []).map((t) => t.userMessageId).filter(Boolean),
+    )
+
+    // Forward pass: associate each assistant message with the user-turn it
+    // belongs to (most recent user message at or before its position).
+    const turnByMessage = new Map<string, string>()
+    let activeUserId: string | undefined
+    for (const m of msgs) {
+      if (m.info.role === "user") activeUserId = m.info.id
+      else if (activeUserId) turnByMessage.set(m.info.id, activeUserId)
+    }
+
     let total = 0
     let pruned = 0
     const toPrune = []
@@ -626,6 +705,13 @@ export namespace SessionCompaction {
       if (msg.info.role === "user") turns++
       if (turns < 2) continue
       if (msg.info.role === "assistant" && msg.info.summary) break loop
+
+      // Smart-prune gate: skip turn-N's parts unless turn-N has a
+      // captured TurnSummary in Memory (i.e. AI's narrative summary
+      // preserves the meaning of those tool reads).
+      const turnId = turnByMessage.get(msg.info.id)
+      if (!turnId || !summarizedTurnIds.has(turnId)) continue
+
       for (let partIndex = msg.parts.length - 1; partIndex >= 0; partIndex--) {
         const part = msg.parts[partIndex]
         if (part.type === "tool")

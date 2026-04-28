@@ -1550,6 +1550,22 @@ export namespace Config {
             .describe(
               "Context utilization threshold for idle compaction after task dispatch (default: 0.6). Set to 1.0 to disable.",
             ),
+          overflowThreshold: z
+            .number()
+            .min(0)
+            .max(1)
+            .optional()
+            .describe(
+              "When set, overrides the legacy reserved-based usable budget formula. Compaction fires when count >= context * threshold. Recommended: 0.9 to fire at 90% of context. Default: undefined (legacy reserved-based, ~70% for codex/byToken billing).",
+            ),
+          pruneUtilizationFloor: z
+            .number()
+            .min(0)
+            .max(1)
+            .optional()
+            .describe(
+              "Tool-output prune (GC) skips when context utilization is below this floor (default: 0.8). Lower values run prune more eagerly; higher values save the GC for high-pressure sessions.",
+            ),
         })
         .optional(),
       experimental: z
