@@ -640,7 +640,10 @@ export namespace SessionCompaction {
     | "manual"
     | "idle"
 
-  export type KindName = "narrative" | "replay-tail" | "low-cost-server" | "llm-agent" | "hybrid_llm"
+  export type KindName = "narrative" | "replay-tail" | "low-cost-server" | "llm-agent"
+  // Note: hybrid_llm is intentionally NOT a KindName. It runs as a
+  // background post-step AFTER the chain commits an anchor. See
+  // run() success path + scheduleHybridEnrichment() below.
 
   export type RunInput = {
     sessionID: string
@@ -1152,8 +1155,6 @@ When constructing the summary, try to stick to this template:
         return tryLowCostServer(input, model)
       case "llm-agent":
         return tryLlmAgent(input, model)
-      case "hybrid_llm":
-        return tryHybridLlmKind(input, model)
     }
   }
 
@@ -1172,6 +1173,111 @@ When constructing the summary, try to stick to this template:
    * at the FRONT when the flag is on; existing kinds remain reachable as
    * fallback if hybrid throws.
    */
+  /**
+   * Per-session in-flight registry. Prevents two concurrent hybrid_llm
+   * enrichments on the same session. Cleared when the background
+   * promise settles.
+   */
+  const hybridEnrichInFlight = new Map<string, Promise<unknown>>()
+
+  /**
+   * Background enrichment dispatch. Called AFTER the legacy KIND_CHAIN
+   * has committed a fast intermediate anchor (typically narrative).
+   * The user's runloop has already unblocked. This fires-and-forgets a
+   * higher-quality LLM distillation that, when complete, writes a new
+   * anchor superseding the legacy one (Memory.read picks most recent).
+   *
+   * If the flag is off, in-flight, or anchor is already small, skip.
+   */
+  function scheduleHybridEnrichment(
+    sessionID: string,
+    observed: Observed,
+    model: Provider.Model | undefined,
+  ): void {
+    if (!model) return
+    const tweaks = Tweaks.compactionSync()
+    if (!tweaks.enableHybridLlm) return
+    if (hybridEnrichInFlight.has(sessionID)) {
+      log.info("hybrid_llm enrichment skipped (already in flight)", { sessionID })
+      return
+    }
+    if (!new Set<Observed>(["overflow", "cache-aware", "manual"]).has(observed)) return
+
+    const promise = (async () => {
+      try {
+        const messages = await Session.messages({ sessionID }).catch(() => [] as MessageV2.WithParts[])
+        const anchorMsg = await Memory.Hybrid.getAnchorMessage(sessionID, messages)
+        if (!anchorMsg) {
+          log.warn("hybrid_llm enrichment: no anchor to enrich", { sessionID })
+          return
+        }
+        const anchorContent = anchorMsg.parts
+          .filter((p) => p.type === "text")
+          .map((p) => (p as any).text ?? "")
+          .join("\n")
+        const anchorTokens = Math.ceil(anchorContent.length / 4)
+        // Only enrich if the anchor is large enough that distillation
+        // pays off. Tiny anchors don't need a paid LLM round.
+        if (anchorTokens < 5_000) {
+          log.info("hybrid_llm enrichment skipped (anchor small)", {
+            sessionID,
+            anchorTokens,
+          })
+          return
+        }
+        const priorAnchor: Hybrid.Anchor = {
+          role: "assistant",
+          summary: true,
+          content: anchorContent,
+          metadata: {
+            anchorVersion: 1,
+            generatedAt: new Date(anchorMsg.info?.time?.created ?? Date.now()).toISOString(),
+            generatedBy: {
+              provider: (anchorMsg.info as MessageV2.Assistant).providerId ?? "",
+              model: (anchorMsg.info as MessageV2.Assistant).modelID ?? "",
+              accountId: (anchorMsg.info as MessageV2.Assistant).accountId ?? "",
+            },
+            coversRounds: { earliest: 0, latest: 0 },
+            inputTokens: 0,
+            outputTokens: anchorTokens,
+            phase: 1,
+          },
+        }
+        const ctx = model.limit?.context ?? 200_000
+        const targetTokens = Math.max(5_000, Math.round(ctx * 0.30))
+        const event = await Hybrid.runHybridLlm(sessionID, {
+          abort: new AbortController().signal,  // background, never user-aborted
+          priorAnchor,
+          journalUnpinned: [],  // distill the existing anchor; no new journal
+          targetTokens,
+          voluntary: false,
+          busMode: "hybrid_llm_background",
+        })
+        log.info("hybrid_llm enrichment finished", {
+          sessionID,
+          eventId: event.eventId,
+          result: event.result,
+          inputTokens: event.inputTokens,
+          outputTokens: event.outputTokens,
+          latencyMs: event.latencyMs,
+          errorCode: event.errorCode,
+        })
+      } catch (err) {
+        log.error("hybrid_llm enrichment threw", {
+          sessionID,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      } finally {
+        hybridEnrichInFlight.delete(sessionID)
+      }
+    })()
+    hybridEnrichInFlight.set(sessionID, promise)
+    log.info("hybrid_llm enrichment scheduled (background)", {
+      sessionID,
+      observed,
+    })
+  }
+
   async function tryHybridLlmKind(
     input: RunInput,
     model: Provider.Model | undefined,
@@ -1317,26 +1423,30 @@ When constructing the summary, try to stick to this template:
 
     const baseChain = KIND_CHAIN[observed]
     // Manual --rich: skip 1-3 (free) and 4 (low-cost-server), go straight to llm-agent.
-    let chain: ReadonlyArray<KindName> =
+    const chain: ReadonlyArray<KindName> =
       observed === "manual" && intent === "rich" ? (["llm-agent"] as const) : baseChain
 
-    // Phase 2 dual-path (specs/tool-output-chunking/): when the master
-    // flag is on, prepend hybrid_llm at the FRONT of the chain for
-    // observed conditions that genuinely benefit from it (overflow /
-    // cache-aware / manual). The existing kinds remain reachable as
-    // fallback if hybrid_llm fails. Other observed conditions (idle,
-    // rebind, continuation-invalidated, provider-switched) are
-    // maintenance triggers that don't need a paid LLM call — leave
-    // their chains untouched.
-    const hybridFlag = Tweaks.compactionSync().enableHybridLlm
-    const hybridEligible: ReadonlySet<Observed> = new Set([
+    // hybrid_llm post-step eligibility (specs/tool-output-chunking/
+    // refactored 2026-04-29 04:50: hybrid_llm is NOT in the chain.
+    // narrative remains chain head — fast, guaranteed anchor. After the
+    // chain commits a fast intermediate anchor, if the operator opted
+    // in via compaction_enable_hybrid_llm=1 AND no enrichment is
+    // already in flight for this session, schedule a background
+    // hybrid_llm distillation. Its higher-quality anchor supersedes
+    // the chain's via Memory.read's most-recent-wins selection.
+    //
+    // Why the post-step approach (not in-chain): synchronous hybrid_llm
+    // blocked the runloop 30-60s with no UI feedback (2026-04-29 first
+    // production test). Background fall-through-to-narrative also
+    // failed when narrative had insufficient turnSummaries. Putting
+    // hybrid_llm AFTER chain success means we always have an anchor
+    // before user is unblocked, regardless of whether hybrid_llm
+    // succeeds or times out.
+    const hybridEnrichmentEligible: ReadonlySet<Observed> = new Set([
       "overflow",
       "cache-aware",
       "manual",
     ])
-    if (hybridFlag && hybridEligible.has(observed) && !chain.includes("hybrid_llm")) {
-      chain = ["hybrid_llm", ...chain]
-    }
 
     const model = await resolveActiveModel(sessionID)
     const target = await resolveTargetPromptTokens()
@@ -1396,6 +1506,15 @@ When constructing the summary, try to stick to this template:
           kind: attempt.kind,
           step,
         })
+        // hybrid_llm post-step enrichment (Phase 2 redesigned 2026-04-29):
+        // user is already unblocked because the chain just wrote a fast
+        // intermediate anchor. If the operator opted in to hybrid_llm,
+        // fire a background distillation that supersedes the chain's
+        // anchor with a higher-quality one. Always non-blocking; failures
+        // are logged but don't affect the runloop or the user.
+        if (hybridEnrichmentEligible.has(observed)) {
+          scheduleHybridEnrichment(sessionID, observed, model)
+        }
         return "continue"
       }
     }
@@ -2072,6 +2191,7 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
         chunks: chunks.length,
         finalBodyTokens: Math.ceil(finalAnchorBody.length / 4),
       })
+      Bus.publish(Event.Compacted, { sessionID })
       return {
         ok: true,
         anchorBody: finalAnchorBody,
@@ -2113,9 +2233,17 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
     export async function runLlmCompact(
       sessionID: string,
       request: LLMCompactRequest,
-      opts: { abort: AbortSignal; stricterRetryReason?: ValidationFailure },
+      opts: {
+        abort: AbortSignal
+        stricterRetryReason?: ValidationFailure
+        /** UI label for Bus.publish(CompactionStarted/Compacted). */
+        busMode?: "hybrid_llm" | "hybrid_llm_background"
+      },
     ): Promise<LlmCompactResult> {
       const startedAt = Date.now()
+      // Visibility — TUI / web shows "Compacting..." badge from this event.
+      // Defaults to 'hybrid_llm' (foreground) unless caller specifies background.
+      Bus.publish(Event.CompactionStarted, { sessionID, mode: opts.busMode ?? "hybrid_llm" })
       const messages = await Session.messages({ sessionID }).catch(() => undefined)
       if (!messages || messages.length === 0) {
         return { ok: false, reason: "no_response", detail: "empty stream", latencyMs: Date.now() - startedAt }
@@ -2212,19 +2340,26 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
         time: { created: Date.now() },
       } as any)) as MessageV2.Assistant
 
+      // Wire timeout: combine caller's abort with a timeout-driven one
+      // so the LLM call gets aborted at compaction_llm_timeout_ms (DD-6).
+      const timeoutMs = Tweaks.compactionSync().llmTimeoutMs
+      const timeoutCtl = new AbortController()
+      const timeoutTimer = setTimeout(() => timeoutCtl.abort(), timeoutMs)
+      const combinedAbort = AbortSignal.any([opts.abort, timeoutCtl.signal])
+
       const processor = SessionProcessor.create({
         assistantMessage: stub,
         sessionID,
         model,
         accountId,
-        abort: opts.abort,
+        abort: combinedAbort,
       })
 
       try {
         const result = await processor.process({
           user: userMessage,
           agent,
-          abort: opts.abort,
+          abort: combinedAbort,
           sessionID,
           tools: {},
           system: [systemText],
@@ -2234,6 +2369,15 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
           model,
         })
         if (processor.message.error || result !== "continue") {
+          clearTimeout(timeoutTimer)
+          if (timeoutCtl.signal.aborted) {
+            return {
+              ok: false,
+              reason: "timeout",
+              detail: `LLM compaction exceeded ${timeoutMs}ms`,
+              latencyMs: Date.now() - startedAt,
+            }
+          }
           return {
             ok: false,
             reason: "llm_threw",
@@ -2242,6 +2386,15 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
           }
         }
       } catch (err) {
+        clearTimeout(timeoutTimer)
+        if (timeoutCtl.signal.aborted) {
+          return {
+            ok: false,
+            reason: "timeout",
+            detail: `LLM compaction exceeded ${timeoutMs}ms`,
+            latencyMs: Date.now() - startedAt,
+          }
+        }
         return {
           ok: false,
           reason: "llm_threw",
@@ -2249,6 +2402,7 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
           latencyMs: Date.now() - startedAt,
         }
       }
+      clearTimeout(timeoutTimer)
 
       // Read assistant text out
       const fresh = (await Session.messages({ sessionID })).findLast((m) => m.info.id === processor.message.id)
@@ -2267,6 +2421,9 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
           latencyMs: Date.now() - startedAt,
         }
       }
+
+      // UI clears the badge.
+      Bus.publish(Event.Compacted, { sessionID })
 
       return {
         ok: true,
@@ -2337,6 +2494,7 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
         dropMarkers?: string[]
         targetTokens: number
         voluntary?: boolean
+        busMode?: "hybrid_llm" | "hybrid_llm_background"
       },
     ): Promise<CompactionEvent> {
       const eventId = `cev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -2351,7 +2509,7 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
       }
 
       // Attempt 1
-      const first = await runLlmCompact(sessionID, request, { abort: opts.abort })
+      const first = await runLlmCompact(sessionID, request, { abort: opts.abort, busMode: opts.busMode })
       if (first.ok) {
         return makeEvent({
           eventId,
@@ -2380,6 +2538,7 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
         const second = await runLlmCompact(sessionID, request, {
           abort: opts.abort,
           stricterRetryReason: first.reason as ValidationFailure,
+          busMode: opts.busMode,
         })
         if (second.ok) {
           return makeEvent({
@@ -2422,7 +2581,7 @@ Honour DROP_MARKERS: do not mention dropped tool_call ids.
           pinnedCount: opts.pinnedZone.length,
           phase2TargetTokens,
         })
-        const phase2 = await runLlmCompact(sessionID, phase2Request, { abort: opts.abort })
+        const phase2 = await runLlmCompact(sessionID, phase2Request, { abort: opts.abort, busMode: opts.busMode })
         if (phase2.ok) {
           // Pinned_zone is now absorbed into the new anchor. Caller is
           // responsible for clearing the live pinned_zone state (e.g.,
