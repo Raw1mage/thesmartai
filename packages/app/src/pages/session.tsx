@@ -579,11 +579,31 @@ export default function Page() {
     emptyUserMessages,
     { equals: same },
   )
+  // Hide user messages whose only text parts are synthetic — these are
+  // runtime-injected nudges (e.g. autorun "go" prompts, task-summary
+  // continuations) that shouldn't appear in the conversation as if the
+  // user typed them. The container <div data-component="user-message">
+  // would otherwise render as an empty bubble; message-part already
+  // filters synthetic text from the textPart memo, but the container
+  // itself still appears unless we drop the message at the list level.
+  const isPureSyntheticUser = (m: UserMessage): boolean => {
+    const parts = (sync.data.part[m.id] ?? []) as Array<{ type?: string; synthetic?: boolean }>
+    if (parts.length === 0) return false
+    let hasNonSynthetic = false
+    let hasText = false
+    for (const p of parts) {
+      if (p.type !== "text") continue
+      hasText = true
+      if (!p.synthetic) hasNonSynthetic = true
+    }
+    return hasText && !hasNonSynthetic
+  }
   const visibleUserMessages = createMemo(
     () => {
       const revert = revertMessageID()
-      if (!revert) return userMessages()
-      return userMessages().filter((m) => m.id < revert)
+      const all = userMessages().filter((m) => !isPureSyntheticUser(m))
+      if (!revert) return all
+      return all.filter((m) => m.id < revert)
     },
     emptyUserMessages,
     {
