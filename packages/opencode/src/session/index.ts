@@ -14,11 +14,8 @@ import { Storage } from "../storage/storage"
 import { Log } from "../util/log"
 import { debugCheckpoint } from "../util/debug"
 import { MessageV2 } from "./message-v2"
-import {
-  readMessageInfo,
-  removeMessageInfo,
-  removePartFile,
-} from "./storage/legacy"
+import { readMessageInfo, removeMessageInfo, removePartFile } from "./storage/legacy"
+import { DreamingWorker } from "./storage/dreaming"
 import { Router as StorageRouter } from "./storage/router"
 import { Instance } from "../project/instance"
 import { Project } from "../project/project"
@@ -36,6 +33,7 @@ import { iife } from "@/util/iife"
 
 export namespace Session {
   const log = Log.create({ service: "session" })
+  const defaultDreamingWorker = new DreamingWorker()
 
   export const Stats = z.object({
     requestsTotal: z.number(),
@@ -872,6 +870,7 @@ export namespace Session {
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
     const previous = await readMessageInfo(msg.sessionID, msg.id)
     await StorageRouter.upsertMessage(msg)
+    DreamingWorker.noteMessageWrite(defaultDreamingWorker)
     if (hasMessageUsageDelta(previous, msg)) {
       await update(
         msg.sessionID,
@@ -1010,12 +1009,7 @@ export namespace Session {
 
     const tweak = Tweaks.partPersistenceSync()
     let runawayTripped = false
-    if (
-      delta &&
-      "text" in part &&
-      typeof part.text === "string" &&
-      part.text.length > tweak.maxPartBytes
-    ) {
+    if (delta && "text" in part && typeof part.text === "string" && part.text.length > tweak.maxPartBytes) {
       const truncated =
         part.text.slice(0, tweak.maxPartBytes) +
         `\n\n[…truncated by runaway-guard: part exceeded ${tweak.maxPartBytes} bytes]`

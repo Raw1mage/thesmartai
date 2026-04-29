@@ -30,6 +30,8 @@ import { EOL } from "os"
 import { WebCommand } from "./cli/cmd/web"
 import { PrCommand } from "./cli/cmd/pr"
 import { SessionCommand } from "./cli/cmd/session"
+import { SessionInspectCommand } from "./cli/cmd/session-inspect"
+import { StorageCommand } from "./cli/cmd/storage"
 import { AdminCommand } from "./cli/cmd/admin"
 import { KillSwitchCommand } from "./cli/cmd/killswitch"
 import { MigrateStripDiffsCommand } from "./cli/cmd/maintenance/migrate-strip-diffs"
@@ -145,6 +147,8 @@ const cli = yargs(hideBin(process.argv))
   .command(GithubCommand)
   .command(PrCommand)
   .command(SessionCommand)
+  .command(SessionInspectCommand)
+  .command(StorageCommand)
   .command(AdminCommand)
   .command(KillSwitchCommand)
   .command(MigrateStripDiffsCommand)

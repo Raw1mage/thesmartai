@@ -22,6 +22,7 @@ import z from "zod"
 import { Log } from "@/util/log"
 
 import { SessionStorageEvent } from "./events"
+import { SessionStorageMetrics } from "./metrics"
 
 const log = Log.create({ service: "session.storage.integrity" })
 
@@ -40,28 +41,31 @@ const cache = new WeakMap<Database, "ok">()
  * Run integrity_check on the database. Caches "ok" verdict per handle.
  * Throws StorageCorruptionError on failure (after publishing Bus event).
  */
-export async function runIntegrityCheck(
-  db: Database,
-  sessionID: string,
-  dbPath: string,
-): Promise<void> {
+export async function runIntegrityCheck(db: Database, sessionID: string, dbPath: string): Promise<void> {
   if (cache.get(db) === "ok") return
+  const start = Date.now()
 
-  // PRAGMA integrity_check returns one row per problem; on a healthy DB
-  // it returns a single row with value "ok".
-  const rows = db.query("PRAGMA integrity_check").all() as Array<{ integrity_check?: string }>
-  const verdict = rows
-    .map((r) => r.integrity_check)
-    .filter((v): v is string => typeof v === "string")
-    .join("\n")
-    .trim()
+  let verdict: string
+  try {
+    const rows = db.query("PRAGMA integrity_check").all() as Array<{ integrity_check?: string }>
+    verdict = rows
+      .map((r) => r.integrity_check)
+      .filter((v): v is string => typeof v === "string")
+      .join("\n")
+      .trim()
+  } catch (err) {
+    verdict = err instanceof Error ? err.message : String(err)
+  }
 
   if (verdict === "ok") {
     cache.set(db, "ok")
+    SessionStorageMetrics.observeMs("integrity_check_ms", Date.now() - start, { result: "ok" })
     return
   }
 
-  log.error("integrity check failed", { sessionID, verdict })
+  SessionStorageMetrics.observeMs("integrity_check_ms", Date.now() - start, { result: "non_ok" })
+  SessionStorageMetrics.increment("corrupted_total")
+  log.error("integrity.failed", { sessionID, integrity_check_output: verdict })
 
   await Bus.publish(SessionStorageEvent.Corrupted, {
     sessionID,
@@ -81,11 +85,7 @@ export async function runIntegrityCheck(
  * Force-run integrity check ignoring the cache. Used by `session-inspect
  * check` (DD-12) and any explicit user-driven recovery flow.
  */
-export async function runIntegrityCheckUncached(
-  db: Database,
-  sessionID: string,
-  dbPath: string,
-): Promise<string> {
+export async function runIntegrityCheckUncached(db: Database, sessionID: string, dbPath: string): Promise<string> {
   cache.delete(db)
   try {
     await runIntegrityCheck(db, sessionID, dbPath)

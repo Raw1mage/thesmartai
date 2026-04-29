@@ -20,6 +20,7 @@ import z from "zod"
 import { Log } from "@/util/log"
 
 import { SessionStorageEvent } from "./events"
+import { SessionStorageMetrics } from "./metrics"
 import * as v1 from "./migrations/v1"
 
 const log = Log.create({ service: "session.storage.migration" })
@@ -52,9 +53,7 @@ interface Migration {
   rollback(db: Database): void
 }
 
-const MIGRATIONS: Migration[] = [
-  { to: v1.VERSION, apply: v1.applyV1, rollback: v1.rollbackV1 },
-]
+const MIGRATIONS: Migration[] = [{ to: v1.VERSION, apply: v1.applyV1, rollback: v1.rollbackV1 }]
 
 export const TARGET_VERSION = MIGRATIONS[MIGRATIONS.length - 1].to
 
@@ -69,10 +68,7 @@ function writeUserVersion(db: Database, version: number): void {
 }
 
 function writeMetaSchemaVersion(db: Database, version: number): void {
-  db.query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
-    "schema_version",
-    String(version),
-  )
+  db.query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run("schema_version", String(version))
 }
 
 function writeMetaSessionId(db: Database, sessionID: string): void {
@@ -84,11 +80,7 @@ function writeMetaSessionId(db: Database, sessionID: string): void {
  * after Pool.acquire and after IntegrityChecker.run on a freshly-pooled
  * connection.
  */
-export async function ensureSchema(
-  db: Database,
-  sessionID: string,
-  dbPath: string,
-): Promise<void> {
+export async function ensureSchema(db: Database, sessionID: string, dbPath: string): Promise<void> {
   const current = readUserVersion(db)
 
   if (current > TARGET_VERSION) {
@@ -104,7 +96,8 @@ export async function ensureSchema(
 
   for (const migration of MIGRATIONS) {
     if (migration.to <= current) continue
-    log.info("running migration", { sessionID, from: current, to: migration.to })
+    const start = Date.now()
+    log.info("schema.migration", { sessionID, from_version: current, to_version: migration.to })
 
     const transaction = db.transaction(() => {
       migration.apply(db)
@@ -118,14 +111,21 @@ export async function ensureSchema(
 
     try {
       transaction()
+      log.info("schema.migration", {
+        sessionID,
+        from_version: current,
+        to_version: migration.to,
+        duration_ms: Date.now() - start,
+      })
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err)
-      log.error("migration failed", {
+      log.error("schema.migration.failed", {
         sessionID,
-        from: current,
-        to: migration.to,
+        from_version: current,
+        to_version: migration.to,
         error: errorMsg,
       })
+      SessionStorageMetrics.increment("migrations_total", { outcome: "schema_failed" })
       await Bus.publish(SessionStorageEvent.MigrationFailed, {
         sessionID,
         stage: "tmp_write",

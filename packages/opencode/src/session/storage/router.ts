@@ -35,6 +35,7 @@ import { ConnectionPool } from "./pool"
 import { LegacyStore } from "./legacy"
 import { SqliteStore } from "./sqlite"
 import { SessionStorageEvent } from "./events"
+import { SessionStorageMetrics } from "./metrics"
 import type { MessageV2 } from "../message-v2"
 import type { SessionStorage } from "./index"
 
@@ -124,6 +125,7 @@ const debrisQueue = new Set<string>()
 function noteLegacyDebris(sessionID: string): void {
   if (debrisQueue.has(sessionID)) return
   debrisQueue.add(sessionID)
+  SessionStorageMetrics.increment("legacy_debris_detected_total")
   log.info("router.legacy_debris", { sessionID, scheduled_for_deletion: true })
 }
 
@@ -147,6 +149,7 @@ export async function drainLegacyDebris(): Promise<{ deleted: string[] }> {
         sessionID,
         deletedAt: Date.now(),
       }).catch(() => {})
+      SessionStorageMetrics.increment("legacy_debris_resolved_total")
     } catch (err) {
       log.warn("router.debris_drain_failed", {
         sessionID,

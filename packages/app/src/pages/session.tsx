@@ -38,11 +38,7 @@ import { sendSessionReloadDebugBeacon } from "@/utils/debug-beacon"
 // session-ui-freshness Phase 3: dock memo classifies fidelity from receivedAt.
 import { classifyFidelity, createRateLimitedWarn, type Fidelity } from "@/utils/freshness"
 import { useFreshnessClock } from "@/hooks/use-freshness-clock"
-import {
-  uiFreshnessEnabled,
-  uiFreshnessHardTimeoutSec,
-  uiFreshnessThresholdSec,
-} from "@/context/frontend-tweaks"
+import { uiFreshnessEnabled, uiFreshnessHardTimeoutSec, uiFreshnessThresholdSec } from "@/context/frontend-tweaks"
 import { ConstrainDragYAxis, getDraggableId } from "@/utils/solid-dnd"
 import { usePermission } from "@/context/permission"
 import { showToast, toaster } from "@opencode-ai/ui/toast"
@@ -671,6 +667,35 @@ export default function Page() {
   onCleanup(() => {
     dismissCompactionToast()
     stopCompactionListener()
+  })
+
+  const [storageCorruption, setStorageCorruption] = createSignal<
+    { sessionID: string; integrityCheckOutput?: string; dbPath?: string } | undefined
+  >()
+  const stopStorageCorruptionListener = sdk.event.listen((e) => {
+    const event = e.details as {
+      type: string
+      properties?: { sessionID?: string; integrityCheckOutput?: string; dbPath?: string }
+    }
+    if (event.type !== "session.storage.corrupted") return
+    if (!event.properties?.sessionID || event.properties.sessionID !== params.id) return
+    setStorageCorruption({
+      sessionID: event.properties.sessionID,
+      integrityCheckOutput: event.properties.integrityCheckOutput,
+      dbPath: event.properties.dbPath,
+    })
+    showToast({
+      title: "Session storage corruption detected",
+      description: `Run: opencode session-inspect check ${event.properties.sessionID}`,
+      variant: "error",
+      persistent: true,
+    })
+  })
+  onCleanup(stopStorageCorruptionListener)
+
+  createEffect(() => {
+    const event = storageCorruption()
+    if (event && event.sessionID !== params.id) setStorageCorruption(undefined)
   })
 
   createEffect(
@@ -1824,6 +1849,20 @@ export default function Page() {
             "--prompt-height": store.promptHeight ? `${store.promptHeight}px` : undefined,
           }}
         >
+          <Show when={storageCorruption()}>
+            {(event) => (
+              <div class="mx-3 mb-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                <div class="font-medium">Session storage integrity check failed.</div>
+                <div class="mt-1 break-all text-red-100/80">
+                  Run <code>opencode session-inspect check {event().sessionID}</code>
+                  {event().dbPath ? ` (${event().dbPath})` : ""}
+                </div>
+                <Show when={event().integrityCheckOutput}>
+                  {(output) => <pre class="mt-2 max-h-24 overflow-auto whitespace-pre-wrap text-xs">{output()}</pre>}
+                </Show>
+              </div>
+            )}
+          </Show>
           <div class="flex-1 min-h-0 overflow-hidden">
             <Switch>
               <Match when={params.id}>
