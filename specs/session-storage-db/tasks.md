@@ -32,11 +32,11 @@ Phased execution checklist. Each phase is a coherent slice that can be implement
 
 ## 4. Hot path swap — new sessions use SqliteStore
 
-- [ ] 4.1 Default `Session.create` to allocate `<sid>.db` (not `<sid>/messages/`) for new sessions
-- [ ] 4.2 Adjust session lifecycle hooks (`Session.delete`, recycle-bin, export, stats) to recognize `.db` files alongside the legacy directory pattern
-- [ ] 4.3 Adjust `script/sync-config-back.sh` and any backup-side glob patterns to include `*.db` files
-- [ ] 4.4 Run end-to-end smoke test: create new session, send 5 messages, kill daemon, restart, verify all messages survive and finish-step transitions are intact
-- [ ] 4.5 Benchmark per-round runloop wall time on a synthetic 2000-message session: SQLite path vs LegacyStore path; record numbers in handoff.md validation evidence
+- [x] 4.1 Default `Session.create` to allocate `<sid>.db` (not `<sid>/messages/`) for new sessions — done implicitly by Phase 3 (Router routes fresh sessionIDs to SqliteStore which creates the .db on first write)
+- [x] 4.2 Adjust session lifecycle hooks (`Session.delete`, recycle-bin, export, stats) to recognize `.db` files alongside the legacy directory pattern — `Storage.sessionStats` now opens the .db for row counts when present, falls through to legacy walk only when .db absent. `Session.delete` already routes through `StorageRouter.deleteSession` which clears both formats. Recycle-bin / export do not need updates (they operate on whole `<sid>/` directory + sibling `<sid>.db` via filesystem-level recursive operations that already include the .db file)
+- [x] 4.3 Adjust `script/sync-config-back.sh` and any backup-side glob patterns to include `*.db` files — audit confirms no glob filtering exists; the rsync flow copies the entire `storage/session/` tree which already includes `.db` files as siblings
+- [ ] 4.4 Run end-to-end smoke test: create new session, send 5 messages, kill daemon, restart, verify all messages survive and finish-step transitions are intact — **GATE: requires user approval to rebuild + restart daemon against live `~/.local/share/opencode/`. AI cannot run unilaterally.**
+- [ ] 4.5 Benchmark per-round runloop wall time on a synthetic 2000-message session: SQLite path vs LegacyStore path; record numbers in handoff.md validation evidence — **GATE: requires user approval to generate synthetic data + run daemon under benchmark instrumentation.**
 
 ## 5. Dreaming mode — idle-time legacy migration
 
