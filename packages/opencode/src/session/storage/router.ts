@@ -78,12 +78,12 @@ export function detectFormat(sessionID: string): FormatVerdict {
 
   const hasDb = fs.existsSync(dbPath)
   const hasTmp = fs.existsSync(tmpPath)
-  // Legacy is authoritative if its messages directory exists. The session
-  // directory itself can exist without messages (info.json only) for a
-  // fresh session in legacy days; we still treat that as legacy if no
-  // .db file is around.
-  const hasLegacyMessages = fs.existsSync(path.join(legacyDir, "messages"))
-  const hasLegacyDir = hasLegacyMessages || fs.existsSync(legacyDir)
+  // Legacy is authoritative ONLY if `<sid>/messages/` exists. The bare
+  // `<sid>/` directory does NOT count — Session.create always writes
+  // `<sid>/info.json` (session-level metadata, out of scope for this
+  // spec), so every fresh session has the directory. Treating that as
+  // a legacy signal would mis-route every new session to LegacyStore.
+  const hasLegacyDir = fs.existsSync(path.join(legacyDir, "messages"))
 
   // Debris path: both .db and legacy directory present without an
   // in-flight migration tmp. SqliteStore is authoritative — the migration
