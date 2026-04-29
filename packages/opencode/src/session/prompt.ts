@@ -1294,14 +1294,13 @@ export namespace SessionPrompt {
       const providerChanged = !!prevProvider && prevProvider !== nextProvider
       const accountChanged =
         !providerChanged && !!prevProvider && prevAccount !== nextAccount && !!(prevAccount || nextAccount)
-      if (providerChanged || accountChanged) {
-        log.warn("identity switch detected (pre-loop), forcing context reinit", {
+      if (providerChanged) {
+        log.warn("provider switch detected (pre-loop), forcing context reinit", {
           sessionID,
           prevProvider,
           nextProvider,
           prevAccount,
           nextAccount,
-          reason: providerChanged ? "provider" : "account",
         })
         // DD-4 order contract: bump rebind epoch FIRST (capability layer will
         // naturally cache-miss on next runLoop iteration and re-read fresh
@@ -1313,9 +1312,7 @@ export namespace SessionPrompt {
         await RebindEpoch.bumpEpoch({
           sessionID,
           trigger: "provider_switch",
-          reason: providerChanged
-            ? `provider ${prevProvider} → ${nextProvider}`
-            : `account ${prevAccount} → ${nextAccount}`,
+          reason: `provider ${prevProvider} → ${nextProvider}`,
         })
         const model = await Provider.getModel(nextProvider, options.incomingModel.modelID).catch(() => undefined)
         if (model) {
@@ -1343,13 +1340,40 @@ export namespace SessionPrompt {
             sessionID,
             snapshot:
               snap ??
-              (providerChanged
-                ? `[Provider switched from ${prevProvider} to ${nextProvider}. Previous conversation context was not recoverable. The user may re-state their request.]`
-                : `[Account switched on ${nextProvider}. Previous conversation context was not recoverable. The user may re-state their request.]`),
+              `[Provider switched from ${prevProvider} to ${nextProvider}. Previous conversation context was not recoverable. The user may re-state their request.]`,
             model,
             auto: true,
           })
-          log.info("identity switch compaction complete, entering main loop", { sessionID })
+          log.info("provider switch compaction complete, entering main loop", { sessionID })
+        }
+      } else if (accountChanged) {
+        // Same provider, different account: tool-call format unchanged, so
+        // full compaction would needlessly destroy fidelity. Only two things
+        // matter: capability layer must re-bind (account-scoped AGENTS.md /
+        // skills may differ), and codex's server-side previous_response_id
+        // chain must be cut so the next request starts fresh under the new
+        // account. invalidateContinuation is a no-op for non-codex providers.
+        log.info("account switch detected (pre-loop), chain reset only (no compaction)", {
+          sessionID,
+          provider: nextProvider,
+          prevAccount,
+          nextAccount,
+        })
+        ensureCapabilityLoaderRegistered()
+        await RebindEpoch.bumpEpoch({
+          sessionID,
+          trigger: "provider_switch",
+          reason: `account ${prevAccount} → ${nextAccount}`,
+        })
+        try {
+          const { invalidateContinuation } = await import("@opencode-ai/codex-provider/continuation")
+          invalidateContinuation(sessionID)
+          log.info("account switch: codex chain reset (lastResponseId cleared)", { sessionID })
+        } catch (err) {
+          log.warn("account switch: codex chain reset failed (non-fatal)", {
+            sessionID,
+            error: err instanceof Error ? err.message : String(err),
+          })
         }
       }
     }
