@@ -14,6 +14,7 @@ import { LSP } from "../lsp"
 import { Snapshot } from "@/snapshot"
 import { fn } from "@/util/fn"
 import { Storage } from "@/storage/storage"
+import { LegacyStore } from "./storage/legacy"
 import { ProviderError } from "@/provider/error"
 import { ProviderTransform } from "@/provider/transform"
 import { STATUS_CODES } from "http"
@@ -951,33 +952,16 @@ export namespace MessageV2 {
     )
   }
 
+  // stream / parts / get delegate to LegacyStore (storage/legacy.ts) so the
+  // filesystem byte-path lives in one module and a SQLite sibling can plug
+  // in via the same Backend contract. Behavior unchanged. See
+  // /specs/session-storage-db, task 1.2.
   export const stream = fn(Identifier.schema("session"), async function* (sessionID) {
-    const list = await Array.fromAsync(await Storage.list(["message", sessionID]))
-    for (let i = list.length - 1; i >= 0; i--) {
-      yield await get({
-        sessionID,
-        messageID: list[i][2],
-      })
-    }
+    yield* LegacyStore.stream(sessionID)
   })
 
   export const parts = fn(Identifier.schema("message"), async (messageID) => {
-    const result = [] as MessageV2.Part[]
-    for (const item of await Storage.list(["part", messageID])) {
-      // TOCTOU: a part listed by Storage.list can be deleted before we
-      // read it (debounce flush, part-cap trip, snapshot prune, sibling
-      // worker write). Treat ENOENT as "skip" rather than letting
-      // NotFoundError propagate as an unhandled rejection.
-      try {
-        const read = await Storage.read<MessageV2.Part>(item)
-        result.push(read)
-      } catch (e) {
-        if (e instanceof Storage.NotFoundError) continue
-        throw e
-      }
-    }
-    result.sort((a, b) => (a.id > b.id ? 1 : -1))
-    return result
+    return LegacyStore.parts(messageID)
   })
 
   export const get = fn(
@@ -986,10 +970,7 @@ export namespace MessageV2 {
       messageID: Identifier.schema("message"),
     }),
     async (input): Promise<WithParts> => {
-      return {
-        info: await Storage.read<MessageV2.Info>(["message", input.sessionID, input.messageID]),
-        parts: await parts(input.messageID),
-      }
+      return LegacyStore.get(input)
     },
   )
 
@@ -1353,7 +1334,7 @@ export namespace MessageV2 {
   }
 
   export const updateMessage = fn(Info, async (info) => {
-    await Storage.write(["message", info.sessionID, info.id], info)
+    await LegacyStore.upsertMessage(info)
     Bus.publish(Event.Updated, { info })
   })
 
@@ -1362,7 +1343,7 @@ export namespace MessageV2 {
     async (input) => {
       const part = "part" in input ? input.part : input
       const delta = "delta" in input ? input.delta : undefined
-      await Storage.write(["part", part.messageID, part.id], part)
+      await LegacyStore.upsertPart(part)
       Bus.publish(Event.PartUpdated, { part, delta })
       return part
     },
@@ -1371,10 +1352,11 @@ export namespace MessageV2 {
   export const remove = fn(
     z.object({ sessionID: z.string(), messageID: z.string() }),
     async ({ sessionID, messageID }) => {
-      await Storage.remove(["message", sessionID, messageID])
+      const { removeMessageInfo, removePartFile } = await import("./storage/legacy")
+      await removeMessageInfo(sessionID, messageID)
       const p = await parts(messageID)
       for (const part of p) {
-        await Storage.remove(["part", messageID, part.id])
+        await removePartFile(messageID, part.id)
       }
       Bus.publish(Event.Removed, { sessionID, messageID })
     },
