@@ -1480,6 +1480,51 @@ export namespace SessionPrompt {
       }
       if (isEmptyRound && lastAssistant) {
         emptyRoundCount = (emptyRoundCount ?? 0) + 1
+
+        // Subagent self-heal: give ONE retry on transient empty response
+        // before giving up. Most empty rounds on the codex backend are
+        // transient hiccups (phantom usage={}, finishReason=unknown);
+        // a parent agent gets a UI signal to retry manually, but a
+        // subagent has no human in the loop — silent break wastes work
+        // already done. Inject a synthetic prompt asking the subagent to
+        // either continue or wrap up with a summary, then continue the
+        // runloop. If the next round is also empty (emptyRoundCount=2),
+        // fail through to the existing break.
+        //
+        // Main agent stays fail-fast as decided by the 2026-04-29 hotfix
+        // (the prior auto-? nudge polluted streams during codex overflow
+        // incidents). Subagents are the only carve-out.
+        if (!!session.parentID && emptyRoundCount === 1) {
+          log.info("subagent self-heal: empty round 1, injecting retry nudge", {
+            sessionID,
+            step,
+            parentID: session.parentID,
+          })
+          const nudgeUser: MessageV2.User = {
+            id: Identifier.ascending("message"),
+            sessionID,
+            role: "user",
+            time: { created: Date.now() },
+            agent: lastUser.agent,
+            model: lastUser.model,
+            variant: lastUser.variant,
+          }
+          await Session.updateMessage(nudgeUser)
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: nudgeUser.id,
+            sessionID,
+            type: "text",
+            text:
+              "[runtime-self-heal] Your previous turn ended without a usable response " +
+              "(provider hiccup or transient stall). If your work is in progress, " +
+              "continue from where you left off. If you can't proceed, briefly summarize " +
+              "what you accomplished and what's still pending, then stop.",
+            synthetic: true,
+          } satisfies MessageV2.TextPart)
+          continue
+        }
+
         log.warn("breaking empty-response loop", { sessionID, emptyRounds: emptyRoundCount, step })
         lastAssistant.error = new NamedError.Unknown({
           message:
@@ -1490,23 +1535,25 @@ export namespace SessionPrompt {
         break
       }
 
-      // Hotfix 2026-04-29: tool-call planning loop detector. When the model
-      // calls the same tool with near-identical input across 2 consecutive
-      // assistant turns, treat it as paralysis (the tool-result didn't help
-      // it advance) and surface an error instead of letting runloop continue
-      // forever. Symptom that motivated this: 116-round todowrite loop on a
-      // session-storage smoke-test prompt where each round rewrote the same
-      // todo list with cosmetic edits.
+      // Hotfix 2026-04-29 (rev 2026-04-30): tool-call paralysis detectors.
       //
-      // Signature: array of `<toolName>:<first-200-chars-of-input>` per tool
-      // call. Two consecutive completed assistant turns with identical
-      // signatures → hard stop. Single-tool-once-each is fine; even one
-      // repeat trips the brake. (Tightened from 3 → 2 per user request:
-      // 3 felt too lenient when each loop costs an LLM call.)
+      // Two complementary signals catch when the model is stuck without
+      // making progress between turns:
+      //
+      //   Detector A — exact tool-call signature repetition (e.g. 116x
+      //                rewriting the same todowrite content).
+      //   Detector B — narrative-only repetition: tool calls vary each
+      //                turn, but the leading text restates the same
+      //                future-tense intent ("I will do X").
+      //
+      // Both follow the autorun philosophy: default human reaction =
+      // "yes, go ahead". Stage 1 of either detector injects a synthetic
+      // user-message nudge giving explicit permission. Stage 2 breaks
+      // the runloop only if the nudge already fired and the same
+      // pattern continues — i.e. real paralysis, not permission-waiting.
       if (lastAssistant?.finish === "tool-calls" && lastAssistant.id > lastUser.id) {
-        // Collect last 3 completed tool-call assistant turns. We need 3 to
-        // do similarity-pair check; tool-signature exact match still trips
-        // on 2 (cheaper, narrower).
+        // Collect last 3 completed tool-call assistant turns. Detector A
+        // needs 2; Detector B needs up to 3 for similarity-pair check.
         const recentAssistants: MessageV2.WithParts[] = []
         for (let i = msgs.length - 1; i >= 0 && recentAssistants.length < 3; i--) {
           if (msgs[i].info.role === "assistant") {
@@ -1517,8 +1564,52 @@ export namespace SessionPrompt {
           }
         }
 
-        // Detector A — exact tool-call signature match across 2 consecutive
-        // turns. Catches the "rewriting the same todowrite 116 times" case.
+        // ── Shared helpers (nudge tracking + injection) ────────────────────
+        const NUDGE_MARKER = "[runtime-autorun-nudge]"
+        const nudgedBetweenLastTwo = ((): boolean => {
+          if (recentAssistants.length < 2) return false
+          const newestIdx = msgs.findLastIndex((m) => m.info.id === recentAssistants[0].info.id)
+          const priorIdx = msgs.findLastIndex((m) => m.info.id === recentAssistants[1].info.id)
+          if (priorIdx < 0 || newestIdx <= priorIdx) return false
+          for (let i = priorIdx + 1; i < newestIdx; i++) {
+            if (msgs[i].info.role !== "user") continue
+            const hasNudge = msgs[i].parts.some(
+              (p) =>
+                p.type === "text" &&
+                (p as { synthetic?: boolean }).synthetic === true &&
+                ((p as { text?: string }).text ?? "").includes(NUDGE_MARKER),
+            )
+            if (hasNudge) return true
+          }
+          return false
+        })()
+        const injectNudge = async (reasonTag: string, extra: Record<string, unknown> = {}) => {
+          log.info("autorun nudge: " + reasonTag, { sessionID, step, ...extra })
+          const nudgeUser: MessageV2.User = {
+            id: Identifier.ascending("message"),
+            sessionID,
+            role: "user",
+            time: { created: Date.now() },
+            agent: lastUser.agent,
+            model: lastUser.model,
+            variant: lastUser.variant,
+          }
+          await Session.updateMessage(nudgeUser)
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: nudgeUser.id,
+            sessionID,
+            type: "text",
+            text:
+              NUDGE_MARKER +
+              " ok to go — follow the plan you described. " +
+              "Stop only if a critical issue or genuine blocker appears " +
+              "(not just a consideration). Don't restate; execute.",
+            synthetic: true,
+          } satisfies MessageV2.TextPart)
+        }
+
+        // ── Detector A — exact tool-call signature match across 2 turns ───
         if (recentAssistants.length >= 2) {
           const sigs = recentAssistants.slice(0, 2).map((m) => {
             const tools = m.parts.filter((p) => p.type === "tool")
@@ -1532,7 +1623,15 @@ export namespace SessionPrompt {
               .join("|")
           })
           if (sigs[0] && sigs[0] === sigs[1]) {
-            log.warn("breaking tool-call planning loop (signature)", {
+            if (!nudgedBetweenLastTwo) {
+              // Stage 1 — nudge.
+              await injectNudge("tool-call signature repeat", {
+                signature: sigs[0].slice(0, 200),
+              })
+              continue
+            }
+            // Stage 2 — break (nudge didn't help).
+            log.warn("breaking tool-call planning loop (signature, post-nudge)", {
               sessionID,
               step,
               signature: sigs[0].slice(0, 200),
@@ -1540,7 +1639,7 @@ export namespace SessionPrompt {
             })
             lastAssistant.error = new NamedError.Unknown({
               message:
-                "Model is repeating the same tool call (2 consecutive identical turns). Stopping to prevent runaway. The model may be paralyzed planning instead of acting — try rephrasing your request, or send a corrective instruction.",
+                "Model is repeating the same tool call across consecutive turns even after a runtime nudge. Stopping to prevent runaway. Send a direct execution instruction or abort.",
             }).toObject()
             lastAssistant.finish = "error"
             await Session.updateMessage(lastAssistant)
@@ -1548,33 +1647,6 @@ export namespace SessionPrompt {
           }
         }
 
-        // Detector B — narrative repetition.
-        //
-        // Catches the case where the model varies tool calls each turn but
-        // keeps restating the same future-tense intent (e.g. "我會
-        // materialize Phase 5..." across 4 turns where each turn does a
-        // different small tool call but never advances). Diagnosed
-        // 2026-04-29 from Phase 5 hand-off session that ran 4+ turns of
-        // identical-meaning narration.
-        //
-        // Two-stage response, in keeping with autorun philosophy
-        // (default human reaction = "go, follow the plan"):
-        //
-        //   stage 1 — first 2-turn similarity hit, no prior nudge in
-        //             the last few turns: inject a synthetic "go" user
-        //             message giving explicit permission. Most
-        //             paralysis is the model waiting for approval that
-        //             never came; the nudge unblocks it without a
-        //             human round-trip.
-        //
-        //   stage 2 — same similarity still firing AFTER a nudge (i.e.
-        //             3 consecutive similar turns OR 2 with a recent
-        //             nudge already in history): real paralysis, not
-        //             just permission-waiting. Break with detector B
-        //             error so the user can intervene.
-        //
-        // Similarity is bigram Jaccard on the normalized leading text
-        // of each assistant turn (>0.5 = same intent restated).
         if (recentAssistants.length >= 2) {
           const leadingText = (m: MessageV2.WithParts): string => {
             const text = m.parts.find((p) => p.type === "text" && !(p as { synthetic?: boolean }).synthetic) as
@@ -1594,33 +1666,6 @@ export namespace SessionPrompt {
             return inter / (a.size + b.size - inter)
           }
 
-          // Did we already nudge in the last few turns? Look for a
-          // synthetic user message tagged with our marker between the
-          // newest two assistants in recentAssistants.
-          const NUDGE_MARKER = "[runtime-autorun-nudge]"
-          const newestAssistantIdx = msgs.findLastIndex(
-            (m) => m.info.id === recentAssistants[0].info.id,
-          )
-          const priorAssistantIdx = recentAssistants[1]
-            ? msgs.findLastIndex((m) => m.info.id === recentAssistants[1].info.id)
-            : -1
-          let nudgedRecently = false
-          if (priorAssistantIdx >= 0 && newestAssistantIdx > priorAssistantIdx) {
-            for (let i = priorAssistantIdx + 1; i < newestAssistantIdx; i++) {
-              if (msgs[i].info.role !== "user") continue
-              const hasNudge = msgs[i].parts.some(
-                (p) =>
-                  p.type === "text" &&
-                  (p as { synthetic?: boolean }).synthetic === true &&
-                  ((p as { text?: string }).text ?? "").includes(NUDGE_MARKER),
-              )
-              if (hasNudge) {
-                nudgedRecently = true
-                break
-              }
-            }
-          }
-
           const texts = recentAssistants.map(leadingText)
           const longEnough = texts.every((t) => t.length >= 60)
           const j01 = longEnough ? jaccard(bigrams(texts[0]), bigrams(texts[1])) : 0
@@ -1629,18 +1674,18 @@ export namespace SessionPrompt {
               ? jaccard(bigrams(texts[1]), bigrams(texts[2]))
               : 0
 
-          // Stage 2 — break.
+          // Stage 2 — break: 3-turn span similar OR 2-turn similar after a nudge.
           const stage2 =
             longEnough &&
             ((recentAssistants.length === 3 && j01 > 0.5 && j12 > 0.5) ||
-              (recentAssistants.length >= 2 && j01 > 0.5 && nudgedRecently))
+              (recentAssistants.length >= 2 && j01 > 0.5 && nudgedBetweenLastTwo))
           if (stage2) {
             log.warn("breaking narrative repetition loop (post-nudge or 3-turn)", {
               sessionID,
               step,
               similarity01: j01.toFixed(2),
               similarity12: j12.toFixed(2),
-              nudgedRecently,
+              nudgedBetweenLastTwo,
               samplePrefix: texts[0].slice(0, 120),
             })
             lastAssistant.error = new NamedError.Unknown({
@@ -1653,36 +1698,11 @@ export namespace SessionPrompt {
           }
 
           // Stage 1 — nudge.
-          const stage1 = longEnough && j01 > 0.5 && !nudgedRecently
-          if (stage1) {
-            log.info("autorun nudge: narrative repetition detected, injecting go", {
-              sessionID,
-              step,
+          if (longEnough && j01 > 0.5 && !nudgedBetweenLastTwo) {
+            await injectNudge("narrative repetition", {
               similarity01: j01.toFixed(2),
               samplePrefix: texts[0].slice(0, 120),
             })
-            const nudgeUser: MessageV2.User = {
-              id: Identifier.ascending("message"),
-              sessionID,
-              role: "user",
-              time: { created: Date.now() },
-              agent: lastUser.agent,
-              model: lastUser.model,
-              variant: lastUser.variant,
-            }
-            await Session.updateMessage(nudgeUser)
-            await Session.updatePart({
-              id: Identifier.ascending("part"),
-              messageID: nudgeUser.id,
-              sessionID,
-              type: "text",
-              text:
-                NUDGE_MARKER +
-                " ok to go — follow the plan you described. " +
-                "Stop only if a critical issue or genuine blocker appears " +
-                "(not just a consideration). Don't restate; execute.",
-              synthetic: true,
-            } satisfies MessageV2.TextPart)
             continue
           }
         }
