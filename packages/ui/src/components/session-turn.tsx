@@ -553,6 +553,12 @@ export function SessionTurn(
     if (!pendingUser()) return false
     const item = pending()
     if (!item) return false
+    // If the in-progress assistant is replying to THIS user (parentID match),
+    // we are the active turn, not queued — regardless of ULID ordering. Without
+    // this guard, the same-millisecond race that lets assistant.id < user.id
+    // (already worked around in the assistantMessages backward-scan) would
+    // incorrectly mark the actively-replied user as "queued".
+    if (item.parentID === id) return false
     return id > item.id
   })
   const retry = createMemo(() => {
