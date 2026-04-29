@@ -142,6 +142,61 @@ export namespace Tweaks {
     disarmPhrases: string[]
   }
 
+  /**
+   * tool-output-chunking spec / context-management Layer 2 (DD-2).
+   * Per-invocation token budget for variable-size tools (read / glob /
+   * grep / bash / webfetch / apply_patch / task / read_subsession). Each
+   * tool computes its budget as
+   *   min(round(model.contextWindow * contextRatio), absoluteCap)
+   * floored at minimumFloor. Two per-tool overrides (taskOverride,
+   * bashOverride) replace absoluteCap when the tool is `task` or `bash`
+   * respectively, because their natural output density differs from the
+   * generic case. Reading the budget is on the tool execute hot path so
+   * the synchronous accessor (toolOutputBudgetSync) is the canonical one.
+   */
+  export interface ToolOutputBudgetConfig {
+    absoluteCap: number
+    contextRatio: number
+    minimumFloor: number
+    taskOverride: number
+    bashOverride: number
+  }
+
+  /**
+   * tool-output-chunking spec / context-management Layer 1 (DD-3, DD-5,
+   * DD-6, DD-9). Knobs governing the hybrid-llm compaction path.
+   * - llmTimeoutMs: hard ceiling per LLM_compact attempt; exceed → abort
+   *   + treat as failure (DD-6).
+   * - fallbackProvider: optional `provider:model` string; if set, after
+   *   the in-provider stricter retry exhausts, runtime tries one
+   *   compaction call against this fallback before graceful degradation.
+   *   Empty = skip the fallback step.
+   * - phase2MaxAnchorTokens: target size for Phase 2's stricter framing.
+   *   Default 5000 per DD-9; smaller forces ruthlessness.
+   * - pinnedZoneMaxTokensRatio: hard cap on pinned_zone size relative to
+   *   the active model's context window (DD-5). Over the cap → next
+   *   compaction is forced into Phase 2 absorbing pinned_zone.
+   */
+  export interface CompactionConfig {
+    /**
+     * Master switch for the hybrid-llm compaction kind. Default false
+     * during Phase 2 rollout (flag-gated dual-path strategy): when off,
+     * runtime continues to use the existing narrative→replay-tail→
+     * low-cost-server→llm-agent chain. When on, hybrid_llm becomes the
+     * primary kind for overflow / cache-aware / manual triggers and the
+     * existing chain serves as fallback only.
+     *
+     * Flip to default true after telemetry proves correctness on opt-in
+     * sessions. Old kinds get retired (Phase 2.12) only after default
+     * flip, in a separate cleanup phase.
+     */
+    enableHybridLlm: boolean
+    llmTimeoutMs: number
+    fallbackProvider: string
+    phase2MaxAnchorTokens: number
+    pinnedZoneMaxTokensRatio: number
+  }
+
   export interface Effective {
     sessionCache: SessionCacheConfig
     rateLimit: RateLimitConfig
@@ -151,6 +206,8 @@ export namespace Tweaks {
     partPersistence: PartPersistenceConfig
     subagent: SubagentConfig
     autorun: AutorunConfig
+    toolOutputBudget: ToolOutputBudgetConfig
+    compaction: CompactionConfig
     source: { path: string; present: boolean }
   }
 
@@ -202,6 +259,22 @@ export namespace Tweaks {
   const AUTORUN_DEFAULTS: AutorunConfig = {
     triggerPhrases: ["接著跑", "自動跑", "開 autonomous", "autorun", "keep going", "continue autonomously"],
     disarmPhrases: ["停", "暫停", "stop", "halt"],
+  }
+
+  const TOOL_OUTPUT_BUDGET_DEFAULTS: ToolOutputBudgetConfig = {
+    absoluteCap: 50_000,
+    contextRatio: 0.30,
+    minimumFloor: 8_000,
+    taskOverride: 60_000,
+    bashOverride: 40_000,
+  }
+
+  const COMPACTION_DEFAULTS: CompactionConfig = {
+    enableHybridLlm: true,
+    llmTimeoutMs: 30_000,
+    fallbackProvider: "",
+    phase2MaxAnchorTokens: 5_000,
+    pinnedZoneMaxTokensRatio: 0.30,
   }
 
   const PART_PERSISTENCE_DEFAULTS: PartPersistenceConfig = {
@@ -304,6 +377,16 @@ export namespace Tweaks {
     "subagent_quota_low_red_line_percent",
     "autorun_trigger_phrases",
     "autorun_disarm_phrases",
+    "tool_output_budget_absolute_cap",
+    "tool_output_budget_context_ratio",
+    "tool_output_budget_minimum_floor",
+    "tool_output_budget_task_override",
+    "tool_output_budget_bash_override",
+    "compaction_enable_hybrid_llm",
+    "compaction_llm_timeout_ms",
+    "compaction_fallback_provider",
+    "compaction_phase2_max_anchor_tokens",
+    "compaction_pinned_zone_max_tokens_ratio",
   ])
 
   function parseFlag01(raw: string, key: string): 0 | 1 | undefined {
@@ -373,6 +456,8 @@ export namespace Tweaks {
           partPersistence: PART_PERSISTENCE_DEFAULTS,
           subagent: SUBAGENT_DEFAULTS,
           autorun: AUTORUN_DEFAULTS,
+          toolOutputBudget: TOOL_OUTPUT_BUDGET_DEFAULTS,
+          compaction: COMPACTION_DEFAULTS,
         },
       })
       return {
@@ -384,6 +469,8 @@ export namespace Tweaks {
         partPersistence: { ...PART_PERSISTENCE_DEFAULTS },
         subagent: { ...SUBAGENT_DEFAULTS },
         autorun: { triggerPhrases: [...AUTORUN_DEFAULTS.triggerPhrases], disarmPhrases: [...AUTORUN_DEFAULTS.disarmPhrases] },
+        toolOutputBudget: { ...TOOL_OUTPUT_BUDGET_DEFAULTS },
+        compaction: { ...COMPACTION_DEFAULTS },
         source: { path: cfgPath, present: false },
       }
     }
@@ -614,9 +701,76 @@ export namespace Tweaks {
       autorun.disarmPhrases = parsePhraseList(disarmRaw, "autorun_disarm_phrases")
     }
 
+    const toolOutputBudget: ToolOutputBudgetConfig = { ...TOOL_OUTPUT_BUDGET_DEFAULTS }
+    const tobAbsRaw = parsed.get("tool_output_budget_absolute_cap")
+    if (tobAbsRaw !== undefined) {
+      const v = parseIntRange(tobAbsRaw, "tool_output_budget_absolute_cap", 1_000, 1_000_000)
+      if (v !== undefined) toolOutputBudget.absoluteCap = v
+    }
+    const tobRatioRaw = parsed.get("tool_output_budget_context_ratio")
+    if (tobRatioRaw !== undefined) {
+      const v = parseFloatPositive(tobRatioRaw, "tool_output_budget_context_ratio")
+      if (v !== undefined) {
+        if (v > 1) {
+          log.warn("tweaks.cfg tool_output_budget_context_ratio > 1, clamping to 1", { raw: tobRatioRaw, value: v })
+          toolOutputBudget.contextRatio = 1
+        } else {
+          toolOutputBudget.contextRatio = v
+        }
+      }
+    }
+    const tobFloorRaw = parsed.get("tool_output_budget_minimum_floor")
+    if (tobFloorRaw !== undefined) {
+      const v = parseIntRange(tobFloorRaw, "tool_output_budget_minimum_floor", 100, 100_000)
+      if (v !== undefined) toolOutputBudget.minimumFloor = v
+    }
+    const tobTaskRaw = parsed.get("tool_output_budget_task_override")
+    if (tobTaskRaw !== undefined) {
+      const v = parseIntRange(tobTaskRaw, "tool_output_budget_task_override", 1_000, 1_000_000)
+      if (v !== undefined) toolOutputBudget.taskOverride = v
+    }
+    const tobBashRaw = parsed.get("tool_output_budget_bash_override")
+    if (tobBashRaw !== undefined) {
+      const v = parseIntRange(tobBashRaw, "tool_output_budget_bash_override", 1_000, 1_000_000)
+      if (v !== undefined) toolOutputBudget.bashOverride = v
+    }
+
+    const compaction: CompactionConfig = { ...COMPACTION_DEFAULTS }
+    const cmpEnableRaw = parsed.get("compaction_enable_hybrid_llm")
+    if (cmpEnableRaw !== undefined) {
+      const v = parseBool(cmpEnableRaw, "compaction_enable_hybrid_llm")
+      if (v !== undefined) compaction.enableHybridLlm = v
+    }
+    const cmpTimeoutRaw = parsed.get("compaction_llm_timeout_ms")
+    if (cmpTimeoutRaw !== undefined) {
+      const v = parseIntRange(cmpTimeoutRaw, "compaction_llm_timeout_ms", 5_000, 300_000)
+      if (v !== undefined) compaction.llmTimeoutMs = v
+    }
+    const cmpFallbackRaw = parsed.get("compaction_fallback_provider")
+    if (cmpFallbackRaw !== undefined) {
+      compaction.fallbackProvider = cmpFallbackRaw.trim()
+    }
+    const cmpPhase2Raw = parsed.get("compaction_phase2_max_anchor_tokens")
+    if (cmpPhase2Raw !== undefined) {
+      const v = parseIntRange(cmpPhase2Raw, "compaction_phase2_max_anchor_tokens", 1_000, 50_000)
+      if (v !== undefined) compaction.phase2MaxAnchorTokens = v
+    }
+    const cmpPinRatioRaw = parsed.get("compaction_pinned_zone_max_tokens_ratio")
+    if (cmpPinRatioRaw !== undefined) {
+      const v = parseFloatPositive(cmpPinRatioRaw, "compaction_pinned_zone_max_tokens_ratio")
+      if (v !== undefined) {
+        if (v > 1) {
+          log.warn("tweaks.cfg compaction_pinned_zone_max_tokens_ratio > 1, clamping to 1", { raw: cmpPinRatioRaw, value: v })
+          compaction.pinnedZoneMaxTokensRatio = 1
+        } else {
+          compaction.pinnedZoneMaxTokensRatio = v
+        }
+      }
+    }
+
     log.info("tweaks.cfg loaded", {
       path: cfgPath,
-      effective: { sessionCache, rateLimit, frontendLazyload, sessionUiFreshness, codexRotation, partPersistence, subagent, autorun },
+      effective: { sessionCache, rateLimit, frontendLazyload, sessionUiFreshness, codexRotation, partPersistence, subagent, autorun, toolOutputBudget, compaction },
     })
     return {
       sessionCache,
@@ -627,6 +781,8 @@ export namespace Tweaks {
       partPersistence,
       subagent,
       autorun,
+      toolOutputBudget,
+      compaction,
       source: { path: cfgPath, present: true },
     }
   }
@@ -669,6 +825,14 @@ export namespace Tweaks {
     return (await effective()).autorun
   }
 
+  export async function toolOutputBudget(): Promise<ToolOutputBudgetConfig> {
+    return (await effective()).toolOutputBudget
+  }
+
+  export async function compaction(): Promise<CompactionConfig> {
+    return (await effective()).compaction
+  }
+
   /**
    * Synchronous accessor for hot paths (e.g. updatePart). Returns defaults
    * until loadEffective() completes; after that returns the loaded values.
@@ -686,6 +850,24 @@ export namespace Tweaks {
    */
   export function autorunSync(): AutorunConfig {
     return _effective?.autorun ?? AUTORUN_DEFAULTS
+  }
+
+  /**
+   * Synchronous accessor for the tool execute hot path. Returns defaults
+   * until loadEffective() completes; after that returns the loaded
+   * values. Tools call this every invocation (Layer 2 self-bounding) so
+   * an async accessor would add a microtask per tool call.
+   */
+  export function toolOutputBudgetSync(): ToolOutputBudgetConfig {
+    return _effective?.toolOutputBudget ?? TOOL_OUTPUT_BUDGET_DEFAULTS
+  }
+
+  /**
+   * Synchronous accessor for the compaction hot path. Returns defaults
+   * until loadEffective() completes.
+   */
+  export function compactionSync(): CompactionConfig {
+    return _effective?.compaction ?? COMPACTION_DEFAULTS
   }
 
   export async function loadEffective(): Promise<Effective> {

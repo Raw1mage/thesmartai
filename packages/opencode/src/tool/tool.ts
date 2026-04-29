@@ -23,6 +23,20 @@ export namespace Tool {
     messages: MessageV2.WithParts[]
     metadata(input: { title?: string; metadata?: M }): void
     ask(input: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">): Promise<void>
+    /**
+     * Layer 2 (context-management spec, DD-2): per-invocation token budget
+     * for this tool's output. Variable-size tools (read/glob/grep/bash/
+     * webfetch/apply_patch/task/read_subsession) MUST cap their natural
+     * output to this many tokens before returning, appending a trailing
+     * natural-language hint with the next-slice args.
+     *
+     * Computed by ToolBudget.compute() (helper) as
+     *   min(round(model.contextWindow * contextRatio), absoluteCap)
+     * floored at minimumFloor. May be undefined if the runtime has not
+     * yet populated it; tools should call ToolBudget.resolve(ctx) to get
+     * a guaranteed value.
+     */
+    outputBudget?: number
   }
   export interface Info<Parameters extends z.ZodType = z.ZodType, M extends Metadata = Metadata> {
     id: string
