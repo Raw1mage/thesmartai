@@ -62,6 +62,84 @@
         "packages/plugin/src/tool.ts"
       ],
       "commit": "f1c08f3c12844c182aacbbddd36c81ee8750363d"
+    },
+    {
+      "at": "2026-04-29T16:52:42.307Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "drift detected: packages/app/src/pages/session.tsx, packages/app/src/pages/session/file-tabs.tsx, packages/app/src/pages/session/use-session-commands.tsx, packages/mcp/system-manager/src/index.ts, packages/opencode-codex-provider/src/continuation.ts, packages/opencode-codex-provider/src/sse.ts, packages/opencode-codex-provider/src/transport-ws.ts, packages/opencode/src/cli/cmd/import.ts, packages/opencode/src/file/index.ts, packages/opencode/src/session/compaction.ts, packages/opencode/src/session/revert.ts, packages/opencode/src/session/storage/events.ts, packages/opencode/src/session/storage/index.ts, packages/opencode/src/session/storage/migration-runner.ts, packages/opencode/src/share/share-next.ts, packages/opencode/src/share/share.ts, packages/opencode/src/storage/storage.ts, packages/sdk/js/src/v2/gen/sdk.gen.ts, packages/sdk/js/src/v2/gen/types.gen.ts, services/warroom-placeholder/app.py",
+      "result": "warned",
+      "drift": [
+        "packages/app/src/pages/session.tsx",
+        "packages/app/src/pages/session/file-tabs.tsx",
+        "packages/app/src/pages/session/use-session-commands.tsx",
+        "packages/mcp/system-manager/src/index.ts",
+        "packages/opencode-codex-provider/src/continuation.ts",
+        "packages/opencode-codex-provider/src/sse.ts",
+        "packages/opencode-codex-provider/src/transport-ws.ts",
+        "packages/opencode/src/cli/cmd/import.ts",
+        "packages/opencode/src/file/index.ts",
+        "packages/opencode/src/session/compaction.ts",
+        "packages/opencode/src/session/revert.ts",
+        "packages/opencode/src/session/storage/events.ts",
+        "packages/opencode/src/session/storage/index.ts",
+        "packages/opencode/src/session/storage/migration-runner.ts",
+        "packages/opencode/src/share/share-next.ts",
+        "packages/opencode/src/share/share.ts",
+        "packages/opencode/src/storage/storage.ts",
+        "packages/sdk/js/src/v2/gen/sdk.gen.ts",
+        "packages/sdk/js/src/v2/gen/types.gen.ts",
+        "services/warroom-placeholder/app.py"
+      ],
+      "commit": "d068db2f3ef1ec7852a0b879f517f6da22efc432"
+    },
+    {
+      "at": "2026-04-29T17:15:26.498Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "d068db2f3ef1ec7852a0b879f517f6da22efc432"
+    },
+    {
+      "at": "2026-04-29T17:27:19.823Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "d068db2f3ef1ec7852a0b879f517f6da22efc432"
+    },
+    {
+      "at": "2026-04-29T17:41:43.707Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "d068db2f3ef1ec7852a0b879f517f6da22efc432"
+    },
+    {
+      "at": "2026-04-29T17:50:29.304Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "d068db2f3ef1ec7852a0b879f517f6da22efc432"
+    },
+    {
+      "at": "2026-04-29T17:52:33.817Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "d068db2f3ef1ec7852a0b879f517f6da22efc432"
+    },
+    {
+      "at": "2026-04-29T18:00:10.397Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "d068db2f3ef1ec7852a0b879f517f6da22efc432"
     }
   ]
 }

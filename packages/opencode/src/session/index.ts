@@ -14,11 +14,8 @@ import { Storage } from "../storage/storage"
 import { Log } from "../util/log"
 import { debugCheckpoint } from "../util/debug"
 import { MessageV2 } from "./message-v2"
-import {
-  readMessageInfo,
-  removeMessageInfo,
-  removePartFile,
-} from "./storage/legacy"
+import { readMessageInfo, removeMessageInfo, removePartFile } from "./storage/legacy"
+import { DreamingWorker } from "./storage/dreaming"
 import { Router as StorageRouter } from "./storage/router"
 import { Instance } from "../project/instance"
 import { Project } from "../project/project"
@@ -36,6 +33,37 @@ import { iife } from "@/util/iife"
 
 export namespace Session {
   const log = Log.create({ service: "session" })
+  const defaultDreamingWorker = new DreamingWorker()
+
+  /**
+   * Start the per-process DreamingWorker tick timer. Called at daemon
+   * boot; idempotent (the worker's start() guards re-entry). Tests do
+   * NOT call this — the worker stays dormant unless explicitly started,
+   * so test imports never spawn a real interval that would drift across
+   * the suite.
+   */
+  export function startDreamingWorker() {
+    defaultDreamingWorker.start()
+    log.info("dreaming.worker.started")
+  }
+
+  export function stopDreamingWorker() {
+    defaultDreamingWorker.stop()
+    log.info("dreaming.worker.stopped")
+  }
+
+  export async function dreamingStatus() {
+    const candidates = await DreamingWorker.scanLegacySessions().catch(() => [] as Array<{ sessionID: string }>)
+    const migrated = await DreamingWorker.countMigrated().catch(() => 0)
+    const inner = defaultDreamingWorker.getStatus()
+    return {
+      ...inner,
+      pending: candidates.length,
+      migrated,
+      // First few pending session IDs for quick eyeballing.
+      pendingPreview: candidates.slice(0, 5).map((c) => c.sessionID),
+    }
+  }
 
   export const Stats = z.object({
     requestsTotal: z.number(),
@@ -872,6 +900,7 @@ export namespace Session {
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
     const previous = await readMessageInfo(msg.sessionID, msg.id)
     await StorageRouter.upsertMessage(msg)
+    DreamingWorker.noteMessageWrite(defaultDreamingWorker)
     if (hasMessageUsageDelta(previous, msg)) {
       await update(
         msg.sessionID,
@@ -1010,12 +1039,7 @@ export namespace Session {
 
     const tweak = Tweaks.partPersistenceSync()
     let runawayTripped = false
-    if (
-      delta &&
-      "text" in part &&
-      typeof part.text === "string" &&
-      part.text.length > tweak.maxPartBytes
-    ) {
+    if (delta && "text" in part && typeof part.text === "string" && part.text.length > tweak.maxPartBytes) {
       const truncated =
         part.text.slice(0, tweak.maxPartBytes) +
         `\n\n[…truncated by runaway-guard: part exceeded ${tweak.maxPartBytes} bytes]`

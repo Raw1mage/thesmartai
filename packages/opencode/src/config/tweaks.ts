@@ -197,6 +197,11 @@ export namespace Tweaks {
     pinnedZoneMaxTokensRatio: number
   }
 
+  export interface SessionStorageConfig {
+    idleThresholdMs: number
+    connectionIdleMs: number
+  }
+
   export interface Effective {
     sessionCache: SessionCacheConfig
     rateLimit: RateLimitConfig
@@ -208,6 +213,7 @@ export namespace Tweaks {
     autorun: AutorunConfig
     toolOutputBudget: ToolOutputBudgetConfig
     compaction: CompactionConfig
+    sessionStorage: SessionStorageConfig
     source: { path: string; present: boolean }
   }
 
@@ -263,7 +269,7 @@ export namespace Tweaks {
 
   const TOOL_OUTPUT_BUDGET_DEFAULTS: ToolOutputBudgetConfig = {
     absoluteCap: 50_000,
-    contextRatio: 0.30,
+    contextRatio: 0.3,
     minimumFloor: 8_000,
     taskOverride: 60_000,
     bashOverride: 40_000,
@@ -274,7 +280,12 @@ export namespace Tweaks {
     llmTimeoutMs: 30_000,
     fallbackProvider: "",
     phase2MaxAnchorTokens: 5_000,
-    pinnedZoneMaxTokensRatio: 0.30,
+    pinnedZoneMaxTokensRatio: 0.3,
+  }
+
+  const SESSION_STORAGE_DEFAULTS: SessionStorageConfig = {
+    idleThresholdMs: 5_000,
+    connectionIdleMs: 60_000,
   }
 
   const PART_PERSISTENCE_DEFAULTS: PartPersistenceConfig = {
@@ -387,6 +398,8 @@ export namespace Tweaks {
     "compaction_fallback_provider",
     "compaction_phase2_max_anchor_tokens",
     "compaction_pinned_zone_max_tokens_ratio",
+    "session_storage_idle_threshold_ms",
+    "session_storage_connection_idle_ms",
   ])
 
   function parseFlag01(raw: string, key: string): 0 | 1 | undefined {
@@ -458,6 +471,7 @@ export namespace Tweaks {
           autorun: AUTORUN_DEFAULTS,
           toolOutputBudget: TOOL_OUTPUT_BUDGET_DEFAULTS,
           compaction: COMPACTION_DEFAULTS,
+          sessionStorage: SESSION_STORAGE_DEFAULTS,
         },
       })
       return {
@@ -468,9 +482,13 @@ export namespace Tweaks {
         codexRotation: { ...CODEX_ROTATION_DEFAULTS },
         partPersistence: { ...PART_PERSISTENCE_DEFAULTS },
         subagent: { ...SUBAGENT_DEFAULTS },
-        autorun: { triggerPhrases: [...AUTORUN_DEFAULTS.triggerPhrases], disarmPhrases: [...AUTORUN_DEFAULTS.disarmPhrases] },
+        autorun: {
+          triggerPhrases: [...AUTORUN_DEFAULTS.triggerPhrases],
+          disarmPhrases: [...AUTORUN_DEFAULTS.disarmPhrases],
+        },
         toolOutputBudget: { ...TOOL_OUTPUT_BUDGET_DEFAULTS },
         compaction: { ...COMPACTION_DEFAULTS },
+        sessionStorage: { ...SESSION_STORAGE_DEFAULTS },
         source: { path: cfgPath, present: false },
       }
     }
@@ -642,13 +660,10 @@ export namespace Tweaks {
     }
     // soft must be strictly less than hard; otherwise clamp soft to hard-1.
     if (sessionUiFreshness.softThresholdSec >= sessionUiFreshness.hardTimeoutSec) {
-      log.warn(
-        "tweaks.cfg ui_freshness_threshold_sec must be < ui_freshness_hard_timeout_sec, clamping",
-        {
-          softThresholdSec: sessionUiFreshness.softThresholdSec,
-          hardTimeoutSec: sessionUiFreshness.hardTimeoutSec,
-        },
-      )
+      log.warn("tweaks.cfg ui_freshness_threshold_sec must be < ui_freshness_hard_timeout_sec, clamping", {
+        softThresholdSec: sessionUiFreshness.softThresholdSec,
+        hardTimeoutSec: sessionUiFreshness.hardTimeoutSec,
+      })
       sessionUiFreshness.softThresholdSec = Math.max(1, sessionUiFreshness.hardTimeoutSec - 1)
     }
 
@@ -760,7 +775,10 @@ export namespace Tweaks {
       const v = parseFloatPositive(cmpPinRatioRaw, "compaction_pinned_zone_max_tokens_ratio")
       if (v !== undefined) {
         if (v > 1) {
-          log.warn("tweaks.cfg compaction_pinned_zone_max_tokens_ratio > 1, clamping to 1", { raw: cmpPinRatioRaw, value: v })
+          log.warn("tweaks.cfg compaction_pinned_zone_max_tokens_ratio > 1, clamping to 1", {
+            raw: cmpPinRatioRaw,
+            value: v,
+          })
           compaction.pinnedZoneMaxTokensRatio = 1
         } else {
           compaction.pinnedZoneMaxTokensRatio = v
@@ -768,9 +786,33 @@ export namespace Tweaks {
       }
     }
 
+    const sessionStorage: SessionStorageConfig = { ...SESSION_STORAGE_DEFAULTS }
+    const storageIdleRaw = parsed.get("session_storage_idle_threshold_ms")
+    if (storageIdleRaw !== undefined) {
+      const v = parseIntRange(storageIdleRaw, "session_storage_idle_threshold_ms", 100, 3_600_000)
+      if (v !== undefined) sessionStorage.idleThresholdMs = v
+    }
+    const storageConnectionIdleRaw = parsed.get("session_storage_connection_idle_ms")
+    if (storageConnectionIdleRaw !== undefined) {
+      const v = parseIntRange(storageConnectionIdleRaw, "session_storage_connection_idle_ms", 1_000, 3_600_000)
+      if (v !== undefined) sessionStorage.connectionIdleMs = v
+    }
+
     log.info("tweaks.cfg loaded", {
       path: cfgPath,
-      effective: { sessionCache, rateLimit, frontendLazyload, sessionUiFreshness, codexRotation, partPersistence, subagent, autorun, toolOutputBudget, compaction },
+      effective: {
+        sessionCache,
+        rateLimit,
+        frontendLazyload,
+        sessionUiFreshness,
+        codexRotation,
+        partPersistence,
+        subagent,
+        autorun,
+        toolOutputBudget,
+        compaction,
+        sessionStorage,
+      },
     })
     return {
       sessionCache,
@@ -783,6 +825,7 @@ export namespace Tweaks {
       autorun,
       toolOutputBudget,
       compaction,
+      sessionStorage,
       source: { path: cfgPath, present: true },
     }
   }
@@ -833,6 +876,10 @@ export namespace Tweaks {
     return (await effective()).compaction
   }
 
+  export async function sessionStorage(): Promise<SessionStorageConfig> {
+    return (await effective()).sessionStorage
+  }
+
   /**
    * Synchronous accessor for hot paths (e.g. updatePart). Returns defaults
    * until loadEffective() completes; after that returns the loaded values.
@@ -868,6 +915,10 @@ export namespace Tweaks {
    */
   export function compactionSync(): CompactionConfig {
     return _effective?.compaction ?? COMPACTION_DEFAULTS
+  }
+
+  export function sessionStorageSync(): SessionStorageConfig {
+    return _effective?.sessionStorage ?? SESSION_STORAGE_DEFAULTS
   }
 
   export async function loadEffective(): Promise<Effective> {

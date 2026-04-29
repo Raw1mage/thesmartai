@@ -17,9 +17,13 @@ import { mkdirSync, existsSync } from "fs"
 import path from "path"
 
 import { Global } from "@/global"
+import { Log } from "@/util/log"
+
+import { SessionStorageMetrics } from "./metrics"
 
 const DEFAULT_CAPACITY = 32
 const DEFAULT_IDLE_MS = 60_000
+const log = Log.create({ service: "session.storage.pool" })
 
 interface PoolEntry {
   sessionID: string
@@ -40,11 +44,7 @@ export interface PoolStats {
   capacity: number
 }
 
-const PRAGMAS = [
-  "PRAGMA journal_mode = WAL",
-  "PRAGMA synchronous = NORMAL",
-  "PRAGMA foreign_keys = ON",
-] as const
+const PRAGMAS = ["PRAGMA journal_mode = WAL", "PRAGMA synchronous = NORMAL", "PRAGMA foreign_keys = ON"] as const
 
 export namespace ConnectionPool {
   let capacity = DEFAULT_CAPACITY
@@ -74,17 +74,23 @@ export namespace ConnectionPool {
    *   4. Insert into pool (rw only)
    */
   export async function acquire(opts: AcquireOptions): Promise<Database> {
+    const start = Date.now()
     const dbPath = resolveDbPath(opts.sessionID)
 
     if (opts.mode === "ro") {
       const db = new Database(dbPath, { readonly: true, create: false })
       applyPragmas(db)
+      const durationMs = Date.now() - start
+      SessionStorageMetrics.observeMs("session_open_ms", durationMs, { mode: opts.mode, cold_open: true })
+      log.info("connection.pool.acquire", { sessionID: opts.sessionID, mode: opts.mode, cold_open: true })
       return db
     }
 
     const cached = entries.get(opts.sessionID)
     if (cached) {
       cached.lastUsedMs = Date.now()
+      SessionStorageMetrics.observeMs("session_open_ms", Date.now() - start, { mode: opts.mode, cold_open: false })
+      log.info("connection.pool.acquire", { sessionID: opts.sessionID, mode: opts.mode, cold_open: false })
       return cached.db
     }
 
@@ -117,6 +123,10 @@ export namespace ConnectionPool {
     })
     enforceCapacity()
     ensureSweepRunning()
+    SessionStorageMetrics.observeMs("session_open_ms", Date.now() - start, { mode: opts.mode, cold_open: true })
+    SessionStorageMetrics.gauge("connection_pool_size", entries.size)
+    SessionStorageMetrics.gauge("connection_pool_capacity", capacity)
+    log.info("connection.pool.acquire", { sessionID: opts.sessionID, mode: opts.mode, cold_open: true })
     return db
   }
 
@@ -130,6 +140,8 @@ export namespace ConnectionPool {
       // Already closed; ignore.
     }
     entries.delete(sessionID)
+    SessionStorageMetrics.gauge("connection_pool_size", entries.size)
+    log.info("connection.pool.evict", { sessionID, idle_ms: idleMs })
   }
 
   /** Close all pooled connections. Used by shutdown hooks and tests. */
@@ -160,16 +172,19 @@ export namespace ConnectionPool {
   /** Idle sweep — close handles untouched past idleMs. */
   function ensureSweepRunning(): void {
     if (sweepTimer) return
-    sweepTimer = setInterval(() => {
-      const now = Date.now()
-      for (const [sid, entry] of entries) {
-        if (now - entry.lastUsedMs > idleMs) close(sid)
-      }
-      if (entries.size === 0 && sweepTimer) {
-        clearInterval(sweepTimer)
-        sweepTimer = null
-      }
-    }, Math.max(1_000, idleMs / 4))
+    sweepTimer = setInterval(
+      () => {
+        const now = Date.now()
+        for (const [sid, entry] of entries) {
+          if (now - entry.lastUsedMs > idleMs) close(sid)
+        }
+        if (entries.size === 0 && sweepTimer) {
+          clearInterval(sweepTimer)
+          sweepTimer = null
+        }
+      },
+      Math.max(1_000, idleMs / 4),
+    )
     // Don't keep the process alive on this timer alone.
     if (typeof (sweepTimer as unknown as { unref?: () => void }).unref === "function") {
       ;(sweepTimer as unknown as { unref(): void }).unref()

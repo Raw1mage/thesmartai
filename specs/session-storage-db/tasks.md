@@ -40,42 +40,42 @@ Phased execution checklist. Each phase is a coherent slice that can be implement
 
 ## 5. Dreaming mode — idle-time legacy migration
 
-- [>] 5.1 Add `storage/dreaming.ts` (`DreamingWorker`): periodic timer (default 5000ms tick), idle detector (no message-write in `IDLE_THRESHOLD_MS`), legacy-session inventory scanner — delegated to coding agent 2026-04-29
-- [ ] 5.2 Implement three-stage atomic migration: read legacy → write `<sid>.db.tmp` → integrity_check + row count assertion → POSIX `rename` → delete legacy directory; one session per tick (DD-8)
-- [ ] 5.3 Implement DR-4 startup cleanup: on daemon boot, scan for orphaned `<sid>.db.tmp` files; delete them; ensure their parent legacy `<sid>/` is intact
-- [ ] 5.4 Publish `session.storage.migrated` Bus event on success; `session.storage.migration_failed` on failure (with stage marker)
-- [ ] 5.5 Make `IDLE_THRESHOLD_MS` and `CONNECTION_IDLE_MS` tunable via `/etc/opencode/tweaks.cfg` (per existing memory rule on tunable thresholds)
-- [ ] 5.6 Add `dreaming.test.ts` covering: happy path migration, simulated crash before rename (legacy preserved), simulated crash after rename before legacy delete (router debris path engages), row count mismatch (tmp deleted), integrity_check fail (tmp deleted)
-- [ ] 5.7 Verify that user opening a legacy session before dreaming reaches it does NOT trigger immediate migration (router serves via LegacyStore; no preempt)
+- [x] 5.1 Add `storage/dreaming.ts` (`DreamingWorker`): periodic timer (default 5000ms tick), idle detector (no message-write in `IDLE_THRESHOLD_MS`), legacy-session inventory scanner
+- [x] 5.2 Implement three-stage atomic migration: read legacy → write `<sid>.db.tmp` → integrity_check + row count assertion → POSIX `rename` → delete legacy directory; one session per tick (DD-8)
+- [x] 5.3 Implement DR-4 startup cleanup: on daemon boot, scan for orphaned `<sid>.db.tmp` files; delete them; ensure their parent legacy `<sid>/` is intact
+- [x] 5.4 Publish `session.storage.migrated` Bus event on success; `session.storage.migration_failed` on failure (with stage marker)
+- [x] 5.5 Make `IDLE_THRESHOLD_MS` and `CONNECTION_IDLE_MS` tunable via `/etc/opencode/tweaks.cfg` (per existing memory rule on tunable thresholds)
+- [x] 5.6 Add `dreaming.test.ts` covering: happy path migration, simulated crash before rename (legacy preserved), simulated crash after rename before legacy delete (router debris path engages), row count mismatch (tmp deleted), integrity_check fail (tmp deleted)
+- [x] 5.7 Verify that user opening a legacy session before dreaming reaches it does NOT trigger immediate migration (router serves via LegacyStore; no preempt)
 
 ## 6. Debug CLI — opencode session-inspect
 
-- [ ] 6.1 Add `cli/cmd/session-inspect.ts` with subcommands `list <sid>`, `show <sid> <mid>`, `check <sid>`
-- [ ] 6.2 `list`: tabular stdout of message id, role, time_created, finish, tokens_total
-- [ ] 6.3 `show`: JSON dump of one message info + all its parts ordered by sequence
-- [ ] 6.4 `check`: run IntegrityChecker; print verdict; exit code 0 if ok else 1
-- [ ] 6.5 Wire CLI through Router so it works on both SQLite and legacy sessions
-- [ ] 6.6 Document subcommands in `--help`; add `session-inspect.test.ts` for output shape stability
+- [x] 6.1 Add `cli/cmd/session-inspect.ts` with subcommands `list <sid>`, `show <sid> <mid>`, `check <sid>`
+- [x] 6.2 `list`: tabular stdout of message id, role, time_created, finish, tokens_total
+- [x] 6.3 `show`: JSON dump of one message info + all its parts ordered by sequence
+- [x] 6.4 `check`: run IntegrityChecker; print verdict; exit code 0 if ok else 1
+- [x] 6.5 Wire CLI through Router so it works on both SQLite and legacy sessions
+- [x] 6.6 Document subcommands in `--help`; add `session-inspect.test.ts` for output shape stability
 
 ## 7. Observability — events, metrics, logs
 
-- [ ] 7.1 Define Bus event payloads in `observability.md`: `session.storage.corrupted`, `session.storage.migrated`, `session.storage.migration_failed`, `session.storage.migration_started`, `session.storage.legacy_debris_resolved`
-- [ ] 7.2 Add metrics: `session_open_ms` (histogram), `migrate_duration_ms` (histogram, tagged stage), `integrity_check_ms` (histogram), `connection_pool_size` (gauge), `legacy_sessions_pending_count` (gauge)
-- [ ] 7.3 Add structured logs at INFO for migration lifecycle and ERROR for failure paths; ensure `sessionID` + `stage` are always present
-- [ ] 7.4 Surface `session.storage.corrupted` to admin panel (toaster + persistent banner); user can click to open `session-inspect check` output
+- [x] 7.1 Define Bus event payloads in `observability.md`: `session.storage.corrupted`, `session.storage.migrated`, `session.storage.migration_failed`, `session.storage.migration_started`, `session.storage.legacy_debris_resolved`
+- [x] 7.2 Add metrics: `session_open_ms` (histogram), `migrate_duration_ms` (histogram, tagged stage), `integrity_check_ms` (histogram), `connection_pool_size` (gauge), `legacy_sessions_pending_count` (gauge)
+- [x] 7.3 Add structured logs at INFO for migration lifecycle and ERROR for failure paths; ensure `sessionID` + `stage` are always present
+- [x] 7.4 Surface `session.storage.corrupted` to admin panel (toaster + persistent banner); user can click to open `session-inspect check` output
 
 ## 8. Hardening — fault injection + perf
 
-- [ ] 8.1 Fault injection test: simulate SIGKILL during message commit; verify next start opens cleanly with at most the in-flight message lost (DR-1)
-- [ ] 8.2 Fault injection test: simulate power loss via abrupt process exit + remount fixture; verify integrity_check passes on next open (DR-2)
-- [ ] 8.3 Fault injection test: corrupt a `<sid>.db` byte; verify next open hits IntegrityChecker → Bus event → refuse load (DR-3); session-inspect check reproduces same verdict
-- [ ] 8.4 Fault injection test: kill daemon at each migration stage; verify recovery per DR-4 startup cleanup; legacy intact at every interruption point
-- [ ] 8.5 Schema migration test: ship a synthetic v2 migration that adds a column; verify v1 → v2 forward + rollback unit-test pair (DR-5 / R-5)
-- [ ] 8.6 rsync race test: take rsync snapshot of running session, verify integrity_check on the snapshot — expect either ok or known-flagged inconsistency (R-1 documentation)
-- [ ] 8.7 Performance benchmark: 2253-message reference session; per-round runloop wall time must drop ≥ 70% vs LegacyStore baseline (acceptance check from spec.md)
+- [x] 8.1 Fault injection test: simulate SIGKILL during message commit; verify next start opens cleanly with at most the in-flight message lost (DR-1)
+- [x] 8.2 Fault injection test: simulate power loss via abrupt process exit + remount fixture; verify integrity_check passes on next open (DR-2)
+- [x] 8.3 Fault injection test: corrupt a `<sid>.db` byte; verify next open hits IntegrityChecker → Bus event → refuse load (DR-3); session-inspect check reproduces same verdict
+- [x] 8.4 Fault injection test: kill daemon at each migration stage; verify recovery per DR-4 startup cleanup; legacy intact at every interruption point
+- [x] 8.5 Schema migration test: ship a synthetic v2 migration that adds a column; verify v1 → v2 forward + rollback unit-test pair (DR-5 / R-5)
+- [x] 8.6 rsync race test: take rsync snapshot of running session, verify integrity_check on the snapshot — expect either ok or known-flagged inconsistency (R-1 documentation)
+- [-] 8.7 Performance benchmark: 2253-message reference session; per-round runloop wall time must drop ≥ 70% vs LegacyStore baseline (approval-gated; synthetic 2253-message fixture covered in `hardening.test.ts`, real runloop/reference acceptance requires approved captured reference run)
 
 ## 9. Cleanup gates — eventual legacy retirement
 
-- [ ] 9.1 Add `legacy_sessions_pending_count` metric to Grafana / admin panel; document the "0 = ready to retire LegacyStore" milestone
-- [ ] 9.2 Add admin command `opencode storage migrate-now <sid>` for users who want to force-migrate without waiting for idle sweep (R-6 mitigation)
-- [ ] 9.3 After the user's installation reports `legacy_sessions_pending_count == 0` for ≥ 7 days, schedule a follow-up amend to delete LegacyStore + Router's legacy branch (separate spec lifecycle iteration; tracked via `/schedule`)
+- [x] 9.1 Add `legacy_sessions_pending_count` metric to Grafana / admin panel; document the "0 = ready to retire LegacyStore" milestone
+- [x] 9.2 Add admin command `opencode storage migrate-now <sid>` for users who want to force-migrate without waiting for idle sweep (R-6 mitigation)
+- [x] 9.3 After the user's installation reports `legacy_sessions_pending_count == 0` for ≥ 7 days, schedule a follow-up amend to delete LegacyStore + Router's legacy branch (separate spec lifecycle iteration; tracked via `/schedule`)

@@ -30,6 +30,8 @@ import { EOL } from "os"
 import { WebCommand } from "./cli/cmd/web"
 import { PrCommand } from "./cli/cmd/pr"
 import { SessionCommand } from "./cli/cmd/session"
+import { SessionInspectCommand } from "./cli/cmd/session-inspect"
+import { StorageCommand } from "./cli/cmd/storage"
 import { AdminCommand } from "./cli/cmd/admin"
 import { KillSwitchCommand } from "./cli/cmd/killswitch"
 import { MigrateStripDiffsCommand } from "./cli/cmd/maintenance/migrate-strip-diffs"
@@ -42,6 +44,7 @@ import { registerPendingNoticeAppenderSubscriber } from "./bus/subscribers/pendi
 import { registerSubagentBusyIndicatorSubscriber } from "./bus/subscribers/subagent-busy-indicator"
 import { registerActiveChildChecker } from "./session/prompt-runtime"
 import { SessionActiveChild } from "./tool/task"
+import { Session } from "./session"
 import { registerAutorunDisarmObserver } from "./session/autorun/observer"
 import { SessionCache } from "./server/session-cache"
 import { RateLimit } from "./server/rate-limit"
@@ -53,6 +56,7 @@ registerPendingNoticeAppenderSubscriber()
 registerSubagentBusyIndicatorSubscriber()
 registerActiveChildChecker((sessionID) => !!SessionActiveChild.get(sessionID))
 registerAutorunDisarmObserver()
+Session.startDreamingWorker()
 SessionCache.registerInvalidationSubscriber()
 void RateLimit.logStartup()
 debugCheckpoint("app", "start", { args: process.argv.slice(2) })
@@ -145,6 +149,8 @@ const cli = yargs(hideBin(process.argv))
   .command(GithubCommand)
   .command(PrCommand)
   .command(SessionCommand)
+  .command(SessionInspectCommand)
+  .command(StorageCommand)
   .command(AdminCommand)
   .command(KillSwitchCommand)
   .command(MigrateStripDiffsCommand)

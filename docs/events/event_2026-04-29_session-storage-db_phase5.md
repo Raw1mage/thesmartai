@@ -22,3 +22,22 @@
 - Baseline: Phase 4.1–4.3 completed; 4.4/4.5 deferred by explicit user decision.
 - Instrumentation plan: test via fixture storage roots only; do not touch live `~/.local/share/opencode/`.
 - Stop gates: production deletion and daemon restart remain approval-gated.
+
+## Changes
+
+- Added `packages/opencode/src/session/storage/dreaming.ts` with `DreamingWorker` timer, idle detection, legacy inventory scanning, one-session-per-tick migration, DR-4 tmp cleanup, integrity/row-count verification, and migration Bus events.
+- Added `packages/opencode/src/session/storage/dreaming.test.ts` covering happy path, crash-before-rename, post-rename debris cleanup, row-count mismatch, integrity failure, no-preempt legacy reads, and oldest-session tick selection.
+- Added `Tweaks.sessionStorageSync()` configuration path for `session_storage_idle_threshold_ms` and `session_storage_connection_idle_ms` defaults.
+- Wired session writes to update the DreamingWorker idle detector.
+
+## Validation
+
+- `bun test "packages/opencode/src/session/storage/dreaming.test.ts"` — 7 pass, 0 fail.
+- Live daemon restart/smoke test: not run; remains approval-gated.
+- Production legacy deletion: not run; tests use fixture session IDs only.
+- Architecture Sync: Verified (No doc changes). Basis: Phase 5 implements the already-documented DreamingWorker boundary in `specs/session-storage-db/design.md` and `specs/architecture.md` does not yet need a new cross-system boundary beyond the active spec package.
+
+## Issues
+
+- Child coding session transcript read failed from the parent with `Canonical transcript storage missing .../messages`, which is relevant evidence for session-storage-db compatibility/context replay diagnostics but did not block code/test validation.
+- Existing user-added context replay diagnostics in `packages/opencode/src/session/prompt.ts` and `packages/opencode-codex-provider/src/transport-ws.ts` are present in the working tree and were not modified by this Phase 5 closeout.
