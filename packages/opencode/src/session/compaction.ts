@@ -669,6 +669,7 @@ export namespace SessionCompaction {
     | "provider-switched"
     | "manual"
     | "idle"
+    | "empty-response"
 
   export type KindName = "narrative" | "replay-tail" | "low-cost-server" | "llm-agent"
   // Note: hybrid_llm is intentionally NOT a KindName. It runs as a
@@ -716,6 +717,12 @@ export namespace SessionCompaction {
     "continuation-invalidated": Object.freeze(["narrative", "replay-tail"] as const),
     "provider-switched": Object.freeze(["narrative"] as const),
     manual: Object.freeze(["narrative", "low-cost-server", "llm-agent"] as const),
+    // empty-response auto-heal: codex's server-side compact gets first crack
+    // because the most likely root cause of the empty packet is codex's own
+    // context having silently overflowed; letting codex decide what to keep
+    // is more useful than a local narrative replay. Falls through to local
+    // kinds for non-codex providers (low-cost-server fails fast there).
+    "empty-response": Object.freeze(["low-cost-server", "narrative", "replay-tail", "llm-agent"] as const),
   })
 
   /**
@@ -733,6 +740,10 @@ export namespace SessionCompaction {
     "continuation-invalidated": false,
     "provider-switched": false,
     manual: false,
+    // empty-response auto-heal: token pressure drove the burp, so a synthetic
+    // "Continue from where you left off" after the anchor lets the model
+    // resume the user's actual request without a fresh user prompt.
+    "empty-response": true,
   })
 
   /**

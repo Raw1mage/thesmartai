@@ -1522,21 +1522,45 @@ export namespace SessionPrompt {
 
         // Self-heal on transient empty response.
         //
-        // Most empty rounds on the codex backend are transient hiccups
-        // (phantom usage={}, finishReason=unknown). Both subagent and
-        // main agent should get one retry before giving up — a halt
-        // here loses in-progress work and forces a human into the loop
-        // even when the backend just blinked.
+        // 2026-05-01: empirical data shows the dominant cause of an
+        // empty packet from codex is silent server-side context overflow
+        // — the dialog hits ~80-85% of nominal context and codex starts
+        // returning finishReason:unknown / totalTokens:0 instead of a
+        // real reply. A text nudge cannot recover this; only shrinking
+        // the context can. Trigger SessionCompaction with the dedicated
+        // "empty-response" observed condition (chain prefers codex's own
+        // /responses/compact via low-cost-server, falls through to local
+        // narrative / replay-tail / llm-agent). After compaction the
+        // anchor + Continue nudge takes us into the next iteration with
+        // a small enough prompt that codex can actually respond.
         //
-        // The 2026-04-29 fail-fast hotfix that removed the auto-? nudge
-        // was about codex CONTEXT-OVERFLOW incidents producing endless
-        // pseudo-empty rounds; with the diag instrumentation in place
-        // we can spot that pattern via emptyRoundCount and break on the
-        // second hit, so a single retry remains safe.
-        //
-        // Parent applies the same retry-once policy as subagent — the
-        // user's expectation when they delegate a long-running plan is
-        // continuity, not a halt on every backend blink.
+        // Subagents do not auto-compact (DD-12: parent owns context
+        // management); they keep the legacy retry-nudge path so a real
+        // transient blink still self-heals without disturbing parent.
+        if (emptyRoundCount === 1 && !session.parentID) {
+          log.info("self-heal: empty round 1 — triggering empty-response compaction", {
+            sessionID,
+            step,
+          })
+          try {
+            const result = await SessionCompaction.run({
+              sessionID,
+              observed: "empty-response",
+              step,
+            })
+            log.info("self-heal: empty-response compaction returned", { sessionID, step, result })
+            // Whether it succeeded or fell through, the runloop should
+            // re-evaluate with the new (potentially smaller) stream.
+            continue
+          } catch (err) {
+            log.warn("self-heal: empty-response compaction threw, falling back to nudge", {
+              sessionID,
+              step,
+              error: err instanceof Error ? err.message : String(err),
+            })
+            // fall through to the nudge path below
+          }
+        }
         if (emptyRoundCount === 1) {
           log.info("self-heal: empty round 1, injecting retry nudge", {
             sessionID,
