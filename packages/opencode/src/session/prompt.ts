@@ -1664,7 +1664,11 @@ export namespace SessionPrompt {
           }
           return false
         })()
-        const injectNudge = async (reasonTag: string, extra: Record<string, unknown> = {}) => {
+        const injectNudge = async (
+          reasonTag: string,
+          extra: Record<string, unknown> = {},
+          options?: { bannedTool?: string },
+        ) => {
           log.info("autorun nudge: " + reasonTag, { sessionID, step, ...extra })
           const nudgeUser: MessageV2.User = {
             id: Identifier.ascending("message"),
@@ -1676,16 +1680,24 @@ export namespace SessionPrompt {
             variant: lastUser.variant,
           }
           await Session.updateMessage(nudgeUser)
+          // Tool-specific ban: when paralysis is anchored on a repeated tool
+          // call, a generic "go execute" nudge backfires — the model reads
+          // "execute" as "do my current pattern again." Name the offending
+          // tool and forbid it for the next turn.
+          const text = options?.bannedTool
+            ? `${NUDGE_MARKER} You called \`${options.bannedTool}\` with byte-identical args on consecutive turns. ` +
+              `Do NOT call \`${options.bannedTool}\` again this turn. ` +
+              `Pick a different tool: bash / task / read / grep / glob / apply_patch / question. ` +
+              `If you genuinely cannot make progress without ${options.bannedTool}, return a plain text response describing the blocker and stop.`
+            : `${NUDGE_MARKER} ok to go — follow the plan you described. ` +
+              `Stop only if a critical issue or genuine blocker appears ` +
+              `(not just a consideration). Don't restate; execute.`
           await Session.updatePart({
             id: Identifier.ascending("part"),
             messageID: nudgeUser.id,
             sessionID,
             type: "text",
-            text:
-              NUDGE_MARKER +
-              " ok to go — follow the plan you described. " +
-              "Stop only if a critical issue or genuine blocker appears " +
-              "(not just a consideration). Don't restate; execute.",
+            text,
             synthetic: true,
           } satisfies MessageV2.TextPart)
         }
@@ -1705,10 +1717,17 @@ export namespace SessionPrompt {
           })
           if (sigs[0] && sigs[0] === sigs[1]) {
             if (!nudgedBetweenLastTwo) {
-              // Stage 1 — nudge.
-              await injectNudge("tool-call signature repeat", {
-                signature: sigs[0].slice(0, 200),
-              })
+              // Stage 1 — nudge. Identify the specific tool being repeated
+              // so the nudge can ban it by name; a generic "go execute"
+              // hint gets misread as "do your current pattern again."
+              const repeatedTool = recentAssistants[0].parts
+                .filter((p) => p.type === "tool")
+                .map((p) => (p as MessageV2.ToolPart).tool)[0]
+              await injectNudge(
+                "tool-call signature repeat",
+                { signature: sigs[0].slice(0, 200), bannedTool: repeatedTool },
+                { bannedTool: repeatedTool },
+              )
               continue
             }
             // Stage 2 — break (nudge didn't help).
