@@ -6,6 +6,7 @@ import { Lanes } from "./lanes"
 import { Restart } from "./restart"
 import { CronRetention } from "../cron/retention"
 import { Heartbeat } from "../cron/heartbeat"
+import { ZombieSweep } from "../session/zombie-sweep"
 
 export { GatewayLock } from "./gateway-lock"
 export { Signals } from "./signals"
@@ -79,6 +80,17 @@ export namespace Daemon {
 
     daemonState = "running"
     log.info("daemon started", { pid: process.pid })
+
+    // Boot-time zombie recovery: stamp any mid-stream messages whose runtime
+    // got SIGTERM'd by the previous daemon's shutdown (webctl restart, OOM,
+    // crash). Run in background so daemon start doesn't block on disk scan;
+    // the sweep is idempotent and safe to skip if it errors.
+    ZombieSweep.sweep()
+      .then((r) => log.info("zombie sweep complete", r))
+      .catch((err) =>
+        log.warn("zombie sweep threw", { error: err instanceof Error ? err.message : String(err) }),
+      )
+
     return true
   }
 
