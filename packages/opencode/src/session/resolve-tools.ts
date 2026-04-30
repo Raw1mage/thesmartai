@@ -18,7 +18,13 @@ import { Config } from "../config/config"
 import ENABLEMENT from "./prompt/enablement.json"
 import { UnlockedTools } from "./unlocked-tools"
 import { ToolFrequency } from "../tool/frequency"
-import { ALWAYS_PRESENT_TOOLS, buildCatalog, formatCatalogDescription, formatLazyCatalogPrompt } from "../tool/tool-loader"
+import {
+  ALWAYS_PRESENT_TOOLS,
+  NEVER_PROMOTE_TOOLS,
+  buildCatalog,
+  formatCatalogDescription,
+  formatLazyCatalogPrompt,
+} from "../tool/tool-loader"
 
 const log = Log.create({ service: "session.resolve-tools" })
 
@@ -312,10 +318,14 @@ export async function resolveTools(input: ResolveToolsInput): Promise<ResolveToo
 
   if (lazyEnabled && input.agent.mode !== "subagent") {
     const alwaysPresent = new Set(ALWAYS_PRESENT_TOOLS)
-    for (const id of lazyConfig?.always_present ?? []) alwaysPresent.add(id)
+    for (const id of lazyConfig?.always_present ?? []) {
+      if (NEVER_PROMOTE_TOOLS.has(id)) continue
+      alwaysPresent.add(id)
+    }
 
     const threshold = lazyConfig?.promotion_threshold ?? 50
-    const promotedTools = await ToolFrequency.promoted(threshold)
+    const promotedToolsRaw = await ToolFrequency.promoted(threshold)
+    const promotedTools = promotedToolsRaw.filter((id) => !NEVER_PROMOTE_TOOLS.has(id))
     for (const id of promotedTools) alwaysPresent.add(id)
 
     const unlocked = UnlockedTools.get(input.session.id)

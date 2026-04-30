@@ -17,6 +17,16 @@ export const ALWAYS_PRESENT_TOOLS = new Set([
   "invalid",
 ])
 
+// Tools that must never be auto-promoted by usage frequency. They are
+// user-intent-only (image preview, clipboard, self-restart, etc.) and
+// keeping them in the active tool list biases the model into calling
+// them spuriously. They remain reachable via tool_loader on demand.
+export const NEVER_PROMOTE_TOOLS = new Set([
+  "system-manager_display_inline_image",
+  "system-manager_copy_to_clipboard",
+  "system-manager_restart_self",
+])
+
 export interface CatalogEntry {
   id: string
   summary: string
