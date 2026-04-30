@@ -47,14 +47,7 @@ function ScrollSpySentinel(props: { active: boolean; onEnter: () => void }): JSX
     observer.observe(el)
     onCleanup(() => observer.disconnect())
   })
-  return (
-    <div
-      ref={el}
-      data-component="scroll-spy-sentinel"
-      style="height: 1px; width: 100%;"
-      aria-hidden="true"
-    />
-  )
+  return <div ref={el} data-component="scroll-spy-sentinel" style="height: 1px; width: 100%;" aria-hidden="true" />
 }
 
 const boundaryTarget = (root: HTMLElement, target: EventTarget | null) => {
@@ -103,6 +96,7 @@ export function MessageTimeline(props: {
   onScrollSpyScroll: () => void
   onAutoScrollInteraction: (event: MouseEvent) => void
   userScrolled: () => boolean
+  sessionBusy: boolean
   showHeader: boolean
   centered: boolean
   title?: string
@@ -209,7 +203,7 @@ export function MessageTimeline(props: {
               rootHeight: root.clientHeight,
             })
             if (!delta) return
-            if (delta < 0) props.onAutoScrollUserIntent()
+            props.onAutoScrollUserIntent()
             markBoundaryGesture({ root, target: e.target, delta, onMarkScrollGesture: props.onMarkScrollGesture })
           }}
           onTouchStart={(e) => {
@@ -223,7 +217,7 @@ export function MessageTimeline(props: {
 
             const delta = prev - next
             if (!delta) return
-            if (delta < 0) props.onAutoScrollUserIntent()
+            props.onAutoScrollUserIntent()
 
             const root = e.currentTarget
             markBoundaryGesture({ root, target: e.target, delta, onMarkScrollGesture: props.onMarkScrollGesture })
@@ -240,8 +234,8 @@ export function MessageTimeline(props: {
           }}
           onScroll={(e) => {
             props.onScheduleScrollState(e.currentTarget)
+            props.onAutoScrollHandleScroll()
             const hasGesture = props.hasScrollGesture()
-            if (hasGesture) props.onAutoScrollHandleScroll()
             if (!hasGesture) return
             props.onMarkScrollGesture(e.currentTarget)
             if (props.isDesktop) props.onScrollSpyScroll()
@@ -249,6 +243,7 @@ export function MessageTimeline(props: {
           onClick={props.onAutoScrollInteraction}
           class="relative min-w-0 w-full h-full overflow-y-auto session-scroller"
           data-user-scrolling={props.userScrolled() ? "" : undefined}
+          data-session-busy={props.sessionBusy ? "" : undefined}
           style={{ "--session-title-height": props.showHeader ? "40px" : "0px" }}
         >
           <div ref={props.setContentRef} class="min-w-0 w-full">
@@ -454,7 +449,7 @@ export function MessageTimeline(props: {
                           preview: inlineImagePreview,
                         }}
                         classes={{
-                          root: "min-w-0 w-full relative",
+                          root: "session-timeline-turn min-w-0 w-full relative",
                           content: "flex flex-col justify-between !overflow-visible",
                           container: "w-full px-4 md:px-6",
                         }}
@@ -463,6 +458,7 @@ export function MessageTimeline(props: {
                   )
                 }}
               </For>
+              <div data-scroll-bottom-anchor aria-hidden="true" />
             </div>
           </div>
         </div>

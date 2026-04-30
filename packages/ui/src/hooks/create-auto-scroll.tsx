@@ -23,10 +23,9 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let cleanup: (() => void) | undefined
   let auto: { top: number; time: number } | undefined
   // rAF loop state (no rafId needed — uses loopActive flag)
-  // Track previous scrollHeight for delta-based follow-bottom.
-  // Instead of setting scrollTop to an absolute position (which fights
-  // other scroll sources), we adjust scrollTop by the scrollHeight delta.
-  // This is equivalent to what CSS scroll-anchoring does, but in JS.
+  // Track previous scrollHeight so resize handling can detect real content
+  // growth while all follow-bottom writers still converge on one exact
+  // bottomScrollTop formula.
   let lastScrollHeight = 0
 
   const threshold = () => options.bottomThreshold ?? 10
@@ -48,8 +47,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const active = () => options.working() || settling
 
+  const bottomScrollTop = (el: HTMLElement) => Math.max(0, el.scrollHeight - el.clientHeight)
+
   const distanceFromBottom = (el: HTMLElement) => {
-    return el.scrollHeight - el.clientHeight - el.scrollTop
+    return bottomScrollTop(el) - el.scrollTop
   }
 
   const metrics = (el?: HTMLElement) => {
@@ -59,7 +60,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
       scrollHeight: el.scrollHeight,
       clientHeight: el.clientHeight,
       distanceFromBottom: distanceFromBottom(el),
-      maxScrollTop: Math.max(0, el.scrollHeight - el.clientHeight),
+      maxScrollTop: bottomScrollTop(el),
     }
   }
 
@@ -91,7 +92,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   // the user scrolled.
   const markAuto = (el: HTMLElement) => {
     auto = {
-      top: Math.max(0, el.scrollHeight - el.clientHeight),
+      top: bottomScrollTop(el),
       time: Date.now(),
     }
 
@@ -100,6 +101,13 @@ export function createAutoScroll(options: AutoScrollOptions) {
       auto = undefined
       autoTimer = undefined
     }, 250)
+  }
+
+  const clearAuto = () => {
+    auto = undefined
+    if (!autoTimer) return
+    clearTimeout(autoTimer)
+    autoTimer = undefined
   }
 
   const isAuto = (_el: HTMLElement) => {
@@ -163,7 +171,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
         const distance = distanceFromBottom(el)
         if (distance > followThreshold()) {
           markAuto(el)
-          el.scrollTop = el.scrollHeight - el.clientHeight
+          el.scrollTop = bottomScrollTop(el)
           lastScrollHeight = el.scrollHeight
         }
       }
@@ -186,13 +194,13 @@ export function createAutoScroll(options: AutoScrollOptions) {
     debug("scroll-apply", { behavior, phase: "before", ...metrics(el) })
     markAuto(el)
     if (behavior === "smooth") {
-      el.scrollTo({ top: el.scrollHeight, behavior })
+      el.scrollTo({ top: bottomScrollTop(el), behavior })
       debug("scroll-apply", { behavior, phase: "after-scrollTo", ...metrics(el) })
       return
     }
 
     // `scrollTop` assignment bypasses any CSS `scroll-behavior: smooth`.
-    el.scrollTop = el.scrollHeight
+    el.scrollTop = bottomScrollTop(el)
     lastScrollHeight = el.scrollHeight
     debug("scroll-apply", { behavior, phase: "after-assignment", ...metrics(el) })
   }
@@ -225,10 +233,11 @@ export function createAutoScroll(options: AutoScrollOptions) {
     scrollToBottomNow("auto")
   }
 
-  const stop = () => {
+  const stop = (force = false) => {
     const el = scroll
     if (!el) return
-    if (!canScroll(el)) {
+    clearAuto()
+    if (!force && !canScroll(el)) {
       if (userScrolled()) setMode("follow-bottom", "no-overflow")
       return
     }
@@ -256,7 +265,6 @@ export function createAutoScroll(options: AutoScrollOptions) {
   }
 
   const handleWheel = (e: WheelEvent) => {
-    if (e.deltaY >= 0) return
     // If the user is scrolling within a nested scrollable region (tool output,
     // code block, etc) AND that region actually has vertical overflow to
     // consume the scroll, don't treat it as leaving the "follow bottom"
@@ -267,11 +275,12 @@ export function createAutoScroll(options: AutoScrollOptions) {
     const target = e.target instanceof Element ? e.target : undefined
     const nested = target?.closest("[data-scrollable]")
     if (el && nested && nested !== el && nestedConsumesVerticalScroll(nested)) return
+    clearAuto()
     stop()
   }
 
-  // iOS touch scrolling doesn't fire wheel events, so we track touch
-  // gestures to detect upward swipes → free-reading mode.
+  // iOS touch scrolling doesn't fire wheel events, so track touch movement
+  // directly and treat any root-level vertical gesture as reading intent.
   let touchStartY = 0
   let touchActive = false
 
@@ -284,8 +293,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
   const handleTouchMove = (e: TouchEvent) => {
     if (!touchActive || e.touches.length !== 1) return
     const deltaY = e.touches[0].clientY - touchStartY
-    // deltaY > 0 means finger moved down → content scrolls UP (user reading earlier content)
-    if (deltaY > 10) {
+    if (Math.abs(deltaY) > 10) {
       const el = scroll
       const target = e.target instanceof Element ? e.target : undefined
       const nested = target?.closest("[data-scrollable]")
@@ -295,6 +303,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
       // mobile history-lazyload never arms — user sees tail 30 only.
       if (el && nested && nested !== el && nestedConsumesVerticalScroll(nested)) return
       touchActive = false
+      clearAuto()
       stop()
     }
   }
@@ -318,19 +327,6 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (distanceFromBottom(el) < threshold()) {
       if (userScrolled() && !options.resumeOnly) setMode("follow-bottom", "bottom-zone")
       debug("handle-scroll-bottom-zone")
-      return
-    }
-
-    // During active streaming, any scroll event that lands away from
-    // the bottom is likely caused by iOS anchor restoration. Record it
-    // as an anchor hit for circuit breaker detection, then correct.
-    if (!userScrolled() && active()) {
-      recordAnchorHit()
-      if (circuitBroken) return
-      markAuto(el)
-      el.scrollTop = el.scrollHeight - el.clientHeight
-      lastScrollHeight = el.scrollHeight
-      debug("handle-scroll-active-correct", metrics(el))
       return
     }
 
@@ -412,10 +408,17 @@ export function createAutoScroll(options: AutoScrollOptions) {
         resumeOnly: options.resumeOnly === true,
       })
 
+      if (distance > 1) {
+        stopRafLoop()
+        setMode("free-reading", "resize-away-from-bottom")
+        debug("resize-blocked-away-from-bottom", { delta, distance, ...metrics(el) })
+        return
+      }
+
       markAuto(el)
 
       if (delta > 0) {
-        el.scrollTop += delta
+        el.scrollTop = bottomScrollTop(el)
       }
 
       // Safety net: if we're far from bottom after the adjustment (or after
@@ -429,10 +432,10 @@ export function createAutoScroll(options: AutoScrollOptions) {
           debug("resize-circuit-broken-snap", { delta, remaining })
           return
         }
-        el.scrollTop = el.scrollHeight - el.clientHeight
-        debug("resize-delta-snap", { delta, remaining, ...metrics(el) })
+        setMode("free-reading", "resize-remaining-away-from-bottom")
+        debug("resize-delta-blocked-snap", { delta, remaining, ...metrics(el) })
       } else {
-        debug("resize-delta-applied", { delta, ...metrics(el) })
+        debug("resize-bottom-applied", { delta, ...metrics(el) })
       }
     },
   )
@@ -452,6 +455,13 @@ export function createAutoScroll(options: AutoScrollOptions) {
           window.history.replaceState(null, "", window.location.href.replace(/#.*$/, ""))
         }
         if (!userScrolled()) {
+          const el = scroll
+          if (el && canScroll(el) && distanceFromBottom(el) > threshold()) {
+            stopRafLoop()
+            setMode("free-reading", "working-start-away-from-bottom")
+            debug("working-start-blocked-away-from-bottom", metrics(el))
+            return
+          }
           scrollToBottom(true)
           startRafLoop()
         }
@@ -513,7 +523,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     handleInteraction,
     pause: () => {
       stopRafLoop()
-      stop()
+      stop(true)
     },
     resume: () => {
       // Reset circuit breaker on explicit user action

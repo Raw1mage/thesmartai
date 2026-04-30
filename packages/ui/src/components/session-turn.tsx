@@ -351,11 +351,7 @@ export function SessionTurn(
         const itemTime = (item as { time?: { created?: number } }).time?.created ?? 0
         // Crossed into real history (item created strictly before user) → stop.
         if (itemTime < myTime) break
-        if (
-          item.role === "assistant" &&
-          item.parentID === msg.id &&
-          (item as AssistantMessage).summary !== true
-        ) {
+        if (item.role === "assistant" && item.parentID === msg.id && (item as AssistantMessage).summary !== true) {
           // unshift keeps chronological order: oldest inverted-step first
           result.unshift(item as AssistantMessage)
         }
@@ -568,6 +564,8 @@ export function SessionTurn(
     if (s.type !== "retry") return
     return s
   })
+  const statusLineMounted = createMemo(() => !!retry() || working())
+  const statusLineVisible = createMemo(() => !!retry() || (working() && active()))
 
   const response = createMemo(() => lastTextPart()?.text)
   const responsePartId = createMemo(() => lastTextPart()?.id)
@@ -905,7 +903,6 @@ export function SessionTurn(
                       <div data-slot="session-turn-message-content" aria-live="off">
                         <Message message={msg()} parts={stickyParts()} queued={queued()} />
                       </div>
-
                     </div>
                     <SessionRetry status={status()} show={isLastUserMessage()} />
                     {/* Steps (always inline) */}
@@ -928,8 +925,8 @@ export function SessionTurn(
                             appeared simultaneously when steps were collapsed, doubling the red. */}
                       </div>
                     </Show>
-                    <Show when={!!retry() || (working() && active())}>
-                      <div data-slot="session-turn-status-inline">
+                    <Show when={statusLineMounted()}>
+                      <div data-slot="session-turn-status-inline" data-visible={statusLineVisible() ? "true" : "false"}>
                         <Switch>
                           <Match when={retry()}>
                             <span data-slot="session-turn-retry-message">
@@ -949,6 +946,12 @@ export function SessionTurn(
                             <span data-slot="session-turn-retry-attempt">(#{retry()?.attempt})</span>
                           </Match>
                           <Match when={working() && active()}>
+                            <Spinner />
+                            <span data-slot="session-turn-status-text">
+                              {store.status ?? i18n.t("ui.sessionTurn.status.consideringNextSteps")}
+                            </span>
+                          </Match>
+                          <Match when={working()}>
                             <Spinner />
                             <span data-slot="session-turn-status-text">
                               {store.status ?? i18n.t("ui.sessionTurn.status.consideringNextSteps")}

@@ -28,6 +28,7 @@ type NewInput = {
   anchor: (id: string) => string
   scheduleScrollState: (el: HTMLDivElement) => void
   consumePendingMessage: (key: string) => string | undefined
+  userScrolled?: () => boolean
 }
 
 type LegacyInput = {
@@ -77,6 +78,7 @@ export const useSessionHashScroll = (rawInput: NewInput | LegacyInput) => {
           anchor,
           scheduleScrollState: () => {},
           consumePendingMessage: () => undefined,
+          userScrolled: () => false,
         }
       : rawInput
 
@@ -157,6 +159,7 @@ export const useSessionHashScroll = (rawInput: NewInput | LegacyInput) => {
   const applyHash = (behavior: ScrollBehavior) => {
     const hash = window.location.hash.slice(1)
     if (!hash) {
+      if (input.userScrolled?.()) return
       input.autoScroll.scrollToBottom()
       const el = input.scroller()
       if (el) input.scheduleScrollState(el)
@@ -201,6 +204,11 @@ export const useSessionHashScroll = (rawInput: NewInput | LegacyInput) => {
     if (!initialAppliedForSession()) {
       setInitialAppliedForSession(true)
       requestAnimationFrame(() => {
+        if (window.location.hash) {
+          applyHash("auto")
+          return
+        }
+        if (input.userScrolled?.()) return
         input.setActiveMessage(undefined)
         input.autoScroll.scrollToBottom()
         const el = input.scroller()
@@ -214,6 +222,7 @@ export const useSessionHashScroll = (rawInput: NewInput | LegacyInput) => {
     // dependencies (messagesReady, etc.) re-trigger this effect as new
     // content arrives, and the resulting rAF scroll fights follow-bottom.
     if (input.working()) return
+    if (input.userScrolled?.()) return
 
     requestAnimationFrame(() => applyHash("auto"))
   })

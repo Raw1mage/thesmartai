@@ -612,6 +612,7 @@
 
 [data-component="tool-part-wrapper"] {
   width: 100%;
+  overflow-anchor: none;
 
   &[data-permission="true"],
   &[data-question="true"] {
@@ -624,7 +625,6 @@
     box-shadow: var(--shadow-xs-border-base);
     background-color: var(--surface-raised-base);
     overflow: visible;
-    overflow-anchor: none;
 
     & > *:first-child {
       border-top-left-radius: 6px;

@@ -8,17 +8,21 @@
   }
 }
 
-/* Disable browser scroll anchoring on the session scroller.
-   JS handles follow-bottom via delta-based scrollTop adjustment
-   in the ResizeObserver (works on all platforms including iOS). */
-.session-scroller {
+/* Keep browser anchoring disabled for reactive message content, but allow a
+   dedicated bottom sentinel to act as the sole anchor while following bottom. */
+.session-scroller * {
   overflow-anchor: none;
 }
 
-/* Enable scroll-snap only when the user is actively reading (scrolled up).
-   Disabled during follow-bottom auto-scroll so new content flows freely. */
-.session-scroller[data-user-scrolling] {
-  scroll-snap-type: y proximity;
+.session-scroller:not([data-user-scrolling]) [data-scroll-bottom-anchor] {
+  display: block;
+  width: 100%;
+  height: 1px;
+  overflow-anchor: auto;
+}
+
+.session-scroller[data-user-scrolling] [data-scroll-bottom-anchor] {
+  overflow-anchor: none;
 }
 
 @utility session-scroller {
@@ -46,6 +50,7 @@
   & {
     scrollbar-width: thin;
     scrollbar-color: var(--border-weak-base) transparent;
+    scroll-padding-bottom: calc(var(--prompt-height, 8rem) + 64px);
   }
 }
 

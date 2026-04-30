@@ -1025,7 +1025,6 @@ export default function Page() {
   const { freshnessNow: activeChildFreshnessNow } = useFreshnessClock()
   // session-ui-freshness R5.S2 warn sink (rate-limited ≤1/min per sessionID).
   const warnActiveChildInvalid = createRateLimitedWarn((msg, detail) => {
-    // eslint-disable-next-line no-console
     console.warn(msg, detail)
   })
   const activeChildDock = createMemo(() => {
@@ -1183,6 +1182,7 @@ export default function Page() {
 
     if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
       if (blocked()) return
+      if (autoScroll.userScrolled()) return
       inputRef?.focus()
     }
   }
@@ -1452,7 +1452,7 @@ export default function Page() {
   )
 
   const autoScroll = createAutoScroll({
-    working: () => true,
+    working: sessionBusy,
     overflowAnchor: "dynamic",
     debugName: "session-page",
     followOnResize: true,
@@ -1752,6 +1752,7 @@ export default function Page() {
     anchor,
     scheduleScrollState,
     consumePendingMessage: layout.pendingMessage.consume,
+    userScrolled: autoScroll.userScrolled,
   })
 
   createEffect(() => {
@@ -1891,6 +1892,7 @@ export default function Page() {
                     onScrollSpyScroll={scrollSpy.onScroll}
                     onAutoScrollInteraction={autoScroll.handleInteraction}
                     userScrolled={autoScroll.userScrolled}
+                    sessionBusy={sessionBusy()}
                     showHeader={!!(info()?.title || info()?.parentID)}
                     centered={centered()}
                     title={info()?.title}

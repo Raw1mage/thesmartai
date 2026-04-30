@@ -138,4 +138,103 @@ describe("useSessionHashScroll", () => {
       dispose()
     })
   })
+
+  testIfClient("does not scroll to bottom on initial no-hash load while user scrolled", async () => {
+    await new Promise<void>((resolve) => {
+      createRoot((dispose) => {
+        const scroller = document.createElement("div")
+        document.body.appendChild(scroller)
+        let scrolledToBottom = false
+        let scheduledScrollState = false
+
+        useSessionHashScroll({
+          sessionKey: () => "session-a",
+          sessionID: () => "session-a",
+          messagesReady: () => true,
+          working: () => false,
+          visibleUserMessages: () => [{ id: "msg-1", role: "user" } as any],
+          turnStart: () => 0,
+          currentMessageId: () => undefined,
+          pendingMessage: () => undefined,
+          setPendingMessage: () => {},
+          setActiveMessage: () => {},
+          setTurnStart: () => {},
+          scheduleTurnBackfill: () => {},
+          autoScroll: {
+            pause: () => {},
+            scrollToBottom: () => {
+              scrolledToBottom = true
+            },
+          },
+          scroller: () => scroller,
+          anchor,
+          scheduleScrollState: () => {
+            scheduledScrollState = true
+          },
+          consumePendingMessage: () => undefined,
+          userScrolled: () => true,
+        })
+
+        setTimeout(() => {
+          rafCallbacks.forEach((cb) => cb(0))
+          expect(scrolledToBottom).toBe(false)
+          expect(scheduledScrollState).toBe(false)
+          dispose()
+          resolve()
+        }, 0)
+      })
+    })
+  })
+
+  testIfClient("keeps explicit message hash navigation while user scrolled", async () => {
+    window.location.hash = `#${anchor("msg-3")}`
+
+    await new Promise<void>((resolve) => {
+      createRoot((dispose) => {
+        const scroller = document.createElement("div")
+        const msgEl = document.createElement("div")
+        msgEl.id = anchor("msg-3")
+        document.body.appendChild(scroller)
+        document.body.appendChild(msgEl)
+        let pausedAutoScroll = false
+        let scrolledToBottom = false
+
+        useSessionHashScroll({
+          sessionKey: () => "session-b",
+          sessionID: () => "session-b",
+          messagesReady: () => true,
+          working: () => false,
+          visibleUserMessages: () => [{ id: "msg-3", role: "user" } as any],
+          turnStart: () => 0,
+          currentMessageId: () => undefined,
+          pendingMessage: () => undefined,
+          setPendingMessage: () => {},
+          setActiveMessage: () => {},
+          setTurnStart: () => {},
+          scheduleTurnBackfill: () => {},
+          autoScroll: {
+            pause: () => {
+              pausedAutoScroll = true
+            },
+            scrollToBottom: () => {
+              scrolledToBottom = true
+            },
+          },
+          scroller: () => scroller,
+          anchor,
+          scheduleScrollState: () => {},
+          consumePendingMessage: () => undefined,
+          userScrolled: () => true,
+        })
+
+        setTimeout(() => {
+          rafCallbacks.forEach((cb) => cb(0))
+          expect(pausedAutoScroll).toBe(true)
+          expect(scrolledToBottom).toBe(false)
+          dispose()
+          resolve()
+        }, 0)
+      })
+    })
+  })
 })
