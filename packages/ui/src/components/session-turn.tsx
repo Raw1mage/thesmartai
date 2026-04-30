@@ -541,6 +541,12 @@ export function SessionTurn(
     // running on this turn's behalf. Treat the last-user turn as active so
     // the clock + status text keep showing while the child works.
     if (isLastUserMessage() && data.store.active_child?.[props.sessionID]) return true
+    // Between-rounds gap: previous step finalized, next LLM stream is in
+    // flight but no step-start part has arrived yet. session_status=busy is
+    // the daemon's ground truth — without this the status line vanishes
+    // (Liveness Invariant violation: user loses every signal that work is
+    // happening, even though the runloop is mid-API-call).
+    if (isLastUserMessage() && status().type !== "idle") return true
     return false
   })
   const queued = createMemo(() => {
@@ -704,12 +710,14 @@ export function SessionTurn(
     const msg = message()
     if (!msg) return ""
 
-    // Only use a fixed "to" time when ALL assistant messages have completed.
-    // If any is still running (e.g. main message during subagent delegation),
-    // keep using DateTime.now() so the timer doesn't freeze.
+    // Only use a fixed "to" time when ALL assistant messages have completed
+    // AND the turn is no longer working. The "working" guard covers the
+    // window between a tool_use (e.g. subagent delegation) finalizing the
+    // parent assistant message and the next assistant message being created
+    // — without it, every() reports completed and the timer freezes.
     const msgs = assistantMessages()
     const allCompleted = msgs.length > 0 && msgs.every((m) => typeof m.time.completed === "number")
-    const completed = allCompleted
+    const completed = allCompleted && !working()
       ? msgs.reduce<number | undefined>((max, item) => {
           const value = item.time.completed
           if (typeof value !== "number") return max
@@ -840,9 +848,12 @@ export function SessionTurn(
     // Use .every() not .some(): narration messages (e.g. "Delegating to explore: ...")
     // are created with time.completed already set, but the main assistant message
     // is still running. Using .some() would freeze the timer when narration fires.
+    // Also keep ticking while working() is true — between a parent's tool_use
+    // finalizing and the next assistant message landing, every() briefly returns
+    // true even though the turn is mid subagent delegation.
     const msgs = assistantMessages()
     const completed = msgs.length > 0 && msgs.every((m) => typeof m.time.completed === "number")
-    if (completed) return
+    if (completed && !working()) return
 
     const timer = setInterval(update, 1000)
     onCleanup(() => clearInterval(timer))
