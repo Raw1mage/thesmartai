@@ -15,6 +15,14 @@ export const ALWAYS_PRESENT_TOOLS = new Set([
   "todoread",
   "tool_loader",
   "invalid",
+  // Core execution primitives. Any code-touching agent needs these on
+  // every turn; making them lazy forces an extra tool_loader hop and
+  // tends to trap the model in todo-juggling when it actually wants
+  // to run a command.
+  "bash",
+  "apply_patch",
+  "grep",
+  "glob",
 ])
 
 export interface CatalogEntry {
