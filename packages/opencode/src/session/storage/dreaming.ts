@@ -196,6 +196,83 @@ function encodeMessageInfo(info: MessageV2.Info): MessageRow {
   }
 }
 
+// Pruning thresholds. Anything above this gets sanitized so a rogue tool
+// output (e.g., apply_patch capturing a 300MB ELF binary as diff text)
+// can't blow SQLite's 1GB cell limit and block the entire dream queue.
+//
+// Philosophy (user-confirmed 2026-04-30): conversation logic — user/
+// assistant text, reasoning, tool inputs, short tool outputs — is the
+// real value. Long tool outputs and binary diffs are transient by-
+// products that have no retrospective worth, even for the AI itself.
+const PRUNE_PART_BYTES = 256 * 1024 // trigger threshold
+const PRUNE_OUTPUT_HEAD = 1024
+const PRUNE_OUTPUT_TAIL = 1024
+
+interface PruneStats {
+  partsPruned: number
+  bytesSaved: number
+}
+
+function prunePart(part: MessageV2.Part, stats: PruneStats): MessageV2.Part {
+  const original = JSON.stringify(part)
+  if (original.length <= PRUNE_PART_BYTES) return part
+  const before = original.length
+  // Tool parts: drop oversized metadata.diff entirely; truncate
+  // state.output to head + tail. Keep input + title — the decision
+  // trail and display string.
+  if (part.type === "tool") {
+    const cloned = JSON.parse(original) as typeof part & {
+      metadata?: Record<string, unknown> & { dreamPruned?: boolean; diff?: unknown }
+      state: typeof part.state & { output?: unknown }
+    }
+    const m = (cloned.metadata ?? {}) as Record<string, any>
+    if (typeof m.diff === "string" && m.diff.length > PRUNE_OUTPUT_HEAD * 2) {
+      const droppedBytes = m.diff.length
+      m.diff = `[dream-pruned: dropped ${droppedBytes.toLocaleString()} bytes of diff]`
+    }
+    const state = cloned.state as { output?: unknown }
+    if (typeof state.output === "string" && state.output.length > PRUNE_OUTPUT_HEAD + PRUNE_OUTPUT_TAIL + 64) {
+      const s = state.output
+      state.output =
+        s.slice(0, PRUNE_OUTPUT_HEAD) +
+        `\n... [dream-pruned: ${(s.length - PRUNE_OUTPUT_HEAD - PRUNE_OUTPUT_TAIL).toLocaleString()} bytes truncated] ...\n` +
+        s.slice(-PRUNE_OUTPUT_TAIL)
+    }
+    m.dreamPruned = true
+    cloned.metadata = m
+    const after = JSON.stringify(cloned).length
+    if (after < before) {
+      stats.partsPruned++
+      stats.bytesSaved += before - after
+      return cloned as MessageV2.Part
+    }
+  }
+  // Text part with bloated metadata (e.g., raw provider response body).
+  // Strip non-record metadata values per the AI SDK contract; cap any
+  // remaining string fields hard.
+  if (part.type === "text" || part.type === "reasoning") {
+    const cloned = JSON.parse(original) as typeof part & {
+      metadata?: Record<string, any> & { dreamPruned?: boolean }
+    }
+    if (cloned.metadata) {
+      const m = cloned.metadata as Record<string, any>
+      for (const [k, v] of Object.entries(m)) {
+        if (typeof v === "string" && v.length > PRUNE_OUTPUT_HEAD * 2) {
+          m[k] = `[dream-pruned: ${v.length.toLocaleString()} bytes]`
+        }
+      }
+      m.dreamPruned = true
+    }
+    const after = JSON.stringify(cloned).length
+    if (after < before) {
+      stats.partsPruned++
+      stats.bytesSaved += before - after
+      return cloned as MessageV2.Part
+    }
+  }
+  return part
+}
+
 function encodePart(part: MessageV2.Part, sequence: number): PartRow {
   return {
     id: part.id,
@@ -241,6 +318,7 @@ async function writeSnapshot(input: {
     db.exec("PRAGMA foreign_keys = ON")
     await ensureSchema(db, input.sessionID, tmp)
 
+    const pruneStats: PruneStats = { partsPruned: 0, bytesSaved: 0 }
     const transaction = db.transaction(() => {
       const insertMessage = db.query(SQL_INSERT_MESSAGE)
       const insertPart = db.query(SQL_INSERT_PART)
@@ -270,7 +348,8 @@ async function writeSnapshot(input: {
           $info_extra_json: row.info_extra_json,
         })
         for (let i = 0; i < message.parts.length; i++) {
-          const part = encodePart(message.parts[i], i)
+          const pruned = prunePart(message.parts[i], pruneStats)
+          const part = encodePart(pruned, i)
           insertPart.run({
             $id: part.id,
             $message_id: part.message_id,
@@ -288,8 +367,25 @@ async function writeSnapshot(input: {
         "legacy_message_count",
         String(input.messages.length),
       )
+      if (pruneStats.partsPruned > 0) {
+        db.query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
+          "dream_pruned_parts",
+          String(pruneStats.partsPruned),
+        )
+        db.query("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
+          "dream_pruned_bytes",
+          String(pruneStats.bytesSaved),
+        )
+      }
     })
     transaction()
+    if (pruneStats.partsPruned > 0) {
+      log.info("dreaming.pruned", {
+        sessionID: input.sessionID,
+        partsPruned: pruneStats.partsPruned,
+        bytesSaved: pruneStats.bytesSaved,
+      })
+    }
     await input.hooks?.afterTmpWrite?.(input.sessionID, tmp)
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
   } finally {
@@ -341,6 +437,15 @@ export class DreamingWorker {
   private currentMigrationSessionID: string | undefined
   private migrationsThisProcess = 0
   private lastError: string | undefined
+  // Sessions whose migration failed in a way that's pointless to retry
+  // automatically (e.g. SQLite "string or blob too big" — a single part
+  // exceeds the 1 GB cell limit). Without a blocklist the worker would
+  // pick the same broken session at every tick and never advance to
+  // the rest of the queue. The list is per-process; daemon restart
+  // re-tries everything (and a code-side fix for oversized parts will
+  // need to land separately before they can ever migrate).
+  private blockedSessionIDs = new Set<string>()
+  private blockedSessionReasons = new Map<string, string>()
 
   constructor(options: DreamingWorkerOptions = {}) {
     const storageTweaks = Tweaks.sessionStorageSync()
@@ -393,8 +498,17 @@ export class DreamingWorker {
       await drainLegacyDebris()
       const candidates = await DreamingWorker.scanLegacySessions()
       SessionStorageMetrics.gauge("legacy_sessions_pending_count", candidates.length)
-      const picked = candidates[0]?.sessionID
-      log.info("dreaming.tick", { idle_for_ms: idleForMs, pending_count: candidates.length, picked_session_id: picked })
+      // Pick the first candidate that isn't on the blocklist. If every
+      // remaining candidate is blocked, this tick is a no-op until the
+      // daemon restarts (which clears the in-memory list) or a code fix
+      // ships for the underlying limit.
+      const picked = candidates.find((c) => !this.blockedSessionIDs.has(c.sessionID))?.sessionID
+      log.info("dreaming.tick", {
+        idle_for_ms: idleForMs,
+        pending_count: candidates.length,
+        blocked_count: this.blockedSessionIDs.size,
+        picked_session_id: picked,
+      })
       if (!picked) return { skipped: true }
       this.currentMigrationSessionID = picked
       try {
@@ -403,7 +517,19 @@ export class DreamingWorker {
         this.migrationsThisProcess++
         this.lastError = undefined
       } catch (err) {
-        this.lastError = err instanceof Error ? err.message : String(err)
+        const errMsg = err instanceof Error ? err.message : String(err)
+        this.lastError = errMsg
+        // Auto-blocklist on size-class errors that won't change without
+        // a code fix. The session stays on disk; user can investigate.
+        if (
+          errMsg.includes("string or blob too big") ||
+          errMsg.includes("too large") ||
+          errMsg.includes("size limit")
+        ) {
+          this.blockedSessionIDs.add(picked)
+          this.blockedSessionReasons.set(picked, errMsg)
+          log.warn("dreaming.blocklisted_session", { sessionID: picked, reason: errMsg })
+        }
         throw err
       } finally {
         this.currentMigrationSessionID = undefined
@@ -432,6 +558,10 @@ export class DreamingWorker {
       currentMigrationSessionID: this.currentMigrationSessionID,
       migrationsThisProcess: this.migrationsThisProcess,
       lastError: this.lastError,
+      blocked: Array.from(this.blockedSessionIDs).map((sid) => ({
+        sessionID: sid,
+        reason: this.blockedSessionReasons.get(sid) ?? "unknown",
+      })),
     }
   }
 

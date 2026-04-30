@@ -228,6 +228,12 @@ export namespace Command {
             `**last migrated**: ${s.lastMigratedSessionID ?? "—"}`,
             `**last tick**:     ${fmt(s.lastTickAt)}`,
             ...(s.lastError ? [`**last error**:    ${s.lastError}`] : []),
+            ...(s.blocked.length > 0
+              ? [
+                  `**blocklisted**:   ${s.blocked.length} session(s) skipped (oversized parts / SQLite cell limit)`,
+                  ...s.blocked.slice(0, 3).map((b) => `   - ${b.sessionID}: ${b.reason}`),
+                ]
+              : []),
             ...(s.pendingPreview.length > 0
               ? [`**next up**:       ${s.pendingPreview.join(", ")}${s.pending > s.pendingPreview.length ? ", ..." : ""}`]
               : []),
