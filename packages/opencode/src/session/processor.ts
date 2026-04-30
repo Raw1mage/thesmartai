@@ -501,16 +501,17 @@ export namespace SessionProcessor {
                   accountId,
                   modelID: streamInput.model.id,
                 }
-                // Pre-flight cooldown is flood-protection for AUTO rotation
-                // (operator did not pin an account — we picked one from global
-                // active). When the operator explicitly pinned an account
-                // (sessionPinnedAccountId is set), respect that intent: fire
-                // the request and let upstream surface a real 429 if the limit
-                // is still in effect. This prevents persisted tracker state
-                // from silently blocking deliberate user actions while keeping
-                // auto-rotation flood-safe.
-                // @plans/manual-pin-bypass-preflight hotfix, 2026-04-17
-                if (isVectorRateLimited(vector) && !sessionPinnedAccountId) {
+                // Pre-flight cooldown protects every round, regardless of
+                // whether the account was pinned. The previous pin-bypass
+                // (2026-04-17) assumed upstream would surface a real 429 if
+                // a pinned account was actually rate-limited — but codex
+                // OAuth simply hangs the connection on quota-exhausted
+                // accounts, never returning 429. The result was a silent
+                // 12-second black hole on every request. Trust the local
+                // tracker, rotate proactively. If the tracker is stale, the
+                // worst case is a one-round detour through fallback chain;
+                // if it's accurate, we avoid the hang entirely.
+                if (isVectorRateLimited(vector)) {
                   // Child sessions must not self-rotate — escalate to parent
                   if (isChildSession) {
                     // Fix B2: cumulative escalation guard
