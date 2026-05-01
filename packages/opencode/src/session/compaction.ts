@@ -18,6 +18,7 @@ import { SessionPrompt } from "./prompt"
 import { SharedContext } from "./shared-context"
 import { Memory } from "./memory"
 import { Tweaks } from "../config/tweaks"
+import { PostCompaction } from "./post-compaction"
 import { ContinuationInvalidatedEvent } from "../plugin/codex-auth"
 
 // Subscribe to continuation invalidation. compaction-redesign DD-11:
@@ -497,13 +498,23 @@ export namespace SessionCompaction {
       },
     })) as MessageV2.Assistant
 
-    // 1. Write transcript summary as a text part
+    // 1. Write transcript summary as a text part.
+    //
+    // Append the post-compaction quick follow-up table (RC fix 2026-05-01):
+    // history truncation drops every prior tool call from the LLM-visible
+    // stream, so the model loses the memory that runtime-persisted state
+    // (todolist, in-flight subagents, ...) already encodes. PostCompaction
+    // walks a registry of providers and renders each one's slice of state
+    // into the summary text. Adding a new follow-up = register a provider;
+    // compaction.ts stays untouched.
+    const followUps = await PostCompaction.gather(input.sessionID)
+    const followUpAddendum = PostCompaction.buildSummaryAddendum(followUps)
     await Session.updatePart({
       id: Identifier.ascending("part"),
       messageID: summaryMsg.id,
       sessionID: input.sessionID,
       type: "text",
-      text: input.snapshot,
+      text: input.snapshot + followUpAddendum,
       time: {
         start: Date.now(),
         end: Date.now(),
@@ -538,13 +549,20 @@ export namespace SessionCompaction {
         format: userMessage.format,
         variant: userMessage.variant,
       })
+      // Build a concrete continuation directive from the same follow-up
+      // table. Each provider contributes a one-line continueHint; the
+      // builder stitches them into a numbered directive. This replaces the
+      // bare "Continue if you have next steps" wording, which was too
+      // abstract post-compaction and produced the re-establishing-todowrite
+      // loop.
+      const continueText = PostCompaction.buildContinueText(followUps)
       await Session.updatePart({
         id: Identifier.ascending("part"),
         messageID: continueMsg.id,
         sessionID: input.sessionID,
         type: "text",
         synthetic: true,
-        text: "Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.",
+        text: continueText,
         time: {
           start: Date.now(),
           end: Date.now(),
