@@ -629,11 +629,10 @@ export default function Page() {
     if (!event.properties?.sessionID || event.properties.sessionID !== params.id) return
     if (event.type === "session.compaction.started") {
       const isBackground = event.properties.mode === "hybrid_llm_background"
-      if (isBackground) return
-      setUi(
-        "statusFooter",
-        (prev) => prev ?? { label: language.t("toast.session.compact.loading"), startedAt: Date.now() },
-      )
+      const label = isBackground
+        ? language.t("toast.session.compact.background.loading")
+        : language.t("toast.session.compact.loading")
+      setUi("statusFooter", (prev) => prev ?? { label, startedAt: Date.now() })
     } else if (event.type === "session.compacted") {
       setUi("statusFooter", undefined)
     }

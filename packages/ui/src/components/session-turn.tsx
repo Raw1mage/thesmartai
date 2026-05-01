@@ -13,6 +13,7 @@ import { type UiI18nKey, type UiI18nParams, useI18n } from "../context/i18n"
 
 import { Binary } from "@opencode-ai/util/binary"
 import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
+import { Portal } from "solid-js/web"
 import { AssistantParts, Message, Part } from "./message-part"
 import { Markdown } from "./markdown"
 import { IconButton } from "./icon-button"
@@ -235,6 +236,7 @@ export function SessionTurn(
       container?: string
     }
     statusOverride?: { label: string; startedAt: number }
+    statusLineMount?: () => HTMLElement | undefined
   }>,
 ) {
   const i18n = useI18n()
@@ -603,6 +605,50 @@ export function SessionTurn(
   const statusLineMounted = createMemo(() => !!retry() || !!statusOverride() || working())
   const statusLineVisible = createMemo(() => !!retry() || !!statusOverride() || (working() && active()))
 
+  const renderStatusBody = () => (
+    <div data-slot="session-turn-status-inline" data-visible={statusLineVisible() ? "true" : "false"}>
+      <Switch>
+        <Match when={retry()}>
+          <span data-slot="session-turn-retry-message">
+            {(() => {
+              const r = retry()
+              if (!r) return ""
+              const msg = unwrap(r.message)
+              return msg.length > 60 ? msg.slice(0, 60) + "..." : msg
+            })()}
+          </span>
+          <span data-slot="session-turn-retry-seconds">
+            · {i18n.t("ui.sessionTurn.retry.retrying")}
+            {store.retrySeconds > 0 ? " " + i18n.t("ui.sessionTurn.retry.inSeconds", { seconds: store.retrySeconds }) : ""}
+          </span>
+          <span data-slot="session-turn-retry-attempt">(#{retry()?.attempt})</span>
+        </Match>
+        <Match when={statusOverride()}>
+          {(override) => (
+            <>
+              <Spinner />
+              <span data-slot="session-turn-status-text">{override().label}</span>
+            </>
+          )}
+        </Match>
+        <Match when={working() && active()}>
+          <Spinner />
+          <span data-slot="session-turn-status-text">
+            {store.status ?? i18n.t("ui.sessionTurn.status.consideringNextSteps")}
+          </span>
+        </Match>
+        <Match when={working()}>
+          <Spinner />
+          <span data-slot="session-turn-status-text">
+            {store.status ?? i18n.t("ui.sessionTurn.status.consideringNextSteps")}
+          </span>
+        </Match>
+      </Switch>
+      <span aria-hidden="true">·</span>
+      <span aria-live="off">{store.duration}</span>
+    </div>
+  )
+
   const response = createMemo(() => lastTextPart()?.text)
   const responsePartId = createMemo(() => lastTextPart()?.id)
   const hasDiffs = createMemo(() => (message()?.summary?.diffs?.length ?? 0) > 0)
@@ -969,49 +1015,9 @@ export function SessionTurn(
                       </div>
                     </Show>
                     <Show when={statusLineMounted()}>
-                      <div data-slot="session-turn-status-inline" data-visible={statusLineVisible() ? "true" : "false"}>
-                        <Switch>
-                          <Match when={retry()}>
-                            <span data-slot="session-turn-retry-message">
-                              {(() => {
-                                const r = retry()
-                                if (!r) return ""
-                                const msg = unwrap(r.message)
-                                return msg.length > 60 ? msg.slice(0, 60) + "..." : msg
-                              })()}
-                            </span>
-                            <span data-slot="session-turn-retry-seconds">
-                              · {i18n.t("ui.sessionTurn.retry.retrying")}
-                              {store.retrySeconds > 0
-                                ? " " + i18n.t("ui.sessionTurn.retry.inSeconds", { seconds: store.retrySeconds })
-                                : ""}
-                            </span>
-                            <span data-slot="session-turn-retry-attempt">(#{retry()?.attempt})</span>
-                          </Match>
-                          <Match when={statusOverride()}>
-                            {(override) => (
-                              <>
-                                <Spinner />
-                                <span data-slot="session-turn-status-text">{override().label}</span>
-                              </>
-                            )}
-                          </Match>
-                          <Match when={working() && active()}>
-                            <Spinner />
-                            <span data-slot="session-turn-status-text">
-                              {store.status ?? i18n.t("ui.sessionTurn.status.consideringNextSteps")}
-                            </span>
-                          </Match>
-                          <Match when={working()}>
-                            <Spinner />
-                            <span data-slot="session-turn-status-text">
-                              {store.status ?? i18n.t("ui.sessionTurn.status.consideringNextSteps")}
-                            </span>
-                          </Match>
-                        </Switch>
-                        <span aria-hidden="true">·</span>
-                        <span aria-live="off">{store.duration}</span>
-                      </div>
+                      <Show when={props.statusLineMount?.()} fallback={renderStatusBody()}>
+                        {(target) => <Portal mount={target()}>{renderStatusBody()}</Portal>}
+                      </Show>
                     </Show>
                     <Show when={answeredQuestionParts().length > 0}>
                       <div data-slot="session-turn-answered-question-parts">

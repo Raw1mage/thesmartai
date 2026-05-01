@@ -119,6 +119,29 @@ load_server_cfg() {
     fi
     FRONTEND_DIST="${OPENCODE_FRONTEND_PATH}"
 
+    if [ "${IS_SOURCE_REPO:-0}" -ne 1 ] && [ -n "${OPENCODE_BIN:-}" ]; then
+        case "${OPENCODE_BIN}" in
+            *'/packages/opencode/src/index.ts'*)
+                local bin_index candidate_root
+                bin_index="${OPENCODE_BIN##* }"
+                case "${bin_index}" in
+                    */packages/opencode/src/index.ts)
+                        candidate_root="${bin_index%/packages/opencode/src/index.ts}"
+                        if [ -f "${candidate_root}/packages/opencode/src/index.ts" ]; then
+                            IS_SOURCE_REPO=1
+                            PROJECT_ROOT="${candidate_root}"
+                            FRONTEND_DIST="${PROJECT_ROOT}/packages/app/dist"
+                            FRONTEND_BUILD_STAMP_FILE="${PROJECT_ROOT}/packages/app/dist/.source-stamp"
+                            GATEWAY_SRC="${PROJECT_ROOT}/daemon/opencode-gateway.c"
+                            GATEWAY_BIN="${PROJECT_ROOT}/daemon/opencode-gateway"
+                            REPO_OWNER="$(stat -c '%U' "${PROJECT_ROOT}" 2>/dev/null || id -un)"
+                        fi
+                        ;;
+                esac
+                ;;
+        esac
+    fi
+
     if [ "${IS_SOURCE_REPO:-0}" -ne 1 ] && [ -f "${FRONTEND_DIST}/index.html" ]; then
         case "${FRONTEND_DIST}" in
             */projects/*/packages/app/dist)
@@ -128,6 +151,9 @@ load_server_cfg() {
                     IS_SOURCE_REPO=1
                     PROJECT_ROOT="${candidate_root}"
                     OPENCODE_BIN=""
+                    FRONTEND_BUILD_STAMP_FILE="${PROJECT_ROOT}/packages/app/dist/.source-stamp"
+                    GATEWAY_SRC="${PROJECT_ROOT}/daemon/opencode-gateway.c"
+                    GATEWAY_BIN="${PROJECT_ROOT}/daemon/opencode-gateway"
                     REPO_OWNER="$(stat -c '%U' "${PROJECT_ROOT}" 2>/dev/null || id -un)"
                 fi
                 ;;
@@ -1510,7 +1536,9 @@ do_restart() {
     #    installed copy at /etc/opencode cannot rebuild anything and must
     #    skip straight to the service restart step.
     if [ "${IS_SOURCE_REPO:-0}" -eq 1 ]; then
-        if [ "${FORCE_REBUILD}" -eq 1 ]; then
+        if [ "${FORCE_GATEWAY_RESTART}" -eq 1 ] && [ "${FORCE_REBUILD}" -eq 0 ]; then
+            log_info "Gateway-only restart requested; skipping frontend/daemon reload"
+        elif [ "${FORCE_REBUILD}" -eq 1 ]; then
             do_reload --force
         else
             do_reload

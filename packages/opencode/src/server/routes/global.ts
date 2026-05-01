@@ -15,6 +15,7 @@ import { Config } from "../../config/config"
 import { Tweaks } from "../../config/tweaks"
 import { errors } from "../error"
 import { WebAuth } from "../web-auth"
+import { SelfUpdate } from "../self-update"
 
 const log = Log.create({ service: "server" })
 
@@ -40,6 +41,40 @@ function resolveWebctlPath() {
   }
   if (process.env.OPENCODE_WEBCTL_PATH) return process.env.OPENCODE_WEBCTL_PATH
   return "/etc/opencode/webctl.sh"
+}
+
+function resolveSelfUpdateRepoRoot() {
+  const explicit = process.env.OPENCODE_REPO_ROOT
+  if (explicit) return explicit
+  const bin = process.env.OPENCODE_BIN ?? ""
+  const match = bin.match(/(\/[^\s]+)\/packages\/opencode\/src\/index\.ts/)
+  if (match?.[1]) return match[1]
+}
+
+async function compileGatewayForSelfUpdate(repoRoot: string) {
+  const source = path.join(repoRoot, "daemon", "opencode-gateway.c")
+  const output = path.join(repoRoot, "daemon", "opencode-gateway")
+  const argv = [
+    "gcc",
+    "-O2",
+    "-Wall",
+    "-D_GNU_SOURCE",
+    "-o",
+    output,
+    source,
+    "-lpam",
+    "-lpam_misc",
+    "-lcrypto",
+    "-lpthread",
+    "-lcurl",
+  ]
+  const proc = Bun.spawn({ cmd: argv, stdout: "pipe", stderr: "pipe", stdin: "ignore" })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  return { source, output, argv, stdout, stderr, exitCode }
 }
 
 function applyProxyFriendlySSEHeaders(c: { header: (name: string, value: string) => void }) {
@@ -493,6 +528,73 @@ export const GlobalRoutes = lazy(() =>
           const txid = `web-${Date.now()}-${process.pid}`
           const runtimeTmp = process.env.XDG_RUNTIME_DIR || "/tmp"
           const errorLogPath = path.join(runtimeTmp, `opencode-web-restart-${txid}.error.log`)
+
+          if (wantsGateway) {
+            const repoRoot = resolveSelfUpdateRepoRoot()
+            if (!repoRoot) {
+              return c.json(
+                {
+                  code: "SELF_UPDATE_SOURCE_UNRESOLVED",
+                  message: "Cannot resolve source repo root for privileged gateway self-update.",
+                },
+                500,
+              )
+            }
+
+            const compiled = await compileGatewayForSelfUpdate(repoRoot)
+            if (compiled.exitCode !== 0) {
+              log.error("privileged gateway self-update compile failed", {
+                txid,
+                argv: compiled.argv,
+                stderr: compiled.stderr.slice(0, 500),
+              })
+              return c.json(
+                {
+                  code: "SELF_UPDATE_COMPILE_FAILED",
+                  message: compiled.stderr || `gateway compile failed (exit ${compiled.exitCode})`,
+                  txid,
+                },
+                500,
+              )
+            }
+
+            const install = await SelfUpdate.runActions([
+              {
+                type: "install-file",
+                source: path.join(repoRoot, "webctl.sh"),
+                target: "/etc/opencode/webctl.sh",
+                mode: "0755",
+              },
+              {
+                type: "install-file",
+                source: compiled.output,
+                target: "/usr/local/bin/opencode-gateway",
+                mode: "0755",
+              },
+            ])
+            if (!install.ok) {
+              log.error("privileged gateway self-update install failed", { txid, install })
+              return c.json({ ...install, txid }, install.code === "SELF_UPDATE_REQUIRES_SUDOER" ? 403 : 500)
+            }
+
+            setTimeout(async () => {
+              const restart = await SelfUpdate.runActions([
+                { type: "restart-service", service: "opencode-gateway.service" },
+              ])
+              if (!restart.ok) log.error("privileged gateway self-update restart failed", { txid, restart })
+            }, 300)
+
+            return c.json({
+              ok: true,
+              accepted: true,
+              mode: "controlled_restart",
+              runtimeMode: "gateway-daemon",
+              probePath: "/api/v2/global/health",
+              recommendedInitialDelayMs: 1000,
+              fallbackReloadAfterMs: 5000,
+              recoveryDeadlineMs: 30000,
+            })
+          }
 
           const exists = await Bun.file(webctlPath).exists()
           if (!exists) {

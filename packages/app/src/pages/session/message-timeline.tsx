@@ -158,6 +158,7 @@ export function MessageTimeline(props: {
   }
 
   let touchGesture: number | undefined
+  const [statusLineMount, setStatusLineMount] = createSignal<HTMLDivElement | undefined>()
 
   createEffect(() => {
     sendSessionReloadDebugBeacon({
@@ -194,6 +195,11 @@ export function MessageTimeline(props: {
             <Icon name="arrow-down-to-line" />
           </button>
         </div>
+        <div
+          ref={setStatusLineMount}
+          data-slot="session-turn-status-anchor"
+          class="absolute left-1/2 -translate-x-1/2 bottom-[calc(var(--prompt-height,8rem)+8px)] z-[55] pointer-events-none w-full max-w-[1000px] px-4 md:px-6 flex justify-start"
+        />
         <div
           ref={props.setScrollRef}
           onWheel={(e) => {
@@ -367,7 +373,7 @@ export function MessageTimeline(props: {
                 "max-w-[1000px] mx-auto": props.centered,
                 "mt-0.5": props.centered,
                 "mt-0": !props.centered,
-                "pb-[calc(var(--prompt-height,8rem)+24px)] md:pb-[calc(var(--prompt-height,10rem)+24px)]":
+                "pb-[calc(var(--prompt-height,8rem)-24px)] md:pb-[calc(var(--prompt-height,10rem)-24px)]":
                   props.sessionBusy || !!props.statusOverride,
                 "pb-[calc(var(--prompt-height,8rem)+64px)] md:pb-[calc(var(--prompt-height,10rem)+64px)]":
                   !props.sessionBusy && !props.statusOverride,

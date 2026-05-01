@@ -379,6 +379,7 @@ export const useSessionCommands = (input: SessionCommandContext) => {
           return
         }
         input.setCompactionStatus({ label: input.language.t("toast.session.compact.loading"), startedAt: Date.now() })
+        let failed = false
         try {
           await input.sdk.client.session.summarize({
             sessionID,
@@ -386,14 +387,16 @@ export const useSessionCommands = (input: SessionCommandContext) => {
             providerId: model.provider.id,
           })
         } catch (err) {
-          showToast({
-            title: input.language.t("toast.session.compact.error", {
+          failed = true
+          input.setCompactionStatus({
+            label: input.language.t("toast.session.compact.error", {
               reason: formatToastError(err),
             }),
-            variant: "error",
+            startedAt: Date.now(),
           })
+          window.setTimeout(() => input.setCompactionStatus(undefined), 5000)
         } finally {
-          input.setCompactionStatus(undefined)
+          if (!failed) input.setCompactionStatus(undefined)
         }
       },
     }),
