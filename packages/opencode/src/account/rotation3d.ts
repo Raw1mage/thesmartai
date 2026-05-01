@@ -743,14 +743,21 @@ export async function buildFallbackCandidates(
   // Favorites remain the strongest signal, but runtime rate-limit fallback must
   // still be able to discover other connected providers (e.g. github-copilot -> openai)
   // even when the operator has not explicitly favorited a model there.
+  // Skip same-family providers — Step 1 already covers them with the canonical
+  // family providerId. Without this guard, codex subscription accounts (registered
+  // as `codex-subscription-<slug>` providerIds) get added here as "diff-provider"
+  // candidates, then enforceCodexFamilyOnly's `=== "codex"` string check rejects
+  // every one of them, making the codex pool look empty.
+  const currentFamily = family
   for (const [providerId, provider] of Object.entries(providers)) {
     if (!providerId || providerId === current.providerId) continue
     if (hiddenProviders.has(providerId)) continue
 
-    const family = await Account.resolveFamily(providerId)
-    if (!family) continue
+    const candidateFamily = await Account.resolveFamily(providerId)
+    if (!candidateFamily) continue
+    if (currentFamily && candidateFamily === currentFamily) continue
 
-    const accounts = await Account.list(family)
+    const accounts = await Account.list(candidateFamily)
     if (Object.keys(accounts).length === 0) continue
 
     const models = Provider.sort(Object.values(provider.models ?? {})).filter((model) => model.status !== "deprecated")
