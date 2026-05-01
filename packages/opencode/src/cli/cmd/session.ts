@@ -173,9 +173,22 @@ function setupTaskEventBridge(sessionID: string) {
     if (!BRIDGE_EVENT_TYPES.has(event?.type)) return
     if (extractSessionID(event) !== sessionID) return
     try {
-      process.stdout.write(BRIDGE_PREFIX + JSON.stringify(event) + "\n")
-    } catch {
-      // Ignore transport write failures in child process.
+      const written = process.stdout.write(BRIDGE_PREFIX + JSON.stringify(event) + "\n")
+      // [rot-rca] worker bridge-stdout — confirm subscriber received and stdout.write returned
+      if (event.type === "task.rate_limit_escalation") {
+        try {
+          process.stderr.write(
+            `[rot-rca] worker bridge-stdout-write type=${event.type} written=${written} sessionID=${sessionID}\n`,
+          )
+        } catch {}
+      }
+    } catch (e) {
+      // Ignore transport write failures in child process, but log rate-limit drop.
+      if (event.type === "task.rate_limit_escalation") {
+        try {
+          process.stderr.write(`[rot-rca] worker bridge-stdout-fail err=${(e as Error)?.message}\n`)
+        } catch {}
+      }
     }
   })
 

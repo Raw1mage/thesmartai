@@ -470,9 +470,15 @@ async function publishBridgedEvent(event: { type: string; properties: any }) {
     case Question.Event.Rejected.type:
       await Bus.publish(Question.Event.Rejected, event.properties)
       return
-    case TaskRateLimitEscalationEvent.type:
+    case TaskRateLimitEscalationEvent.type: {
+      const log = Log.create({ service: "task.escalation" })
+      log.info("[rot-rca] parent bridge-dispatch", {
+        eventType: event.type,
+        sessionID: event.properties?.sessionID,
+      })
       await handleRateLimitEscalation(event.properties)
       return
+    }
   }
 }
 
@@ -1002,7 +1008,19 @@ function spawnWorker(config: Awaited<ReturnType<typeof Config.get>>) {
               worker.current.lastEventAt = now
               if (!worker.current.firstEventAt) worker.current.firstEventAt = now
             }
-            void publishBridgedEvent(event).catch(() => {})
+            // [rot-rca] parent bridge-line-read — confirm parent stdin reader saw the event
+            if (event?.type === "task.rate_limit_escalation") {
+              log.info("[rot-rca] parent bridge-line-read", {
+                eventType: event.type,
+                sid,
+                workerSid: worker.current?.sessionID,
+              })
+            }
+            void publishBridgedEvent(event).catch((e) => {
+              if (event?.type === "task.rate_limit_escalation") {
+                log.warn("[rot-rca] parent publishBridgedEvent threw", { err: (e as Error)?.message })
+              }
+            })
           } catch {
             // ignore invalid bridge payload
             bridgeParseErrors += 1

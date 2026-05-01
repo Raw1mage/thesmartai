@@ -546,6 +546,8 @@ export namespace SessionProcessor {
                       cumulativeEscalationCount,
                     })
                     // Emit escalation event (bridged to parent via stdout)
+                    // [rot-rca] worker emit (pre-flight site, paired with parent recv)
+                    const __rotRcaPreflightStart = Date.now()
                     await Bus.publish(RateLimitEscalationEvent, {
                       sessionID: input.sessionID,
                       currentModel: {
@@ -555,6 +557,12 @@ export namespace SessionProcessor {
                       },
                       error: `Pre-flight rate limited: ${streamInput.model.providerId}/${streamInput.model.id}`,
                       triedVectors: Array.from(triedVectors),
+                    })
+                    debugCheckpoint("syslog.rotation", "[rot-rca] worker emit pre-flight publish-done", {
+                      sessionID: input.sessionID,
+                      accountIdTail: accountId?.slice(-8),
+                      triedCount: triedVectors.size,
+                      publishElapsedMs: Date.now() - __rotRcaPreflightStart,
                     })
                     // Wait for parent to push a new model (R3: bounded by tweaks)
                     try {
@@ -1598,9 +1606,16 @@ export namespace SessionProcessor {
                   log.error("Codex family exhausted during temporary-error rotation", {
                     fallbackAttempts,
                   })
+                  input.assistantMessage.finish = "rate_limited"
                   input.assistantMessage.error = MessageV2.fromError(codexFamilyError as Error, {
                     providerId: input.model.providerId,
                   })
+                  // Persist disk-terminal state. Both finish AND
+                  // time.completed required — watchdog A (task.ts:2270)
+                  // gates on time.completed; missing it leaves the parent
+                  // polling forever ("subagent silently vanished").
+                  input.assistantMessage.time.completed = Date.now()
+                  await Session.updateMessage(input.assistantMessage)
                   Bus.publish(Session.Event.Error, {
                     sessionID: input.assistantMessage.sessionID,
                     error: input.assistantMessage.error,
@@ -1735,9 +1750,16 @@ export namespace SessionProcessor {
                   log.error("Codex family exhausted during permanent-error rotation", {
                     fallbackAttempts,
                   })
+                  input.assistantMessage.finish = "rate_limited"
                   input.assistantMessage.error = MessageV2.fromError(codexFamilyError as Error, {
                     providerId: input.model.providerId,
                   })
+                  // Persist disk-terminal state. Both finish AND
+                  // time.completed required — watchdog A (task.ts:2270)
+                  // gates on time.completed; missing it leaves the parent
+                  // polling forever ("subagent silently vanished").
+                  input.assistantMessage.time.completed = Date.now()
+                  await Session.updateMessage(input.assistantMessage)
                   Bus.publish(Session.Event.Error, {
                     sessionID: input.assistantMessage.sessionID,
                     error: input.assistantMessage.error,
@@ -1873,9 +1895,16 @@ export namespace SessionProcessor {
                     retryMessage: retry,
                     fallbackAttempts,
                   })
+                  input.assistantMessage.finish = "rate_limited"
                   input.assistantMessage.error = MessageV2.fromError(codexFamilyError as Error, {
                     providerId: input.model.providerId,
                   })
+                  // Persist disk-terminal state. Both finish AND
+                  // time.completed required — watchdog A (task.ts:2270)
+                  // gates on time.completed; missing it leaves the parent
+                  // polling forever ("subagent silently vanished").
+                  input.assistantMessage.time.completed = Date.now()
+                  await Session.updateMessage(input.assistantMessage)
                   Bus.publish(Session.Event.Error, {
                     sessionID: input.assistantMessage.sessionID,
                     error: input.assistantMessage.error,
