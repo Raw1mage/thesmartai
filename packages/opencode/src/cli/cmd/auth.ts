@@ -262,12 +262,13 @@ export const AuthListCommand = cmd({
       const accounts = await Auth.listAccounts(args.provider)
       prompts.intro(`${args.provider} accounts`)
 
-      for (const providerId of accounts) {
-        const auth = await Auth.get(providerId)
+      for (const accountId of accounts) {
+        // @spec specs/provider-account-decoupling DD-2 — (family, accountId)
+        const auth = await Auth.get(args.provider, accountId)
         if (!auth) continue
-        const isDefault = providerId === args.provider
+        const isDefault = accountId === args.provider
         const marker = isDefault ? " (default)" : ""
-        prompts.log.info(`${providerId}${marker} ${UI.Style.TEXT_DIM}${auth.type}`)
+        prompts.log.info(`${accountId}${marker} ${UI.Style.TEXT_DIM}${auth.type}`)
       }
 
       prompts.outro(`${accounts.length} account${accounts.length === 1 ? "" : "s"}`)

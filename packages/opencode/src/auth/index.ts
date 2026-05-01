@@ -75,43 +75,89 @@ export namespace Auth {
   }
 
   /**
-   * Get auth for a provider ID
-   * Looks up the ACTIVE account for the provider key in Account module
-   * Note: auth.json is no longer read - all data comes from accounts.json
+   * Get auth for a (family, accountId?) pair.
+   *
+   * @spec specs/provider-account-decoupling DD-2, DD-8
+   *
+   * - `family` MUST be a registered family (Account.knownFamilies). Pass
+   *   `accountId` separately when targeting a specific account; omit it to
+   *   use the family's `activeAccount`.
+   * - The legacy single-arg form is removed. There is no string-shape
+   *   inference, no `parseProvider` recovery, no silent fallback. If callers
+   *   pass an accountId where family is expected, we throw — that's the
+   *   point.
+   *
+   * Errors:
+   *   - UnknownFamilyError — `family` is not in Account.knownFamilies()
+   *   - NoActiveAccountError — `accountId` omitted AND no activeAccount set
    */
-  export async function get(providerId: string): Promise<Info | undefined> {
+  export async function get(family: string, accountId?: string): Promise<Info | undefined> {
     const { Account } = await import("../account")
     const { debugCheckpoint } = await import("../util/debug")
+    const { UnknownFamilyError, NoActiveAccountError } = await import("../provider/registry-shape")
 
-    debugCheckpoint("auth", "Auth.get called", { providerId })
+    debugCheckpoint("auth", "Auth.get called", { family, accountId })
 
-    // 1. Try exact match by account ID
-    const exactMatch = await Account.getById(providerId)
-    debugCheckpoint("auth", "Exact match result", { providerId, hasMatch: !!exactMatch })
-    if (exactMatch) {
-      return accountToAuth(exactMatch.info)
+    const knownFamilies = await Account.knownFamilies({ includeStorage: true })
+    if (!knownFamilies.includes(family)) {
+      throw new UnknownFamilyError({
+        family,
+        knownFamilies: [...knownFamilies],
+        message:
+          `Auth.get called with family=${JSON.stringify(family)} which is not registered. ` +
+          `If you have an accountId here, pass it as the second argument with the correct family. ` +
+          `knownFamilies=${JSON.stringify([...knownFamilies])}`,
+      })
     }
 
-    // 2. Get active account for this provider key
-    const providerKey = await Account.resolveProviderOrSelf(providerId)
-    debugCheckpoint("auth", "Parsed provider key", { providerId, providerKey })
+    // Explicit account requested — look it up directly. No active-account
+    // consultation, no fallback.
+    if (accountId !== undefined) {
+      const accounts = await Account.list(family)
+      const accountInfo = accounts[accountId]
+      if (!accountInfo) {
+        debugCheckpoint("auth", "explicit accountId not found in family", { family, accountId })
+        return undefined
+      }
+      return accountToAuth(accountInfo)
+    }
 
-    const activeInfo = await Account.getActiveInfo(providerKey)
+    // No accountId given — use the family's active account.
+    const accounts = await Account.list(family)
+    const accountIds = Object.keys(accounts)
+
+    // Empty family = no auth at all. Probes (`if (await Auth.get(family))`)
+    // expect undefined here, so we don't throw — there's nothing inconsistent
+    // to flag.
+    if (accountIds.length === 0) {
+      debugCheckpoint("auth", "family has no accounts", { family })
+      return undefined
+    }
+
+    // Family has accounts but caller didn't pass accountId — consult activeAccount.
+    const activeInfo = await Account.getActiveInfo(family)
     debugCheckpoint("auth", "Active info result", {
-      providerId,
-      providerKey,
+      family,
       hasActiveInfo: !!activeInfo,
       activeInfoType: activeInfo?.type,
     })
 
-    if (activeInfo) {
-      if (providerKey === "gemini-cli" && activeInfo.type === "subscription") {
-        return undefined
-      }
-      return accountToAuth(activeInfo)
+    if (!activeInfo) {
+      // Inconsistent state: accounts exist but no activeAccount set. Fail loud
+      // per AGENTS.md rule 1; do NOT silently pick the first account.
+      throw new NoActiveAccountError({
+        family,
+        message:
+          `family=${JSON.stringify(family)} has ${accountIds.length} account(s) but no activeAccount set; ` +
+          `pass accountId explicitly (Auth.get(family, accountId)) ` +
+          `or pick an active account via the admin panel.`,
+      })
     }
 
-    return undefined
+    if (family === "gemini-cli" && activeInfo.type === "subscription") {
+      return undefined
+    }
+    return accountToAuth(activeInfo)
   }
 
   /**

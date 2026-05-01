@@ -1664,40 +1664,40 @@ export namespace Provider {
       const family = plugin.auth.provider
       if (disabled.has(family)) continue
 
-      const loadAuth = async (providerId: string): Promise<SDKAuth> => {
-        const auth = await Auth.get(providerId)
+      // @spec specs/provider-account-decoupling DD-2 — Auth.get is now two-arg
+      // (family, accountId?). loadAuth carries both dimensions explicitly; no
+      // string-shape inference.
+      const loadAuth = async (loadFamily: string, loadAccountId?: string): Promise<SDKAuth> => {
+        const auth = await Auth.get(loadFamily, loadAccountId)
         if (!auth) {
-          throw new Error(`Auth not found for provider: ${providerId}`)
+          throw new Error(
+            `Auth not found for provider: family=${loadFamily}` +
+              (loadAccountId ? `, accountId=${loadAccountId}` : ""),
+          )
         }
         return auth
       }
 
-      // Check if auth exists at family level OR at any account level
-      // FIX: Auth may be stored under account ID (e.g., "claude-cli-subscription-xxx")
-      // rather than base family ID (e.g., "claude-cli")
-      // @event_20260209_fix_model_activities_account_select
-      let hasFamilyAuth = false
-      const familyAuth = await Auth.get(family)
-      if (familyAuth) hasFamilyAuth = true
+      // Probe whether this family has any usable auth. Probing uses
+      // Account.list directly (not Auth.get) because Auth.get now throws
+      // NoActiveAccountError on a family with accounts-but-no-active, which
+      // is fine for dispatch but wrong for "does any auth exist" probes.
+      const familyData = allFamilies[family]
+      const hasAnyAccount = !!familyData && Object.keys(familyData.accounts).length > 0
+      const familyHasActive = !!(familyData?.activeAccount && familyData.accounts[familyData.activeAccount])
 
-      // Check account-level auth if no family-level auth
-      if (!hasFamilyAuth) {
-        const familyData = allFamilies[family]
-        if (familyData) {
-          for (const accountId of Object.keys(familyData.accounts)) {
-            const accountAuth = await Auth.get(accountId)
-            if (accountAuth) {
-              hasFamilyAuth = true
-              break
-            }
-          }
-        }
+      let familyAuth: Auth.Info | undefined = undefined
+      if (familyHasActive) {
+        familyAuth = await Auth.get(family)
       }
+      let hasFamilyAuth = !!familyAuth || hasAnyAccount
 
       // Special handling for github-copilot: also check for enterprise auth
       if (family === "github-copilot" && !hasFamilyAuth) {
-        const enterpriseAuth = await Auth.get("github-copilot-enterprise")
-        if (enterpriseAuth) hasFamilyAuth = true
+        const enterpriseFamilyData = allFamilies["github-copilot-enterprise"]
+        if (enterpriseFamilyData && Object.keys(enterpriseFamilyData.accounts).length > 0) {
+          hasFamilyAuth = true
+        }
       }
 
       if (!hasFamilyAuth) continue
@@ -1708,6 +1708,8 @@ export namespace Provider {
         if (providers[family]) {
           log.info("loading plugin for family", { family })
           const options = await plugin.auth.loader(() => loadAuth(family), providers[family])
+          // (loader signature accepts a thunk — we pass family-only; per-account
+          // calls go through loadAuth(family, accountId) below.)
           if (options) {
             // Extract getModel from auth loader result (native providers provide their own model factory)
             const { getModel, ...rest } = options as Record<string, any> & { getModel?: CustomModelLoader }
@@ -1745,11 +1747,9 @@ export namespace Provider {
             ...familyEntry,
             options: accountState.options,
           }
-          // NOTE: Phase 3 will switch Auth.get to two-arg (family, accountId).
-          // For phase 2 we still hand loadAuth the accountId form because
-          // Auth.get(accountId) is the legacy single-arg lookup. Auth.get
-          // itself isn't rewritten until phase 3.
-          const accountOptions = await plugin.auth.loader(() => loadAuth(accountId), loaderView)
+          // @spec specs/provider-account-decoupling DD-2 — pass family +
+          // accountId explicitly; Auth.get is two-arg.
+          const accountOptions = await plugin.auth.loader(() => loadAuth(family, accountId), loaderView)
           debugCheckpoint("provider", "account loader end", { family, accountId, hasResult: !!accountOptions })
           if (accountOptions) {
             const { getModel: _acctGetModel, ...acctRest } = accountOptions as Record<string, any> & {

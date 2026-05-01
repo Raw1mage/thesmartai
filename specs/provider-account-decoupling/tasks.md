@@ -20,14 +20,14 @@ Phased checklist. Implementing-state agent loads exactly one phase's `- [ ]` ite
 
 ## 3. Auth lookup signature change (DD-2)
 
-- [ ] 3.1 Change `Auth.get` signature in [auth/index.ts:82-115](packages/opencode/src/auth/index.ts#L82-L115) to `(family, accountId?)`; remove the `Account.getById(providerId)` exact-match branch (legacy single-arg path)
-- [ ] 3.2 Add `UnknownFamilyError` throw when `family` not in `Account.knownFamilies()`
-- [ ] 3.3 Add `NoActiveAccountError` throw when `accountId` omitted AND `families[family].activeAccount` empty
-- [ ] 3.4 Update auth-loader [provider.ts:1614-1688](packages/opencode/src/provider/provider.ts#L1614-L1688) to pass `(family, accountId)` instead of single string
-- [ ] 3.5 Update [agent.ts:381](packages/opencode/src/agent/agent.ts#L381) call site
-- [ ] 3.6 Update [mcp/app-registry.ts:360](packages/opencode/src/mcp/app-registry.ts#L360) call site
-- [ ] 3.7 Update [custom-loaders-def.ts:35,109,276](packages/opencode/src/provider/custom-loaders-def.ts) call sites
-- [ ] 3.8 grep for any remaining `Auth.get(` single-arg call site; fix or fail compile
+- [x] 3.1 Change `Auth.get` signature in [auth/index.ts:82-115](packages/opencode/src/auth/index.ts#L82-L115) to `(family, accountId?)`; remove the `Account.getById(providerId)` exact-match branch (legacy single-arg path)
+- [x] 3.2 Add `UnknownFamilyError` throw when `family` not in `Account.knownFamilies()`
+- [x] 3.3 Add `NoActiveAccountError` throw when `accountId` omitted AND `families[family].activeAccount` empty
+- [x] 3.4 Update auth-loader [provider.ts:1614-1688](packages/opencode/src/provider/provider.ts#L1614-L1688) to pass `(family, accountId)` instead of single string
+- [x] 3.5 Update [agent.ts:381](packages/opencode/src/agent/agent.ts#L381) call site
+- [x] 3.6 Update [mcp/app-registry.ts:360](packages/opencode/src/mcp/app-registry.ts#L360) call site
+- [x] 3.7 Update [custom-loaders-def.ts:35,109,276](packages/opencode/src/provider/custom-loaders-def.ts) call sites
+- [x] 3.8 grep for any remaining `Auth.get(` single-arg call site; fix or fail compile
 
 ## 4. getSDK signature change (DD-3)
 

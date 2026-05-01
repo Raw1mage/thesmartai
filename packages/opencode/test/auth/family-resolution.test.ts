@@ -35,7 +35,11 @@ describe("auth family resolution", () => {
         const [accountId] = Object.keys(canonical)
         expect(accountId.startsWith("nvidia-api-")).toBeTrue()
 
-        const auth = await Auth.get("nvidia-work")
+        // @spec specs/provider-account-decoupling DD-2 — Auth.get is two-arg
+        // (family, accountId). Caller MUST pass family form. Legacy single-arg
+        // with instance form ("nvidia-work") now throws UnknownFamilyError
+        // by design — see provider/registry-shape.ts.
+        const auth = await Auth.get("nvidia", accountId)
         expect(auth?.type).toBe("api")
         if (auth?.type === "api") {
           expect(auth.key).toBe("nv-key")

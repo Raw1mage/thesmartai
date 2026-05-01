@@ -447,7 +447,10 @@ export namespace LLM {
       Provider.getLanguage(executionModel),
       Config.get(),
       Provider.getProvider(executionModel.providerId),
-      Auth.get(executionModel.providerId),
+      // @spec specs/provider-account-decoupling DD-2 — dispatch carries account
+      // identity explicitly. currentAccountId is the session-pinned account
+      // (see preflight identity resolution earlier in this function).
+      Auth.get(executionModel.providerId, currentAccountId ?? undefined),
     ])
     const billingMode = resolveProviderBillingMode(cfg, executionModel.providerId)
     const isLiteProvider =
