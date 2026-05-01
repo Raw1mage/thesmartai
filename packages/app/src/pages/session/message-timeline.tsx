@@ -373,10 +373,7 @@ export function MessageTimeline(props: {
                 "max-w-[1000px] mx-auto": props.centered,
                 "mt-0.5": props.centered,
                 "mt-0": !props.centered,
-                "pb-[calc(var(--prompt-height,8rem)-24px)] md:pb-[calc(var(--prompt-height,10rem)-24px)]":
-                  props.sessionBusy || !!props.statusOverride,
-                "pb-[calc(var(--prompt-height,8rem)+64px)] md:pb-[calc(var(--prompt-height,10rem)+64px)]":
-                  !props.sessionBusy && !props.statusOverride,
+                "pb-[calc(var(--prompt-height,8rem)+24px)] md:pb-[calc(var(--prompt-height,10rem)+24px)]": true,
               }}
             >
               <Show when={props.turnStart > 0}>

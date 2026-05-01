@@ -1673,8 +1673,10 @@ export default function Page() {
 
   createResizeObserver(
     () => promptDock,
-    ({ height }) => {
-      const measured = Math.ceil(height)
+    (_contentRect, target) => {
+      // contentRect is content-box (excludes pt-12 / pb-4). Use the element's
+      // border-box rect so --prompt-height matches the dock's visual footprint.
+      const measured = Math.ceil(target.getBoundingClientRect().height)
 
       if (measured === store.promptHeight) return
 
@@ -1847,7 +1849,7 @@ export default function Page() {
                     mobileFallback={reviewContent({
                       diffStyle: "unified",
                       classes: {
-                        root: "pb-[calc(var(--prompt-height,8rem)+32px)]",
+                        root: "pb-[calc(var(--prompt-height,8rem)+24px)]",
                         header: "px-4",
                         container: "px-4",
                       },
