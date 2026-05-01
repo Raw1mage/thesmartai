@@ -31,11 +31,11 @@ Phased checklist. Implementing-state agent loads exactly one phase's `- [ ]` ite
 
 ## 4. getSDK signature change (DD-3)
 
-- [ ] 4.1 Change `getSDK` signature in [provider.ts:2014](packages/opencode/src/provider/provider.ts#L2014) to `(family, accountId, modelId)`
-- [ ] 4.2 Replace `s.providers[model.providerId]` lookup with `s.providers[family]`
-- [ ] 4.3 Wire auth lookup inside getSDK to `Auth.get(family, accountId)`
-- [ ] 4.4 Update both callers at [provider.ts:2421](packages/opencode/src/provider/provider.ts#L2421); pass family+accountId+modelId from caller's `ModelDispatch` context
-- [ ] 4.5 Introduce `ModelDispatch { family, accountId, modelId }` type where session processor calls getSDK; carry it through llm.ts dispatch path
+- [x] 4.1 Change `getSDK` signature in [provider.ts:2014](packages/opencode/src/provider/provider.ts#L2014) to `(family, accountId, modelId)`
+- [x] 4.2 Replace `s.providers[model.providerId]` lookup with `s.providers[family]`
+- [x] 4.3 Wire auth lookup inside getSDK to `Auth.get(family, accountId)`
+- [x] 4.4 Update both callers at [provider.ts:2421](packages/opencode/src/provider/provider.ts#L2421); pass family+accountId+modelId from caller's `ModelDispatch` context
+- [x] 4.5 Introduce `ModelDispatch { family, accountId, modelId }` type where session processor calls getSDK; carry it through llm.ts dispatch path
 
 ## 5. Rotation 3D simplification (DD-5)
 
