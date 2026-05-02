@@ -17,6 +17,12 @@ import { PermissionNext } from "@/permission/next"
 import { Tweaks } from "@/config/tweaks"
 import { Router as StorageRouter } from "./storage/router"
 import { emitBoundaryRoutingTelemetry } from "./compaction-telemetry"
+import path from "node:path"
+import fs from "node:fs/promises"
+import { existsSync } from "node:fs"
+import { IncomingPaths } from "../incoming/paths"
+import { IncomingHistory } from "../incoming/history"
+import { Instance } from "../project/instance"
 
 const log = Log.create({ service: "session.user-message-parts" })
 
@@ -55,6 +61,113 @@ function previewBytes(bytes: Uint8Array, mime: string, limit: number): string | 
   return `[binary ${mime} content omitted; ${bytes.length} bytes stored by reference]`
 }
 
+/**
+ * /specs/repo-incoming-attachments DD-17:
+ * Try to land bytes in <repo>/incoming/<filename>. On success returns
+ * { repoPath, sha256, sanitizedName }. On failure (no project context,
+ * unsanitizable filename, fs error) returns null and the caller falls back
+ * to the legacy attachments-table path. Logs a warning when falling back so
+ * non-project sessions are visible in telemetry but not user-blocking.
+ */
+export async function tryLandInIncoming(input: {
+  filename: string | undefined
+  bytes: Uint8Array
+  sessionID: string
+}): Promise<{ repoPath: string; sha256: string; sanitizedName: string } | null> {
+  if (!input.filename) {
+    log.warn("incoming: skipping (no filename); will fall back to legacy attachments-table path")
+    return null
+  }
+  let projectRoot: string
+  try {
+    projectRoot = IncomingPaths.projectRoot()
+  } catch (err) {
+    if (err instanceof IncomingPaths.NoProjectPathError) {
+      log.warn("incoming: session has no project context, falling back to legacy attachments-table path", {
+        sessionID: input.sessionID,
+        instanceProjectId: Instance.project.id,
+      })
+      return null
+    }
+    throw err
+  }
+
+  let sanitizedName: string
+  try {
+    sanitizedName = IncomingPaths.sanitize(input.filename)
+  } catch (err) {
+    log.warn("incoming: filename sanitize failed, falling back to legacy attachments-table path", {
+      sessionID: input.sessionID,
+      filename: input.filename,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null
+  }
+
+  // Resolve final filename — honour DD-8 conflict-rename if needed.
+  const incomingDir = IncomingPaths.incomingDir(projectRoot)
+  await fs.mkdir(incomingDir, { recursive: true })
+  let targetName = sanitizedName
+  let targetPath = path.join(incomingDir, targetName)
+
+  // Compute incoming sha to enable dedupe / conflict detection per R5.
+  const { createHash } = await import("node:crypto")
+  const sha256 = createHash("sha256").update(input.bytes).digest("hex")
+
+  if (existsSync(targetPath)) {
+    // Compare with current file via cheap-stat-aware lookup.
+    const currentSha = await IncomingHistory.lookupCurrentSha(sanitizedName, projectRoot).catch(() => null)
+    if (currentSha === sha256) {
+      // Identical — dedupe (R5-S2). No fs write; append upload-dedupe entry.
+      await IncomingHistory.appendEntry(
+        sanitizedName,
+        IncomingHistory.makeEntry({
+          source: "upload-dedupe",
+          sha256,
+          sizeBytes: input.bytes.byteLength,
+          sessionId: input.sessionID,
+        }),
+        { root: projectRoot, emitBus: true },
+      )
+      return { repoPath: path.join(IncomingPaths.INCOMING_DIR, sanitizedName), sha256, sanitizedName }
+    }
+    // Different content (or unknown current) — conflict-rename (R5-S1, DD-8).
+    targetName = IncomingPaths.nextConflictName(incomingDir, sanitizedName)
+    targetPath = path.join(incomingDir, targetName)
+    // Mark redirect on the original slot's history.
+    await IncomingHistory.appendEntry(
+      sanitizedName,
+      IncomingHistory.makeEntry({
+        source: "upload-conflict-rename",
+        sha256,
+        sizeBytes: input.bytes.byteLength,
+        sessionId: input.sessionID,
+        redirectedTo: targetName,
+      }),
+      { root: projectRoot, emitBus: true },
+    )
+  }
+
+  // Atomic write via temp + rename.
+  const tmpPath = `${targetPath}.tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  await fs.writeFile(tmpPath, input.bytes)
+  await fs.rename(tmpPath, targetPath)
+  const stat = await fs.stat(targetPath)
+  await IncomingHistory.appendEntry(
+    targetName,
+    IncomingHistory.makeEntry({
+      source: "upload",
+      sha256,
+      sizeBytes: stat.size,
+      mtime: Math.floor(stat.mtimeMs),
+      sessionId: input.sessionID,
+    }),
+    { root: projectRoot, emitBus: true },
+  )
+
+  return { repoPath: path.join(IncomingPaths.INCOMING_DIR, targetName), sha256, sanitizedName: targetName }
+}
+
 async function routeOversizedAttachment(input: {
   sessionID: string
   messageID: string
@@ -85,17 +198,44 @@ async function routeOversizedAttachment(input: {
   }
 
   const refID = Identifier.ascending("part")
-  await attachmentBlobWriter.upsertAttachmentBlob({
-    refID,
-    sessionID: input.sessionID,
-    messageID: input.messageID,
-    mime: input.part.mime,
+
+  // /specs/repo-incoming-attachments DD-17 main path: try to land bytes in
+  // <repo>/incoming/. On success the AttachmentRefPart carries repo_path +
+  // sha256 and we skip upsertAttachmentBlob entirely. On failure (non-project
+  // session, sanitize reject, fs error) fall back to the legacy attachments-
+  // table content blob path so existing flows keep working.
+  const landed = await tryLandInIncoming({
     filename: input.part.filename,
-    byteSize,
-    estTokens: estimateTokens(byteSize),
-    createdAt: Date.now(),
-    content: input.bytes,
+    bytes: input.bytes,
+    sessionID: input.sessionID,
+  }).catch((err) => {
+    log.warn("incoming: tryLandInIncoming threw, falling back to legacy storage", {
+      sessionID: input.sessionID,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null as null
   })
+
+  let repoPath: string | undefined
+  let sha256: string | undefined
+
+  if (landed) {
+    repoPath = landed.repoPath
+    sha256 = landed.sha256
+  } else {
+    await attachmentBlobWriter.upsertAttachmentBlob({
+      refID,
+      sessionID: input.sessionID,
+      messageID: input.messageID,
+      mime: input.part.mime,
+      filename: input.part.filename,
+      byteSize,
+      estTokens: estimateTokens(byteSize),
+      createdAt: Date.now(),
+      content: input.bytes,
+    })
+  }
+
   emitBoundaryRoutingTelemetry({
     boundary: "user_attachment",
     action: "attachment_ref",
@@ -107,7 +247,7 @@ async function routeOversizedAttachment(input: {
     previewBytes: cfg.attachmentPreviewBytes,
     truncated: byteSize > cfg.attachmentPreviewBytes,
     hasFilename: !!input.part.filename,
-    reason: "above_threshold",
+    reason: landed ? "above_threshold:incoming" : "above_threshold:legacy",
   })
 
   return {
@@ -117,10 +257,12 @@ async function routeOversizedAttachment(input: {
     type: "attachment_ref",
     ref_id: refID,
     mime: input.part.mime,
-    filename: input.part.filename,
+    filename: landed?.sanitizedName ?? input.part.filename,
     byte_size: byteSize,
     est_tokens: estimateTokens(byteSize),
     preview: previewBytes(input.bytes, input.part.mime, cfg.attachmentPreviewBytes),
+    repo_path: repoPath,
+    sha256: sha256,
   }
 }
 

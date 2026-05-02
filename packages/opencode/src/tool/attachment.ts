@@ -1,5 +1,7 @@
 import { generateText } from "ai"
 import z from "zod"
+import fs from "node:fs/promises"
+import path from "node:path"
 
 import { Tweaks } from "@/config/tweaks"
 import { Provider } from "@/provider/provider"
@@ -8,16 +10,73 @@ import { emitBoundaryRoutingTelemetry } from "@/session/compaction-telemetry"
 import { Router as StorageRouter } from "@/session/storage/router"
 import type { SessionStorage } from "@/session/storage"
 import { SystemPrompt } from "@/session/system"
+import type { MessageV2 } from "@/session/message-v2"
+import { Instance } from "@/project/instance"
 import { Log } from "@/util/log"
 import { Tool } from "./tool"
 
 const log = Log.create({ service: "tool.attachment" })
 
-type AttachmentQueryReader = Pick<typeof StorageRouter, "getAttachmentBlob">
+type AttachmentQueryReader = Pick<typeof StorageRouter, "getAttachmentBlob" | "stream">
 let attachmentQueryReader: AttachmentQueryReader = StorageRouter
 
 export function setAttachmentQueryReaderForTesting(reader?: AttachmentQueryReader) {
   attachmentQueryReader = reader ?? StorageRouter
+}
+
+/**
+ * /specs/repo-incoming-attachments DD-17 dual-path read.
+ *
+ * Find an AttachmentRefPart by ref_id in the session's parts. If it carries
+ * a repo_path the bytes live at <projectRoot>/<repo_path>; assemble an
+ * AttachmentBlob from the part metadata + freshly-read bytes. Otherwise
+ * fall back to the legacy attachments-table content blob.
+ *
+ * Throws if (new path) the repo file is missing — this is the explicit
+ * INC-3001' contract: do not retry the legacy attachments table when a
+ * new-style ref's bytes are gone.
+ */
+async function loadAttachmentBlob(input: {
+  sessionID: string
+  refID: string
+}): Promise<SessionStorage.AttachmentBlob> {
+  let foundPart: MessageV2.AttachmentRefPart | undefined
+  for await (const msg of attachmentQueryReader.stream(input.sessionID)) {
+    for (const part of msg.parts) {
+      if (part.type === "attachment_ref" && part.ref_id === input.refID) {
+        foundPart = part
+        break
+      }
+    }
+    if (foundPart) break
+  }
+  if (foundPart?.repo_path) {
+    const projectRoot = Instance.project.worktree
+    const absolute = path.resolve(projectRoot, foundPart.repo_path)
+    let bytes: Uint8Array
+    try {
+      bytes = await fs.readFile(absolute)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      throw new Error(
+        `attachment_repo_file_missing: ref_id ${input.refID} points at ${foundPart.repo_path} but the file is gone (${message}). Re-upload required; daemon does not fall back to legacy attachments table.`,
+      )
+    }
+    return {
+      refID: foundPart.ref_id,
+      sessionID: input.sessionID,
+      messageID: foundPart.messageID,
+      partID: foundPart.id,
+      mime: foundPart.mime,
+      filename: foundPart.filename,
+      byteSize: foundPart.byte_size,
+      estTokens: foundPart.est_tokens,
+      createdAt: Date.now(),
+      content: bytes,
+    }
+  }
+  // Legacy path — pre-DD-17 refs whose bytes live in the attachments table.
+  return attachmentQueryReader.getAttachmentBlob({ sessionID: input.sessionID, refID: input.refID })
 }
 
 type ReaderRunner = (input: {
@@ -39,19 +98,69 @@ export const setVisionWorkerRunnerForTesting = setReaderRunnerForTesting
 const DEFAULT_QUESTION =
   "The user did not ask a specific question. Produce the structured digest defined in your system prompt."
 
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+function isDocxMime(mime: string): boolean {
+  return mime === DOCX_MIME
+}
+
 // Hard-coded mime → reader agent mapping for the well-known fixed types.
 // Anything outside this table requires the orchestrator to pass `agent` explicitly.
 function defaultAgentForMime(mime: string): string | undefined {
   if (mime.startsWith("image/")) return "vision"
   if (mime === "application/pdf") return "pdf-reader"
+  if (isDocxMime(mime)) return "docx-reader"
   return undefined
 }
 
 // Minimum capability required from the SSOT model for a given mime.
+// docx is pre-extracted to markdown server-side via pandoc, so the model only
+// needs text-input capability — not "file" / native docx ingestion.
 function requiredCapabilityForMime(mime: string): "image" | "pdf" | "text" {
   if (mime.startsWith("image/")) return "image"
   if (mime === "application/pdf") return "pdf"
   return "text"
+}
+
+// Convert raw .docx bytes to Markdown via the system `pandoc` binary so the
+// reader subagent can consume it as plain text. We deliberately fail loud
+// (no silent fallback) when pandoc is missing or exits non-zero — silent
+// degradation here would leave the user wondering why a docx digest is
+// suddenly empty or hallucinated.
+async function extractDocxMarkdown(content: Uint8Array): Promise<string> {
+  let proc: ReturnType<typeof Bun.spawn>
+  try {
+    proc = Bun.spawn(["pandoc", "-f", "docx", "-t", "markdown", "--wrap=none"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(
+      `docx reader requires the 'pandoc' binary on PATH but spawn failed: ${message}. Install pandoc and retry.`,
+    )
+  }
+  const writer = proc.stdin as unknown as { write: (data: Uint8Array) => unknown; end: () => Promise<void> | void }
+  writer.write(content)
+  await writer.end()
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout as ReadableStream<Uint8Array>).text(),
+    new Response(proc.stderr as ReadableStream<Uint8Array>).text(),
+    proc.exited,
+  ])
+  if (exitCode !== 0) {
+    throw new Error(
+      `pandoc failed to convert docx (exit ${exitCode}): ${stderr.trim() || "no stderr output"}`,
+    )
+  }
+  const text = stdout.trim()
+  if (!text) {
+    throw new Error(
+      `pandoc returned empty markdown for the docx attachment${stderr.trim() ? ` (stderr: ${stderr.trim()})` : ""}`,
+    )
+  }
+  return text
 }
 
 async function loadSessionExecution(
@@ -129,6 +238,28 @@ async function defaultReaderRunner(input: {
     parentID,
     agent: input.agent,
   })
+  // docx is not natively ingestible by the model — pre-extract to markdown
+  // before composing the user message.
+  let userContent: Array<
+    { type: "file"; data: Uint8Array; mediaType: string } | { type: "text"; text: string }
+  >
+  if (isDocxMime(input.blob.mime)) {
+    const markdown = await extractDocxMarkdown(input.blob.content)
+    userContent = [
+      {
+        type: "text",
+        text:
+          `--- BEGIN docx-extracted markdown (filename: ${input.blob.filename ?? "(unnamed)"}, ${input.blob.byteSize} raw bytes) ---\n` +
+          markdown +
+          `\n--- END docx-extracted markdown ---\n\nQuestion: ${input.question}`,
+      },
+    ]
+  } else {
+    userContent = [
+      { type: "file", data: input.blob.content, mediaType: input.blob.mime },
+      { type: "text", text: input.question },
+    ]
+  }
   log.info("reader subagent dispatch", {
     sessionID: input.sessionID,
     refID: input.blob.refID,
@@ -142,15 +273,7 @@ async function defaultReaderRunner(input: {
   const result = await generateText({
     model: language,
     system: systemPrompt,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "file", data: input.blob.content, mediaType: input.blob.mime },
-          { type: "text", text: input.question },
-        ],
-      },
-    ],
+    messages: [{ role: "user", content: userContent }],
     headers,
     maxRetries: 1,
   })
@@ -175,7 +298,7 @@ const parameters = z.object({
     .string()
     .optional()
     .describe(
-      "For mode=read: explicit reader agent name (e.g. 'vision', 'pdf-reader'). Defaults to the hard-coded mapping by mime; required for mimes outside the mapping.",
+      "For mode=read: explicit reader agent name (e.g. 'vision', 'pdf-reader', 'docx-reader'). Defaults to the hard-coded mapping by mime; required for mimes outside the mapping.",
     ),
 })
 
@@ -216,13 +339,13 @@ function metadataFor(blob: SessionStorage.AttachmentBlob) {
 
 export const AttachmentTool = Tool.define("attachment", {
   description:
-    "Inspect a session-scoped attachment_ref by ref_id. For images / PDFs / other rich media, dispatch the read to a reader subagent (mode='read') with a question crafted from the user's intent. For text/json refs, returns a bounded preview (mode='digest').",
+    "Inspect a session-scoped attachment_ref by ref_id. For images / PDFs / DOCX / other rich media, dispatch the read to a reader subagent (mode='read') with a question crafted from the user's intent. For text/json refs, returns a bounded preview (mode='digest').",
   parameters,
   async execute(params, ctx) {
     const requestedMode = params.mode ?? "digest"
     let blob: SessionStorage.AttachmentBlob
     try {
-      blob = await attachmentQueryReader.getAttachmentBlob({ sessionID: ctx.sessionID, refID: params.ref_id })
+      blob = await loadAttachmentBlob({ sessionID: ctx.sessionID, refID: params.ref_id })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       emitBoundaryRoutingTelemetry({
@@ -238,7 +361,7 @@ export const AttachmentTool = Tool.define("attachment", {
     const wantsRead =
       requestedMode === "read" ||
       requestedMode === "vision" ||
-      (requestedMode === "digest" && (kind === "image" || blob.mime === "application/pdf"))
+      (requestedMode === "digest" && (kind === "image" || blob.mime === "application/pdf" || isDocxMime(blob.mime)))
 
     if (wantsRead) {
       const agentName = params.agent?.trim() || defaultAgentForMime(blob.mime)

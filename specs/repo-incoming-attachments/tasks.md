@@ -20,16 +20,19 @@
 
 ## 2. Upload Route：直連 incoming/，廢除 attachment cache 寫入
 
-- [ ] 2.1 在 `packages/opencode/src/server/routes/file.ts`（或現行 upload route）新增「resolveProjectIncoming → atomic write」主路徑，串流計算 sha256（RK-7 緩解）
-- [ ] 2.2 實作 dedupe / conflict-rename / fresh upload 三條分支判斷，對應 R5-S1 / R5-S2 / R1-S1
-- [ ] 2.3 上傳成功 emit Bus event `incoming.history.appended`（observability.md `evt:upload.received`）
-- [ ] 2.4 `attachment_ref` 回傳 schema 改成含 `repoPath` / `sha256` / `historyVersion` / `status`，保留 deprecated `refID` 別名（RK-6 緩解）
+- [x] 2.1 在 `packages/opencode/src/server/routes/file.ts`（或現行 upload route）新增「resolveProjectIncoming → atomic write」主路徑，串流計算 sha256（RK-7 緩解）
+- [x] 2.2 實作 dedupe / conflict-rename / fresh upload 三條分支判斷，對應 R5-S1 / R5-S2 / R1-S1
+- [x] 2.3 上傳成功 emit Bus event `incoming.history.appended`（observability.md `evt:upload.received`）
+- [x] 2.4 `attachment_ref` 回傳 schema 改成含 `repoPath` / `sha256` / `historyVersion` / `status`，保留 deprecated `refID` 別名（RK-6 緩解）
 - [ ] ~~2.5 移除「上傳寫入 `~/.local/state/opencode/attachments/<refID>.*`」程式碼路徑；舊讀取路徑保留在 R10 走 fallback 報錯~~ (v1, SUPERSEDED 2026-05-03 — 此檔案路徑不存在)
-- [ ] 2.5' 演進 `SessionStorage.AttachmentBlob` 結構（DD-17）：`content` 變 optional、新增 `repoPath?` 與 `sha256?`；改 `[index.ts](../../packages/opencode/src/session/storage/index.ts)` interface、改 LegacyStore 與 SqliteStore 的 encode/decode 容忍 missing content；新 row 寫 `repoPath`+`sha256`、不寫 `content`
-- [ ] 2.5'' 改 `getAttachmentBlob`：若 row 有 `repoPath` 就從 `<repo>/<repoPath>` 讀 bytes 後組成完整 AttachmentBlob；若 repo file 不存在則明確報錯（INC-3001'）；若 row 缺 `repoPath` 但有 `content` 走 legacy path（R10'-S2）
-- [ ] 2.6 刪除 `packages/opencode/src/tool/attachment.ts` 既有 docx 特化分支（pandoc subprocess、`extractDocxMarkdown` 提取等 — 與 docxmcp Wave 3 軌 C 重疊，由本 spec 主導）
-- [ ] 2.6.1 把 `tool/attachment.ts` 內 `attachmentKind` / `metadataFor` 等 helper 改為「從 AttachmentBlob row 拿 `repoPath` 後展示給 LLM 的是 repo-relative path 而非 refID」，配合 client 端 UI 也顯示 `incoming/合約.docx`
-- [ ] 2.7 integration tests：`packages/opencode/test/incoming/upload.test.ts` 跑 SEQ-UPLOAD-NEW / DEDUPE / CONFLICT 三個 scenario
+- [ ] ~~2.5' 演進 SessionStorage.AttachmentBlob 結構~~ (v2, SUPERSEDED 2026-05-03 — DD-17 改為不動 schema)
+- [ ] ~~2.5'' 改 getAttachmentBlob 雙路徑~~ (v2, SUPERSEDED 2026-05-03 — 改寫如下)
+- [x] 2.5\* (v3, ADDED 2026-05-03)：在 [message-v2.ts](../../packages/opencode/src/session/message-v2.ts) 的 `AttachmentRefPart` zod schema 加 `repo_path?: string` + `sha256?: string` 兩欄（passthrough 即可）。**不動** SQL schema、不動 storage 介面
+- [x] 2.5\*\* (v3, ADDED 2026-05-03)：[user-message-parts.ts:routeOversizedAttachment](../../packages/opencode/src/session/user-message-parts.ts) 改寫主路徑：resolveProjectIncoming → sanitize filename → atomic write to `<repo>/incoming/<filename>` → streaming sha256 → IncomingHistory.appendEntry → 把 `repo_path` + `sha256` 塞回 AttachmentRefPart、**不再呼叫 upsertAttachmentBlob**
+- [x] 2.5\*\*\* (v3, ADDED 2026-05-03)：[tool/attachment.ts](../../packages/opencode/src/tool/attachment.ts) 雙路徑讀取 — 找到對應 part，先看 `part.repo_path`：在 → 從 repo 讀 bytes 組 AttachmentBlob；不在 → 走既有 `getAttachmentBlob` legacy path 撈舊 attachments 表（R10'-S2）。repo file 不存在則明確報錯 INC-3001'，不退回 legacy（R10'-S3）
+- [-] 2.6 (deferred to phase 3) 刪除 `packages/opencode/src/tool/attachment.ts` 既有 docx 特化分支（pandoc subprocess、`extractDocxMarkdown` 提取等）— 移除前需要 dispatcher 在 phase 3 接通，否則 docxmcp 還沒掛上時 docx 檔案讀不開；維持 pandoc 路徑當 transitional fallback 直到 phase 3 完成
+- [-] 2.6.1 (deferred to phase 3, see slice summary) 把 `tool/attachment.ts` 內 `attachmentKind` / `metadataFor` 等 helper 改為「從 AttachmentBlob row 拿 `repoPath` 後展示給 LLM 的是 repo-relative path 而非 refID」，配合 client 端 UI 也顯示 `incoming/合約.docx`
+- [x] 2.7 integration tests：`packages/opencode/test/incoming/upload.test.ts` 跑 SEQ-UPLOAD-NEW / DEDUPE / CONFLICT 三個 scenario
 
 ## 3. mcp Dispatcher：stage-in / publish-out + sha-keyed cache
 

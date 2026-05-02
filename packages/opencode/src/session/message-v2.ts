@@ -322,6 +322,16 @@ export namespace MessageV2 {
         h: z.number().int().positive(),
       })
       .optional(),
+    // /specs/repo-incoming-attachments DD-17: when present, the bytes live
+    // at <session.project.worktree>/<repo_path> rather than in the
+    // attachments table's `content` column. New uploads always populate
+    // both fields; legacy refs (pre-2026-05-03) leave them undefined and
+    // the reader falls back to attachments.content.
+    repo_path: z.string().optional(),
+    sha256: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
   }).meta({
     ref: "AttachmentRefPart",
   })
