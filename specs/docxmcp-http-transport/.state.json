@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "planned",
+  "state": "implementing",
   "profile": [],
   "history": [
     {
@@ -26,6 +26,14 @@
       "by": "pkcs12",
       "mode": "promote",
       "reason": "tasks.md/handoff.md/test-vectors.json/errors.md/observability.md drafted; Unix socket transport + IPC bind mount exception locked (DD-12,13,14 + decisions N,O)"
+    },
+    {
+      "from": "planned",
+      "to": "implementing",
+      "at": "2026-05-02T19:16:25.279Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "phase 0 docker group prereq met for current user pkcs12; cross-user setup deferred to system admin; starting phase 1 token store"
     }
   ]
 }

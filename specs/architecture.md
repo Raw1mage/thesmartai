@@ -1293,7 +1293,12 @@ See `specs/responsive-orchestrator/` for full documentation (proposal.md, spec.m
 
 ## Incoming Attachments Lifecycle (2026-05-03)
 
-Spec: `specs/repo-incoming-attachments/`. Replaces the legacy "embed every uploaded file as base64 inside `SessionStorage.AttachmentBlob.content`" model with a repo-anchored layout.
+Two specs together define this surface:
+
+1. **`specs/repo-incoming-attachments/`** — repo-anchored upload layout, per-file history journal, AttachmentRefPart carrier with `repo_path` + `sha256`. **STILL CURRENT** for the upload + history + AI-facing routing-hint parts (DD-1 / DD-2 / DD-6 / DD-7 / DD-8 / DD-12 / DD-13 / DD-14 / DD-17).
+2. **`specs/docxmcp-http-transport/`** — replaces the bind-mount-based dispatcher implementation with HTTP Streamable transport over Unix domain socket, per-user docker compose container, multipart `POST /files` + token-based tool args. **SUPERSEDED** in repo-incoming-attachments: DD-3 (mcp container `/state` mount), DD-5 (host staging dir), DD-11 (hard-link + break-on-write), DD-15 (EXDEV cross-fs fallback), DD-16 (host-side manifest sha integrity).
+
+The earlier description below (layout / layered model / dispatcher boundary / tool-write hook / drift safety net) is updated post-cutover to reflect the HTTP-transport reality.
 
 **Layout (per project):**
 
@@ -1309,29 +1314,42 @@ Spec: `specs/repo-incoming-attachments/`. Replaces the legacy "embed every uploa
 **Layered model:**
 
 - **Layer 1 — repo (canonical)**: `<repo>/incoming/<filename>` is the source of truth. New uploads write here directly; the `attachments` table is no longer touched on the new path.
-- **Layer 2 — staging cache**: `~/.local/share/opencode/log/...mcp-staging/<appId>/{staging,bundles}/` keyed by sha256. Cross-session reuse: the same content hits the same bundle regardless of project.
-- **Layer 3 — mcp container**: only ever sees `/state` (mounted from the staging cache). Never sees the user repo, never mounts `$HOME`, never knows the project name.
+- **Layer 2 — opencode dispatcher**: HTTP uploader. On tool call, multipart-POSTs the file to the per-app `/files` endpoint over the app's transport, swaps the path in args for the returned token, awaits the result, decodes any returned `bundle_tar_b64` into the bundle's repo location, and DELETEs the token.
+- **Layer 3 — mcp container**: a per-user docker compose service exposing MCP Streamable HTTP over a Unix domain socket bound at `/run/docxmcp/docxmcp.sock` inside the container. **No host filesystem visibility** beyond the IPC rendezvous dir (the only bind mount the cross-cutting policy permits). Container's bundle cache lives on a docker named volume (`docxmcp-cache`), invisible to the host.
 
 **Carrier**: `MessageV2.AttachmentRefPart` carries `repo_path` + `sha256` for new refs; legacy refs (no `repo_path`) keep going through the `attachments` table. Both readable indefinitely; no schema migration required.
 
-**Dispatcher boundary (`packages/opencode/src/incoming/dispatcher.ts`)**:
-- `before(toolName, args, appId)` — scans args for `incoming/**` paths, stages each into `mcp-staging/<appId>/staging/<sha>.<ext>`, rewrites args to container `/state/staging/...` paths, and short-circuits to a synthetic result if `bundles/<sha>/manifest.json` already exists and the manifest sha matches the directory key (cache hit).
-- `after(result, ctx)` — rewrites staging-path strings in result back to repo-relative paths (`/state/bundles/<sha>/...` → `incoming/<stem>/...`) and publishes any newly-produced bundle from the staging cache to `<repo>/incoming/<stem>/` via hard-link (cp -r on EXDEV / cross-fs).
-- `breakHardLinkBeforeWrite(path)` — invariant guarantor for in-place edits inside `incoming/<stem>/*`: detects `st_nlink > 1` and atomically detaches the live file from any cache-side hard-link before any `Write`/`Edit` tool overwrites it.
+**Dispatcher boundary (`packages/opencode/src/incoming/dispatcher.ts`)** — post HTTP-transport rewrite:
+- `before(toolName, args, appId, sessionID)` — scans args for project-relative paths, multipart-POSTs each to the app's `/files` endpoint (resolved from mcp-apps.json's `transport` + `url`; for `unix://` URLs the dispatcher uses Bun's `{unix: socketPath}` fetch option), records the returned tokens, and rewrites the path → token in the args.
+- `after(result, ctx)` — looks for `structuredContent.bundle_tar_b64` in the mcp tool's result; if present, base64-decode → `tar -xf` into `<projectRoot>/<sourceDir>/<stem>/`. Best-effort `DELETE /files/{token}` for every token issued in `before()`.
+- The previous bind-mount mechanics — hard-link cache, EXDEV cross-fs fallback, manifest sha integrity — were retired in the cutover. `breakHardLinkBeforeWrite` is now a no-op stub kept for ABI compatibility; tools no longer call it.
 
-**Tool-write hook**: `Write` and `Edit` tools call `maybeBreakIncomingHardLink(filepath)` before fs write and `maybeAppendToolWriteHistory(filepath, "<tool>", sessionID)` after, both no-op outside `incoming/**`. `Bash` is not hooked — anything `bash`-driven that writes inside `incoming/<stem>/` can corrupt the cache; OQ-8 in `specs/repo-incoming-attachments/design.md` tracks the long-term fix (centralised fs adapter wrapper).
+**Tool-write hook**: `maybeBreakIncomingHardLink` is now a no-op (no shared inodes left to detach). `maybeAppendToolWriteHistory(filepath, "<tool>", sessionID)` continues to write per-tool history journal entries on `Write` / `Edit` to `incoming/**`. `Bash` is still not hooked.
 
 **Drift safety net**: `IncomingHistory.lookupCurrentSha` cheap-stats the live file (mtime + sizeBytes) against the last-known history entry; mismatch triggers a recompute and a `drift-detected` history entry. Catches external editors that bypass the tool-write hook.
 
-**Decisions worth knowing system-wide:**
-- DD-1 fail-fast on no `session.project.path` (no silent fallback to legacy cache).
-- DD-3 mcp container mount boundary stays narrow (`/state` only).
-- DD-11 publish via hard-link with break-on-write semantics.
-- DD-14 result-path rewriting is a scoped string replacement (no per-tool `pathFields` declaration).
-- DD-15 EXDEV / cross-fs auto-fallback to `cp -r`, emits `mcp.dispatcher.cross-fs-fallback`.
-- DD-16 `bundle/<sha>/manifest.json` integrity check before cache-hit publish; mismatched manifest → fall through to mcp recompute, emits `mcp.dispatcher.cache-corrupted`.
-- DD-17 new uploads live in repo + JSON metadata in `AttachmentRefPart`; `attachments` table untouched on the new path.
+**Decisions worth knowing system-wide (post-cutover):**
 
-**Observability**: tail with `tail -F ~/.local/share/opencode/log/debug.log | grep -E '"service":"incoming'`. Bus events: `incoming.history.appended`, `mcp.dispatcher.cache-hit`, `mcp.dispatcher.cache-miss`, `mcp.dispatcher.cache-corrupted`, `mcp.dispatcher.cross-fs-fallback`, `incoming.dispatcher.publish-failed`.
+From `specs/repo-incoming-attachments/`:
+- DD-1 fail-fast on no `session.project.path`.
+- DD-2 jsonl history per file at `incoming/.history/<filename>.jsonl`.
+- DD-12 filename sanitize (NFC + control strip + 256-byte cap).
+- DD-13 jsonl rotation at 1000 lines.
+- DD-14 result-path rewriting is a scoped string replacement.
+- DD-17 new uploads live in repo + JSON metadata in `AttachmentRefPart` (`repo_path` + `sha256`); legacy `attachments` table untouched and remains readable.
 
-**Cross-repo contract (docxmcp)**: docxmcp Wave 3 must produce `<bundles>/<sha>/manifest.json` containing at minimum `{ sha256, appId: "docxmcp", appVersion, createdAt }`. The dispatcher's manifest integrity check assumes this — see `~/projects/docxmcp/HANDOVER.md`.
+From `specs/docxmcp-http-transport/`:
+- DD-1 transport: MCP Streamable HTTP framing carried over Unix domain socket.
+- DD-2 file API: multipart raw bytes (no base64), token returned.
+- DD-3 token format `tok_<32-char-base32>`.
+- DD-12 UDS bind mount of the IPC rendezvous dir is the only allowed bind mount (cross-cutting policy).
+- DD-13 lint guard at `McpAppStore.addApp` + audit endpoint.
+- DD-15 per-user docker compose project.
+- DD-16 streamable HTTP framing retained (TCP port replaced by UDS, not the protocol).
+- DD-17 system-level service deferred to a future spec.
+
+**Cross-cutting policy**: bind mount banned across the mcp ecosystem. Sole exception: IPC rendezvous dir matching `/run/user/<uid>/opencode/sockets/<app>/` ↔ `/run/<app>/`. Lint enforces at register time. Audit via `GET /api/v2/mcp/store/audit-bind-mounts`.
+
+**Observability**: tail with `tail -F ~/.local/share/opencode/log/debug.log | grep -E '"service":"(incoming|mcp\.client|mcp\.store)"'`. Bus events: `incoming.history.appended`, `incoming.dispatcher.http-upload-{started,succeeded,failed}`, `incoming.dispatcher.bundle-published`, `mcp.transport.connected`, `mcp.store.bind-mount-rejected`.
+
+**Cross-repo contract (docxmcp)**: docxmcp ships a per-user docker compose with the HTTP MCP server bound to `/run/docxmcp/docxmcp.sock`, which is bind-mounted onto `/run/user/${UID}/opencode/sockets/docxmcp/docxmcp.sock` on the host. The image also ships `bin-wrappers/<toolname>` shell scripts for CLI users (docker cp + docker exec; not in opencode's AI tool catalog). See `~/projects/docxmcp/HANDOVER.md`.
