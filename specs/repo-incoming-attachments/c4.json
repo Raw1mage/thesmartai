@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "name": "repo-incoming-attachments",
+  "level": "container+component",
+  "systems": [
+    {
+      "id": "S-OPENCODE",
+      "name": "opencode daemon",
+      "description": "User-level daemon serving session, attachments, and mcp dispatch."
+    }
+  ],
+  "containers": [
+    {
+      "id": "C-DAEMON",
+      "system": "S-OPENCODE",
+      "name": "opencode bun daemon",
+      "tech": "bun + TypeScript",
+      "description": "Hosts upload route, tool dispatcher, mcp client manager."
+    },
+    {
+      "id": "C-MCP-DOCXMCP",
+      "system": "S-OPENCODE",
+      "name": "docxmcp container",
+      "tech": "docker + python:3.12-slim + mcp SDK",
+      "description": "Stateless docx compute. Sees only /state mount.",
+      "boundaryRule": "no host repo / HOME mount; only /state"
+    },
+    {
+      "id": "C-FS-REPO",
+      "system": "S-OPENCODE",
+      "name": "repo working tree",
+      "tech": "host filesystem under <session.project.path>",
+      "description": "Per-session project root. Holds incoming/ and bundles co-resident with originals."
+    },
+    {
+      "id": "C-FS-STATE",
+      "system": "S-OPENCODE",
+      "name": "user state directory",
+      "tech": "~/.local/state/opencode/ + ~/.local/state/<staging-area>/",
+      "description": "Daemon-owned cache. Holds mcp-staging/<app-id>/{staging,bundles}/."
+    }
+  ],
+  "components": [
+    {
+      "id": "CMP-UPLOAD-ROUTE",
+      "container": "C-DAEMON",
+      "name": "Upload HTTP route",
+      "moduleRef": "packages/opencode/src/server/routes/file.ts",
+      "description": "Receives POST upload, atomic-writes to incoming/, calls IncomingHistory.appendUpload."
+    },
+    {
+      "id": "CMP-INCOMING-PATHS",
+      "container": "C-DAEMON",
+      "name": "incoming paths resolver",
+      "moduleRef": "packages/opencode/src/incoming/paths.ts",
+      "description": "Resolves <session.project.path>, computes incoming/, .history/, conflict-rename suffix."
+    },
+    {
+      "id": "CMP-INCOMING-HISTORY",
+      "container": "C-DAEMON",
+      "name": "history journal",
+      "moduleRef": "packages/opencode/src/incoming/history.ts",
+      "description": "jsonl append, tail, currentSha256 lookup with stat-based drift detection."
+    },
+    {
+      "id": "CMP-INCOMING-DISPATCHER",
+      "container": "C-DAEMON",
+      "name": "mcp tool dispatcher",
+      "moduleRef": "packages/opencode/src/incoming/dispatcher.ts",
+      "description": "Stage repo-path inputs into /state, invokes mcp tool, publishes outputs back to incoming/<stem>/. sha-keyed cache check before tool call."
+    },
+    {
+      "id": "CMP-MCP-CLIENT-WRAPPER",
+      "container": "C-DAEMON",
+      "name": "convertMcpTool wrapper",
+      "moduleRef": "packages/opencode/src/mcp/index.ts",
+      "description": "Wraps mcp tool execute with dispatcher; substitutes repo paths with staging paths in args; reverse maps in result paths."
+    },
+    {
+      "id": "CMP-TOOL-WRITE-HOOK",
+      "container": "C-DAEMON",
+      "name": "tool post-write history hook",
+      "moduleRef": "packages/opencode/src/tool/(Edit|Write|Bash).ts",
+      "description": "On tool return, if any incoming/** path was written, call IncomingHistory.appendToolWrite."
+    }
+  ],
+  "relationships": [
+    { "from": "CMP-UPLOAD-ROUTE", "to": "CMP-INCOMING-PATHS", "verb": "uses", "purpose": "resolve target path" },
+    { "from": "CMP-UPLOAD-ROUTE", "to": "CMP-INCOMING-HISTORY", "verb": "calls", "purpose": "append upload event" },
+    { "from": "CMP-UPLOAD-ROUTE", "to": "C-FS-REPO", "verb": "writes", "purpose": "atomic write incoming/<filename>" },
+    { "from": "CMP-MCP-CLIENT-WRAPPER", "to": "CMP-INCOMING-DISPATCHER", "verb": "delegates", "purpose": "stage-in / publish-out" },
+    { "from": "CMP-INCOMING-DISPATCHER", "to": "C-FS-STATE", "verb": "writes", "purpose": "stage repo file into mcp-staging/<app>/staging/<sha>.<ext>" },
+    { "from": "CMP-INCOMING-DISPATCHER", "to": "C-MCP-DOCXMCP", "verb": "invokes", "purpose": "tool call with /state-relative paths" },
+    { "from": "C-MCP-DOCXMCP", "to": "C-FS-STATE", "verb": "writes", "purpose": "produce bundle in mcp-staging/<app>/bundles/<sha>/" },
+    { "from": "CMP-INCOMING-DISPATCHER", "to": "C-FS-REPO", "verb": "writes", "purpose": "publish bundle back to incoming/<stem>/" },
+    { "from": "CMP-INCOMING-DISPATCHER", "to": "CMP-INCOMING-HISTORY", "verb": "calls", "purpose": "append bundle-published event for <stem>/ contents and re-hash original" },
+    { "from": "CMP-TOOL-WRITE-HOOK", "to": "CMP-INCOMING-HISTORY", "verb": "calls", "purpose": "append tool:<name> event after every Edit/Write/Bash that touches incoming/**" },
+    { "from": "CMP-INCOMING-HISTORY", "to": "C-FS-REPO", "verb": "reads/writes", "purpose": "incoming/.history/<filename>.jsonl" }
+  ],
+  "deploymentNotes": "C-DAEMON runs as user-level systemd unit. C-MCP-DOCXMCP is spawned by daemon via stdio (StdioClientTransport with command='/usr/bin/docker run -i --rm ... docxmcp:latest'). Docker mount narrow: only ~/.local/state/<staging-area>:/state."
+}

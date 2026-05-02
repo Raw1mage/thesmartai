@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "repo-incoming-attachments data contracts",
+  "version": 1,
+  "definitions": {
+    "Sha256Hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase hex sha256 of the file content."
+    },
+    "IsoTimestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "HistoryEntrySource": {
+      "type": "string",
+      "enum": [
+        "upload",
+        "upload-dedupe",
+        "upload-conflict-rename",
+        "tool:Write",
+        "tool:Edit",
+        "tool:Bash",
+        "tool:mcp",
+        "drift-detected",
+        "bundle-published"
+      ],
+      "description": "Origin of this history transition. tool:mcp covers any mcp-app-driven write; specific app id captured in annotation."
+    },
+    "HistoryEntry": {
+      "type": "object",
+      "required": ["version", "ts", "source", "sha256"],
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Schema version of this entry. v1 baseline."
+        },
+        "ts": { "$ref": "#/definitions/IsoTimestamp" },
+        "source": { "$ref": "#/definitions/HistoryEntrySource" },
+        "sha256": { "$ref": "#/definitions/Sha256Hex" },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "File size at the moment of this transition. Used by drift detection cheap-stat comparison."
+        },
+        "mtime": {
+          "type": "integer",
+          "description": "Filesystem mtime (epoch ms) at the moment of this transition. Used by drift detection.",
+          "minimum": 0
+        },
+        "mime": {
+          "type": ["string", "null"],
+          "description": "Best-known MIME type. May be null if not yet detected."
+        },
+        "sessionId": {
+          "type": ["string", "null"],
+          "description": "session.id at the moment of transition. null for drift-detected (no driving session)."
+        },
+        "annotation": {
+          "type": ["string", "null"],
+          "description": "Free-text. Used to carry mcp tool name (e.g. 'docx_recompose') under source='tool:mcp'."
+        },
+        "redirectedTo": {
+          "type": ["string", "null"],
+          "description": "Only set on source='upload-conflict-rename'. The new filename the upload was redirected to."
+        }
+      },
+      "additionalProperties": false,
+      "description": "One line of incoming/.history/<filename>.jsonl. Append-only. version field allows forward-compatible schema growth."
+    },
+    "AttachmentRef": {
+      "type": "object",
+      "required": ["repoPath", "sha256", "historyVersion", "status"],
+      "properties": {
+        "repoPath": {
+          "type": "string",
+          "description": "Path relative to session.project.path. Always under incoming/."
+        },
+        "sha256": { "$ref": "#/definitions/Sha256Hex" },
+        "historyVersion": {
+          "type": "integer",
+          "description": "Number of entries in the file's history jsonl at the time the ref was issued. Lets clients detect mid-flight drift."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["uploaded", "deduped", "conflict-renamed"],
+          "description": "Outcome category of the upload action."
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mime": {
+          "type": ["string", "null"]
+        },
+        "refID": {
+          "type": ["string", "null"],
+          "description": "Deprecated alias for legacy clients. Mirrors repoPath under a stable identifier. Will be removed after one release."
+        }
+      },
+      "additionalProperties": false
+    },
+    "HistoryQueryResponse": {
+      "type": "object",
+      "required": ["repoPath", "currentSha256", "transitions"],
+      "properties": {
+        "repoPath": { "type": "string" },
+        "currentSha256": { "$ref": "#/definitions/Sha256Hex" },
+        "transitions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/HistoryEntry" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "DispatcherStageRequest": {
+      "type": "object",
+      "description": "Internal contract: what dispatcher passes to mcp tool wrapper after rewriting args.",
+      "required": ["originalArgs", "rewrittenArgs", "stagedFiles", "appId", "sha256"],
+      "properties": {
+        "originalArgs": { "type": "object" },
+        "rewrittenArgs": { "type": "object" },
+        "stagedFiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["repoPath", "stagedPath", "sha256"],
+            "properties": {
+              "repoPath": { "type": "string" },
+              "stagedPath": { "type": "string", "description": "Path inside container, e.g. /state/staging/<sha>.docx" },
+              "sha256": { "$ref": "#/definitions/Sha256Hex" }
+            }
+          }
+        },
+        "appId": {
+          "type": "string",
+          "description": "mcp app identifier, e.g. docxmcp"
+        },
+        "sha256": { "$ref": "#/definitions/Sha256Hex" }
+      },
+      "additionalProperties": false
+    },
+    "DispatcherPublishResult": {
+      "type": "object",
+      "required": ["bundleRepoPath", "bundleStatePath", "fromCache"],
+      "properties": {
+        "bundleRepoPath": { "type": "string" },
+        "bundleStatePath": { "type": "string" },
+        "fromCache": { "type": "boolean", "description": "true when sha-keyed cache hit; false when computed via mcp" }
+      },
+      "additionalProperties": false
+    },
+    "BundleManifest": {
+      "type": "object",
+      "description": "manifest.json inside bundles/<sha>/. docxmcp produces this; opencode reads sha + originStem for traceability.",
+      "required": ["sha256", "appId", "appVersion", "createdAt"],
+      "properties": {
+        "sha256": { "$ref": "#/definitions/Sha256Hex" },
+        "appId": { "type": "string" },
+        "appVersion": { "type": "string" },
+        "createdAt": { "$ref": "#/definitions/IsoTimestamp" },
+        "originStem": {
+          "type": ["string", "null"],
+          "description": "Filename stem (without extension) that produced this bundle. Hint only; cache key is sha256."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,118 @@
+[
+  {
+    "id": "SEQ-UPLOAD-NEW",
+    "title": "Upload new file (no prior history)",
+    "trigger": "User uploads 合約.docx via TUI/web; session has resolved project path /home/pkcs12/projects/foo",
+    "actors": ["User", "CMP-UPLOAD-ROUTE", "CMP-INCOMING-PATHS", "CMP-INCOMING-HISTORY", "C-FS-REPO"],
+    "messages": [
+      { "id": "MSG-1", "from": "User", "to": "CMP-UPLOAD-ROUTE", "kind": "POST /api/v2/files/upload", "body": "{filename, content, sessionId}" },
+      { "id": "MSG-2", "from": "CMP-UPLOAD-ROUTE", "to": "CMP-INCOMING-PATHS", "kind": "resolveProjectPath(sessionId)" },
+      { "id": "MSG-3", "from": "CMP-INCOMING-PATHS", "to": "CMP-UPLOAD-ROUTE", "kind": "return /home/pkcs12/projects/foo/incoming/" },
+      { "id": "MSG-4", "from": "CMP-UPLOAD-ROUTE", "to": "C-FS-REPO", "kind": "ensure incoming/ + incoming/.history/ exist" },
+      { "id": "MSG-5", "from": "CMP-UPLOAD-ROUTE", "to": "C-FS-REPO", "kind": "atomic write incoming/合約.docx (streaming sha256 in parallel)" },
+      { "id": "MSG-6", "from": "CMP-UPLOAD-ROUTE", "to": "CMP-INCOMING-HISTORY", "kind": "appendUpload(filename, sha256, sessionId, sizeBytes, mime)" },
+      { "id": "MSG-7", "from": "CMP-INCOMING-HISTORY", "to": "C-FS-REPO", "kind": "append jsonl line to incoming/.history/合約.docx.jsonl" },
+      { "id": "MSG-8", "from": "CMP-UPLOAD-ROUTE", "to": "User", "kind": "200 {repoPath, sha256, historyVersion, status: \"uploaded\"}" }
+    ]
+  },
+  {
+    "id": "SEQ-UPLOAD-DEDUPE",
+    "title": "Re-upload identical content (dedupe path)",
+    "trigger": "User uploads 合約.docx; current incoming/合約.docx already has identical sha",
+    "actors": ["User", "CMP-UPLOAD-ROUTE", "CMP-INCOMING-HISTORY"],
+    "messages": [
+      { "id": "MSG-1", "from": "User", "to": "CMP-UPLOAD-ROUTE", "kind": "POST upload", "body": "filename=合約.docx, content=A" },
+      { "id": "MSG-2", "from": "CMP-UPLOAD-ROUTE", "to": "CMP-INCOMING-HISTORY", "kind": "lookupCurrentSha(合約.docx)" },
+      { "id": "MSG-3", "from": "CMP-INCOMING-HISTORY", "to": "CMP-UPLOAD-ROUTE", "kind": "return sha256=A (matches uploaded body)" },
+      { "id": "MSG-4", "from": "CMP-UPLOAD-ROUTE", "to": "CMP-INCOMING-HISTORY", "kind": "appendDedupe(filename, sha256=A) — no fs write" },
+      { "id": "MSG-5", "from": "CMP-UPLOAD-ROUTE", "to": "User", "kind": "200 {repoPath, sha256, status: \"deduped\"}" }
+    ]
+  },
+  {
+    "id": "SEQ-UPLOAD-CONFLICT",
+    "title": "Re-upload original after tool-write modification (conflict-rename)",
+    "trigger": "incoming/合約.docx history is [A(upload), B(tool:docx_recompose)]; current sha = B; user uploads original (sha=A)",
+    "actors": ["User", "CMP-UPLOAD-ROUTE", "CMP-INCOMING-HISTORY", "CMP-INCOMING-PATHS", "C-FS-REPO"],
+    "messages": [
+      { "id": "MSG-1", "from": "User", "to": "CMP-UPLOAD-ROUTE", "kind": "POST upload", "body": "filename=合約.docx, content=A" },
+      { "id": "MSG-2", "from": "CMP-UPLOAD-ROUTE", "to": "CMP-INCOMING-HISTORY", "kind": "lookupCurrentSha(合約.docx)" },
+      { "id": "MSG-3", "from": "CMP-INCOMING-HISTORY", "to": "CMP-UPLOAD-ROUTE", "kind": "return sha256=B (≠ uploaded A)" },
+      { "id": "MSG-4", "from": "CMP-UPLOAD-ROUTE", "to": "CMP-INCOMING-PATHS", "kind": "nextConflictName(合約.docx) — checks (2),(3)... existence" },
+      { "id": "MSG-5", "from": "CMP-INCOMING-PATHS", "to": "CMP-UPLOAD-ROUTE", "kind": "return 合約 (2).docx" },
+      { "id": "MSG-6", "from": "CMP-UPLOAD-ROUTE", "to": "C-FS-REPO", "kind": "atomic write incoming/合約 (2).docx" },
+      { "id": "MSG-7", "from": "CMP-UPLOAD-ROUTE", "to": "CMP-INCOMING-HISTORY", "kind": "appendUpload(合約 (2).docx, sha256=A, ...) — new history file 合約 (2).docx.jsonl" },
+      { "id": "MSG-8", "from": "CMP-UPLOAD-ROUTE", "to": "CMP-INCOMING-HISTORY", "kind": "appendConflictRedirect(合約.docx, sha256=A, redirectedTo=合約 (2).docx)" },
+      { "id": "MSG-9", "from": "CMP-UPLOAD-ROUTE", "to": "User", "kind": "200 {repoPath: incoming/合約 (2).docx, sha256: A, status: \"conflict-renamed\"}" }
+    ]
+  },
+  {
+    "id": "SEQ-MCP-DISPATCH-CACHE-MISS",
+    "title": "AI invokes docx_decompose (no prior bundle)",
+    "trigger": "AI tool call docx_decompose(incoming/合約.docx); bundles/<sha>/ does not exist",
+    "actors": ["AI", "CMP-MCP-CLIENT-WRAPPER", "CMP-INCOMING-DISPATCHER", "CMP-INCOMING-HISTORY", "C-FS-STATE", "C-MCP-DOCXMCP", "C-FS-REPO"],
+    "messages": [
+      { "id": "MSG-1", "from": "AI", "to": "CMP-MCP-CLIENT-WRAPPER", "kind": "execute docx_decompose, args={input: incoming/合約.docx}" },
+      { "id": "MSG-2", "from": "CMP-MCP-CLIENT-WRAPPER", "to": "CMP-INCOMING-DISPATCHER", "kind": "before(toolName, args)" },
+      { "id": "MSG-3", "from": "CMP-INCOMING-DISPATCHER", "to": "CMP-INCOMING-HISTORY", "kind": "lookupCurrentSha(合約.docx)" },
+      { "id": "MSG-4", "from": "CMP-INCOMING-HISTORY", "to": "CMP-INCOMING-DISPATCHER", "kind": "return sha256=A" },
+      { "id": "MSG-5", "from": "CMP-INCOMING-DISPATCHER", "to": "C-FS-STATE", "kind": "stat ~/.local/state/.../bundles/A/" },
+      { "id": "MSG-6", "from": "C-FS-STATE", "to": "CMP-INCOMING-DISPATCHER", "kind": "ENOENT (cache miss)" },
+      { "id": "MSG-7", "from": "CMP-INCOMING-DISPATCHER", "to": "C-FS-STATE", "kind": "cp incoming/合約.docx → mcp-staging/docxmcp/staging/A.docx" },
+      { "id": "MSG-8", "from": "CMP-INCOMING-DISPATCHER", "to": "CMP-MCP-CLIENT-WRAPPER", "kind": "rewritten args={input: /state/staging/A.docx, out: /state/bundles/A/}" },
+      { "id": "MSG-9", "from": "CMP-MCP-CLIENT-WRAPPER", "to": "C-MCP-DOCXMCP", "kind": "JSON-RPC tools/call docx_decompose with rewritten args" },
+      { "id": "MSG-10", "from": "C-MCP-DOCXMCP", "to": "C-FS-STATE", "kind": "write description.md, outline.md, manifest.json, media/ to /state/bundles/A/" },
+      { "id": "MSG-11", "from": "C-MCP-DOCXMCP", "to": "CMP-MCP-CLIENT-WRAPPER", "kind": "JSON-RPC result {bundlePath: /state/bundles/A/}" },
+      { "id": "MSG-12", "from": "CMP-MCP-CLIENT-WRAPPER", "to": "CMP-INCOMING-DISPATCHER", "kind": "after(toolName, result)" },
+      { "id": "MSG-13", "from": "CMP-INCOMING-DISPATCHER", "to": "C-FS-REPO", "kind": "cp -r mcp-staging/.../bundles/A/ → incoming/合約/" },
+      { "id": "MSG-14", "from": "CMP-INCOMING-DISPATCHER", "to": "CMP-INCOMING-HISTORY", "kind": "appendBundlePublished(合約.docx, sha256=A)" },
+      { "id": "MSG-15", "from": "CMP-INCOMING-DISPATCHER", "to": "CMP-MCP-CLIENT-WRAPPER", "kind": "rewritten result {bundlePath: incoming/合約/}" },
+      { "id": "MSG-16", "from": "CMP-MCP-CLIENT-WRAPPER", "to": "AI", "kind": "tool result with repo-relative paths" }
+    ]
+  },
+  {
+    "id": "SEQ-MCP-DISPATCH-CACHE-HIT",
+    "title": "AI invokes docx_decompose (bundle already cached cross-session)",
+    "trigger": "AI tool call docx_decompose(incoming/重要文件.docx) in project B; bundles/<sha>/ exists from project A",
+    "actors": ["AI", "CMP-MCP-CLIENT-WRAPPER", "CMP-INCOMING-DISPATCHER", "CMP-INCOMING-HISTORY", "C-FS-STATE", "C-FS-REPO"],
+    "messages": [
+      { "id": "MSG-1", "from": "AI", "to": "CMP-MCP-CLIENT-WRAPPER", "kind": "execute docx_decompose, args={input: incoming/重要文件.docx}" },
+      { "id": "MSG-2", "from": "CMP-MCP-CLIENT-WRAPPER", "to": "CMP-INCOMING-DISPATCHER", "kind": "before(toolName, args)" },
+      { "id": "MSG-3", "from": "CMP-INCOMING-DISPATCHER", "to": "CMP-INCOMING-HISTORY", "kind": "lookupCurrentSha(重要文件.docx)" },
+      { "id": "MSG-4", "from": "CMP-INCOMING-HISTORY", "to": "CMP-INCOMING-DISPATCHER", "kind": "return sha256=A (matches project A's earlier upload)" },
+      { "id": "MSG-5", "from": "CMP-INCOMING-DISPATCHER", "to": "C-FS-STATE", "kind": "stat bundles/A/" },
+      { "id": "MSG-6", "from": "C-FS-STATE", "to": "CMP-INCOMING-DISPATCHER", "kind": "exists (cache hit)" },
+      { "id": "MSG-7", "from": "CMP-INCOMING-DISPATCHER", "to": "C-FS-REPO", "kind": "cp -r bundles/A/ → incoming/重要文件/ — skips mcp tool entirely" },
+      { "id": "MSG-8", "from": "CMP-INCOMING-DISPATCHER", "to": "CMP-INCOMING-HISTORY", "kind": "appendBundlePublished(重要文件.docx, sha256=A, source: cache-hit)" },
+      { "id": "MSG-9", "from": "CMP-INCOMING-DISPATCHER", "to": "CMP-MCP-CLIENT-WRAPPER", "kind": "synthesized result {bundlePath: incoming/重要文件/, fromCache: true}" },
+      { "id": "MSG-10", "from": "CMP-MCP-CLIENT-WRAPPER", "to": "AI", "kind": "tool result (no docxmcp call made)" }
+    ]
+  },
+  {
+    "id": "SEQ-TOOL-WRITE-HOOK",
+    "title": "AI Edit / Write / Bash tool modifies incoming/ file",
+    "trigger": "AI invokes Write tool to overwrite incoming/紀錄.md",
+    "actors": ["AI", "CMP-TOOL-WRITE-HOOK", "C-FS-REPO", "CMP-INCOMING-HISTORY"],
+    "messages": [
+      { "id": "MSG-1", "from": "AI", "to": "CMP-TOOL-WRITE-HOOK", "kind": "Write(incoming/紀錄.md, newContent)" },
+      { "id": "MSG-2", "from": "CMP-TOOL-WRITE-HOOK", "to": "C-FS-REPO", "kind": "atomic write" },
+      { "id": "MSG-3", "from": "CMP-TOOL-WRITE-HOOK", "to": "C-FS-REPO", "kind": "compute sha256" },
+      { "id": "MSG-4", "from": "CMP-TOOL-WRITE-HOOK", "to": "CMP-INCOMING-HISTORY", "kind": "appendToolWrite(紀錄.md, sha256, source: \"tool:Write\", sessionId)" },
+      { "id": "MSG-5", "from": "CMP-TOOL-WRITE-HOOK", "to": "AI", "kind": "tool result OK" }
+    ]
+  },
+  {
+    "id": "SEQ-DRIFT-DETECT",
+    "title": "Drift detection on lookup after external edit",
+    "trigger": "Caller invokes lookupCurrentSha(合約.docx); last history entry has mtime T1, sizeBytes S1; file was externally edited",
+    "actors": ["Caller", "CMP-INCOMING-HISTORY", "C-FS-REPO"],
+    "messages": [
+      { "id": "MSG-1", "from": "Caller", "to": "CMP-INCOMING-HISTORY", "kind": "lookupCurrentSha(合約.docx)" },
+      { "id": "MSG-2", "from": "CMP-INCOMING-HISTORY", "to": "C-FS-REPO", "kind": "stat incoming/合約.docx" },
+      { "id": "MSG-3", "from": "C-FS-REPO", "to": "CMP-INCOMING-HISTORY", "kind": "{mtime: T2, sizeBytes: S2}" },
+      { "id": "MSG-4", "from": "CMP-INCOMING-HISTORY", "to": "CMP-INCOMING-HISTORY", "kind": "compare with tail jsonl: T2 ≠ T1 || S2 ≠ S1 → drift detected" },
+      { "id": "MSG-5", "from": "CMP-INCOMING-HISTORY", "to": "C-FS-REPO", "kind": "read full file → recompute sha256" },
+      { "id": "MSG-6", "from": "CMP-INCOMING-HISTORY", "to": "C-FS-REPO", "kind": "append {source: drift-detected, sha256: C, mtime: T2, sizeBytes: S2} to jsonl" },
+      { "id": "MSG-7", "from": "CMP-INCOMING-HISTORY", "to": "Caller", "kind": "return sha256=C" }
+    ]
+  }
+]

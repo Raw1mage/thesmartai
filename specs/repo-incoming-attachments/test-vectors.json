@@ -1,0 +1,462 @@
+[
+  {
+    "id": "TV-01-FRESH-UPLOAD",
+    "trace": ["R1-S1", "AC-01", "SEQ-UPLOAD-NEW"],
+    "given": {
+      "sessionProjectPath": "/tmp/opencode-test/proj-a",
+      "uploadFilename": "合約.docx",
+      "uploadContentBytes": "<bytes for sha256=abc123...>",
+      "preExistingFiles": []
+    },
+    "when": "POST /api/v2/files/upload with multipart",
+    "then": {
+      "fsExpectations": [
+        "/tmp/opencode-test/proj-a/incoming/合約.docx exists",
+        "/tmp/opencode-test/proj-a/incoming/.history/合約.docx.jsonl has 1 line",
+        "history line 1 has source=upload, sha256=abc123..., version=1"
+      ],
+      "responseExpectations": {
+        "status": 200,
+        "body.status": "uploaded",
+        "body.repoPath": "incoming/合約.docx",
+        "body.sha256": "abc123...",
+        "body.historyVersion": 1
+      }
+    }
+  },
+  {
+    "id": "TV-02-DEDUPE-IDENTICAL",
+    "trace": ["R5-S2", "AC-09", "SEQ-UPLOAD-DEDUPE"],
+    "given": {
+      "sessionProjectPath": "/tmp/opencode-test/proj-a",
+      "uploadFilename": "合約.docx",
+      "uploadContentBytes": "<bytes for sha256=A>",
+      "preExistingFiles": [
+        { "path": "incoming/合約.docx", "sha256": "A" },
+        { "path": "incoming/.history/合約.docx.jsonl", "lines": [{ "source": "upload", "sha256": "A" }] }
+      ]
+    },
+    "when": "POST /api/v2/files/upload with identical content",
+    "then": {
+      "fsExpectations": [
+        "incoming/合約.docx mtime UNCHANGED (no rewrite)",
+        "history jsonl now has 2 lines",
+        "history line 2 has source=upload-dedupe, sha256=A"
+      ],
+      "responseExpectations": {
+        "body.status": "deduped",
+        "body.repoPath": "incoming/合約.docx",
+        "body.sha256": "A"
+      }
+    }
+  },
+  {
+    "id": "TV-03-CONFLICT-AFTER-TOOL-WRITE",
+    "trace": ["R5-S1", "AC-08", "SEQ-UPLOAD-CONFLICT"],
+    "given": {
+      "sessionProjectPath": "/tmp/opencode-test/proj-a",
+      "uploadFilename": "合約.docx",
+      "uploadContentBytes": "<bytes for sha256=A>",
+      "preExistingFiles": [
+        { "path": "incoming/合約.docx", "sha256": "B" },
+        { "path": "incoming/.history/合約.docx.jsonl", "lines": [
+          { "source": "upload", "sha256": "A" },
+          { "source": "tool:docx_recompose", "sha256": "B" }
+        ]}
+      ]
+    },
+    "when": "POST upload with original content (sha=A) — currentSha is B",
+    "then": {
+      "fsExpectations": [
+        "incoming/合約.docx still has sha=B (untouched)",
+        "incoming/合約 (2).docx exists with sha=A",
+        "incoming/.history/合約 (2).docx.jsonl has 1 line, source=upload, sha256=A",
+        "incoming/.history/合約.docx.jsonl now has 3 lines, last with source=upload-conflict-rename, sha256=A, redirectedTo='合約 (2).docx'"
+      ],
+      "responseExpectations": {
+        "body.status": "conflict-renamed",
+        "body.repoPath": "incoming/合約 (2).docx",
+        "body.sha256": "A"
+      }
+    }
+  },
+  {
+    "id": "TV-04-NO-PROJECT-PATH-REJECTED",
+    "trace": ["R1-S2", "AC-02"],
+    "given": {
+      "sessionProjectPath": null,
+      "uploadFilename": "x.docx"
+    },
+    "when": "POST upload",
+    "then": {
+      "responseExpectations": {
+        "status": 400,
+        "body.error": "no session project path; refusing to fall back to legacy attachment cache"
+      },
+      "fsExpectations": [
+        "no file written under any incoming/",
+        "no AttachmentBlob row written to session storage"
+      ]
+    }
+  },
+  {
+    "id": "TV-05-DISPATCHER-CACHE-MISS-DOCXMCP",
+    "trace": ["R3-S1", "R4-S2", "AC-05", "AC-07", "SEQ-MCP-DISPATCH-CACHE-MISS"],
+    "given": {
+      "sessionProjectPath": "/tmp/opencode-test/proj-a",
+      "preExistingFiles": [
+        { "path": "incoming/合約.docx", "sha256": "A" },
+        { "path": "incoming/.history/合約.docx.jsonl", "lines": [{ "source": "upload", "sha256": "A" }] }
+      ],
+      "preExistingState": {
+        "noBundlesAt": "~/.local/state/opencode/mcp-staging/docxmcp/bundles/A/"
+      }
+    },
+    "when": "AI tool call docx_decompose(input='incoming/合約.docx')",
+    "then": {
+      "fsExpectations": [
+        "~/.local/state/opencode/mcp-staging/docxmcp/staging/A.docx exists (staged copy)",
+        "~/.local/state/opencode/mcp-staging/docxmcp/bundles/A/description.md exists",
+        "~/.local/state/opencode/mcp-staging/docxmcp/bundles/A/manifest.json exists",
+        "incoming/合約/description.md exists (hard-linked from bundle)",
+        "stat(incoming/合約/description.md).st_nlink == 2",
+        "incoming/.history/合約.docx.jsonl last line has source=bundle-published"
+      ],
+      "behaviorExpectations": [
+        "docxmcp container received tools/call docx_decompose with input=/state/staging/A.docx",
+        "Bus event mcp.dispatcher.cache-miss emitted with {appId: docxmcp, sha256: A}"
+      ]
+    }
+  },
+  {
+    "id": "TV-06-DISPATCHER-CACHE-HIT-CROSS-PROJECT",
+    "trace": ["R4-S1", "AC-06", "SEQ-MCP-DISPATCH-CACHE-HIT"],
+    "given": {
+      "sessionProjectPath": "/tmp/opencode-test/proj-b",
+      "preExistingFiles": [
+        { "path": "incoming/重要文件.docx", "sha256": "A" },
+        { "path": "incoming/.history/重要文件.docx.jsonl", "lines": [{ "source": "upload", "sha256": "A" }] }
+      ],
+      "preExistingState": {
+        "bundlesAt": "~/.local/state/opencode/mcp-staging/docxmcp/bundles/A/ (populated by an earlier session in proj-a)"
+      }
+    },
+    "when": "AI tool call docx_decompose(input='incoming/重要文件.docx') in proj-b",
+    "then": {
+      "behaviorExpectations": [
+        "docxmcp container received NO tools/call (verified via mock or container log absence)",
+        "Bus event mcp.dispatcher.cache-hit emitted with {appId: docxmcp, sha256: A}"
+      ],
+      "fsExpectations": [
+        "/tmp/opencode-test/proj-b/incoming/重要文件/description.md exists (hard-linked from cache)",
+        "stat(/tmp/opencode-test/proj-b/incoming/重要文件/description.md).st_nlink == 3 (cache + proj-a publish + proj-b publish)"
+      ]
+    }
+  },
+  {
+    "id": "TV-07-TOOL-WRITE-HOOK-WRITE",
+    "trace": ["R6-S2", "AC-11", "SEQ-TOOL-WRITE-HOOK"],
+    "given": {
+      "sessionProjectPath": "/tmp/opencode-test/proj-a",
+      "preExistingFiles": [
+        { "path": "incoming/紀錄.md", "sha256": "X" },
+        { "path": "incoming/.history/紀錄.md.jsonl", "lines": [{ "source": "upload", "sha256": "X" }] }
+      ]
+    },
+    "when": "AI tool call Write(path='incoming/紀錄.md', content='new...')",
+    "then": {
+      "fsExpectations": [
+        "incoming/紀錄.md sha256 == new sha (Y)",
+        "incoming/.history/紀錄.md.jsonl now has 2 lines",
+        "history line 2 has source=tool:Write, sha256=Y, sessionId=<test-session>"
+      ]
+    }
+  },
+  {
+    "id": "TV-08-DRIFT-DETECTION-EXTERNAL-EDIT",
+    "trace": ["R7-S1", "AC-12", "SEQ-DRIFT-DETECT"],
+    "given": {
+      "preExistingFiles": [
+        { "path": "incoming/合約.docx", "sha256": "B" },
+        { "path": "incoming/.history/合約.docx.jsonl", "lines": [{ "source": "upload", "sha256": "B", "mtime": 1000, "sizeBytes": 500 }] }
+      ],
+      "externalActionBeforeLookup": "shell `echo new > incoming/合約.docx` — mtime now 2000, size 4, sha=C"
+    },
+    "when": "incoming.history.lookupCurrentSha('合約.docx')",
+    "then": {
+      "returns": "C",
+      "fsExpectations": [
+        "history jsonl now has 2 lines",
+        "history line 2 has source=drift-detected, sha256=C, mtime=2000, sizeBytes=4, sessionId=null"
+      ]
+    }
+  },
+  {
+    "id": "TV-09-NO-MCP-MOUNT-LEAK",
+    "trace": ["R8-S1", "AC-13"],
+    "given": {
+      "dispatcherInvokesDocxmcpFor": "incoming/合約.docx in /tmp/opencode-test/proj-a"
+    },
+    "when": "Inspect docker run command actually used",
+    "then": {
+      "behaviorExpectations": [
+        "command contains '-v ~/.local/state/opencode/mcp-staging/docxmcp/:/state' (or equivalent)",
+        "command does NOT contain '-v /tmp/opencode-test/proj-a' or any prefix of $HOME outside the staging area"
+      ]
+    }
+  },
+  {
+    "id": "TV-10-NO-AUTO-GIT-ADD",
+    "trace": ["R9-S1", "AC-14"],
+    "given": {
+      "sessionProjectPath": "/tmp/opencode-test/proj-a-git (initialized git repo)",
+      "uploadFilename": "合約.docx"
+    },
+    "when": "POST upload, then `git status --porcelain` in proj-a-git",
+    "then": {
+      "shellExpectations": [
+        "git status output contains '?? incoming/合約.docx' (untracked)",
+        "git diff --cached is empty",
+        "no `git add` command was executed by daemon (verified via shell command audit log)"
+      ]
+    }
+  },
+  {
+    "id": "TV-11-LEGACY-ATTACHMENTBLOB-STILL-READABLE",
+    "trace": ["R10'-S2", "AC-15b", "DD-17"],
+    "given": {
+      "sessionStorageRow": {
+        "kind": "AttachmentBlob",
+        "refID": "refID-XYZ",
+        "sessionID": "s-old",
+        "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "filename": "old.docx",
+        "byteSize": 12345,
+        "content": "<Uint8Array of 12345 bytes — base64 envelope in LegacyStore>",
+        "repoPath": null,
+        "sha256": null
+      }
+    },
+    "when": "getAttachmentBlob({ sessionID: 's-old', refID: 'refID-XYZ' })",
+    "then": {
+      "behaviorExpectations": [
+        "row has no repoPath; backend takes legacy path",
+        "returned AttachmentBlob.content is the original Uint8Array of 12345 bytes",
+        "no fs read attempted"
+      ]
+    }
+  },
+  {
+    "id": "TV-11B-NEW-ATTACHMENTBLOB-READS-FROM-REPO",
+    "trace": ["R10'-S3", "AC-15c", "DD-17"],
+    "given": {
+      "sessionProjectPath": "/tmp/opencode-test/proj-a",
+      "preExistingFiles": [
+        { "path": "incoming/合約.docx", "sha256": "abc...", "byteSize": 9000 }
+      ],
+      "sessionStorageRow": {
+        "kind": "AttachmentBlob",
+        "refID": "refID-NEW",
+        "sessionID": "s-new",
+        "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "filename": "合約.docx",
+        "byteSize": 9000,
+        "content": null,
+        "repoPath": "incoming/合約.docx",
+        "sha256": "abc..."
+      }
+    },
+    "when": "getAttachmentBlob({ sessionID: 's-new', refID: 'refID-NEW' })",
+    "then": {
+      "behaviorExpectations": [
+        "row has repoPath; backend reads bytes from <projectRoot>/incoming/合約.docx",
+        "returned AttachmentBlob.content matches file bytes (sha256 matches stored sha256)",
+        "no legacy base64 decode attempted"
+      ]
+    }
+  },
+  {
+    "id": "TV-11C-NEW-ROW-MISSING-REPO-FILE-ERRORS",
+    "trace": ["R10'-S3", "INC-3001'"],
+    "given": {
+      "sessionProjectPath": "/tmp/opencode-test/proj-a",
+      "preExistingFiles": [],
+      "sessionStorageRow": {
+        "kind": "AttachmentBlob",
+        "refID": "refID-DANGLING",
+        "sessionID": "s-new",
+        "byteSize": 9000,
+        "content": null,
+        "repoPath": "incoming/missing.docx",
+        "sha256": "abc..."
+      }
+    },
+    "when": "getAttachmentBlob — incoming/missing.docx does not exist on disk",
+    "then": {
+      "behaviorExpectations": [
+        "throws attachment_repo_file_missing (INC-3001')",
+        "does NOT fall back to checking content field (no-silent-fallback rule)"
+      ]
+    }
+  },
+  {
+    "id": "TV-12-HISTORY-FORWARD-COMPAT",
+    "trace": ["R2-S2", "AC-04"],
+    "given": {
+      "preExistingFiles": [
+        { "path": "incoming/.history/old.docx.jsonl", "rawLines": [
+          "{\"version\":1,\"ts\":\"2026-04-01T00:00:00Z\",\"source\":\"upload\",\"sha256\":\"A\",\"sizeBytes\":100}"
+        ]}
+      ]
+    },
+    "when": "incoming.history.readTail('old.docx')",
+    "then": {
+      "returns": {
+        "version": 1,
+        "source": "upload",
+        "sha256": "A",
+        "sizeBytes": 100,
+        "mime": null,
+        "annotation": null,
+        "redirectedTo": null
+      }
+    }
+  },
+  {
+    "id": "TV-13-BREAK-ON-WRITE",
+    "trace": ["DD-11", "RK-1", "Phase 5.6"],
+    "given": {
+      "preExistingFiles": [
+        { "path": "incoming/合約/description.md", "fromHardLink": "~/.local/state/opencode/mcp-staging/docxmcp/bundles/A/description.md" }
+      ],
+      "preCheck": "stat(both paths).st_ino must be equal (verifying hard-link)"
+    },
+    "when": "AI tool call Edit(path='incoming/合約/description.md', oldContent=..., newContent=...)",
+    "then": {
+      "fsExpectations": [
+        "stat(incoming/合約/description.md).st_ino HAS CHANGED (link broken)",
+        "stat(~/.local/state/opencode/mcp-staging/docxmcp/bundles/A/description.md).st_ino UNCHANGED",
+        "cache content unchanged (sha256 of cache file == sha256 from manifest.json)"
+      ]
+    }
+  },
+  {
+    "id": "TV-14-HISTORY-ROTATION",
+    "trace": ["DD-13", "OQ-6"],
+    "given": {
+      "preExistingFiles": [
+        { "path": "incoming/.history/heavy.txt.jsonl", "lineCount": 1000 }
+      ]
+    },
+    "when": "incoming.history.appendEntry('heavy.txt', <new entry>) — would push to 1001",
+    "then": {
+      "fsExpectations": [
+        "incoming/.history/heavy.txt.<unix-ts>.jsonl exists (rotated old) with exactly 1000 lines",
+        "incoming/.history/heavy.txt.jsonl exists with exactly 1 line (the new entry)"
+      ]
+    }
+  },
+  {
+    "id": "TV-15-FILENAME-SANITIZE",
+    "trace": ["DD-12", "OQ-5"],
+    "given": {
+      "uploadFilename": "重要報告\u0001\u0007.docx",
+      "sessionProjectPath": "/tmp/opencode-test/proj-a"
+    },
+    "when": "POST upload",
+    "then": {
+      "fsExpectations": [
+        "incoming/重要報告.docx exists (control chars stripped)",
+        "history line 1 annotation contains the original raw filename for audit"
+      ]
+    }
+  },
+  {
+    "id": "TV-17-CROSS-FS-FALLBACK",
+    "trace": ["DD-15", "RK-EXDEV", "Phase 5.8"],
+    "given": {
+      "sessionProjectPath": "/mnt/external/proj-x (different fs from $HOME)",
+      "preExistingState": {
+        "bundlesAt": "~/.local/state/opencode/mcp-staging/docxmcp/bundles/A/ (on home fs, populated by earlier session)"
+      }
+    },
+    "when": "AI tool call docx_decompose(input='incoming/合約.docx') in proj-x — cache-hit path",
+    "then": {
+      "behaviorExpectations": [
+        "dispatcher detects stat(<repo>).st_dev != stat(<staging>).st_dev",
+        "dispatcher uses cp -r instead of link()",
+        "Bus event mcp.dispatcher.cross-fs-fallback emitted with {appId: docxmcp, sha256: A, reason: 'diff-st_dev'}"
+      ],
+      "fsExpectations": [
+        "/mnt/external/proj-x/incoming/合約/description.md exists with full content (cp success)",
+        "stat(/mnt/external/proj-x/incoming/合約/description.md).st_nlink == 1 (independent inode, NOT hard-linked)",
+        "stat(~/.local/state/opencode/mcp-staging/docxmcp/bundles/A/description.md).st_nlink unchanged"
+      ]
+    }
+  },
+  {
+    "id": "TV-18-CACHE-CORRUPTION-FALL-THROUGH",
+    "trace": ["DD-16", "INC-2003", "Phase 5.9"],
+    "given": {
+      "sessionProjectPath": "/tmp/opencode-test/proj-a",
+      "preExistingFiles": [
+        { "path": "incoming/合約.docx", "sha256": "A" },
+        { "path": "incoming/.history/合約.docx.jsonl", "lines": [{ "source": "upload", "sha256": "A" }] }
+      ],
+      "preExistingState": {
+        "bundleDir": "~/.local/state/opencode/mcp-staging/docxmcp/bundles/A/",
+        "manifestJson": "{\"sha256\":\"DIFFERENT_SHA_BBBBB\", \"appId\":\"docxmcp\", \"appVersion\":\"0.3.0\", \"createdAt\":\"2026-04-01T00:00:00Z\"}",
+        "comment": "manifest sha intentionally != directory sha (corrupted state)"
+      }
+    },
+    "when": "AI tool call docx_decompose(input='incoming/合約.docx')",
+    "then": {
+      "behaviorExpectations": [
+        "dispatcher reads bundles/A/manifest.json, detects sha mismatch (A != BBBBB)",
+        "Bus event mcp.dispatcher.cache-corrupted emitted with {appId: docxmcp, sha256: A, expectedSha: A, actualSha: BBBBB}",
+        "dispatcher falls through to cache-miss path: stage + invoke mcp tool + publish",
+        "docxmcp container DID receive tools/call (verified via mock or container log)"
+      ],
+      "fsExpectations": [
+        "incoming/合約/description.md eventually exists (recomputed)",
+        "bundles/A/manifest.json now has sha256=A (overwritten by recompute)"
+      ]
+    }
+  },
+  {
+    "id": "TV-19-RESULT-PATH-REWRITING",
+    "trace": ["DD-14", "Phase 5.10"],
+    "given": {
+      "sessionProjectPath": "/tmp/opencode-test/proj-a",
+      "stagingHostPath": "/home/pkcs12/.local/state/opencode/mcp-staging/docxmcp",
+      "mcpToolReturnsRaw": "{\"bundlePath\": \"/state/bundles/A\", \"description\": \"see /state/bundles/A/description.md\", \"images\": [\"/state/bundles/A/media/img_001.png\"]}"
+    },
+    "when": "dispatcher.after rewrites the result before passing to LLM",
+    "then": {
+      "rewrittenResult": "{\"bundlePath\": \"incoming/合約\", \"description\": \"see incoming/合約/description.md\", \"images\": [\"incoming/合約/media/img_001.png\"]}",
+      "behaviorExpectations": [
+        "all occurrences of '/state/bundles/A/' replaced with 'incoming/合約/'",
+        "no occurrences of staging host absolute path leaked in result string",
+        "non-path strings inside the result body are untouched (audit a control string with '/state/foo' that isn't a real path — it should remain because it doesn't match the registered prefix exactly)"
+      ]
+    }
+  },
+  {
+    "id": "TV-16-NEGATIVE-DIRECT-FS-WRITE-CONFIRMS-COVERAGE-GAP",
+    "trace": ["Phase 4.5", "RK-1"],
+    "given": {
+      "preExistingFiles": [
+        { "path": "incoming/合約/description.md", "fromHardLink": "~/.local/state/opencode/mcp-staging/docxmcp/bundles/A/description.md" }
+      ]
+    },
+    "when": "Test code uses direct `fs.writeFile('incoming/合約/description.md', 'tampered')` bypassing all hooks",
+    "then": {
+      "fsExpectations": [
+        "stat(both paths).st_ino still equal (hard-link not broken)",
+        "cache file content is now 'tampered' — confirming a tool that bypasses break-on-write WILL pollute cache",
+        "this test is intentionally a witness: any future tool that touches incoming must go through dispatcher.breakHardLinkBeforeWrite"
+      ],
+      "interpretation": "PASS = the negative test correctly demonstrates the rule's necessity. FAIL would mean break-on-write somehow worked through fs syscalls (impossible) — would indicate test setup bug."
+    }
+  }
+]

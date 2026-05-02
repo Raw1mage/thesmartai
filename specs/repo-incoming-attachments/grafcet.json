@@ -1,0 +1,74 @@
+[
+  {
+    "id": "S0_NONE",
+    "name": "Slot does not exist",
+    "actions": [],
+    "transitions": [
+      { "to": "S1_FRESH", "guard": "upload event && no existing slot" }
+    ],
+    "trace": []
+  },
+  {
+    "id": "S1_FRESH",
+    "name": "Just uploaded",
+    "actions": ["history += upload entry", "currentSha = sha_uploaded"],
+    "transitions": [
+      { "to": "S2_TOOL_MODIFIED", "guard": "tool write to slot path detected (Edit/Write/Bash/mcp)" },
+      { "to": "S3_BUNDLE_PUBLISHED", "guard": "dispatcher publishes <stem>/ for this slot" },
+      { "to": "S4_DRIFTED", "guard": "lookup-time stat mismatch" },
+      { "to": "S5_DEDUPED", "guard": "upload event && uploaded sha == currentSha" },
+      { "to": "S6_REDIRECTED", "guard": "upload event && uploaded sha != currentSha (D=a path)" }
+    ],
+    "trace": ["R1"]
+  },
+  {
+    "id": "S2_TOOL_MODIFIED",
+    "name": "Tool-modified content",
+    "actions": ["history += tool:<name> entry", "currentSha = sha_after_tool"],
+    "transitions": [
+      { "to": "S2_TOOL_MODIFIED", "guard": "another tool write" },
+      { "to": "S3_BUNDLE_PUBLISHED", "guard": "dispatcher publish event" },
+      { "to": "S4_DRIFTED", "guard": "lookup-time stat mismatch" },
+      { "to": "S5_DEDUPED", "guard": "upload event && uploaded sha == currentSha" },
+      { "to": "S6_REDIRECTED", "guard": "upload event && uploaded sha != currentSha — canonical 'I want my original back' path" }
+    ],
+    "trace": ["R6"]
+  },
+  {
+    "id": "S3_BUNDLE_PUBLISHED",
+    "name": "Bundle published into <stem>/",
+    "actions": ["history += bundle-published entry", "incoming/<stem>/ populated"],
+    "transitions": [
+      { "to": "S2_TOOL_MODIFIED", "guard": "tool write to slot path" },
+      { "to": "S5_DEDUPED", "guard": "identical re-upload" },
+      { "to": "S6_REDIRECTED", "guard": "different-content re-upload" }
+    ],
+    "trace": ["R3", "R4"]
+  },
+  {
+    "id": "S4_DRIFTED",
+    "name": "External drift detected",
+    "actions": ["history += drift-detected entry", "currentSha = sha_observed"],
+    "transitions": [
+      { "to": "S2_TOOL_MODIFIED", "guard": "subsequent tool write supersedes drift baseline" },
+      { "to": "S3_BUNDLE_PUBLISHED", "guard": "dispatcher publish event" },
+      { "to": "S5_DEDUPED", "guard": "identical re-upload of drifted content" },
+      { "to": "S6_REDIRECTED", "guard": "different-content re-upload" }
+    ],
+    "trace": ["R7"]
+  },
+  {
+    "id": "S5_DEDUPED",
+    "name": "Identical re-upload deduped",
+    "actions": ["history += upload-dedupe entry", "no fs write"],
+    "transitions": [],
+    "trace": ["R5-S2"]
+  },
+  {
+    "id": "S6_REDIRECTED",
+    "name": "Conflict-renamed re-upload",
+    "actions": ["history += upload-conflict-rename entry on original slot", "<filename> (N).<ext> slot enters S1_FRESH"],
+    "transitions": [],
+    "trace": ["R5-S1"]
+  }
+]
