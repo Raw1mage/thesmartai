@@ -1,0 +1,76 @@
+[
+  {
+    "id": "S0_IDLE",
+    "name": "No active token; container running",
+    "actions": [],
+    "transitions": [
+      { "to": "S1_UPLOADED", "guard": "POST /files completes successfully" }
+    ],
+    "trace": []
+  },
+  {
+    "id": "S1_UPLOADED",
+    "name": "Token issued; bytes in /tmp/docxmcp-sessions/<token>/",
+    "actions": ["token store += {token, path, sha, mtime}"],
+    "transitions": [
+      { "to": "S2_TOOL_RUNNING", "guard": "tools/call resolves token successfully" },
+      { "to": "S0_IDLE", "guard": "DELETE /files/{token} OR TTL expired OR LRU evicted" }
+    ],
+    "trace": ["R2"]
+  },
+  {
+    "id": "S2_TOOL_RUNNING",
+    "name": "CLI executing inside container",
+    "actions": ["python /app/bin/<tool>.py <path> running"],
+    "transitions": [
+      { "to": "S3_BUNDLE_READY", "guard": "CLI exited 0 + bundle directory populated" },
+      { "to": "S5_TOOL_ERRORED", "guard": "CLI exited non-zero" }
+    ],
+    "trace": ["R3"]
+  },
+  {
+    "id": "S3_BUNDLE_READY",
+    "name": "Bundle in /var/cache/docxmcp/bundles/<sha>/",
+    "actions": ["cache += {sha → bundle path}"],
+    "transitions": [
+      { "to": "S4_RESULT_PUBLISHED", "guard": "tool result encoded with bundle_tar_b64 and returned to client" }
+    ],
+    "trace": ["R3", "DD-5", "DD-10"]
+  },
+  {
+    "id": "S4_RESULT_PUBLISHED",
+    "name": "opencode dispatcher.after has decoded + written to <repo>/<sourceDir>/<stem>/",
+    "actions": ["bundle written to repo", "DELETE /files/{token} sent"],
+    "transitions": [
+      { "to": "S0_IDLE", "guard": "request lifecycle complete" }
+    ],
+    "trace": ["R5", "R9"]
+  },
+  {
+    "id": "S5_TOOL_ERRORED",
+    "name": "Tool returned error result",
+    "actions": ["mcp result {isError:true, content:[<error>]}"],
+    "transitions": [
+      { "to": "S0_IDLE", "guard": "client receives error; no further state change" }
+    ],
+    "trace": ["R3-S2"]
+  },
+  {
+    "id": "S6_TOKEN_INVALID",
+    "name": "Caller used a token not in store (container restart, TTL expired, evicted)",
+    "actions": ["server returns token_not_found error"],
+    "transitions": [
+      { "to": "S0_IDLE", "guard": "client surfaces error" }
+    ],
+    "trace": ["R2-S3", "R3-S2"]
+  },
+  {
+    "id": "S7_BIND_MOUNT_REJECTED",
+    "name": "Register API rejected new mcp app due to bind mount",
+    "actions": ["mcp-apps.json NOT written; 400 response with policy reference"],
+    "transitions": [
+      { "to": "S0_IDLE", "guard": "caller fixes entry or aborts" }
+    ],
+    "trace": ["R8"]
+  }
+]

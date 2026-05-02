@@ -42,6 +42,17 @@
       "reason": "post-task sync, clean",
       "result": "clean",
       "commit": "164aca4a9e25aa4fa4451735e2f767c16a098c73"
+    },
+    {
+      "at": "2026-05-02T16:49:17.928Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "drift detected: packages/opencode/test/incoming/paths.test.ts",
+      "result": "warned",
+      "drift": [
+        "packages/opencode/test/incoming/paths.test.ts"
+      ],
+      "commit": "b9d5c2d5059b611c7252b840d5913f03136f310e"
     }
   ]
 }

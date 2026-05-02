@@ -1,0 +1,95 @@
+[
+  {
+    "id": "SEQ-UPLOAD-AND-CALL",
+    "title": "AI invokes docx tool — file upload + tool call (cache miss)",
+    "trigger": "AI calls mcpapp-docxmcp_extract_text({input: 'incoming/合約.docx'}) in opencode",
+    "actors": ["AI", "CMP-MCP-CLIENT", "CMP-DISPATCHER", "C-FS-REPO", "CMP-FILES-API", "CMP-TOKEN-STORE", "CMP-MCP-SERVER", "CMP-TOOL-REGISTRY", "CMP-BUNDLE-CACHE"],
+    "messages": [
+      { "id": "MSG-1", "from": "AI", "to": "CMP-MCP-CLIENT", "kind": "tools/call extract_text {input:'incoming/合約.docx'}" },
+      { "id": "MSG-2", "from": "CMP-MCP-CLIENT", "to": "CMP-DISPATCHER", "kind": "before(args)" },
+      { "id": "MSG-3", "from": "CMP-DISPATCHER", "to": "C-FS-REPO", "kind": "read <projectRoot>/incoming/合約.docx (raw bytes stream)" },
+      { "id": "MSG-4", "from": "CMP-DISPATCHER", "to": "CMP-FILES-API", "kind": "POST /files (multipart, raw binary stream)" },
+      { "id": "MSG-5", "from": "CMP-FILES-API", "to": "CMP-TOKEN-STORE", "kind": "create token + write /tmp/docxmcp-sessions/tok_xxx/合約.docx" },
+      { "id": "MSG-6", "from": "CMP-FILES-API", "to": "CMP-DISPATCHER", "kind": "200 {token:'tok_xxx', sha256, size}" },
+      { "id": "MSG-7", "from": "CMP-DISPATCHER", "to": "CMP-MCP-CLIENT", "kind": "rewrittenArgs={token:'tok_xxx'}" },
+      { "id": "MSG-8", "from": "CMP-MCP-CLIENT", "to": "CMP-MCP-SERVER", "kind": "tools/call extract_text {token:'tok_xxx'}" },
+      { "id": "MSG-9", "from": "CMP-MCP-SERVER", "to": "CMP-TOOL-REGISTRY", "kind": "dispatch extract_text" },
+      { "id": "MSG-10", "from": "CMP-TOOL-REGISTRY", "to": "CMP-TOKEN-STORE", "kind": "resolve(tok_xxx) → /tmp/docxmcp-sessions/tok_xxx/合約.docx" },
+      { "id": "MSG-11", "from": "CMP-TOOL-REGISTRY", "to": "CMP-BUNDLE-CACHE", "kind": "lookup(sha) — miss" },
+      { "id": "MSG-12", "from": "CMP-TOOL-REGISTRY", "to": "CMP-TOOL-REGISTRY", "kind": "exec python /app/bin/extract_text.py /tmp/docxmcp-sessions/tok_xxx/合約.docx" },
+      { "id": "MSG-13", "from": "CMP-TOOL-REGISTRY", "to": "CMP-BUNDLE-CACHE", "kind": "store(sha, bundle/)" },
+      { "id": "MSG-14", "from": "CMP-MCP-SERVER", "to": "CMP-MCP-CLIENT", "kind": "result {content:[...], structuredContent:{bundle_tar_b64:'...'}}" },
+      { "id": "MSG-15", "from": "CMP-MCP-CLIENT", "to": "CMP-DISPATCHER", "kind": "after(result)" },
+      { "id": "MSG-16", "from": "CMP-DISPATCHER", "to": "C-FS-REPO", "kind": "decode tar; write to <projectRoot>/incoming/合約/ (description.md, outline.md, media/)" },
+      { "id": "MSG-17", "from": "CMP-DISPATCHER", "to": "CMP-FILES-API", "kind": "DELETE /files/tok_xxx (best effort)" },
+      { "id": "MSG-18", "from": "CMP-MCP-CLIENT", "to": "AI", "kind": "rewritten result with repo-relative paths" }
+    ]
+  },
+  {
+    "id": "SEQ-CACHE-HIT",
+    "title": "Same content uploaded later — bundle cache hit, no recompute",
+    "trigger": "Different session uploads identical-sha docx; docxmcp tool called",
+    "actors": ["AI", "CMP-MCP-CLIENT", "CMP-DISPATCHER", "CMP-FILES-API", "CMP-TOKEN-STORE", "CMP-MCP-SERVER", "CMP-TOOL-REGISTRY", "CMP-BUNDLE-CACHE"],
+    "messages": [
+      { "id": "MSG-1", "from": "AI", "to": "CMP-MCP-CLIENT", "kind": "tools/call extract_text {input:'incoming/重要文件.docx'}" },
+      { "id": "MSG-2", "from": "CMP-DISPATCHER", "to": "CMP-FILES-API", "kind": "POST /files (multipart)" },
+      { "id": "MSG-3", "from": "CMP-FILES-API", "to": "CMP-DISPATCHER", "kind": "200 {token:'tok_yyy', sha256:abc} — same sha as earlier session" },
+      { "id": "MSG-4", "from": "CMP-MCP-CLIENT", "to": "CMP-MCP-SERVER", "kind": "tools/call {token:'tok_yyy'}" },
+      { "id": "MSG-5", "from": "CMP-TOOL-REGISTRY", "to": "CMP-BUNDLE-CACHE", "kind": "lookup(abc) — HIT" },
+      { "id": "MSG-6", "from": "CMP-BUNDLE-CACHE", "to": "CMP-TOOL-REGISTRY", "kind": "return cached bundle/" },
+      { "id": "MSG-7", "from": "CMP-MCP-SERVER", "to": "CMP-MCP-CLIENT", "kind": "result {fromCache:true, bundle_tar_b64:'...'}" },
+      { "id": "MSG-8", "from": "CMP-DISPATCHER", "to": "CMP-FILES-API", "kind": "DELETE /files/tok_yyy" }
+    ]
+  },
+  {
+    "id": "SEQ-CONTAINER-RESTART",
+    "title": "docxmcp container restarted — old token invalid; opencode re-uploads",
+    "trigger": "docker compose restart docxmcp; AI retries previous tool call",
+    "actors": ["AI", "CMP-MCP-CLIENT", "CMP-MCP-SERVER", "CMP-TOKEN-STORE", "CMP-DISPATCHER", "CMP-FILES-API"],
+    "messages": [
+      { "id": "MSG-1", "from": "AI", "to": "CMP-MCP-CLIENT", "kind": "tools/call extract_text {token:'tok_old'}" },
+      { "id": "MSG-2", "from": "CMP-MCP-CLIENT", "to": "CMP-MCP-SERVER", "kind": "tools/call passes through" },
+      { "id": "MSG-3", "from": "CMP-MCP-SERVER", "to": "CMP-TOKEN-STORE", "kind": "resolve(tok_old) — NOT FOUND" },
+      { "id": "MSG-4", "from": "CMP-MCP-SERVER", "to": "CMP-MCP-CLIENT", "kind": "isError:true, message:'token_not_found: tok_old; container restarted, re-upload'" },
+      { "id": "MSG-5", "from": "CMP-MCP-CLIENT", "to": "AI", "kind": "error surfaces" },
+      { "id": "MSG-6", "from": "AI", "to": "CMP-MCP-CLIENT", "kind": "retry tools/call extract_text {input:'incoming/合約.docx'} (path-based, dispatcher will re-upload)" },
+      { "id": "MSG-7", "from": "CMP-DISPATCHER", "to": "CMP-FILES-API", "kind": "POST /files (re-upload) → new token" }
+    ]
+  },
+  {
+    "id": "SEQ-WRAPPER-CLI",
+    "title": "CLI user invokes wrapper — docker cp + exec, no bind mount",
+    "trigger": "Human runs `extract_text /home/pkcs12/projects/foo/incoming/合約.docx` in shell",
+    "actors": ["CLIUser", "C-WRAPPERS", "C-DOCXMCP", "CMP-TOOL-REGISTRY"],
+    "messages": [
+      { "id": "MSG-1", "from": "CLIUser", "to": "C-WRAPPERS", "kind": "extract_text /path/to/合約.docx" },
+      { "id": "MSG-2", "from": "C-WRAPPERS", "to": "C-DOCXMCP", "kind": "docker cp /path/to/合約.docx docxmcp:/tmp/incoming-<rnd>-合約.docx (tar stream)" },
+      { "id": "MSG-3", "from": "C-WRAPPERS", "to": "C-DOCXMCP", "kind": "docker exec docxmcp python /app/bin/extract_text.py /tmp/incoming-<rnd>-合約.docx" },
+      { "id": "MSG-4", "from": "CMP-TOOL-REGISTRY", "to": "CLIUser", "kind": "stdout (extracted text)" },
+      { "id": "MSG-5", "from": "C-WRAPPERS", "to": "C-DOCXMCP", "kind": "docker exec docxmcp rm -f /tmp/incoming-<rnd>-合約.docx" }
+    ]
+  },
+  {
+    "id": "SEQ-LINT-REJECT",
+    "title": "Register API rejects bind-mount-containing entry",
+    "trigger": "Script POSTs new mcp app with command including `-v /host:/container`",
+    "actors": ["Script", "CMP-MCP-STORE"],
+    "messages": [
+      { "id": "MSG-1", "from": "Script", "to": "CMP-MCP-STORE", "kind": "POST /api/v2/mcp/store/apps {command:['docker','run','-v','/host:/x','...']}" },
+      { "id": "MSG-2", "from": "CMP-MCP-STORE", "to": "CMP-MCP-STORE", "kind": "lint scan command for -v / --mount type=bind" },
+      { "id": "MSG-3", "from": "CMP-MCP-STORE", "to": "Script", "kind": "400 {error:'bind_mount_forbidden', policy:'specs/docxmcp-http-transport'}" },
+      { "id": "MSG-4", "from": "CMP-MCP-STORE", "to": "CMP-MCP-STORE", "kind": "mcp-apps.json NOT written" }
+    ]
+  },
+  {
+    "id": "SEQ-AUDIT-EXISTING",
+    "title": "Audit endpoint scans existing entries for bind mounts",
+    "trigger": "Operator hits GET /api/v2/mcp/store/audit-bind-mounts",
+    "actors": ["Operator", "CMP-MCP-STORE"],
+    "messages": [
+      { "id": "MSG-1", "from": "Operator", "to": "CMP-MCP-STORE", "kind": "GET /api/v2/mcp/store/audit-bind-mounts" },
+      { "id": "MSG-2", "from": "CMP-MCP-STORE", "to": "CMP-MCP-STORE", "kind": "scan all entries (system + user)" },
+      { "id": "MSG-3", "from": "CMP-MCP-STORE", "to": "Operator", "kind": "200 {violations: [], total: N} (ideal: empty after this spec lands)" }
+    ]
+  }
+]

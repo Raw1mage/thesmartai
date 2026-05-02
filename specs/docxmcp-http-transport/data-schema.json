@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "docxmcp-http-transport data contracts",
+  "version": 1,
+  "definitions": {
+    "Sha256Hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase hex sha256."
+    },
+    "Token": {
+      "type": "string",
+      "pattern": "^tok_[A-Z2-7]{32}$",
+      "description": "Opaque cryptographic random token. base32 (upper alpha + 2-7), 20 bytes raw → 32 chars."
+    },
+    "FileUploadResponse": {
+      "type": "object",
+      "required": ["token", "sha256", "size"],
+      "properties": {
+        "token": { "$ref": "#/definitions/Token" },
+        "sha256": { "$ref": "#/definitions/Sha256Hex" },
+        "size": { "type": "integer", "minimum": 0 },
+        "filename": { "type": "string" }
+      }
+    },
+    "FileUploadError": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "string",
+          "enum": ["upload_too_large", "invalid_multipart", "session_storage_full", "internal"]
+        },
+        "message": { "type": "string" }
+      }
+    },
+    "ToolCallTokenArgs": {
+      "type": "object",
+      "description": "Replacement for legacy { source: <path> } / { doc_dir: <path> }. Every docxmcp tool now accepts at least { token }.",
+      "required": ["token"],
+      "properties": {
+        "token": { "$ref": "#/definitions/Token" }
+      },
+      "additionalProperties": true
+    },
+    "ToolCallError": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "string",
+          "enum": ["token_not_found", "token_expired", "tool_failed", "invalid_args"]
+        },
+        "message": { "type": "string" },
+        "tokenHint": { "type": "string", "description": "Optional: hint to caller (e.g. 'container restarted, re-upload')." }
+      }
+    },
+    "ToolResultBundle": {
+      "type": "object",
+      "description": "Structured part of mcp tool result for tools that produce a bundle (decompose / extract / etc).",
+      "required": ["bundle_tar_b64"],
+      "properties": {
+        "bundle_tar_b64": {
+          "type": "string",
+          "description": "base64(tar(bundle/)). v1 inline route. Intended replacement for v2: bundle_token."
+        },
+        "from_cache": { "type": "boolean" },
+        "sha256": { "$ref": "#/definitions/Sha256Hex" }
+      }
+    },
+    "McpAppEntryHttp": {
+      "type": "object",
+      "description": "mcp-apps.json entry for HTTP-transport mcp apps. v1 uses Unix domain socket (DD-12); URL scheme `unix:///<absolute-host-path>:<http-path>` or `http://...` for remote (future).",
+      "required": ["id", "url", "transport"],
+      "properties": {
+        "id": { "type": "string" },
+        "url": {
+          "type": "string",
+          "pattern": "^(unix://|https?://)",
+          "description": "Streamable HTTP MCP endpoint URL. v1 default: unix:///<homedir>/.local/state/opencode/sockets/<app>/<app>.sock:/mcp. Remote (future): https://host:port/mcp."
+        },
+        "transport": { "type": "string", "enum": ["streamable-http", "sse"] },
+        "socketPath": {
+          "type": ["string", "null"],
+          "description": "Optional explicit socket path; if present, takes precedence over url's unix:// portion. Useful when url path encoding is ambiguous."
+        },
+        "enabled": { "type": "boolean" },
+        "auth": { "type": ["object", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "BindMountSpec": {
+      "type": "object",
+      "description": "Parsed -v / --mount type=bind specification, used by lint to evaluate IPC exception.",
+      "required": ["hostPath", "containerPath"],
+      "properties": {
+        "hostPath": { "type": "string" },
+        "containerPath": { "type": "string" },
+        "flags": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["ro", "rw", "z", "Z", "shared", "slave", "private"] }
+        }
+      }
+    },
+    "IpcExceptionRule": {
+      "type": "object",
+      "description": "Lint rule for permissible IPC-only bind mount (DD-13).",
+      "required": ["hostPathPattern", "containerPathPattern"],
+      "properties": {
+        "hostPathPattern": { "type": "string", "default": "^${HOME}/.local/state/opencode/sockets/[a-z0-9-]+/?$" },
+        "containerPathPattern": { "type": "string", "default": "^/run/[a-z0-9-]+/?$" },
+        "forbiddenFlags": { "type": "array", "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "BindMountAuditViolation": {
+      "type": "object",
+      "required": ["appId", "evidence"],
+      "properties": {
+        "appId": { "type": "string" },
+        "evidence": {
+          "type": "array",
+          "items": { "type": "string", "description": "Captured -v / --mount fragments from the entry's command array." }
+        }
+      }
+    },
+    "BindMountAuditResponse": {
+      "type": "object",
+      "required": ["violations", "totalEntries"],
+      "properties": {
+        "violations": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/BindMountAuditViolation" }
+        },
+        "totalEntries": { "type": "integer" },
+        "scannedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "RegisterApiBindMountReject": {
+      "type": "object",
+      "description": "400 response from POST /api/v2/mcp/store/apps when lint detects bind mount.",
+      "required": ["error", "policy"],
+      "properties": {
+        "error": { "type": "string", "enum": ["bind_mount_forbidden"] },
+        "policy": { "type": "string", "description": "Spec slug enforcing the policy." },
+        "evidence": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

@@ -1,0 +1,267 @@
+[
+  {
+    "id": "TV-01-NO-BIND-MOUNT",
+    "trace": ["R1-S1", "AC-01"],
+    "given": { "containerRunning": "docxmcp via docker compose up -d" },
+    "when": "docker inspect <container> --format '{{range .Mounts}}{{.Type}}:{{.Source}}->{{.Destination}}{{\"\\n\"}}{{end}}'",
+    "then": {
+      "stdoutExpectations": [
+        "no line starts with 'bind:'",
+        "any line starting with 'volume:' has Source matching '^docxmcp-cache$' (named volume only)",
+        "no Source contains '/home/' or '/Users/' or '/etc/'"
+      ]
+    }
+  },
+  {
+    "id": "TV-02-UPLOAD-TOKEN-RAW",
+    "trace": ["R2-S1", "AC-02", "DD-11"],
+    "given": { "container": "docxmcp running", "fileSize": "12345 bytes (small docx)" },
+    "when": "curl -sf -X POST http://127.0.0.1:8080/files -F 'file=@test.docx;type=application/vnd...' | jq",
+    "then": {
+      "responseExpectations": {
+        "status": 200,
+        "body.token": "matches pattern ^tok_[A-Z2-7]{32}$",
+        "body.sha256": "matches sha256 of test.docx",
+        "body.size": 12345
+      },
+      "containerSideExpectations": [
+        "/tmp/docxmcp-sessions/<token>/test.docx exists with raw bytes (not base64-encoded)"
+      ]
+    }
+  },
+  {
+    "id": "TV-03-LARGE-UPLOAD-STREAMING",
+    "trace": ["R2-S1", "DD-11"],
+    "given": { "fileSize": "50 MB docx" },
+    "when": "POST /files with multipart streaming",
+    "then": {
+      "behaviorExpectations": [
+        "container peak RSS during upload < (50MB + 100MB overhead) — proves streaming, not full buffer",
+        "response time linear in size, no quadratic memory blow-up"
+      ]
+    }
+  },
+  {
+    "id": "TV-04-GET-FILE-RAW",
+    "trace": ["R2-S2", "AC-03"],
+    "given": { "tokenIssuedFor": "test.docx with sha256=A" },
+    "when": "GET /files/{token}",
+    "then": {
+      "responseExpectations": {
+        "status": 200,
+        "body": "raw bytes; sha256(body) == A",
+        "headers.content-type": "matches mime hint or application/octet-stream"
+      }
+    }
+  },
+  {
+    "id": "TV-05-CONTAINER-RESTART-TOKEN-INVALID",
+    "trace": ["R2-S3", "AC-04"],
+    "given": { "tokenBeforeRestart": "tok_old issued earlier", "after": "docker compose restart docxmcp" },
+    "when": "POST /mcp tools/call extract_text {token:'tok_old'}",
+    "then": {
+      "responseExpectations": {
+        "result.isError": true,
+        "result.content[0].text": "matches /token_not_found.*tok_old.*container restarted/"
+      }
+    }
+  },
+  {
+    "id": "TV-06-TOOL-CALL-RESOLVES-TOKEN",
+    "trace": ["R3-S1", "AC-05"],
+    "given": { "preUpload": "tok_xxx for test.docx" },
+    "when": "POST /mcp tools/call extract_text {token:'tok_xxx'}",
+    "then": {
+      "behaviorExpectations": [
+        "_mcp_registry resolves tok_xxx → /tmp/docxmcp-sessions/tok_xxx/test.docx",
+        "subprocess: python /app/bin/extract_text.py /tmp/docxmcp-sessions/tok_xxx/test.docx",
+        "stdout contains extracted text",
+        "no modification to bin/extract_text.py source"
+      ]
+    }
+  },
+  {
+    "id": "TV-07-INVALID-TOKEN-TOOL-ERROR",
+    "trace": ["R3-S2", "AC-06"],
+    "given": { "token": "tok_INVALID00000000000000000000000" },
+    "when": "POST /mcp tools/call extract_text with bad token",
+    "then": {
+      "responseExpectations": {
+        "result.isError": true,
+        "result.content[0].text": "contains 'token_not_found'"
+      }
+    }
+  },
+  {
+    "id": "TV-08-OPENCODE-USES-HTTP-TRANSPORT",
+    "trace": ["R4-S1", "AC-07"],
+    "given": { "mcp-apps.json docxmcp entry": "{url:'http://127.0.0.1:8080/mcp', transport:'streamable-http'}" },
+    "when": "opencode daemon connects",
+    "then": {
+      "behaviorExpectations": [
+        "MCP client uses StreamableHTTPClientTransport class",
+        "tools/list response contains 21 tools",
+        "log line: service='mcp', message='client connected', transport='streamable-http', appId='docxmcp'"
+      ]
+    }
+  },
+  {
+    "id": "TV-09-OTHER-MCP-APPS-STDIO-UNCHANGED",
+    "trace": ["R4-S2", "AC-08"],
+    "given": { "gmail/google-calendar entries": "still command-based" },
+    "when": "opencode daemon connects all mcp apps",
+    "then": {
+      "behaviorExpectations": [
+        "gmail uses StdioClientTransport (unchanged)",
+        "google-calendar uses StdioClientTransport (unchanged)",
+        "only docxmcp uses HTTP"
+      ]
+    }
+  },
+  {
+    "id": "TV-10-DISPATCHER-NO-HARDLINK",
+    "trace": ["R5-S1", "AC-09"],
+    "given": { "AI calls": "extract_text incoming/合約.docx in valid project session" },
+    "when": "dispatcher.before runs",
+    "then": {
+      "behaviorExpectations": [
+        "fetch POST /files invoked once",
+        "no fs.linkSync calls (verified via spy or log absence)",
+        "no path under '~/.local/state/opencode/mcp-staging/' is read or written",
+        "rewrittenArgs[\"input\"] matches ^tok_[A-Z2-7]{32}$"
+      ]
+    }
+  },
+  {
+    "id": "TV-11-DISPATCHER-CLEANUP-TOKEN",
+    "trace": ["R5-S2", "AC-10"],
+    "given": { "tool call completed": "result returned with bundle_tar_b64" },
+    "when": "dispatcher.after finishes",
+    "then": {
+      "behaviorExpectations": [
+        "fetch DELETE /files/{token} invoked",
+        "bundle written to <projectRoot>/incoming/<stem>/",
+        "DELETE failure does not raise — best effort with log warn"
+      ]
+    }
+  },
+  {
+    "id": "TV-12-WRAPPER-CLI-WORKS",
+    "trace": ["R6-S1", "AC-11"],
+    "given": {
+      "wrapperInstalledAt": "~/.local/bin/docxmcp-tools/extract_text",
+      "container": "docxmcp running",
+      "input": "/home/pkcs12/projects/opencode/incoming/合約.docx"
+    },
+    "when": "shell: extract_text /home/pkcs12/projects/opencode/incoming/合約.docx",
+    "then": {
+      "behaviorExpectations": [
+        "wrapper invokes docker cp (verified via strace or wrapper -x trace)",
+        "wrapper invokes docker exec for the python CLI",
+        "wrapper invokes docker exec for cleanup rm",
+        "exit code 0 on success",
+        "stdout contains extracted text",
+        "during execution: docker inspect Mounts unchanged (no new bind mount appears)"
+      ]
+    }
+  },
+  {
+    "id": "TV-13-WRAPPER-NOT-IN-AI-CATALOG",
+    "trace": ["R6-S2", "AC-12"],
+    "given": { "openCodeDaemon": "running, docxmcp connected via HTTP" },
+    "when": "AI calls tools/list (or opencode tool.resolve)",
+    "then": {
+      "behaviorExpectations": [
+        "tool list contains 'mcpapp-docxmcp_extract_text' (HTTP MCP path)",
+        "tool list does NOT contain bare 'extract_text' or any wrapper-only entry",
+        "tool count consistent with docxmcp's tools/list (21 tools)"
+      ]
+    }
+  },
+  {
+    "id": "TV-14-MCP-APPS-JSON-URL-FORM",
+    "trace": ["R7-S1", "AC-13"],
+    "given": { "mcp-apps.json after cutover": "loaded" },
+    "when": "inspect ~/.config/opencode/mcp-apps.json docxmcp entry",
+    "then": {
+      "schemaExpectations": [
+        "entry.url matches ^http://127.0.0.1:[0-9]+/mcp$",
+        "entry.transport == 'streamable-http'",
+        "entry.command is empty or absent (no docker run flags)",
+        "no string under entry contains '/home/' or '/Users/'"
+      ]
+    }
+  },
+  {
+    "id": "TV-15-LINT-REJECT-BIND-MOUNT",
+    "trace": ["R8-S1", "AC-14", "DD-13"],
+    "given": { "registerCall": "POST /api/v2/mcp/store/apps with command:['docker','run','-v','/host:/x','some-image']" },
+    "when": "addApp lint runs",
+    "then": {
+      "responseExpectations": {
+        "status": 400,
+        "body.error": "bind_mount_forbidden",
+        "body.policy": "specs/docxmcp-http-transport",
+        "body.evidence": "non-empty array containing the offending -v argument"
+      },
+      "fsExpectations": ["mcp-apps.json NOT modified"]
+    }
+  },
+  {
+    "id": "TV-16-AUDIT-EMPTY-AFTER-CUTOVER",
+    "trace": ["R8-S2", "AC-15"],
+    "given": { "after task 7 cutover": "all entries should be lint-clean" },
+    "when": "GET /api/v2/mcp/store/audit-bind-mounts",
+    "then": {
+      "responseExpectations": {
+        "status": 200,
+        "body.violations": "empty array []",
+        "body.totalEntries": "matches actual count of registered apps"
+      }
+    }
+  },
+  {
+    "id": "TV-17-INCOMING-FLOW-PRESERVED",
+    "trace": ["R9-S1", "AC-16"],
+    "given": { "userUploads": "合約.docx via web/TUI in a session with project context" },
+    "when": "upload completes",
+    "then": {
+      "fsExpectations": [
+        "<projectRoot>/incoming/合約.docx exists",
+        "<projectRoot>/incoming/.history/合約.docx.jsonl has at least 1 line with source='upload'"
+      ],
+      "responseExpectations": {
+        "AttachmentRefPart.repo_path": "incoming/合約.docx",
+        "AttachmentRefPart.sha256": "matches"
+      }
+    }
+  },
+  {
+    "id": "TV-18-DISPATCHER-NO-MCP-STAGING",
+    "trace": ["R9-S2", "AC-17"],
+    "given": { "docxmcp tool call from incoming/<file>": "via HTTP transport" },
+    "when": "dispatcher.before runs",
+    "then": {
+      "fsExpectations": [
+        "~/.local/state/opencode/mcp-staging/ does not get created or written by this run",
+        "no file appears under that path during or after the call"
+      ]
+    }
+  },
+  {
+    "id": "TV-19-CACHE-HIT-CROSS-SESSION",
+    "trace": ["DD-5"],
+    "given": {
+      "preCondition": "earlier session called extract_text on docx with sha=abc, populated docxmcp-cache named volume",
+      "newSession": "different project, uploads identical-content docx"
+    },
+    "when": "AI calls extract_text in new session",
+    "then": {
+      "behaviorExpectations": [
+        "tool result has structuredContent.from_cache == true",
+        "no /app/bin/extract_text.py subprocess started for this call (verified via container log absence)",
+        "result returned in < 100ms"
+      ]
+    }
+  }
+]

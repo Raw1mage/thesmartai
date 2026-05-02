@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "name": "docxmcp-http-transport",
+  "level": "container+component",
+  "systems": [
+    {
+      "id": "S-OPENCODE",
+      "name": "opencode runtime",
+      "description": "User-level daemon that registers and connects to MCP apps."
+    }
+  ],
+  "containers": [
+    {
+      "id": "C-DAEMON",
+      "system": "S-OPENCODE",
+      "name": "opencode bun daemon",
+      "tech": "bun + TypeScript",
+      "description": "Hosts mcp client (HTTP + stdio per-app), dispatcher, file-routes."
+    },
+    {
+      "id": "C-DOCXMCP",
+      "system": "S-OPENCODE",
+      "name": "docxmcp HTTP server",
+      "tech": "docker container, python 3.12, starlette + uvicorn",
+      "description": "Long-running HTTP server. NO bind mount; NO host filesystem visibility. Optional docker named volume for bundle cache.",
+      "boundaryRule": "Mounts list MUST be empty except for `docxmcp-cache` named volume."
+    },
+    {
+      "id": "C-FS-REPO",
+      "system": "S-OPENCODE",
+      "name": "user project worktree",
+      "tech": "host filesystem under <session.project.path>",
+      "description": "Stores incoming/<filename> + bundles published next to source. Daemon writes here; docxmcp container CANNOT see it."
+    },
+    {
+      "id": "C-WRAPPERS",
+      "system": "S-OPENCODE",
+      "name": "docxmcp shell wrappers",
+      "tech": "shell scripts under ~/.local/bin/docxmcp-tools/",
+      "description": "Non-Docker surface. CLI users invoke `<toolname> <path>`; wrapper internally does docker cp + exec + cleanup. NOT registered with opencode AI tool catalog (R6)."
+    }
+  ],
+  "components": [
+    {
+      "id": "CMP-MCP-CLIENT",
+      "container": "C-DAEMON",
+      "name": "MCP client per-app transport switch",
+      "moduleRef": "packages/opencode/src/mcp/index.ts",
+      "description": "Dispatches StreamableHTTPClientTransport for docxmcp; StdioClientTransport for other mcp apps."
+    },
+    {
+      "id": "CMP-MCP-STORE",
+      "container": "C-DAEMON",
+      "name": "MCP App Store with bind-mount lint",
+      "moduleRef": "packages/opencode/src/mcp/app-store.ts",
+      "description": "addApp() rejects entries containing -v / --mount type=bind. Exposes audit-bind-mounts route."
+    },
+    {
+      "id": "CMP-DISPATCHER",
+      "container": "C-DAEMON",
+      "name": "incoming.dispatcher (HTTP uploader)",
+      "moduleRef": "packages/opencode/src/incoming/dispatcher.ts",
+      "description": "before(): multipart POST /files → token → rewrite args. after(): parse base64 tar bundle from result → write to <repo>/<sourceDir>/<stem>/ → best-effort DELETE /files/{token}. NO hard-link, NO break-on-write."
+    },
+    {
+      "id": "CMP-MCP-SERVER",
+      "container": "C-DOCXMCP",
+      "name": "docxmcp MCP server (Streamable HTTP)",
+      "moduleRef": "bin/mcp_server.py",
+      "description": "Exposes /mcp via mcp.server.streamable_http_manager. Routes tool calls to bin/*.py CLIs via _mcp_registry."
+    },
+    {
+      "id": "CMP-FILES-API",
+      "container": "C-DOCXMCP",
+      "name": "Files API",
+      "moduleRef": "bin/mcp_server.py (extended)",
+      "description": "POST /files (multipart, streaming), GET /files/{token}, DELETE /files/{token}, GET /healthz."
+    },
+    {
+      "id": "CMP-TOKEN-STORE",
+      "container": "C-DOCXMCP",
+      "name": "Token store",
+      "moduleRef": "bin/_token_store.py",
+      "description": "TTL + LRU + size-cap registry over /tmp/docxmcp-sessions/<token>/<filename>. Ephemeral; container restart wipes."
+    },
+    {
+      "id": "CMP-TOOL-REGISTRY",
+      "container": "C-DOCXMCP",
+      "name": "Tool wrapper registry",
+      "moduleRef": "bin/_mcp_registry.py",
+      "description": "21 ToolSpecs with input_schema {token: string}. build_argv resolves token → path → forwards to bin/<tool>.py."
+    },
+    {
+      "id": "CMP-BUNDLE-CACHE",
+      "container": "C-DOCXMCP",
+      "name": "sha-keyed bundle cache",
+      "moduleRef": "(internal cache layer in mcp_server.py)",
+      "description": "Reads/writes /var/cache/docxmcp/bundles/<sha>/. Persists across container restarts via named volume."
+    }
+  ],
+  "relationships": [
+    { "from": "CMP-MCP-CLIENT", "to": "CMP-MCP-SERVER", "verb": "calls", "purpose": "MCP tools/list, tools/call over Streamable HTTP" },
+    { "from": "CMP-DISPATCHER", "to": "CMP-FILES-API", "verb": "POSTs", "purpose": "upload incoming/<file> as multipart binary, receive token" },
+    { "from": "CMP-DISPATCHER", "to": "CMP-MCP-CLIENT", "verb": "delegates", "purpose": "rewritten args (token instead of path) routed via mcp client" },
+    { "from": "CMP-MCP-SERVER", "to": "CMP-TOOL-REGISTRY", "verb": "dispatches", "purpose": "tool name → ToolSpec → CLI invocation" },
+    { "from": "CMP-TOOL-REGISTRY", "to": "CMP-TOKEN-STORE", "verb": "resolves", "purpose": "token → path inside /tmp/docxmcp-sessions/" },
+    { "from": "CMP-TOOL-REGISTRY", "to": "CMP-BUNDLE-CACHE", "verb": "reads/writes", "purpose": "sha-keyed cache hit/miss per (sha, tool)" },
+    { "from": "CMP-FILES-API", "to": "CMP-TOKEN-STORE", "verb": "manages", "purpose": "create/get/delete tokens" },
+    { "from": "CMP-DISPATCHER", "to": "C-FS-REPO", "verb": "reads/writes", "purpose": "read incoming/<file> for upload; write bundle output to <sourceDir>/<stem>/" },
+    { "from": "C-WRAPPERS", "to": "C-DOCXMCP", "verb": "invokes", "purpose": "docker cp + docker exec via host docker daemon (no bind mount)" },
+    { "from": "CMP-MCP-STORE", "to": "CMP-MCP-CLIENT", "verb": "configures", "purpose": "transport selection per registered app" }
+  ],
+  "deploymentNotes": "C-DAEMON runs as user-level systemd unit. C-DOCXMCP runs via `docker compose up -d`, healthcheck on /healthz, restart unless-stopped. NO `-v <host-path>:<container-path>` flags. Optional `docxmcp-cache` named volume for sha-keyed bundle cache (host invisible). C-WRAPPERS installed by docxmcp `install.sh` to `~/.local/bin/docxmcp-tools/`."
+}
