@@ -21,6 +21,7 @@ import { Tweaks } from "../config/tweaks"
 import { PostCompaction } from "./post-compaction"
 import { ContinuationInvalidatedEvent } from "../plugin/codex-auth"
 import { emitCompactionPredicateTelemetry, emitKindChainTelemetry } from "./compaction-telemetry"
+import { sanitizeAnchorToString, type AnchorKind } from "./anchor-sanitizer"
 
 // Subscribe to continuation invalidation. compaction-redesign DD-11:
 // state-driven signal — write timestamp onto session.execution; the
@@ -1221,6 +1222,44 @@ When constructing the summary, try to stick to this template:
     if (processor.message.error) return null
     if (result !== "continue") return null
 
+    // DD-6: rewrite the LLM-streamed text parts in place with sanitized
+    // bodies before the compaction boundary marker is written. The
+    // streamed parts are already persisted, so we issue Session.updatePart
+    // for each one to replace the on-disk text. The same sanitizer runs in
+    // defaultWriteAnchor for the non-LLM kinds (narrative / replay-tail /
+    // low-cost-server) — this branch handles the kind 5 path where the
+    // persisted message is the anchor itself.
+    const preSanitizedMsg = (await Session.messages({ sessionID: input.sessionID })).findLast(
+      (m) => m.info.id === processor.message.id,
+    )
+    const preSanitizedTextParts = preSanitizedMsg?.parts.filter((p) => p.type === "text") ?? []
+    let imperativePrefixApplied = false
+    let originalLength = 0
+    let sanitizedLength = 0
+    for (const part of preSanitizedTextParts) {
+      const original = (part as any).text ?? ""
+      originalLength += original.length
+      const sanitized = sanitizeAnchorToString(original, "llm-agent")
+      if (sanitized.imperativePrefixApplied) imperativePrefixApplied = true
+      sanitizedLength += sanitized.body.length
+      await Session.updatePart({
+        id: part.id,
+        messageID: processor.message.id,
+        sessionID: input.sessionID,
+        type: "text",
+        text: sanitized.body,
+        time: (part as any).time ?? { start: Date.now(), end: Date.now() },
+      })
+    }
+    log.info("compaction.anchor.sanitized", {
+      sessionID: input.sessionID,
+      kind: "llm-agent",
+      originalLength,
+      sanitizedLength,
+      imperativePrefixApplied,
+      partCount: preSanitizedTextParts.length,
+    })
+
     // Write the compaction boundary anchor on the summary assistant message.
     await Session.updatePart({
       id: Identifier.ascending("part"),
@@ -1725,9 +1764,19 @@ When constructing the summary, try to stick to this template:
     kind: KindName
   }
   const defaultWriteAnchor = async (input: WriteAnchorInput) => {
+    // DD-6: anchor body is wrapped + softened before persistence so it
+    // cannot be misread as system authority by the LLM on next turn.
+    const sanitized = sanitizeAnchorToString(input.summaryText, input.kind as AnchorKind)
+    log.info("compaction.anchor.sanitized", {
+      sessionID: input.sessionID,
+      kind: input.kind,
+      originalLength: input.summaryText.length,
+      sanitizedLength: sanitized.body.length,
+      imperativePrefixApplied: sanitized.imperativePrefixApplied,
+    })
     await compactWithSharedContext({
       sessionID: input.sessionID,
-      snapshot: input.summaryText,
+      snapshot: sanitized.body,
       model: input.model,
       auto: input.auto,
     })
