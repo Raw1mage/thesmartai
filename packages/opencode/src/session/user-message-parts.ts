@@ -181,8 +181,22 @@ async function routeOversizedAttachment(input: {
   // images are read the same way) and prevents image bytes from leaking into
   // the main agent's context. Only plain text-like attachments still honour
   // the byte threshold, since main reading raw text inline is its native job.
+  //
+  // /specs/repo-incoming-attachments: Office binary formats (.docx / .xlsx /
+  // .pptx + legacy variants) ALWAYS force-route too. Reason: small docs
+  // were going inline as data-URL file parts under the old threshold, never
+  // reaching tryLandInIncoming, so they never landed in <repo>/incoming/.
+  // We want every non-text upload on disk with a sha256 in history so the
+  // mcp dispatcher can pick them up.
   const mime = input.part.mime
-  const forceRefRoute = mime.startsWith("image/") || mime === "application/pdf"
+  const isOfficeBinary =
+    mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    mime === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    mime === "application/msword" ||
+    mime === "application/vnd.ms-excel" ||
+    mime === "application/vnd.ms-powerpoint"
+  const forceRefRoute = mime.startsWith("image/") || mime === "application/pdf" || isOfficeBinary
   if (!forceRefRoute && byteSize <= cfg.userAttachmentMaxBytes) {
     emitBoundaryRoutingTelemetry({
       boundary: "user_attachment",
