@@ -24,6 +24,7 @@ import { emitCompactionPredicateTelemetry, emitKindChainTelemetry } from "./comp
 import { sanitizeAnchorToString, type AnchorKind } from "./anchor-sanitizer"
 import { checkCleanTail } from "./idle-compaction-gate"
 import { SkillLayerRegistry } from "./skill-layer-registry"
+import { diagnoseCacheMiss } from "./cache-miss-diagnostic"
 
 // Subscribe to continuation invalidation. compaction-redesign DD-11:
 // state-driven signal — write timestamp onto session.execution; the
@@ -346,6 +347,27 @@ export namespace SessionCompaction {
 
     // Phase 13.1: round-based cooldown removed (see isOverflow comment).
     // Cooldown gate happens once in `run()` via `Cooldown.shouldThrottle`.
+
+    // DD-10: classify the cache miss before triggering. If the system block
+    // bytes are churning across recent turns, compacting the conversation
+    // will not help (cache will miss again next turn). Only fire when the
+    // miss is plausibly attributable to conversation growth.
+    if (input.sessionID) {
+      const diag = diagnoseCacheMiss({
+        sessionID: input.sessionID,
+        conversationTailTokens: totalInput,
+      })
+      log.info("compaction.cache_miss_diagnosis", {
+        sessionID: input.sessionID,
+        kind: diag.kind,
+        shouldCompact: diag.shouldCompact,
+        lastSystemHashes: diag.lastSystemHashes.map((h) => h.slice(0, 8)),
+        conversationTailTokens: diag.conversationTailTokens,
+      })
+      if (!diag.shouldCompact) {
+        return false
+      }
+    }
 
     log.warn("cache-aware compaction triggered", {
       sessionID: input.sessionID,
