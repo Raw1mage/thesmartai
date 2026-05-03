@@ -48,16 +48,20 @@ User-framed as a "small hotfix" — 3 implementation phases, no feature flag, di
   - **Skip if `repo_path` is undefined** (DD-15 — pre-repo-incoming legacy attachment, no binary location to point reread at)
   - For each remaining: `extractAnnotation` → `Session.updatePart` setting `dehydrated=true` + `annotation` (`repo_path` and `sha256` already populated by repo-incoming, leave them alone) → emit telemetry. **No binary movement; binary already at `<worktree>/<repo_path>`.**
 
-- [ ] T.2.2 Branch wire-format conversion in `MessageV2.toModelMessages` (or equivalent serializer):
-  - When `attachment_ref.dehydrated === true`: emit `{type: "text", text: <dehydrated_attachment filename="..." sha256="..." repo_path="...">annotation</dehydrated_attachment>}`
-  - When `dehydrated !== true`: existing image content block path (whether legacy sqlite-blob or repo-incoming dual-read) (DD-8)
-  - 6 tests cover both branches + idempotency (re-serialize same part → same bytes).
+- [ ] T.2.2 (revised v3 2026-05-04) Branch wire-format conversion in `MessageV2.toModelMessages` for `attachment_ref` parts. **Three branches** (per DD-17):
+  - **Inline image** (NEW default): mime starts with `image/` AND `repo_path` populated AND `dehydrated !== true` AND model supports image input → read bytes from `<worktree>/<repo_path>` → emit `{type: "file", url: "data:<mime>;base64,...", mediaType: <mime>, filename: ...}` content block. Main multimodal agent receives the actual image.
+  - **Dehydrated stub**: `dehydrated === true` → emit `{type: "text", text: <dehydrated_attachment filename="..." sha256="..." repo_path="...">annotation</dehydrated_attachment>}` (existing DD-8).
+  - **Legacy fallback**: any other case (no `repo_path`, non-multimodal main, non-image mime) → emit existing routing-hint text (with softened language per DD-18: "If you want a focused vision-subagent analysis ...").
+  - 8 tests cover: inline happy / dehydrated / legacy text fallback / non-multimodal model / non-image mime / read-failure on missing file / idempotency / model-capability detection.
 
-- [ ] T.2.3 Integration test (lightweight): synthesize a session with 1 user message + 1 image attachment (with `repo_path` populated, simulating post-repo-incoming upload) + 1 finished assistant message; run dehydration hook; confirm:
-  - attachment_ref part has `dehydrated=true` + annotation populated
+- [ ] T.2.3 (revised v3) Integration test: synthesize session with 1 user message + 1 image attachment (with `repo_path` populated) + 1 finished assistant message; verify:
+  - **Pre-dehydration** turn N: toModelMessages emits inline `type: "file"` image block (NEW behavior) → assistant inlines image
+  - **Hook** runs after `finish="stop"` → attachment_ref now has `dehydrated=true` + annotation populated
   - `repo_path` and `sha256` unchanged
-  - file at `<worktree>/<repo_path>` is **untouched** (we don't move it)
-  - subsequent toModelMessages emits `<dehydrated_attachment>` text block (not image content block)
+  - File at `<worktree>/<repo_path>` untouched
+  - **Post-dehydration** turn N+1: toModelMessages emits `<dehydrated_attachment>` text block instead of inline image → token saving realized
+
+- [ ] T.2.4 (NEW v3) **Model-capability detection helper**: a small predicate `modelSupportsInlineImage(model: Provider.Model): boolean` that returns true when the model's capabilities indicate image input support. Used by T.2.2 inline branch. Defaults conservatively (when capability info missing, fall back to text-routing). 4 tests covering Anthropic / OpenAI / Codex GPT-5.5 / Lite providers.
 
 ## 3. Phase T.3 — RereadAttachmentTool
 
@@ -76,7 +80,19 @@ User-framed as a "small hotfix" — 3 implementation phases, no feature flag, di
 
 ~~## 4. Phase T.4 — GarbageCollector + cron~~
 
-**Removed by v2 recalibration 2026-05-04**. Per DD-4', binaries persist in `<worktree>/incoming/<filename>` for the lifetime of the project repo; cleanup is the user's choice via `git clean` / `.gitignore` / manual `rm`. Reread errors with `attachment_not_found` if user has removed the file.
+**Removed by v2 recalibration 2026-05-04**. Per DD-4', binaries persist in `<worktree>/incoming/<filename>` for the lifetime of the project repo; cleanup is the user's choice via `git clean` / `.gitignore` / manual `rm`.
+
+## 4. Phase T.4 — Vision subagent → opt-in (v3 2026-05-04)
+
+Vision subagent stays available but stops being the default route for images. Per DD-18.
+
+- [ ] T.4.1 In `MessageV2.toModelMessages` legacy-fallback branch (T.2.2 third branch), soften the routing-hint language: was "Use the attachment tool with mode=read and agent=\"vision\" to dispatch to a vision reader"; new "If you want a focused vision-subagent analysis instead of inline reading, call attachment(mode=read, agent=vision)".
+
+- [ ] T.4.2 Update `attachment` tool's description (in tool registration) to reflect the new dispatch frequency: emphasize that the tool is for **opt-in** deep-analysis cases, not the default image-reading path.
+
+- [ ] T.4.3 Update `templates/prompts/agents/vision.txt` if needed to reflect new opt-in framing — but only if the existing prompt assumes it's the always-on path. Likely no change needed.
+
+- [ ] T.4.4 Verify subagent dispatch path still works end-to-end via existing tests (no regression). 2 smoke checks: (a) main agent calls attachment(mode=read, agent=vision) explicitly → vision subagent runs → text result returns; (b) lite provider with image attachment → falls back to legacy routing hint → main agent uses attachment tool → vision subagent runs.
 
 ## 5. Phase T.5 — Validation + finalize
 
@@ -98,10 +114,11 @@ User-framed as a "small hotfix" — 3 implementation phases, no feature flag, di
 ## Dependencies between phases
 
 - T.0 done — unblocks all
-- T.1 (schema + annotator + tweaks) → T.2 (behavior consumes new schema)
-- T.2 (dehydration hook + serializer) → T.3 (reread tool depends on dehydrated parts existing)
-- ~~T.4 (GC)~~ removed under v2 recalibration
-- T.5 (validation) gate after T.1-T.3 all green
+- T.1 (schema + annotator + tweaks) → T.2 (behavior consumes new schema). T.1.1+T.1.2+T.1.3+T.2.1 already shipped on beta; T.2.2 + T.2.3 + T.2.4 follow.
+- T.2 (dehydration hook + inline serializer) → T.3 (reread tool depends on dehydrated parts existing)
+- T.4 (vision opt-in) parallel to T.3 — both touch routing hint language
+- ~~T.4 (GC)~~ removed under v2 recalibration; T.4 slot reused for vision-opt-in v3
+- T.5 (validation) gate after T.1-T.4 all green
 - T.6 (finalize) after user approval
 
 ## Stop gates

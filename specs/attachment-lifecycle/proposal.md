@@ -19,9 +19,13 @@ The model rarely needs to re-look at an image once it has responded to it. A "po
 ## Requirement Revision History
 
 - 2026-05-04: initial draft (proposal-only at this stage)
-- 2026-05-04 v2: 6 open questions resolved via question tool — annotation = response text, storage = XDG state-home with GC mechanism, trigger = always dehydrate (binary preserved on disk), v1 scope = images only (PDF deferred to its own spec). TTL = 7 days post `session.deleted`, subagent uses per-session staging (no inherited attachments).
+- 2026-05-04 v2: 6 OQs resolved (annotation = response text, storage = XDG, trigger = always, v1 = images, TTL = 7d, subagent = per-session)
+- 2026-05-04 v2-amend: discovered `repo-incoming-attachments` already owns binary lifecycle (per-project `<worktree>/incoming/`). Scope reduced from 5 to 3 implementation phases. DD-2/DD-4/DD-11 superseded.
+- 2026-05-04 v3 (current): **architectural pivot** — discovered the original premise (image binary stays in main agent context) is FALSE. opencode currently routes image attachment_ref to a **vision subagent** which produces a ≤1500 token text summary; main agent never sees the image binary. This collapses 188K image tokens to ~470-byte routing hints in conversation, but at the cost of architectural lossiness (multimodal main models like GPT-5.5 / Claude / Gemini cannot use their native vision capability). v3 redefines the goal as: **main multimodal agent reads images inline; dehydrate to annotation after first read; vision subagent becomes opt-in fallback for non-multimodal main or deeper-analysis cases**. Schema fields, annotation extractor, tweaks knobs, and post-completion hook from T.1/T.2.1 (already shipped) remain reusable; what changes is the wire-format conversion (was: text routing hint; now: inline image content block when not dehydrated) and the role of the vision subagent (was: default; now: opt-in).
 
-## Effective Requirement Description
+## Effective Requirement Description (v3 2026-05-04)
+
+0. **Inline read by main agent (NEW v3)**: When `attachment_ref` is image mime AND `repo_path` is populated AND `dehydrated !== true`, `MessageV2.toModelMessages` emits a real **inline image content block** (data URI from the on-disk binary) so the main multimodal agent can use its native vision capability. The legacy "use the attachment tool, agent=vision" routing hint is replaced by direct inline. The vision subagent path remains available as **opt-in** when the main agent explicitly chooses (e.g. for deep analysis, or when the main is a non-multimodal model).
 
 1. **Post-read dehydration**: After the assistant turn that consumed an attachment finishes (`finish="stop"`), replace the `attachment_ref` part in conversation history with a **dehydrated stub** containing:
    - Original filename

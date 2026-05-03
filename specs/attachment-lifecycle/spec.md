@@ -40,6 +40,33 @@ Image attachments uploaded by the user collapse into a small text annotation aft
 - **WHEN** the post-completion hook evaluates
 - **THEN** dehydration does NOT run for that turn's attachments
 
+### Requirement: Main multimodal agent reads images inline (NEW v3)
+
+#### Scenario: hydrated image attachment serializes as inline image content block
+- **GIVEN** a session message with an `attachment_ref` part where mime is `image/png`, `repo_path` is `incoming/x.png`, and `dehydrated !== true`
+- **AND** the main agent's model supports image input (multimodal capability)
+- **WHEN** `MessageV2.toModelMessages` runs to prepare the LLM payload
+- **THEN** the part serializes to an AI SDK `{type: "file", url: "data:image/png;base64,...", mediaType: "image/png", filename: ...}` content block
+- **AND** the main agent receives the actual image binary, NOT a `<attachment_ref>` text routing hint
+
+#### Scenario: non-multimodal model still routes via vision subagent
+- **GIVEN** the model's capabilities don't include image input (e.g. lite providers per Phase B DD-14)
+- **WHEN** `MessageV2.toModelMessages` runs
+- **THEN** the legacy text routing hint is emitted instead, telling the model to call `attachment` tool with `agent=vision`
+
+### Requirement: Vision subagent remains opt-in (NEW v3)
+
+#### Scenario: model can still explicitly call vision subagent
+- **GIVEN** any session
+- **WHEN** the main agent invokes the `attachment` tool with `mode=read agent=vision`
+- **THEN** the existing dispatch path runs (templates/prompts/agents/vision.txt prompt, ≤1500 token text response)
+- **AND** the response returns to main agent as today
+
+#### Scenario: routing hint language softened
+- **GIVEN** the legacy fallback path fires (no `repo_path` OR non-multimodal model)
+- **WHEN** the routing hint is emitted
+- **THEN** the language frames vision-subagent as one option among several, not the only path: e.g. "If you want a focused vision-subagent analysis instead of inline reading, call attachment(mode=read, agent=vision)"
+
 ### Requirement: Subsequent LLM calls send dehydrated stub instead of binary
 
 #### Scenario: model wire payload contains text annotation only

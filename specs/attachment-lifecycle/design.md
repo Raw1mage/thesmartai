@@ -103,11 +103,34 @@ This spec adds a "dehydrate after read, retain on disk" lifecycle: assistant tur
   - Reason: clean separation of concerns: repo-incoming owns `repo_path` / `sha256` / upload mechanics; attachment-lifecycle owns `dehydrated` / `annotation` / lifecycle-after-read.
   - Consequence: schema delta in T.1.1 is just `dehydrated?: boolean` + `annotation?: string`.
 
+- **DD-17 (NEW 2026-05-04 v3 — architectural pivot)** **Main agent reads images inline by default**. `MessageV2.toModelMessages` branches as follows when emitting an `attachment_ref` for image mimes:
+  - `dehydrated !== true` AND `repo_path` populated AND mime starts with `image/` → emit `{type: "file", url: "data:image/png;base64,...", mediaType: ..., filename: ...}` content block (read bytes from `<worktree>/<repo_path>` at conversion time). The main agent (multimodal) sees the actual image.
+  - `dehydrated === true` → emit `<dehydrated_attachment ...>annotation</dehydrated_attachment>` text block (per existing DD-8). Image collapsed to text post-read.
+  - `repo_path` undefined → fall back to existing legacy text routing hint (pre-repo-incoming sessions, no binary location to inline from).
+  - Non-image mimes → unchanged (existing routing-hint path).
+  - Reason: opencode's main agents are multimodal (GPT-5.5 / Claude Sonnet 4.6 / Gemini etc.). Routing every image through a vision subagent for ≤1500-token text summary throws away the model's native vision capability and creates a 100:1+ lossy compression. The original text-routing path was a vestigial pre-multimodal design.
+  - Consequence: main agent's input_token cost rises per turn for hydrated images (image binary inline). Mitigated by Phase A.5 cache (image binary is stable bytes, caches well across turns) AND by post-read dehydration: after one assistant response, the image collapses to annotation, never re-sent inline again.
+  - Trade-off: first-turn cost (image inlined) > current architecture (only routing hint). Subsequent-turns cost (annotation only) ≪ current architecture (subagent task result text accumulating in main conversation). Net: comparable or better, with hugely better fidelity.
+
+- **DD-18 (NEW 2026-05-04 v3)** **Vision subagent becomes opt-in fallback**, not the default route. The `attachment` tool with `mode=read agent=vision` continues to work — main agent can still call it explicitly for:
+  - Deeper analysis the main agent feels its own first-pass missed
+  - Non-multimodal main agents (lite providers per DD-14, plus any future provider that lacks vision)
+  - Cases where main agent wants a focused-question answer rather than its own free-form interpretation
+  - Reason: the vision subagent prompt (templates/prompts/agents/vision.txt) is still useful; we just stop forcing it as the only path.
+  - Consequence: the routing-hint text in `MessageV2.toModelMessages` (for the `repo_path` undefined fallback case AND non-image mimes) keeps mentioning the `attachment` tool, but the recommendation language softens: from "Use the attachment tool with agent=vision" to "If you want a focused vision-subagent analysis instead of inline reading, call attachment(mode=read, agent=vision)".
+  - Vision subagent's existing test suite + prompt template stays as-is; only the dispatch frequency drops.
+
 ## Risks / Trade-offs
 
 - **R1 Annotation insufficient for image content** — DD-12's 4000-char cap may lose detail for visually rich screenshots. Mitigation: model can `reread_attachment`; v2 spec can add dedicated LLM annotator.
 - ~~**R2 Disk growth** — incoming staging accumulates ~50-200KB per image × N sessions. With 7-day TTL, worst case is ~10MB-100MB depending on usage pattern. Mitigation: TTL configurable; GC telemetry visible.~~ **(v1, SUPERSEDED 2026-05-04 — under DD-2', binary lives in repo and is user-managed; disk growth is not this spec's concern)**
 - **R3 Re-read miss** — model calls `reread_attachment` but the file at `<worktree>/<repo_path>` has been removed (user `git clean`, `rm`, or never landed because pre-repo-incoming session). Mitigation: tool returns clear `attachment_not_found` error; model can ask user to re-upload.
+
+- **R6 (NEW v3) First-turn token cost rises** — DD-17 inlines image binary on first turn; before this pivot the main agent only saw a 470-byte routing hint. For a 50KB image at ~20K image tokens, first-turn input cost goes from 470B → 20K. Mitigation: dehydration (T.2.1) collapses to ~4000-char annotation on the very next turn; net across the session cost drops dramatically because subsequent turns send annotation (≤1K tokens) instead of subagent task result text (5K-20K tokens per analysis × multiple re-reads). Worth quantifying with telemetry post-deploy.
+
+- **R7 (NEW v3) Lite provider broken** — non-multimodal lite providers (per Phase B DD-14 they keep a single concise system prompt) cannot consume `type: "file"` image content blocks. Mitigation: DD-17 conversion checks if the model supports image input (via `Provider.Model.capabilities` or similar); if not, fall back to vision-subagent routing hint as today. Lite path unaffected.
+
+- **R8 (NEW v3) Plugin / hook breakage** — anything that previously inspected `attachment_ref` text routing hints in user message text content may need to recheck. Mitigation: `MessageV2.toModelMessages` is the only conversion site; its tests + manual smoke catch most regressions. Plugins listening on `experimental.chat.messages.transform` see the new shape and can adapt.
 - **R4 Subagent attachment confusion** — model thinks subagent inherits parent's reread access. Mitigation: subagent gets its own incoming; tool errors with clear message.
 - **R5 Dehydration during compaction race** — Phase A compaction may run concurrently with post-completion hook. Mitigation: dehydration is part-level edit on a SPECIFIC part id; compaction reads via Session.messages and won't touch parts mid-edit. Sqlite WAL handles isolation.
 
