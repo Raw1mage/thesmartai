@@ -61,7 +61,7 @@ export function SessionPromptDock(props: {
   return (
     <div
       ref={props.setPromptDockRef}
-      class="absolute inset-x-0 bottom-0 pt-12 pb-4 flex flex-col justify-center items-center z-50 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none"
+      class="absolute inset-x-0 bottom-0 pt-3 pb-4 flex flex-col justify-center items-center z-[100] bg-background-stronger pointer-events-none"
     >
       <div
         classList={{
@@ -71,7 +71,7 @@ export function SessionPromptDock(props: {
       >
         <Show when={props.statusLine}>
           {(snapshot) => (
-            <div class="mb-2 px-1">
+            <div class="mb-2 px-1 bg-background-stronger relative z-[110]">
               <StatusLine snapshot={snapshot()} />
             </div>
           )}

@@ -2,7 +2,8 @@
   /* Reset & Base Typography */
   min-width: 0;
   max-width: 100%;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   color: var(--text-base);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base); /* 14px */

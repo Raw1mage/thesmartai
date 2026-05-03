@@ -752,7 +752,11 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
   const attachments = createMemo(() =>
     files()?.filter((f) => {
       const mime = f.mime
-      return mime.startsWith("image/") || mime === "application/pdf"
+      if (mime.startsWith("image/") || mime === "application/pdf") return true
+      // docx / xlsx / arbitrary uploads should also surface as attachment
+      // chips. Inline @-references (with source.text range) render via
+      // HighlightedText instead and are excluded here.
+      return f.source?.text?.start === undefined
     }),
   )
 
@@ -817,6 +821,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
                 data-slot="user-message-attachment"
                 data-type={file.mime.startsWith("image/") ? "image" : "file"}
                 data-queued={props.queued ? "" : undefined}
+                title={file.filename}
                 onClick={() => {
                   if (file.mime.startsWith("image/") && file.url) {
                     openImagePreview(file.url, file.filename)
@@ -826,9 +831,14 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
                 <Show
                   when={file.mime.startsWith("image/") && file.url}
                   fallback={
-                    <div data-slot="user-message-attachment-icon">
-                      <Icon name="folder" />
-                    </div>
+                    <>
+                      <div data-slot="user-message-attachment-icon">
+                        <Icon name="folder" />
+                      </div>
+                      <Show when={file.filename}>
+                        <div data-slot="user-message-attachment-filename">{file.filename}</div>
+                      </Show>
+                    </>
                   }
                 >
                   <img

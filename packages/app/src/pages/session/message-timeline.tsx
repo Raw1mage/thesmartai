@@ -182,9 +182,12 @@ export function MessageTimeline(props: {
       when={!props.mobileChanges}
       fallback={<div class="relative h-full overflow-hidden">{props.mobileFallback}</div>}
     >
-      <div class="relative w-full h-full min-w-0">
+      <div
+        class="absolute inset-x-0 top-0 min-w-0"
+        style={{ bottom: "var(--prompt-height, 8rem)" }}
+      >
         <div
-          class="absolute left-1/2 -translate-x-1/2 bottom-[calc(var(--prompt-height,8rem)+32px)] z-[60] pointer-events-none transition-all duration-200 ease-out"
+          class="absolute left-1/2 -translate-x-1/2 bottom-2 z-[60] pointer-events-none transition-all duration-200 ease-out"
           classList={{
             "opacity-100 translate-y-0 scale-100": props.scroll.overflow && !props.scroll.bottom,
             "opacity-0 translate-y-2 scale-95 pointer-events-none": !props.scroll.overflow || props.scroll.bottom,
@@ -370,7 +373,7 @@ export function MessageTimeline(props: {
                 "max-w-[1000px] mx-auto": props.centered,
                 "mt-0.5": props.centered,
                 "mt-0": !props.centered,
-                "pb-[calc(var(--prompt-height,8rem)+24px)] md:pb-[calc(var(--prompt-height,10rem)+24px)]": true,
+                "pb-8": true,
               }}
             >
               <Show when={props.turnStart > 0}>
@@ -468,8 +471,8 @@ export function MessageTimeline(props: {
                   )
                 }}
               </For>
-              <div data-scroll-bottom-anchor aria-hidden="true" />
             </div>
+            <div data-scroll-bottom-anchor aria-hidden="true" />
           </div>
         </div>
       </div>

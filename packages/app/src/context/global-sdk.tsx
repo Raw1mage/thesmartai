@@ -28,36 +28,13 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       },
     ) as typeof fetch
 
-    // ── Auto-heal: prune stored projects that no longer exist on the active server ──
-    // Runs once when server.url is set. Queries /api/v2/path (with auth) to get the
-    // server's canonical worktree, then removes any stale project entries from the
-    // persisted store so the user never needs to clear localStorage manually.
-    createEffect(() => {
-      const url = server.url
-      if (!url) return
-      if (webAuth.enabled() && !webAuth.authenticated()) return
-      const username = webAuth.session()?.username ?? ""
-      void username
-
-      void (async () => {
-        try {
-          const res = await fetchWithAuth(`${url}/api/v2/path`)
-          if (!res.ok) return
-          const data = (await res.json()) as { worktree?: string; directory?: string }
-          const serverWorktree = data?.worktree ?? data?.directory
-          if (!serverWorktree) return
-
-          const currentProjects = server.projects.list()
-          const exists = currentProjects.some((p: { worktree: string }) => p.worktree === serverWorktree)
-          if (!exists && serverWorktree !== "/") {
-            console.info(`[global-sdk] Auto-healing: ensuring server worktree ${serverWorktree} is open.`)
-            server.projects.open(serverWorktree)
-          }
-        } catch {
-          // Non-critical cleanup — ignore errors
-        }
-      })()
-    })
+    // Removed 2026-05-03: this effect used to auto-open the server's
+    // canonical worktree as a sidebar tab on every page load. Two
+    // problems with that: (a) when the server's CWD is a parent dir
+    // like `~/projects`, it pollutes the sidebar with a non-project
+    // tab on every reload; (b) opening tabs is a user gesture, not
+    // something the runtime should do unilaterally. If a tab needs to
+    // be there, the user (or a deliberate flow) opens it.
 
     const eventFetch = (() => {
       if (!platform.fetch) return

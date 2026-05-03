@@ -114,19 +114,38 @@ function evict(storage: Storage, keep: string, value: string) {
 
   items.sort((a, b) => b.size - a.size)
 
+  // Surface quota-eviction events so the source of the leak is
+  // discoverable. Without this, `server.v3` (sidebar tabs) silently
+  // disappears on the next reload and the user has no way to know
+  // which other key forced the eviction.
+  const totalBytes = items.reduce((acc, x) => acc + x.size, 0)
+  // eslint-disable-next-line no-console
+  console.warn("[persist:evict] quota hit; pruning to fit `" + keep + "` (" + value.length + " bytes).", {
+    keep,
+    keepBytes: value.length,
+    totalLocalBytes: totalBytes,
+    top10: items.slice(0, 10).map((x) => ({ key: x.key, kb: +(x.size / 1024).toFixed(1) })),
+  })
+
+  const evicted: string[] = []
   for (const item of items) {
     storage.removeItem(item.key)
     cacheDelete(item.key)
+    evicted.push(item.key)
 
     try {
       storage.setItem(keep, value)
       cacheSet(keep, value)
+      // eslint-disable-next-line no-console
+      console.warn("[persist:evict] freed", evicted.length, "key(s):", evicted)
       return true
     } catch (error) {
       if (!quota(error)) throw error
     }
   }
 
+  // eslint-disable-next-line no-console
+  console.error("[persist:evict] still cannot fit `" + keep + "` after evicting all " + items.length + " keys.")
   return false
 }
 
@@ -300,6 +319,95 @@ export const PersistTesting = {
   localStorageDirect,
   localStorageWithPrefix,
   normalize,
+}
+
+// Diagnostic: at startup (and on demand from console), enumerate every
+// localStorage entry under our prefix, decode the JSON, and report a
+// per-sub-key size breakdown. Helps surface which persisted store is
+// growing without bound — eviction otherwise drops `opencode.global.dat`
+// silently and the user only notices that sidebar tabs / project list
+// vanished after reload.
+type StorageBreakdown = {
+  bucket: string
+  bytes: number
+  topSubKeys: Array<{ key: string; kb: number }>
+}
+
+function decodeBucket(bucket: string, raw: string): StorageBreakdown {
+  const out: StorageBreakdown = { bucket, bytes: raw.length, topSubKeys: [] }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return out
+  }
+  if (!parsed || typeof parsed !== "object") return out
+  const entries: Array<{ key: string; kb: number }> = []
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    let bytes: number
+    try {
+      bytes = JSON.stringify(value).length
+    } catch {
+      bytes = 0
+    }
+    entries.push({ key, kb: +(bytes / 1024).toFixed(1) })
+  }
+  entries.sort((a, b) => b.kb - a.kb)
+  out.topSubKeys = entries.slice(0, 15)
+  return out
+}
+
+export function persistDiagnostic(threshold = 2 * 1024 * 1024) {
+  if (typeof localStorage === "undefined") return
+  const buckets: StorageBreakdown[] = []
+  let total = 0
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const name = localStorage.key(i)
+    if (!name || !name.startsWith(LOCAL_PREFIX)) continue
+    const raw = localStorage.getItem(name) ?? ""
+    total += raw.length
+    if (raw.length < 50_000 && raw.length < threshold / 4) continue
+    buckets.push(decodeBucket(name, raw))
+  }
+  buckets.sort((a, b) => b.bytes - a.bytes)
+  if (total < threshold) {
+    // eslint-disable-next-line no-console
+    console.info("[persist] localStorage usage", {
+      totalKb: +(total / 1024).toFixed(1),
+      buckets: buckets.length,
+      thresholdKb: +(threshold / 1024).toFixed(1),
+    })
+    return { totalBytes: total, buckets }
+  }
+  // eslint-disable-next-line no-console
+  console.warn("[persist] LARGE localStorage", {
+    totalKb: +(total / 1024).toFixed(1),
+    note: "Approaching browser quota (typ 5–10MB). Sub-key breakdown below.",
+  })
+  for (const b of buckets) {
+    // eslint-disable-next-line no-console
+    console.warn(`[persist] ${b.bucket} (${(b.bytes / 1024).toFixed(1)} KB)`, b.topSubKeys)
+  }
+  return { totalBytes: total, buckets }
+}
+
+if (typeof window !== "undefined") {
+  ;(window as unknown as { persistDiagnostic?: typeof persistDiagnostic }).persistDiagnostic = persistDiagnostic
+  // Auto-scan only when the user explicitly opts in via
+  // `localStorage["opencode.persist.debug"] = "1"`. Otherwise the call
+  // is on-demand via `window.persistDiagnostic()` from the console.
+  // We previously auto-ran on every page load to surface quota issues
+  // proactively, but it added a [Violation] warning + an info log to
+  // every healthy session and the actual quota bug never reproduced.
+  let force = false
+  try {
+    force = localStorage.getItem("opencode.persist.debug") === "1"
+  } catch {
+    // ignore
+  }
+  if (force) {
+    setTimeout(() => persistDiagnostic(0), 1500)
+  }
 }
 
 export const Persist = {

@@ -600,10 +600,6 @@
     padding: 4px 0;
   }
 
-  [data-slot="session-turn-status-inline"][data-visible="false"] {
-    visibility: hidden;
-  }
-
   [data-slot="session-turn-details-text"] {
     font-size: 13px;
     /* text-12-medium */

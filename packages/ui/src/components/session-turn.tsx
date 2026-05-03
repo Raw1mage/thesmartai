@@ -178,8 +178,13 @@ function same<T>(a: readonly T[], b: readonly T[]) {
 
 function isAttachment(part: PartType | undefined) {
   if (part?.type !== "file") return false
-  const mime = (part as FilePart).mime ?? ""
-  return mime.startsWith("image/") || mime === "application/pdf"
+  const file = part as FilePart
+  const mime = file.mime ?? ""
+  if (mime.startsWith("image/") || mime === "application/pdf") return true
+  // Non-image/pdf file parts are attachments unless they have an inline
+  // text source range — those are @-reference chips spliced into the
+  // message text by HighlightedText, not standalone attachments.
+  return file.source?.text?.start === undefined
 }
 
 function list<T>(value: T[] | undefined | null, fallback: T[]) {
@@ -604,7 +609,6 @@ export function SessionTurn(
     if (s.type !== "retry") return
     return s
   })
-  const statusLineMounted = createMemo(() => !!retry() || !!statusOverride() || working())
   const statusLineVisible = createMemo(() => !!retry() || !!statusOverride() || (working() && active()))
 
   // Emit a snapshot upward so an out-of-turn renderer (e.g. anchored in the
@@ -613,7 +617,7 @@ export function SessionTurn(
   createEffect(() => {
     const cb = props.onStatusLineChange
     if (!cb) return
-    if (!isLastUserMessage() || !statusLineMounted()) {
+    if (!isLastUserMessage() || !statusLineVisible()) {
       cb(undefined)
       return
     }
@@ -1032,8 +1036,8 @@ export function SessionTurn(
                             appeared simultaneously when steps were collapsed, doubling the red. */}
                       </div>
                     </Show>
-                    <Show when={statusLineMounted() && props.inlineStatus !== false}>
-                      <div data-slot="session-turn-status-inline" data-visible={statusLineVisible() ? "true" : "false"}>
+                    <Show when={statusLineVisible() && props.inlineStatus !== false}>
+                      <div data-slot="session-turn-status-inline">
                         <Switch>
                           <Match when={retry()}>
                             <span data-slot="session-turn-retry-message">

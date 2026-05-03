@@ -52,9 +52,31 @@
     }
 
     &[data-type="file"] {
-      width: 48px;
-      height: 48px;
+      flex-direction: row;
+      gap: 6px;
+      padding: 6px 10px 6px 8px;
+      min-height: 32px;
+      max-width: 280px;
+
+      [data-slot="user-message-attachment-icon"] {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+      }
+      [data-component="icon"] {
+        width: 16px;
+        height: 16px;
+      }
     }
+  }
+
+  [data-slot="user-message-attachment-filename"] {
+    font-size: 12px;
+    color: var(--text-base);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
 
   [data-slot="user-message-attachment-image"] {

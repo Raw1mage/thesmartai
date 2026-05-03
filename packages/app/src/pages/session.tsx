@@ -1842,7 +1842,7 @@ export default function Page() {
               </div>
             )}
           </Show>
-          <div class="flex-1 min-h-0 overflow-hidden">
+          <div class="relative flex-1 min-h-0 overflow-hidden">
             <Switch>
               <Match when={params.id}>
                 <Show when={messagesReady()} fallback={<SessionLoadingFallback />}>
@@ -1851,7 +1851,7 @@ export default function Page() {
                     mobileFallback={reviewContent({
                       diffStyle: "unified",
                       classes: {
-                        root: "pb-[calc(var(--prompt-height,8rem)+24px)]",
+                        root: "pb-6",
                         header: "px-4",
                         container: "px-4",
                       },

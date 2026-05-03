@@ -51,6 +51,7 @@
     scrollbar-width: thin;
     scrollbar-color: var(--border-weak-base) transparent;
     scroll-padding-bottom: calc(var(--prompt-height, 8rem) + 64px);
+    overflow-x: hidden;
   }
 }
 
