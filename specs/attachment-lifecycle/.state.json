@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "designed",
+  "state": "living",
   "profile": [],
   "history": [
     {
@@ -58,6 +58,38 @@
       "by": "pkcs12",
       "mode": "extend",
       "reason": "v5 architectural shift: pure AI-opt-in. Upload no longer auto-queues images for inline; runtime stores binary + announces via preface inventory; AI calls voucher tool to bring specific images into next turn's preface. Eliminates force-feed risk; cost = 1 extra round-trip on first read."
+    },
+    {
+      "from": "designed",
+      "to": "planned",
+      "at": "2026-05-03T20:38:11.634Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "v5 tasks added; T.8 polish carried as backlog"
+    },
+    {
+      "from": "planned",
+      "to": "implementing",
+      "at": "2026-05-03T20:38:12.162Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "v5 implementing"
+    },
+    {
+      "from": "implementing",
+      "to": "verified",
+      "at": "2026-05-03T20:38:36.525Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "v5 76/76 tests pass; merged main"
+    },
+    {
+      "from": "verified",
+      "to": "living",
+      "at": "2026-05-03T20:38:37.075Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "v5 shipped"
     }
   ]
 }
