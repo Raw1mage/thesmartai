@@ -147,6 +147,35 @@ export const FileRoutes = lazy(() =>
         return c.json(content)
       },
     )
+    .post(
+      "/file/directory",
+      describeRoute({
+        summary: "Create directory",
+        description: "Create a directory at the specified path.",
+        operationId: "file.createDirectory",
+        responses: {
+          200: {
+            description: "Created directory",
+            content: {
+              "application/json": {
+                schema: resolver(File.DirectoryCreateResult),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          path: z.string().min(1),
+        }),
+      ),
+      async (c) => {
+        const path = c.req.valid("json").path
+        const content = await File.createDirectory({ path })
+        return c.json(content)
+      },
+    )
     .get(
       "/file/content",
       describeRoute({

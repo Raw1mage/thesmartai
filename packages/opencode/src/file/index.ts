@@ -45,6 +45,19 @@ export namespace File {
     })
   export type Node = z.infer<typeof Node>
 
+  export const DirectoryCreateResult = z
+    .object({
+      name: z.string(),
+      path: z.string(),
+      absolute: z.string(),
+      type: z.literal("directory"),
+      ignored: z.boolean(),
+    })
+    .meta({
+      ref: "FileDirectoryCreateResult",
+    })
+  export type DirectoryCreateResult = z.infer<typeof DirectoryCreateResult>
+
   export const Content = z
     .object({
       type: z.enum(["text", "binary"]),
@@ -889,6 +902,23 @@ export namespace File {
       }
       return a.name.localeCompare(b.name)
     })
+  }
+
+  export async function createDirectory(input: { path: string }): Promise<DirectoryCreateResult> {
+    const requested =
+      allowGlobalFilesystemBrowse() && path.isAbsolute(input.path)
+        ? input.path
+        : path.join(Instance.directory, input.path)
+    const resolved = await assertWithinProject(requested)
+    await fs.promises.mkdir(resolved)
+    const relativePath = path.relative(Instance.directory, resolved)
+    return {
+      name: path.basename(resolved),
+      path: relativePath,
+      absolute: resolved,
+      type: "directory",
+      ignored: false,
+    }
   }
 
   export async function search(input: { query: string; limit?: number; dirs?: boolean; type?: "file" | "directory" }) {
