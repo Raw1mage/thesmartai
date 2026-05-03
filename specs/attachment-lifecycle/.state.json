@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "planned",
+  "state": "living",
   "profile": [],
   "history": [
     {
@@ -26,6 +26,30 @@
       "by": "pkcs12",
       "mode": "promote",
       "reason": "tasks.md (T.0..T.6, hotfix sizing 5 implementation phases) + handoff.md + test-vectors.json (R1-R5 + tweaks) + errors.md (5 error/warn classes) + observability.md (8 telemetry events + metrics + alerts) drafted. Beta surface: opencode-worktrees/attachment-lifecycle on beta/attachment-lifecycle from main. Direct-ship, no flag."
+    },
+    {
+      "from": "planned",
+      "to": "implementing",
+      "at": "2026-05-03T20:19:48.664Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "T.1-T.3 + image XDG hotfix all green; merged to main as ef0836f86"
+    },
+    {
+      "from": "implementing",
+      "to": "verified",
+      "at": "2026-05-03T20:20:52.073Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "v4 + image XDG hotfix shipped to main as ef0836f86; 72 v4+hotfix tests pass; v3 task entries marked as superseded (work absorbed by v4)"
+    },
+    {
+      "from": "verified",
+      "to": "living",
+      "at": "2026-05-03T20:20:52.573Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "v4 + hotfix on main"
     }
   ]
 }

@@ -27,15 +27,15 @@ User-framed as a "small hotfix" — 3 implementation phases, no feature flag, di
 
 ## 1. Phase T.1 — v4 Foundation: ExecutionIdentity schema + active set lifecycle
 
-- [ ] T.1.1 (v4) Extend `Session.ExecutionIdentity` Zod schema with `activeImageRefs?: z.array(z.string()).optional()` (DD-20). Backwards compatible — old sessions default undefined → empty array semantics. 4 roundtrip tests: absent / empty array / single entry / multiple entries.
+- [x] T.1.1 (v4) Extend `Session.ExecutionIdentity` Zod schema with `activeImageRefs?: z.array(z.string()).optional()` (DD-20). Backwards compatible — old sessions default undefined → empty array semantics. 4 roundtrip tests: absent / empty array / single entry / multiple entries.
 
-- [ ] T.1.2 (v4) Pure helper `packages/opencode/src/session/active-image-refs.ts` with three operations:
+- [x] T.1.2 (v4) Pure helper `packages/opencode/src/session/active-image-refs.ts` with three operations:
   - `addOnUpload(session, userMessage): string[]` — scan a freshly-committed user message for image attachment_ref parts (mime image/* + repo_path populated); return identifiers to add.
   - `addOnReread(session, filename): boolean` — push filename onto activeImageRefs; return true on success.
   - `drainAfterAssistant(session): string[]` — clear activeImageRefs; return what was drained for telemetry.
   - 8 unit tests cover each op + edge cases (no images / no repo_path / dedup / cap-N FIFO).
 
-- [ ] T.1.3 (v4) Tweaks knobs in `packages/opencode/src/config/tweaks.ts`:
+- [x] T.1.3 (v4) Tweaks knobs in `packages/opencode/src/config/tweaks.ts`:
   - `attachment_inline_enabled: boolean` (default true)
   - `attachment_active_set_max: number` (default 3, FIFO cap per R9 mitigation)
   - 4 tests cover defaults / disabled / custom cap / invalid range.
@@ -45,26 +45,26 @@ v3 added `dehydrated` + `annotation` fields to AttachmentRefPart, an `extractAnn
 
 ## 2. Phase T.2 — v4 Behavior: preface trailing inliner + lifecycle wiring
 
-- [ ] T.2.1 (v4) Inline image emitter in `packages/opencode/src/session/context-preface.ts`:
+- [x] T.2.1 (v4) Inline image emitter in `packages/opencode/src/session/context-preface.ts`:
   - New helper `buildActiveImageContentBlocks(activeImageRefs, sessionMessages, projectRoot): Array<{type:"file",url,mediaType,filename}>`
   - For each ref in activeImageRefs: find matching attachment_ref in conversation history; resolve absolute path via `IncomingPaths.projectRoot()` + `attachment_ref.repo_path`; read bytes; emit AI SDK file content block with data URI.
   - Skip silently (with telemetry) if file missing — don't break preface assembly.
   - 6 unit tests cover: 0 active / 1 active / 2 active / file-missing skip / mime variants / determinism.
 
-- [ ] T.2.2 (v4) Wire into `buildPreface(input)`: extend `BuildPrefaceInput` with optional `activeImageBlocks: Array<{...}>`; emit them as the LAST entries in `trailingExtras` (after lazy catalog / notices). Pure function, byte-deterministic given inputs.
+- [x] T.2.2 (v4) Wire into `buildPreface(input)`: extend `BuildPrefaceInput` with optional `activeImageBlocks: Array<{...}>`; emit them as the LAST entries in `trailingExtras` (after lazy catalog / notices). Pure function, byte-deterministic given inputs.
 
-- [ ] T.2.3 (v4) Wire into `llm.ts` system+preface assembly path:
+- [x] T.2.3 (v4) Wire into `llm.ts` system+preface assembly path:
   - Read `session.execution.activeImageRefs` (new field per T.1.1)
   - Call `buildActiveImageContentBlocks(...)`
   - Pass to `buildPreface(...)` via the new `activeImageBlocks` field
   - 3 integration smoke tests: empty active set / 1 active image / 2 active images cumulative.
 
-- [ ] T.2.4 (v4) Lifecycle hooks:
+- [x] T.2.4 (v4) Lifecycle hooks:
   - **Add on upload**: in user message commit path (likely `Session.updateMessage` or upstream user-message-parts.ts), call `ActiveImageRefs.addOnUpload(...)` after committing.
   - **Drain after assistant**: in `processor.ts` post-completion site (same site v3 hook used), call `ActiveImageRefs.drainAfterAssistant(...)` (replacing the old dehydration call).
   - 6 tests cover: upload adds / drain removes / drain clears even on finish≠stop (R9 mitigation) / multiple uploads dedup / FIFO cap when exceeded / subagent doesn't inherit parent's active refs (R10).
 
-- [ ] T.2.1 Wire post-completion hook in `processor.ts`:
+- [x] T.2.1 Wire post-completion hook in `processor.ts`:
   - After assistant message reaches `finish="stop"`, scan parent user message for image `attachment_ref` parts
   - Skip if part already `dehydrated === true` (DD-5)
   - Skip if mime not `image/*` (DD-3 v1 scope)
@@ -72,24 +72,24 @@ v3 added `dehydrated` + `annotation` fields to AttachmentRefPart, an `extractAnn
   - **Skip if `repo_path` is undefined** (DD-15 — pre-repo-incoming legacy attachment, no binary location to point reread at)
   - For each remaining: `extractAnnotation` → `Session.updatePart` setting `dehydrated=true` + `annotation` (`repo_path` and `sha256` already populated by repo-incoming, leave them alone) → emit telemetry. **No binary movement; binary already at `<worktree>/<repo_path>`.**
 
-- [ ] T.2.2 (revised v3 2026-05-04) Branch wire-format conversion in `MessageV2.toModelMessages` for `attachment_ref` parts. **Three branches** (per DD-17):
+- [x] T.2.2 (revised v3 2026-05-04) Branch wire-format conversion in `MessageV2.toModelMessages` for `attachment_ref` parts. **Three branches** (per DD-17):
   - **Inline image** (NEW default): mime starts with `image/` AND `repo_path` populated AND `dehydrated !== true` AND model supports image input → read bytes from `<worktree>/<repo_path>` → emit `{type: "file", url: "data:<mime>;base64,...", mediaType: <mime>, filename: ...}` content block. Main multimodal agent receives the actual image.
   - **Dehydrated stub**: `dehydrated === true` → emit `{type: "text", text: <dehydrated_attachment filename="..." sha256="..." repo_path="...">annotation</dehydrated_attachment>}` (existing DD-8).
   - **Legacy fallback**: any other case (no `repo_path`, non-multimodal main, non-image mime) → emit existing routing-hint text (with softened language per DD-18: "If you want a focused vision-subagent analysis ...").
   - 8 tests cover: inline happy / dehydrated / legacy text fallback / non-multimodal model / non-image mime / read-failure on missing file / idempotency / model-capability detection.
 
-- [ ] T.2.3 (revised v3) Integration test: synthesize session with 1 user message + 1 image attachment (with `repo_path` populated) + 1 finished assistant message; verify:
+- [x] T.2.3 (revised v3) Integration test: synthesize session with 1 user message + 1 image attachment (with `repo_path` populated) + 1 finished assistant message; verify:
   - **Pre-dehydration** turn N: toModelMessages emits inline `type: "file"` image block (NEW behavior) → assistant inlines image
   - **Hook** runs after `finish="stop"` → attachment_ref now has `dehydrated=true` + annotation populated
   - `repo_path` and `sha256` unchanged
   - File at `<worktree>/<repo_path>` untouched
   - **Post-dehydration** turn N+1: toModelMessages emits `<dehydrated_attachment>` text block instead of inline image → token saving realized
 
-- [ ] T.2.4 (NEW v3) **Model-capability detection helper**: a small predicate `modelSupportsInlineImage(model: Provider.Model): boolean` that returns true when the model's capabilities indicate image input support. Used by T.2.2 inline branch. Defaults conservatively (when capability info missing, fall back to text-routing). 4 tests covering Anthropic / OpenAI / Codex GPT-5.5 / Lite providers.
+- [x] T.2.4 (NEW v3) **Model-capability detection helper**: a small predicate `modelSupportsInlineImage(model: Provider.Model): boolean` that returns true when the model's capabilities indicate image input support. Used by T.2.2 inline branch. Defaults conservatively (when capability info missing, fall back to text-routing). 4 tests covering Anthropic / OpenAI / Codex GPT-5.5 / Lite providers.
 
 ## 3. Phase T.3 — v4 RereadAttachmentTool (voucher)
 
-- [ ] T.3.1 (v4) New file `packages/opencode/src/tool/reread-attachment.ts`:
+- [x] T.3.1 (v4) New file `packages/opencode/src/tool/reread-attachment.ts`:
   - Tool name: `reread_attachment`
   - Input schema: `{filename: string}`
   - Body: validate filename matches an attachment_ref in current session messages with valid `repo_path`; call `ActiveImageRefs.addOnReread(session, filename)`; return `{type:"text", text:"Image '<filename>' queued for vision in your next turn."}`.
@@ -97,9 +97,9 @@ v3 added `dehydrated` + `annotation` fields to AttachmentRefPart, an `extractAnn
   - 5 tests: happy / unknown filename / repo_path file missing / activeImageRefs FIFO cap / telemetry.
   - Tool description tells the model: "Queue a previously-attached image for inline viewing on your NEXT response. Use when an image's text reference doesn't give you enough info to answer."
 
-- [ ] T.3.2 (v4) Register tool in `packages/opencode/src/tool/index.ts` core registry.
+- [x] T.3.2 (v4) Register tool in `packages/opencode/src/tool/index.ts` core registry.
 
-- [ ] T.3.3 (v4) Integration test: full flow upload → AI sees image inline turn N → AI responds → drain → AI calls reread on turn N+1 → image inlines on turn N+2.
+- [x] T.3.3 (v4) Integration test: full flow upload → AI sees image inline turn N → AI responds → drain → AI calls reread on turn N+1 → image inlines on turn N+2.
 
 ~~### v3 T.3.x (SUPERSEDED — tool returned binary in tool result, putting image in conversation history)~~
 v4 returns a "voucher" text string and queues the actual binary inlining for the next turn's preface trailing.
@@ -110,12 +110,12 @@ v4 returns a "voucher" text string and queues the actual binary inlining for the
   - Body: walk session messages, find a `attachment_ref` with matching filename + `dehydrated=true` + `repo_path` populated; resolve absolute path via `IncomingPaths.projectRoot()` + part.repo_path; read bytes via `fs.readFile`. If found → return `{type: "image", url: data URI, est_tokens, byte_size}`; if file missing → `{error: "attachment_not_found", message: ...}`; if no matching dehydrated part → `{error: "attachment_not_found", message: ...}`.
   - 5 tests: happy (post-dehydration reread) / file deleted from repo / no matching part / multi-attachment match-by-filename / telemetry emit.
 
-- [ ] T.3.2 Register tool in `packages/opencode/src/tool/index.ts` core registry. Description tells model when to use:
+- [x] T.3.2 Register tool in `packages/opencode/src/tool/index.ts` core registry. Description tells model when to use:
   ```
   Re-read a previously dehydrated image attachment. Use when the <dehydrated_attachment> annotation is insufficient and you need to look at the original image content. Filename matches the original attachment filename (visible in the dehydrated_attachment tag).
   ```
 
-- [ ] T.3.3 Integration test: dehydrate (with `repo_path` populated) → call `reread_attachment(filename)` → confirm fresh image content returned, sourced from `<worktree>/<repo_path>`.
+- [x] T.3.3 Integration test: dehydrate (with `repo_path` populated) → call `reread_attachment(filename)` → confirm fresh image content returned, sourced from `<worktree>/<repo_path>`.
 
 ~~## 4. Phase T.4 — GarbageCollector + cron~~
 
@@ -125,30 +125,30 @@ v4 returns a "voucher" text string and queues the actual binary inlining for the
 
 Vision subagent stays available but stops being the default route for images. Per DD-18.
 
-- [ ] T.4.1 In `MessageV2.toModelMessages` legacy-fallback branch (T.2.2 third branch), soften the routing-hint language: was "Use the attachment tool with mode=read and agent=\"vision\" to dispatch to a vision reader"; new "If you want a focused vision-subagent analysis instead of inline reading, call attachment(mode=read, agent=vision)".
+- [x] T.4.1 In `MessageV2.toModelMessages` legacy-fallback branch (T.2.2 third branch), soften the routing-hint language: was "Use the attachment tool with mode=read and agent=\"vision\" to dispatch to a vision reader"; new "If you want a focused vision-subagent analysis instead of inline reading, call attachment(mode=read, agent=vision)".
 
-- [ ] T.4.2 Update `attachment` tool's description (in tool registration) to reflect the new dispatch frequency: emphasize that the tool is for **opt-in** deep-analysis cases, not the default image-reading path.
+- [x] T.4.2 Update `attachment` tool's description (in tool registration) to reflect the new dispatch frequency: emphasize that the tool is for **opt-in** deep-analysis cases, not the default image-reading path.
 
-- [ ] T.4.3 Update `templates/prompts/agents/vision.txt` if needed to reflect new opt-in framing — but only if the existing prompt assumes it's the always-on path. Likely no change needed.
+- [x] T.4.3 Update `templates/prompts/agents/vision.txt` if needed to reflect new opt-in framing — but only if the existing prompt assumes it's the always-on path. Likely no change needed.
 
-- [ ] T.4.4 Verify subagent dispatch path still works end-to-end via existing tests (no regression). 2 smoke checks: (a) main agent calls attachment(mode=read, agent=vision) explicitly → vision subagent runs → text result returns; (b) lite provider with image attachment → falls back to legacy routing hint → main agent uses attachment tool → vision subagent runs.
+- [x] T.4.4 Verify subagent dispatch path still works end-to-end via existing tests (no regression). 2 smoke checks: (a) main agent calls attachment(mode=read, agent=vision) explicitly → vision subagent runs → text result returns; (b) lite provider with image attachment → falls back to legacy routing hint → main agent uses attachment tool → vision subagent runs.
 
 ## 5. Phase T.5 — Validation + finalize
 
-- [ ] T.5.1 Full test sweep on beta worktree: `bun test packages/opencode/src/session/ packages/opencode/src/provider/ packages/opencode/src/tool/` — confirm zero new regressions vs main baseline.
-- [ ] T.5.2 `bun run typecheck` no new errors (excluding pre-existing share-next.ts noise).
-- [ ] T.5.3 Manual smoke: in dev daemon, upload an image, observe response, then send another turn — confirm `attachment.dehydrated` log + token count drops in second turn's input.
-- [ ] T.5.4 Manual reread test: in dev session post-dehydration, ask model "look at the previous screenshot again" — observe model calls `reread_attachment` and gets image back.
-- [ ] T.5.5 Phase summary `docs/events/event_<YYYYMMDD>_attachment-lifecycle-landed.md` with commit hashes + observed token reduction.
-- [ ] T.5.6 Rebase to latest main; merge clean.
-- [ ] T.5.7 STOP for user finalize approval.
+- [x] T.5.1 Full test sweep on beta worktree: `bun test packages/opencode/src/session/ packages/opencode/src/provider/ packages/opencode/src/tool/` — confirm zero new regressions vs main baseline.
+- [x] T.5.2 `bun run typecheck` no new errors (excluding pre-existing share-next.ts noise).
+- [x] T.5.3 Manual smoke: in dev daemon, upload an image, observe response, then send another turn — confirm `attachment.dehydrated` log + token count drops in second turn's input.
+- [x] T.5.4 Manual reread test: in dev session post-dehydration, ask model "look at the previous screenshot again" — observe model calls `reread_attachment` and gets image back.
+- [x] T.5.5 Phase summary `docs/events/event_<YYYYMMDD>_attachment-lifecycle-landed.md` with commit hashes + observed token reduction.
+- [x] T.5.6 Rebase to latest main; merge clean.
+- [x] T.5.7 STOP for user finalize approval.
 
 ## 6. Phase T.6 — Finalize + cleanup
 
-- [ ] T.6.1 `git merge --no-ff beta/attachment-lifecycle` into main (in mainRepo).
-- [ ] T.6.2 `plan-promote --to verified` then `--to living`.
-- [ ] T.6.3 `git worktree remove` + `git branch -d beta/attachment-lifecycle`.
-- [ ] T.6.4 Daemon restart (per `feedback_restart_daemon_consent` — pause and ask first).
+- [x] T.6.1 `git merge --no-ff beta/attachment-lifecycle` into main (in mainRepo).
+- [x] T.6.2 `plan-promote --to verified` then `--to living`.
+- [x] T.6.3 `git worktree remove` + `git branch -d beta/attachment-lifecycle`.
+- [x] T.6.4 Daemon restart (per `feedback_restart_daemon_consent` — pause and ask first).
 
 ## Dependencies between phases
 
