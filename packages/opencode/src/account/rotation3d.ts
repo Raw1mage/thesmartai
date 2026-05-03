@@ -759,12 +759,14 @@ export async function buildFallbackCandidates(
   // Favorites remain the strongest signal, but runtime rate-limit fallback must
   // still be able to discover other connected providers (e.g. github-copilot -> openai)
   // even when the operator has not explicitly favorited a model there.
-  // Skip same-family providers — Step 1 already covers them with the canonical
-  // family providerId. Without this guard, codex subscription accounts (registered
-  // as `codex-subscription-<slug>` providerIds) get added here as "diff-provider"
-  // candidates, then enforceCodexFamilyOnly's `=== "codex"` string check rejects
-  // every one of them, making the codex pool look empty.
-  const currentFamily = family
+  //
+  // @spec specs/provider-account-decoupling DD-1, DD-5
+  // Post-refactor the registry only holds family entries. The
+  // `providerId === current.providerId` guard now correctly excludes the
+  // current family in one shot — no need for the 2026-05-02 hotfix that
+  // resolved candidateFamily and skipped same-family duplicates (those
+  // duplicates were a symptom of per-account providerIds being registered
+  // as separate provider entries, which is gone now).
   const step3bStart = candidates.length
   for (const [providerId, provider] of Object.entries(providers)) {
     if (!providerId || providerId === current.providerId) continue
@@ -772,7 +774,6 @@ export async function buildFallbackCandidates(
 
     const candidateFamily = await Account.resolveFamily(providerId)
     if (!candidateFamily) continue
-    if (currentFamily && candidateFamily === currentFamily) continue
 
     const accounts = await Account.list(candidateFamily)
     if (Object.keys(accounts).length === 0) continue
@@ -832,66 +833,26 @@ export async function buildFallbackCandidates(
     return true
   })
 
-  // @plans/codex-rotation-hotfix Phase 3 — codex family is hard-coded to
-  // same-provider-only fallback. Drop non-codex candidates from the pool
-  // when the current vector is codex; if nothing is left, callers
-  // (handleRateLimitFallback) turn that into CodexFamilyExhausted so the
-  // operator isn't silently switched to anthropic / gemini / etc.
-  // One log per rejected cross-provider candidate keeps the decision
-  // observable (AGENTS.md 第一條).
-  //
-  // Hotfix 2026-05-02: pass a family resolver so the gate works whether
-  // current.providerId is the canonical "codex" or a per-account
-  // "codex-subscription-<slug>". Without this, the literal `=== "codex"`
-  // check inside enforceCodexFamilyOnly was a no-op for subscription-slug
-  // currents, and codex sibling accounts (which carry the same slug as
-  // current.providerId via Step 1's vector copy) would later be filtered
-  // out elsewhere, leaving the pool empty and surfacing CodexFamilyExhausted
-  // even with healthy quota.
-  const known = await Account.knownFamilies({ includeStorage: true }).catch(() => [] as string[])
-  const familyOf = (providerId: string) => Account.resolveFamilyFromKnown(providerId, known) ?? providerId
-  const codexOnlyFiltered = enforceCodexFamilyOnly(current, unique, familyOf)
+  // @spec specs/provider-account-decoupling DD-5
+  // Pure family equality: candidate.providerId === current.providerId is the
+  // ONLY family check we need, and it already happens in the per-step skips
+  // above (e.g. step 3b at the top of the cross-provider loop). The legacy
+  // enforceCodexFamilyOnly hard-coded "codex never crosses families" via
+  // candidate.providerId === "codex" string comparison — that policy is
+  // intentionally dropped (DD-5). Codex now follows the same rotation
+  // policy as every other family. CodexFamilyExhausted in
+  // session/llm.ts:handleRateLimitFallback still fires when findFallback
+  // returns null (nothing usable across the WHOLE registry), but that is a
+  // genuinely-empty pool, not a string-shape filter.
 
   log.info("Built fallback candidates", {
     current: makeKey(current),
-    currentFamily: familyOf(current.providerId),
-    rawTotal: unique.length,
-    afterCodexGate: codexOnlyFiltered.length,
-    available: codexOnlyFiltered.filter((c) => !c.isRateLimited).length,
+    total: unique.length,
+    available: unique.filter((c) => !c.isRateLimited).length,
     stepCounts,
   })
 
-  return codexOnlyFiltered
-}
-
-/**
- * @plans/codex-rotation-hotfix Phase 3 — exported so tests can validate the
- * codex-family-only gate against a synthetic candidate list without the
- * full buildFallbackCandidates harness.
- */
-export function enforceCodexFamilyOnly(
-  current: ModelVector,
-  candidates: FallbackCandidate[],
-  familyOf: (providerId: string) => string | undefined = (p) => p,
-): FallbackCandidate[] {
-  const currentFamily = familyOf(current.providerId)
-  if (currentFamily !== "codex") return candidates
-  const kept: FallbackCandidate[] = []
-  for (const candidate of candidates) {
-    if (familyOf(candidate.providerId) === "codex") {
-      kept.push(candidate)
-      continue
-    }
-    log.info("rotation candidate rejected — codex family is same-provider-only", {
-      currentProviderId: current.providerId,
-      currentAccountId: current.accountId,
-      rejectedProviderId: candidate.providerId,
-      rejectedAccountId: candidate.accountId,
-      rejectedModelID: candidate.modelID,
-      rejectedReason: candidate.reason,
-    })
-  }
-  return kept
+  return unique
 }
 
 // ============================================================================
