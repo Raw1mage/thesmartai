@@ -1,5 +1,5 @@
 /**
- * Protocol constants extracted from @anthropic-ai/claude-code@2.1.92
+ * Protocol constants extracted from @anthropic-ai/claude-code@2.1.126
  *
  * Single file to update when official CLI upgrades.
  * Source of truth: plans/claude-provider/protocol-datasheet.md
@@ -10,7 +10,7 @@ import { createHash } from "node:crypto"
 // § 0.2  Core Constants
 // ---------------------------------------------------------------------------
 
-export const VERSION = "2.1.92"
+export const VERSION = "2.1.126"
 export const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 export const ATTRIBUTION_SALT = "59cf53e54c78"
 export const API_VERSION = "2023-06-01"
@@ -97,6 +97,7 @@ export interface AssembleBetasOptions {
 /** 1M context-eligible model patterns */
 const CONTEXT_1M_MODELS = [
   "claude-opus-4",
+  "claude-opus-4-7",
   "claude-sonnet-4-5",
   "claude-sonnet-4-6",
 ]
@@ -117,7 +118,7 @@ function supportsFastMode(modelId: string): boolean {
 
 /**
  * Assemble beta flags dynamically per-request.
- * Ref: claude-code@2.1.92 gD1 + conditional assembly
+ * Ref: claude-code@2.1.126 gD1 + conditional assembly
  */
 export function assembleBetas(options: AssembleBetasOptions): string[] {
   const betas: string[] = [...MINIMUM_BETAS]

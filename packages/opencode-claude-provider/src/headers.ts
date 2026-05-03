@@ -2,7 +2,7 @@
  * HTTP header builder — whitelist mode, built from scratch.
  *
  * Phase 2A: No header inheritance from any upstream layer.
- * Ref: claude-code@2.1.92 official header set.
+ * Ref: claude-code@2.1.126 official header set.
  */
 import {
   VERSION,

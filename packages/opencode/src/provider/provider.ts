@@ -1222,6 +1222,7 @@ export namespace Provider {
       { id: "claude-3-opus-20240229", name: "Claude Opus 3", reasoning: true, context: 200000 },
       { id: "claude-opus-4-5", name: "Claude Opus 4.5", reasoning: true, context: 200000 },
       { id: "claude-opus-4-6", name: "Claude Opus 4.6", reasoning: true, context: 200000 },
+      { id: "claude-opus-4-7", name: "Claude Opus 4.7", reasoning: true, context: 200000 },
       { id: "claude-3-5-sonnet-latest", name: "Claude Sonnet 4", reasoning: true, context: 200000 },
       { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", reasoning: true, context: 200000 },
       { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", reasoning: true, context: 200000 },

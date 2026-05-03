@@ -1,7 +1,7 @@
 /**
  * Claude model catalog.
  *
- * Source of truth: @anthropic-ai/claude-code@2.1.92 (zz8 max output overrides)
+ * Source of truth: @anthropic-ai/claude-code@2.1.126 (zz8 max output overrides)
  * + protocol-datasheet.md § 9
  */
 
@@ -35,6 +35,7 @@ const MAX_OUTPUT_OVERRIDES: Record<string, number> = {
   "claude-opus-4-0": 8192,
   "claude-4-opus-20250514": 8192,
   "claude-opus-4-1-20250805": 8192,
+  "claude-opus-4-7": 8192,
 }
 
 /**
@@ -50,6 +51,15 @@ export function getMaxOutput(modelId: string, apiDefault = 16384): number {
  * For API-key auth, pricing should come from the API or be configured.
  */
 export const MODEL_CATALOG: ClaudeModelSpec[] = [
+  {
+    id: "claude-opus-4-7",
+    name: "Claude Opus 4.7",
+    context: 200_000,
+    maxOutput: 8192,
+    supports1MContext: true,
+    supportsThinking: true,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  },
   {
     id: "claude-sonnet-4-6-20250627",
     name: "Claude Sonnet 4.6",
