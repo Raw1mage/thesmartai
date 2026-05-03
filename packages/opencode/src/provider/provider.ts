@@ -1073,14 +1073,28 @@ export namespace Provider {
     // @spec specs/provider-account-decoupling DD-1 — providers[] keys MUST be
     // a registered family. Capture the snapshot once at init so the sync
     // mergeProvider closure can validate every write without going async.
-    // Phase 1 wires the guard but does NOT yet reroute per-account writes;
-    // phase 2 rewrites the populate loop so this guard stops throwing.
-    const knownFamiliesSnapshot: readonly string[] = await Account.knownFamilies({ includeStorage: true })
+    //
+    // The "known" set is the union of:
+    //   1. Account.knownFamilies()  — PROVIDERS list ∪ models.dev ∪ accounts.json families
+    //   2. Object.keys(database)    — curated + inherited entries (e.g. github-copilot-enterprise)
+    //
+    // (1) alone misses curated provider entries that are not in models.dev (the
+    // 2026-05-03 regression: github-copilot-enterprise inherits from
+    // github-copilot via inheritFrom() at L1196 but never lands in
+    // Account.knownFamilies). Per-account slugs (codex-subscription-<x>) never
+    // enter `database`, so allowing database keys is safe under DD-1.
+    const baseKnown: readonly string[] = await Account.knownFamilies({ includeStorage: true })
+    const isKnownFamily = (providerId: string) =>
+      baseKnown.includes(providerId) || database[providerId] !== undefined
 
     const configProviders = Object.entries(config.provider ?? {})
 
     function mergeProvider(providerId: string, provider: Partial<Info>) {
-      assertFamilyKey(providerId, knownFamiliesSnapshot)
+      if (!isKnownFamily(providerId)) {
+        // Construct a richer error: include database keys in the known list so
+        // the operator can see what was available.
+        assertFamilyKey(providerId, [...baseKnown, ...Object.keys(database)])
+      }
       const existing = providers[providerId]
       if (existing) {
         providers[providerId] = mergeDeep(existing, provider) as Info
