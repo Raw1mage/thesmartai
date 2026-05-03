@@ -1353,3 +1353,45 @@ From `specs/docxmcp-http-transport/`:
 **Observability**: tail with `tail -F ~/.local/share/opencode/log/debug.log | grep -E '"service":"(incoming|mcp\.client|mcp\.store)"'`. Bus events: `incoming.history.appended`, `incoming.dispatcher.http-upload-{started,succeeded,failed}`, `incoming.dispatcher.bundle-published`, `mcp.transport.connected`, `mcp.store.bind-mount-rejected`.
 
 **Cross-repo contract (docxmcp)**: docxmcp ships a per-user docker compose with the HTTP MCP server bound to `/run/docxmcp/docxmcp.sock`, which is bind-mounted onto `/run/user/${UID}/opencode/sockets/docxmcp/docxmcp.sock` on the host. The image also ships `bin-wrappers/<toolname>` shell scripts for CLI users (docker cp + docker exec; not in opencode's AI tool catalog). See `~/projects/docxmcp/HANDOVER.md`.
+
+### SOP: every mcp app that processes uploaded files (2026-05-03)
+
+Generalizes the docxmcp pattern into a contract any future mcp app
+(xlsx-mcp / pptx-mcp / pdf-mcp / ...) must follow.
+
+**The pipeline:**
+
+```
+upload  → <repo>/incoming/<filename>.<ext>     [repo persistent layer]
+   → dispatcher.before: POST /files → token, swap path → token in args
+   → mcp container processes
+       (a) FIRST CALL per token: idempotently auto-decompose the file
+           into <token_dir>/<convention>/   (e.g. unpacked/ for docxmcp)
+       (b) tool runs, may produce more files in <token_dir>/...
+       (c) snapshot+diff+tar+b64 newly-touched files into
+           structuredContent.bundle_tar_b64
+   → dispatcher.after: extract bundle to <repo>/incoming/<stem>/
+   → AI reads any bundled file via plain `read` against incoming/<stem>/...
+```
+
+**The contract for a new mcp app:**
+
+| | Required / recommended | What |
+|---|---|---|
+| 1 | **must** | Implement the bundle producer in the call_tool wrapper: snapshot token_dir before call, diff after, tar+b64 new/touched files into `structuredContent.bundle_tar_b64`. Reference impl: `docxmcp/bin/mcp_server.py` `_pre_snapshot` / `_maybe_build_bundle`. |
+| 2 | **should** | First-call auto-decompose to a documented convention dir under token_dir (docxmcp uses `unpacked/`). Idempotent: skip if convention dir already exists so AI's edits are not overwritten. |
+| 3 | **should** | Tool descriptions mention the convention dir name and that decomposed files appear at `incoming/<stem>/<convention>/...` on host. AI then knows to use plain `read` on those paths. |
+| 4 | **must** | Bundle producer excludes the original upload (only ships NEW files) so the host bundle stays small. |
+| 5 | **must not** | Use any host bind mount for data interchange. The bundle path is the only sanctioned IPC for files going host ← container. |
+
+**Why the pattern matters**: AI works in two modes against any uploaded
+file — (i) read/inspect (use `bash` directly; mcp adds nothing), (ii)
+structural mutation (use mcp tools that need the file's internal
+representation). The auto-decompose + bundle pipeline gives mode (ii) a
+reliable bridge: the file's decomposition appears on host
+synchronously with the first tool call, so subsequent edits and reads
+are plain filesystem ops with no container round-trip.
+
+**Reference implementation (docxmcp)**:
+- `bin/mcp_server.py` — `_ensure_decomposed` (convention=`unpacked/`, zipfile.extractall + lxml pretty-print), `_pre_snapshot` / `_maybe_build_bundle` (snapshot+diff+tar+b64).
+- `packages/opencode/src/incoming/dispatcher.ts` — `after()` decodes `structuredContent.bundle_tar_b64`, untars to `<projectRoot>/<sourceDir>/<stem>/`.

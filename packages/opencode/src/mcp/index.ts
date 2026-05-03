@@ -154,6 +154,28 @@ export namespace MCP {
     return serverName.startsWith("mcpapp-") ? serverName.slice("mcpapp-".length) : serverName
   }
 
+  // /specs/docxmcp-http-transport DD-3: token wire format is
+  // `^tok_[A-Z2-7]{32}$`. The mcp server enforces this strictly, but
+  // when a dispatcher (IncomingDispatcher.before) sits between the
+  // model and the mcp server, the model should be allowed to pass a
+  // project-relative path that the dispatcher uploads + rewrites to a
+  // token. Relax the pattern in the schema we expose to the AI SDK so
+  // dynamicTool's pre-execute validation does not reject path inputs.
+  const TOKEN_PATTERN = "^tok_[A-Z2-7]{32}$"
+  function relaxTokenFieldsForDispatcher(schema: JSONSchema7): void {
+    const props = schema.properties as Record<string, JSONSchema7> | undefined
+    if (!props) return
+    for (const [key, value] of Object.entries(props)) {
+      if (!value || typeof value !== "object") continue
+      if (value.type === "string" && value.pattern === TOKEN_PATTERN) {
+        delete value.pattern
+        const note =
+          " May also be passed as a project-relative path (e.g. `incoming/foo.docx`); opencode will upload the file and substitute a token automatically."
+        value.description = (value.description ?? "") + note
+      }
+    }
+  }
+
   // Convert MCP tool definition to AI SDK Tool type
   async function convertMcpTool(
     mcpTool: MCPToolDef,
@@ -170,6 +192,15 @@ export namespace MCP {
       properties: (inputSchema.properties ?? {}) as JSONSchema7["properties"],
       additionalProperties: false,
     }
+
+    // /specs/docxmcp-http-transport: server-side token fields advertise
+    // a strict `^tok_[A-Z2-7]{32}$` pattern. The AI SDK's dynamicTool
+    // validates args against this schema BEFORE invoking execute(), so
+    // the IncomingDispatcher can never run path→token substitution. We
+    // relax the pattern here so the model can pass either a token or a
+    // project-relative path; the dispatcher uploads paths and rewrites
+    // them to tokens before they reach the mcp server.
+    relaxTokenFieldsForDispatcher(schema)
 
     const appId = serverName ? appIdFromServerName(serverName) : "unknown"
 
