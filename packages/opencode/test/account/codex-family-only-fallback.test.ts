@@ -83,6 +83,29 @@ describe("enforceCodexFamilyOnly", () => {
     expect(kept).toEqual(candidates)
   })
 
+  test("subscription-slug current resolves to codex family via familyOf and drops non-codex", () => {
+    // Hotfix 2026-05-02: production currents arrive with providerId like
+    // `codex-subscription-alpha`, not the literal `codex`. The gate must
+    // honor the family resolver and still keep only codex candidates.
+    const slugCurrent: ModelVector = {
+      providerId: "codex-subscription-alpha",
+      accountId: "codex-subscription-alpha",
+      modelID: "gpt-5.4",
+    }
+    const familyOf = (p: string) => (p.startsWith("codex") ? "codex" : p)
+    const kept = enforceCodexFamilyOnly(
+      slugCurrent,
+      [
+        candidate("codex-subscription-beta", "codex-subscription-beta", "gpt-5.4"),
+        candidate("anthropic", "claude-cli-subscription-y", "claude-opus-4-7"),
+        candidate("codex", "codex-subscription-c", "gpt-5.4"),
+      ],
+      familyOf,
+    )
+
+    expect(kept.map((c) => c.providerId)).toEqual(["codex-subscription-beta", "codex"])
+  })
+
   test("codex current with mixed pool where non-codex is highest priority still drops non-codex", () => {
     // Regression guard: even if the non-codex candidate would be scored first,
     // we must not silently pick it — this is the whole point of the gate.

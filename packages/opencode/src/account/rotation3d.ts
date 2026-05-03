@@ -657,41 +657,56 @@ export async function buildFallbackCandidates(
     }
   }
 
+  // Per-step counters — surface each rotation phase's hit count so when
+  // CodexFamilyExhausted (or any "no fallback") fires, the daemon log
+  // shows exactly which step starved the pool.
+  const stepCounts = { step1: 0, step2: 0, step3: 0, step3b: 0, step4: 0 }
+  const before = () => candidates.length
+
   // 1. Get all accounts in the same family (same provider, different accounts)
   // Always allowed as it's the same model the user is already using
   const family = await Account.resolveFamily(current.providerId)
-  if (family) {
-    const accounts = await Account.list(family)
-    for (const [accountId, info] of Object.entries(accounts)) {
-      if (accountId === current.accountId) continue
-      const vector = {
-        providerId: current.providerId,
-        accountId,
-        modelID: current.modelID,
+  {
+    const start = before()
+    if (family) {
+      const accounts = await Account.list(family)
+      for (const [accountId, info] of Object.entries(accounts)) {
+        if (accountId === current.accountId) continue
+        const vector = {
+          providerId: current.providerId,
+          accountId,
+          modelID: current.modelID,
+        }
+        if (isHidden(vector)) continue
+        candidates.push(enrich(vector, "same-model-diff-account"))
       }
-      if (isHidden(vector)) continue
-      candidates.push(enrich(vector, "same-model-diff-account"))
     }
+    stepCounts.step1 = candidates.length - start
   }
 
   // 2. Get alternative models from same provider (different model, same account)
   // Use favorites list directly (do not require provider.models listing)
-  for (const fav of allowedModels) {
-    const [providerId, modelId] = fav.split("/")
-    if (providerId !== current.providerId) continue
-    if (modelId === current.modelID) continue
+  {
+    const start = before()
+    for (const fav of allowedModels) {
+      const [providerId, modelId] = fav.split("/")
+      if (providerId !== current.providerId) continue
+      if (modelId === current.modelID) continue
 
-    const vector = {
-      providerId: current.providerId,
-      accountId: current.accountId,
-      modelID: modelId,
+      const vector = {
+        providerId: current.providerId,
+        accountId: current.accountId,
+        modelID: modelId,
+      }
+      if (isHidden(vector)) continue
+      candidates.push(enrich(vector, "diff-model-same-account"))
     }
-    if (isHidden(vector)) continue
-    candidates.push(enrich(vector, "diff-model-same-account"))
+    stepCounts.step2 = candidates.length - start
   }
 
   // 3. Get favorite models from model.json (different providers)
   // We already loaded modelData for filtering, let's reuse it if possible or just parse again
+  const step3Start = candidates.length
   try {
     const modelFile = Bun.file(path.join(Global.Path.state, "model.json"))
     if (await modelFile.exists()) {
@@ -738,6 +753,7 @@ export async function buildFallbackCandidates(
   } catch (e) {
     log.warn("Failed to read favorites for fallback", { error: e })
   }
+  stepCounts.step3 = candidates.length - step3Start
 
   // 3b. Broaden cross-provider rescue beyond favorites.
   // Favorites remain the strongest signal, but runtime rate-limit fallback must
@@ -749,6 +765,7 @@ export async function buildFallbackCandidates(
   // candidates, then enforceCodexFamilyOnly's `=== "codex"` string check rejects
   // every one of them, making the codex pool look empty.
   const currentFamily = family
+  const step3bStart = candidates.length
   for (const [providerId, provider] of Object.entries(providers)) {
     if (!providerId || providerId === current.providerId) continue
     if (hiddenProviders.has(providerId)) continue
@@ -774,7 +791,10 @@ export async function buildFallbackCandidates(
     }
   }
 
+  stepCounts.step3b = candidates.length - step3bStart
+
   // 4. Get inherent free opencode zen models as rescue fallback
+  const step4Start = candidates.length
   const opencodeProvider = providers["opencode"]
   if (opencodeProvider?.models) {
     for (const [modelId, model] of Object.entries(
@@ -801,6 +821,7 @@ export async function buildFallbackCandidates(
       candidates.push(enrich(vector, "fallback"))
     }
   }
+  stepCounts.step4 = candidates.length - step4Start
 
   // Deduplicate by key
   const seen = new Set<string>()
@@ -818,12 +839,26 @@ export async function buildFallbackCandidates(
   // operator isn't silently switched to anthropic / gemini / etc.
   // One log per rejected cross-provider candidate keeps the decision
   // observable (AGENTS.md 第一條).
-  const codexOnlyFiltered = enforceCodexFamilyOnly(current, unique)
+  //
+  // Hotfix 2026-05-02: pass a family resolver so the gate works whether
+  // current.providerId is the canonical "codex" or a per-account
+  // "codex-subscription-<slug>". Without this, the literal `=== "codex"`
+  // check inside enforceCodexFamilyOnly was a no-op for subscription-slug
+  // currents, and codex sibling accounts (which carry the same slug as
+  // current.providerId via Step 1's vector copy) would later be filtered
+  // out elsewhere, leaving the pool empty and surfacing CodexFamilyExhausted
+  // even with healthy quota.
+  const known = await Account.knownFamilies({ includeStorage: true }).catch(() => [] as string[])
+  const familyOf = (providerId: string) => Account.resolveFamilyFromKnown(providerId, known) ?? providerId
+  const codexOnlyFiltered = enforceCodexFamilyOnly(current, unique, familyOf)
 
-  log.debug("Built fallback candidates", {
+  log.info("Built fallback candidates", {
     current: makeKey(current),
-    totalCandidates: codexOnlyFiltered.length,
+    currentFamily: familyOf(current.providerId),
+    rawTotal: unique.length,
+    afterCodexGate: codexOnlyFiltered.length,
     available: codexOnlyFiltered.filter((c) => !c.isRateLimited).length,
+    stepCounts,
   })
 
   return codexOnlyFiltered
@@ -837,11 +872,13 @@ export async function buildFallbackCandidates(
 export function enforceCodexFamilyOnly(
   current: ModelVector,
   candidates: FallbackCandidate[],
+  familyOf: (providerId: string) => string | undefined = (p) => p,
 ): FallbackCandidate[] {
-  if (current.providerId !== "codex") return candidates
+  const currentFamily = familyOf(current.providerId)
+  if (currentFamily !== "codex") return candidates
   const kept: FallbackCandidate[] = []
   for (const candidate of candidates) {
-    if (candidate.providerId === "codex") {
+    if (familyOf(candidate.providerId) === "codex") {
       kept.push(candidate)
       continue
     }
