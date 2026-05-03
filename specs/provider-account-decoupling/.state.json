@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "planned",
+  "state": "verified",
   "profile": [],
   "history": [
     {
@@ -26,6 +26,22 @@
       "by": "pkcs12",
       "mode": "promote",
       "reason": "tasks.md (9 phases), handoff.md, test-vectors.json (9 vectors), errors.md, observability.md drafted"
+    },
+    {
+      "from": "planned",
+      "to": "implementing",
+      "at": "2026-05-03T13:00:00.000Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "phase 1-4 already committed on beta/provider-account-decoupling at session start; phase 5 staged in working tree; entering implementing to finish 5-8 + rebase + cutover prep"
+    },
+    {
+      "from": "implementing",
+      "to": "verified",
+      "at": "2026-05-03T14:00:00.000Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "phases 5-8 landed; rebased onto main HEAD c27a127e8; 9 boundary + migration tests passing; architecture.md updated; cutover doc at docs/events/event_2026-05-03_provider-account-decoupling-cutover.md. Phase 9 is operator-driven post-merge."
     }
   ]
 }
