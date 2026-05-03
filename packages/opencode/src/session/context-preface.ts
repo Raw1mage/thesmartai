@@ -26,6 +26,14 @@ export interface BuildPrefaceInput {
     summarized: SkillContextEntry[]
   }
   todaysDate: string
+  /**
+   * Per-turn dynamic content that doesn't belong to T1 or T2 — e.g. lazy
+   * tool catalog hints, structured-output directives, subagent return
+   * notices, processor.ts quota-low wrap-up addenda. Emitted as a third
+   * content block with tier="trailing" if non-empty (data-schema.json
+   * PrefaceContentBlock). Per-turn cache invalidation is fine here.
+   */
+  trailingExtras?: string[]
 }
 
 export interface ContextPrefaceMessageOutput {
@@ -73,6 +81,10 @@ export function buildPreface(input: BuildPrefaceInput): ContextPrefaceMessageOut
   const contentBlocks: PrefaceContentBlock[] = [{ type: "text", tier: "t1", text: t1Body }]
   if (!t2Empty) {
     contentBlocks.push({ type: "text", tier: "t2", text: t2Body })
+  }
+  const trailing = (input.trailingExtras ?? []).filter((s) => s && s.length > 0)
+  if (trailing.length > 0) {
+    contentBlocks.push({ type: "text", tier: "trailing", text: trailing.join("\n\n") })
   }
 
   return { parts, contentBlocks, kind: CONTEXT_PREFACE_KIND, t2Empty }

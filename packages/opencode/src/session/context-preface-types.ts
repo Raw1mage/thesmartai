@@ -51,10 +51,14 @@ export interface PreloadParts {
 /**
  * One content block inside the context-preface user message. Tier marker
  * lets the cache breakpoint allocator place BP2 (T1 end) and BP3 (T2 end).
+ *
+ * "trailing" tier carries per-turn extras (lazy catalog hints, structured-
+ * output directives, subagent notices). It rides the per-turn cache
+ * naturally — no dedicated breakpoint, follows the user message into BP4.
  */
 export interface PrefaceContentBlock {
   type: "text"
-  tier: "t1" | "t2"
+  tier: "t1" | "t2" | "trailing"
   text: string
 }
 
