@@ -3,6 +3,8 @@ import { Daemon } from "../../server/daemon"
 import { cmd } from "./cmd"
 import { withNetworkOptions, resolveNetworkOptions } from "../network"
 import { WebAuthCredentials } from "../../server/web-auth-credentials"
+import { assertMigrationApplied } from "../../server/migration-boot-guard"
+import { MigrationRequiredError } from "../../provider/registry-shape"
 
 async function waitForShutdownSignal() {
   let keepAlive: ReturnType<typeof setInterval> | undefined
@@ -32,6 +34,20 @@ export const ServeCommand = cmd({
     }),
   describe: "starts a headless opencode server",
   handler: async (args) => {
+    // @spec specs/provider-account-decoupling DD-6 — daemon boot guard.
+    // Refuse to start if the storage migration hasn't run for this binary.
+    // Exits 1 with a remediation hint per AGENTS.md rule 1 (no silent fallback).
+    try {
+      await assertMigrationApplied()
+    } catch (e) {
+      if (MigrationRequiredError.isInstance(e)) {
+        const data = (e as any).data as { message: string }
+        console.error(`error: ${data.message}`)
+        process.exit(1)
+      }
+      throw e
+    }
+
     // Unix socket (daemon) mode — bypass TCP + auth config
     if (args["unix-socket"]) {
       const socketPath = args["unix-socket"]
