@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "claude-provider-beta-fingerprint-realign data contracts",
+  "description": "Type contracts for the refactored assembleBetas() function and its peer interfaces. Single source of truth; TypeScript interfaces derive from these.",
+
+  "definitions": {
+    "ProviderRoute": {
+      "type": "string",
+      "enum": ["firstParty", "anthropicAws", "bedrock", "vertex", "foundry", "mantle"],
+      "description": "Where the request is being routed. Mirrors upstream pq() return values. Only firstParty is exercised by opencode today. The set {firstParty, anthropicAws, foundry, mantle} forms isFirstPartyish (upstream $Q())."
+    },
+
+    "ModelId": {
+      "type": "string",
+      "pattern": "^claude-",
+      "description": "Anthropic model id string. Examples: claude-opus-4-7, claude-haiku-4-5-20251001, claude-sonnet-4-6-20250627."
+    },
+
+    "AssembleBetasOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["isOAuth"],
+      "properties": {
+        "isOAuth": {
+          "type": "boolean",
+          "description": "True iff auth is OAuth/subscription (not bare API key). Upstream: i7()."
+        },
+        "modelId": {
+          "$ref": "#/definitions/ModelId",
+          "description": "Model id, used for haiku-detection, 1M-context eligibility, and thinking support. Optional only for tests; production callers always provide it."
+        },
+        "fastMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether fast mode is enabled. Currently unused by ZR1 but kept for env-driven beta append."
+        },
+        "effort": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the effort parameter is used. Triggers no flag in current ZR1; reserved."
+        },
+        "taskBudget": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether task-budget is specified. Triggers no flag in current ZR1; reserved."
+        },
+        "envBetas": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Extra betas from process.env.ANTHROPIC_BETAS (comma-split). Appended last, before dedup."
+        },
+        "provider": {
+          "$ref": "#/definitions/ProviderRoute",
+          "default": "firstParty",
+          "description": "NEW. Routing target. firstParty enables context-management beta gate; bedrock/vertex/foundry suppress it."
+        },
+        "showThinkingSummaries": {
+          "type": "boolean",
+          "default": false,
+          "description": "NEW. If true, suppresses redact-thinking-2026-02-12. Upstream: v7().showThinkingSummaries === true."
+        },
+        "disableExperimentalBetas": {
+          "type": "boolean",
+          "default": false,
+          "description": "NEW. If true, suppresses context-management-2025-06-27 (and structured-outputs when activated). Resolved by provider.ts from process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS."
+        },
+        "disableInterleavedThinking": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, suppresses interleaved-thinking-2025-05-14 AND redact-thinking-2026-02-12. Resolved from process.env.DISABLE_INTERLEAVED_THINKING."
+        },
+        "isInteractive": {
+          "type": "boolean",
+          "default": false,
+          "description": "NEW (DD-13). True iff running in interactive TTY mode. Upstream: !I7(). Gates redact-thinking-2026-02-12. Default false because opencode runs as a daemon, not a TTY."
+        }
+      }
+    },
+
+    "BetaFlag": {
+      "type": "string",
+      "enum": [
+        "claude-code-20250219",
+        "oauth-2025-04-20",
+        "context-1m-2025-08-07",
+        "interleaved-thinking-2025-05-14",
+        "redact-thinking-2026-02-12",
+        "context-management-2025-06-27",
+        "structured-outputs-2025-12-15",
+        "web-search-2025-03-05",
+        "prompt-caching-scope-2026-01-05"
+      ],
+      "description": "Closed enumeration of flags assembleBetas() may emit. envBetas can append arbitrary extras outside this set."
+    },
+
+    "AssembleBetasOutput": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Output of assembleBetas. ORDERED; not a set. Order MUST match upstream ZR1 push order. Caller comma-joins for the anthropic-beta header.",
+      "uniqueItems": true
+    },
+
+    "ModelPredicate": {
+      "type": "object",
+      "description": "Result of a model-attribute helper. Each helper takes a ModelId and returns boolean.",
+      "additionalProperties": false,
+      "required": ["isHaiku", "supports1MContext", "supportsThinking", "supportsContextManagement"],
+      "properties": {
+        "isHaiku": { "type": "boolean", "description": "modelId.toLowerCase().includes('haiku')" },
+        "supports1MContext": {
+          "type": "boolean",
+          "description": "Prefix match against CONTEXT_1M_MODELS. Upstream: DP(q)."
+        },
+        "supportsThinking": {
+          "type": "boolean",
+          "description": "All current claude-* models return true. Upstream: ggq(q)."
+        },
+        "supportsContextManagement": {
+          "type": "boolean",
+          "description": "Upstream: iO_(q). Predicate to be reverse-engineered during designed→planned. Risk R-1 in design.md."
+        }
+      }
+    }
+  },
+
+  "type": "object",
+  "properties": {
+    "AssembleBetasOptions": { "$ref": "#/definitions/AssembleBetasOptions" },
+    "AssembleBetasOutput": { "$ref": "#/definitions/AssembleBetasOutput" },
+    "ProviderRoute": { "$ref": "#/definitions/ProviderRoute" },
+    "BetaFlag": { "$ref": "#/definitions/BetaFlag" },
+    "ModelPredicate": { "$ref": "#/definitions/ModelPredicate" },
+    "ModelId": { "$ref": "#/definitions/ModelId" }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "diagram_title": "A0 — assembleBetas: produce anthropic-beta header value",
+  "node_reference": "A0",
+  "purpose": "Given (model, auth, provider, env) inputs, produce an ordered list of beta flag strings that is byte-equivalent to upstream claude-code v2.1.112 ZR1 output for the same inputs.",
+  "viewpoint": "developer maintaining wire-fingerprint parity with claude-code",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Resolve model predicates",
+      "description": "Compute isHaiku, supports1MContext, supportsThinking, supportsContextManagement from modelId.",
+      "inputs": ["modelId"],
+      "controls": ["CONTEXT_1M_MODELS prefix list", "haiku substring rule"],
+      "outputs": ["modelPredicate"],
+      "mechanisms": ["isHaikuModel()", "supports1MContext()", "supportsThinking()", "modelSupportsContextManagement()"]
+    },
+    {
+      "id": "A2",
+      "title": "Resolve env conditions",
+      "description": "Translate process.env reads into resolved booleans at the call site (provider.ts), then pass into assembleBetas as plain options.",
+      "inputs": ["process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "process.env.DISABLE_INTERLEAVED_THINKING", "process.env.ANTHROPIC_BETAS"],
+      "controls": ["library-level no-env-coupling rule (DD-5 in design.md)"],
+      "outputs": ["disableExperimentalBetas", "disableInterleavedThinking", "envBetas[]"],
+      "mechanisms": ["env-resolver in provider.ts"]
+    },
+    {
+      "id": "A3",
+      "title": "Apply per-flag conditional pushes in upstream order",
+      "description": "Walk the 9-step push ladder; each step independently consults its predicate(s) and pushes (or not).",
+      "inputs": ["modelPredicate", "isOAuth", "provider", "showThinkingSummaries", "disableExperimentalBetas", "disableInterleavedThinking"],
+      "controls": ["upstream cli.js ZR1 function (offset ~3482150)", "spec.md Requirement 4 push order"],
+      "outputs": ["betaList ordered"],
+      "mechanisms": ["assembleBetas() body — structurally arranged push ladder"]
+    },
+    {
+      "id": "A4",
+      "title": "Append env-supplied flags",
+      "description": "Append items from envBetas[] verbatim to the end of the list. Skipped if empty.",
+      "inputs": ["betaList", "envBetas[]"],
+      "controls": ["upstream final step in ZR1"],
+      "outputs": ["betaList post-env"],
+      "mechanisms": ["array spread"]
+    },
+    {
+      "id": "A5",
+      "title": "Deduplicate while preserving order",
+      "description": "Remove duplicates that arise from envBetas overlap. Order of first occurrence preserved.",
+      "inputs": ["betaList post-env"],
+      "controls": ["array order invariant (Requirement 4)"],
+      "outputs": ["betaList final"],
+      "mechanisms": ["[...new Set(arr)] idiom (current impl reused)"]
+    }
+  ],
+  "traceability": {
+    "to_spec": [
+      { "activity": "A1", "requirement": "Requirement 1 (Haiku exemption), Requirement 4 (push order)" },
+      { "activity": "A2", "requirement": "Requirement 2 (context-management conditional), Requirement 3 (redact-thinking conditional)" },
+      { "activity": "A3", "requirement": "Requirement 4 (push order), Requirement 5 (MINIMUM_BETAS removed), Requirement 7 (reserved slots)" },
+      { "activity": "A4", "requirement": "Requirement 4 (env append position)" },
+      { "activity": "A5", "requirement": "Requirement 4 (no duplicate emissions)" }
+    ],
+    "to_upstream": {
+      "cli_js_function": "ZR1",
+      "cli_js_offset": 3482150,
+      "cli_js_constants_offset": 2439173
+    }
+  }
+}

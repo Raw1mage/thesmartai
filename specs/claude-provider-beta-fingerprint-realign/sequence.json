@@ -1,0 +1,68 @@
+[
+  {
+    "id": "SEQ1",
+    "title": "Runtime: opus-4-7 + OAuth + firstParty request flow",
+    "description": "End-to-end sequence showing how a single Anthropic API request acquires its anthropic-beta header value through the refactored pipeline.",
+    "actors": [
+      { "id": "core", "componentRef": "C2", "label": "opencode core" },
+      { "id": "provider", "componentRef": "CMP4", "label": "ClaudeCodeLanguageModel.doStream" },
+      { "id": "headers", "componentRef": "CMP3", "label": "buildHeaders" },
+      { "id": "assembler", "componentRef": "CMP1", "label": "assembleBetas" },
+      { "id": "predicates", "componentRef": "CMP2", "label": "model predicate helpers" },
+      { "id": "anthropic", "componentRef": "S2", "label": "Anthropic API" }
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "core", "to": "provider", "label": "doStream({prompt, providerOptions, account})" },
+      { "id": "MSG2", "from": "provider", "to": "provider", "label": "resolve env: disableExperimentalBetas, disableInterleavedThinking, envBetas" },
+      { "id": "MSG3", "from": "provider", "to": "headers", "label": "buildHeaders({modelId='claude-opus-4-7', isOAuth=true, provider='firstParty', showThinkingSummaries=false, ...})" },
+      { "id": "MSG4", "from": "headers", "to": "assembler", "label": "assembleBetas(opts)" },
+      { "id": "MSG5", "from": "assembler", "to": "predicates", "label": "isHaikuModel('claude-opus-4-7') → false" },
+      { "id": "MSG6", "from": "assembler", "to": "predicates", "label": "supports1MContext('claude-opus-4-7') → true" },
+      { "id": "MSG7", "from": "assembler", "to": "predicates", "label": "supportsThinking('claude-opus-4-7') → true" },
+      { "id": "MSG8", "from": "assembler", "to": "predicates", "label": "modelSupportsContextManagement('claude-opus-4-7') → true" },
+      { "id": "MSG9", "from": "assembler", "to": "assembler", "label": "push ladder: claude-code → oauth → context-1m → interleaved-thinking → redact-thinking → context-management → prompt-caching" },
+      { "id": "MSG10", "from": "assembler", "to": "headers", "label": "return ['claude-code-20250219','oauth-2025-04-20','context-1m-2025-08-07','interleaved-thinking-2025-05-14','redact-thinking-2026-02-12','context-management-2025-06-27','prompt-caching-scope-2026-01-05']" },
+      { "id": "MSG11", "from": "headers", "to": "headers", "label": "Headers.set('anthropic-beta', list.join(','))" },
+      { "id": "MSG12", "from": "headers", "to": "provider", "label": "return Headers" },
+      { "id": "MSG13", "from": "provider", "to": "anthropic", "label": "POST /v1/messages?beta=true (with anthropic-beta header)" },
+      { "id": "MSG14", "from": "anthropic", "to": "provider", "label": "200 OK, SSE stream begins" }
+    ]
+  },
+  {
+    "id": "SEQ2",
+    "title": "Runtime: haiku + OAuth request — claude-code beta omitted",
+    "description": "Shows the haiku-exemption branch (Requirement 1).",
+    "actors": [
+      { "id": "core", "componentRef": "C2", "label": "opencode core" },
+      { "id": "provider", "componentRef": "CMP4", "label": "doStream" },
+      { "id": "headers", "componentRef": "CMP3", "label": "buildHeaders" },
+      { "id": "assembler", "componentRef": "CMP1", "label": "assembleBetas" },
+      { "id": "predicates", "componentRef": "CMP2", "label": "predicates" }
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "core", "to": "provider", "label": "doStream({modelId='claude-haiku-4-5-20251001'})" },
+      { "id": "MSG2", "from": "provider", "to": "headers", "label": "buildHeaders(...)" },
+      { "id": "MSG3", "from": "headers", "to": "assembler", "label": "assembleBetas(opts)" },
+      { "id": "MSG4", "from": "assembler", "to": "predicates", "label": "isHaikuModel(...) → true" },
+      { "id": "MSG5", "from": "assembler", "to": "assembler", "label": "SKIP claude-code-20250219 push (Requirement 1)" },
+      { "id": "MSG6", "from": "assembler", "to": "headers", "label": "return ['oauth-2025-04-20','interleaved-thinking-2025-05-14','redact-thinking-2026-02-12','prompt-caching-scope-2026-01-05']" }
+    ]
+  },
+  {
+    "id": "SEQ3",
+    "title": "Test: matrix vector executes assembleBetas and asserts byte-equivalent output",
+    "description": "Bun test reads test-vectors.json, calls assembleBetas, compares to expected.",
+    "actors": [
+      { "id": "test", "componentRef": "CMP5", "label": "protocol.test.ts" },
+      { "id": "fixture", "componentRef": "CMP5", "label": "test-vectors.json" },
+      { "id": "assembler", "componentRef": "CMP1", "label": "assembleBetas" }
+    ],
+    "messages": [
+      { "id": "MSG1", "from": "test", "to": "fixture", "label": "loadVectors()" },
+      { "id": "MSG2", "from": "fixture", "to": "test", "label": "[{name, opts, expected}, ...]" },
+      { "id": "MSG3", "from": "test", "to": "assembler", "label": "for each: assembleBetas(opts)" },
+      { "id": "MSG4", "from": "assembler", "to": "test", "label": "actual: string[]" },
+      { "id": "MSG5", "from": "test", "to": "test", "label": "expect(actual).toEqual(expected)" }
+    ]
+  }
+]

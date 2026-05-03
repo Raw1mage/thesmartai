@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "title": "C4 — claude-provider beta-fingerprint realign",
+  "scope": "Components touched by the assembleBetas refactor inside @opencode-ai/claude-provider, plus the upstream reference and the test surface.",
+
+  "systems": [
+    {
+      "id": "S1",
+      "name": "opencode runtime",
+      "description": "The opencode CLI/daemon that issues Anthropic API requests through @opencode-ai/claude-provider.",
+      "external": false
+    },
+    {
+      "id": "S2",
+      "name": "Anthropic API",
+      "description": "api.anthropic.com — the wire-fingerprint target. Behavior is what we are mimicking.",
+      "external": true
+    }
+  ],
+
+  "containers": [
+    {
+      "id": "C1",
+      "systemId": "S1",
+      "name": "@opencode-ai/claude-provider",
+      "description": "The wire-fingerprint mimicry layer. TypeScript package, no native deps. Invoked by opencode core via LanguageModelV2 interface.",
+      "tech": "TypeScript / bun"
+    },
+    {
+      "id": "C2",
+      "systemId": "S1",
+      "name": "opencode core",
+      "description": "Caller that holds account state, session config, and constructs LMv2 prompts.",
+      "tech": "TypeScript / bun"
+    },
+    {
+      "id": "C3",
+      "systemId": "S1",
+      "name": "refs/claude-code-npm",
+      "description": "Read-only mirror of @anthropic-ai/claude-code@2.1.112. Source-of-truth for upstream constants and assembler logic. Never executed.",
+      "tech": "JavaScript (minified)"
+    }
+  ],
+
+  "components": [
+    {
+      "id": "CMP1",
+      "containerId": "C1",
+      "name": "protocol.ts :: assembleBetas",
+      "description": "The function being rewritten. After realign, mirrors upstream ZR1's per-flag conditional push ladder.",
+      "moduleRef": "A0",
+      "criticalFiles": ["packages/opencode-claude-provider/src/protocol.ts"]
+    },
+    {
+      "id": "CMP2",
+      "containerId": "C1",
+      "name": "protocol.ts :: model predicate helpers",
+      "description": "isHaikuModel, supports1MContext, supportsThinking, modelSupportsContextManagement. Each carries an `// upstream:` comment.",
+      "moduleRef": "A1",
+      "criticalFiles": ["packages/opencode-claude-provider/src/protocol.ts"]
+    },
+    {
+      "id": "CMP3",
+      "containerId": "C1",
+      "name": "headers.ts :: buildHeaders",
+      "description": "Caller of assembleBetas; passes through the new option fields from BuildHeadersOptions.",
+      "moduleRef": "A3",
+      "criticalFiles": ["packages/opencode-claude-provider/src/headers.ts"]
+    },
+    {
+      "id": "CMP4",
+      "containerId": "C1",
+      "name": "provider.ts :: ClaudeCodeLanguageModel.doStream",
+      "description": "Resolves env conditions, sets provider='firstParty', and forwards into buildHeaders.",
+      "moduleRef": "A2",
+      "criticalFiles": ["packages/opencode-claude-provider/src/provider.ts"]
+    },
+    {
+      "id": "CMP5",
+      "containerId": "C1",
+      "name": "test/protocol.test.ts",
+      "description": "NEW. Matrix unit tests reading test-vectors.json fixture; asserts byte-equivalent output for each scenario.",
+      "moduleRef": "A3",
+      "criticalFiles": ["packages/opencode-claude-provider/test/protocol.test.ts"]
+    },
+    {
+      "id": "CMP6",
+      "containerId": "C3",
+      "name": "cli.js :: ZR1 (upstream truth)",
+      "description": "Minified upstream beta assembler. Read-only reference; offsets ~3482150 (function), ~2439173 (constants).",
+      "moduleRef": "A0-upstream",
+      "criticalFiles": ["refs/claude-code-npm/cli.js"]
+    }
+  ],
+
+  "relationships": [
+    {
+      "from": "C2",
+      "to": "C1",
+      "description": "Calls LanguageModelV2.doStream() with prompt + provider options",
+      "tech": "in-process function call"
+    },
+    {
+      "from": "CMP4",
+      "to": "CMP3",
+      "description": "Invokes buildHeaders with resolved env/provider options",
+      "tech": "function call"
+    },
+    {
+      "from": "CMP3",
+      "to": "CMP1",
+      "description": "Invokes assembleBetas with the resolved AssembleBetasOptions",
+      "tech": "function call"
+    },
+    {
+      "from": "CMP1",
+      "to": "CMP2",
+      "description": "Calls model predicate helpers to gate pushes",
+      "tech": "function call"
+    },
+    {
+      "from": "CMP5",
+      "to": "CMP1",
+      "description": "Asserts byte-equivalent output by feeding scenario inputs from test-vectors.json",
+      "tech": "bun test"
+    },
+    {
+      "from": "CMP1",
+      "to": "CMP6",
+      "description": "Behavioral equivalence target. Verified manually + by matrix tests.",
+      "tech": "fingerprint parity (no runtime link)"
+    },
+    {
+      "from": "C1",
+      "to": "S2",
+      "description": "POST /v1/messages?beta=true with anthropic-beta header populated by assembleBetas output",
+      "tech": "HTTPS"
+    }
+  ]
+}
