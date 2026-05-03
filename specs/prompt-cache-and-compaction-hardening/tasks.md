@@ -66,31 +66,32 @@ commit: `5360a0716`. Phase A 對 `system.join` 視為單塊（對齊現況）；
 - [N/A] 7.2 刪除中介 test branch — 未建立。
 - [x] 7.3 main 為 authoritative。**2026-05-03 cleanup**：beta worktree (`/home/pkcs12/projects/opencode-worktrees/prompt-cache-hardening`) 已 `git worktree remove`；branch `beta/prompt-cache-hardening` (was `b1f3fa9c4`) 已 `git branch -d` 刪除（fully merged，安全）。Phase B 啟動時從 main 重建 worktree + 新 branch。
 
-## 8. Phase B (gated — 校準 2026-05-03 against main `26d1bc062`)
+## 8. Phase B (校準 2026-05-04 — direct-ship, no flag, no dogfood)
 
-> **Recalibration note**: 原 sketch 寫於 Phase A 開工前。2026-05-03 經 user 重新校準，貼著當下 main 重排為 B.0 → B.11。校準後：
+> **Recalibration v2 (2026-05-04, user decision)**: telemetry 觀察 gate 跳過（收益判斷不顯著、收益方向確定）；feature flag 雙路徑跳過、dogfood gate 跳過；新架構為唯一路徑、day 1 default。
 >
-> - 加 B.0 前置條件章節（provider-account-decoupling Phase 9 + Phase A telemetry 觀察）
-> - 對齊 DD-15 / DD-16（family + accountId 為第一級維度，per provider-account-decoupling 1-8）
-> - 拆 B.1 schema preludes 為獨立 sub-phase（可獨立 ship 不影響執行路徑）
-> - 補 LLM A/B test (R1 mitigation) 到 B.9
-> - 補 Phase A→B 接縫說明於本檔末
+> **R1 mitigation 改為設計層內建**：preface 第一行強制 `## CONTEXT PREFACE — read but do not echo` directive，避免 LLM 把 user-role 內容當對話雜訊處理；不再倚賴事後 A/B 測試補救。
+>
+> 完整變動：
+> - 砍 B.0.2 (telemetry observation gate)
+> - 砍 B.4 feature flag wiring；新架構直接接管 llm.ts
+> - 砍 B.9.3 LLM A/B test（mitigation baked into B.2.3）
+> - 砍 B.10 dogfood 階段
+> - 砍 B.11 default-on（從 day 1 default）
+> - 回退路徑：revert commits（git 自然支援），不靠 flag
+>
+> Recalibration v1 (2026-05-03) 保留紀錄：對齊 DD-15 / DD-16、拆 B.1 schema preludes、加 Phase A→B 接縫表。
 
 ### 8.0 Phase B 前置條件（在 mainRepo 操作）
 
-- B.0.1 確認 provider-account-decoupling Phase 9 cutover 已完成。檢查項：`~/.local/share/opencode/storage/.migration-state.json` 存在且 version=`"1"`、daemon 跑新 binary 無 `RegistryShapeError`、smoke test 通過、push 完成。**未滿足前不得進 B.1**（per [design.md R8](./design.md#risks--trade-offs)）。
-- B.0.2 收集 Phase A 至少 1 週 telemetry 摘要：
-  - `compaction.cache_miss_diagnosis.kind` 分布（churn / growth / neither）
-  - `compaction.anchor.sanitized.imperativePrefixApplied` 比例（false-positive 率）
-  - `capability_layer.cross_account_rebind_failed` 計數
-  - `compaction.idle.deferred` 比例
-  決策點：若 churn 比例本身 < 5%，回報使用者重新評估 Phase B 是否值得做。
+- B.0.1 ✅ provider-account-decoupling Phase 9 cutover 確認完成（marker `2026-05-03T14:50Z`、UI smoke 通過、spec 進 living）。
+- ~~B.0.2~~ telemetry 觀察 gate **跳過**（user 2026-05-04 決定收益方向確定無需驗證）。
 - B.0.3 從 main 重建 beta worktree：
   ```
   git worktree add -b beta/prompt-cache-hardening-phase-b \
     /home/pkcs12/projects/opencode-worktrees/prompt-cache-hardening-phase-b main
   ```
-  + 複製 `.beta-env/activate.sh` (per [feedback_beta_xdg_isolation](../../.claude/projects/-home-pkcs12-projects-opencode/memory/feedback_beta_xdg_isolation.md))。
+  + 寫 `.beta-env/activate.sh` (per [feedback_beta_xdg_isolation](../../.claude/projects/-home-pkcs12-projects-opencode/memory/feedback_beta_xdg_isolation.md))。
 - B.0.4 confirm `MessageV2.User` / `MessageV2.CompactionPart` 在 `Session.updateMessage` / `Session.updatePart` 路徑接受 optional 新欄位（不需要 storage migration，僅 schema bump）。
 
 ### 8.1 Phase B.1 — Schema preludes (independent, shippable alone)
@@ -103,8 +104,8 @@ commit: `5360a0716`. Phase A 對 `system.join` 視為單塊（對齊現況）；
 
 - B.2.1 `session/preloaded-context.ts`：吐出 `PreloadParts { readmeSummary, cwdListing }` 結構；保留向後相容 string adapter
 - B.2.2 `session/system.ts environment()`：分 `{ baseEnv, todaysDate }`（DD-2: date 放 T1 末段）
-- B.2.3 新檔 `session/context-preface.ts`：`buildPreface(input)` 組裝 `ContextPrefaceMessage`，content blocks tier 標記 t1 / t2，slow-first 排序
-- B.2.4 unit tests：preface byte-equality across stable session、T2 empty case、pinned-only case
+- B.2.3 新檔 `session/context-preface.ts`：`buildPreface(input)` 組裝 `ContextPrefaceMessage`，content blocks tier 標記 t1 / t2，slow-first 排序。**R1 mitigation**：preface 第一行固定 `## CONTEXT PREFACE — read but do not echo` directive，告知 LLM 此 user-role message 是 instruction-bearing context 而非對話。
+- B.2.4 unit tests：preface byte-equality across stable session、T2 empty case、pinned-only case、directive header 永遠存在
 
 ### 8.3 Phase B.3 — Static system block + tuple resolver
 
@@ -114,14 +115,14 @@ commit: `5360a0716`. Phase A 對 `system.join` 視為單塊（對齊現況）；
 - B.3.4 sha256 hash 對齊既有 `cache-miss-diagnostic.recordSystemBlockHash` 接口（DD-10 amended）
 - B.3.5 unit tests：tuple 不變 → byte-equal；改 family / accountId / agent / AGENTS.md → 不等
 
-### 8.4 Phase B.4 — Wire into llm.ts behind feature flag
+### 8.4 Phase B.4 — Refactor llm.ts to new architecture (no flag)
 
-- B.4.1 在 [llm.ts:483-604](../../packages/opencode/src/session/llm.ts#L483-L604) 加 `OPENCODE_PROMPT_PREFACE === "1"` 判斷；新路徑 vs 既有路徑共存
-- B.4.2 新路徑：`buildStaticBlock` → 單一純 static system message；`buildPreface` → 插入 user message 之前 (kind=context-preface)
-- B.4.3 plugin hook 兩條路徑：static 走 `experimental.chat.system.transform`（接收純 static）；preface 走新 `experimental.chat.context.transform`
-- B.4.4 既有路徑（flag off）保持完全不變；既有 unit tests 不需修改
-- B.4.5 lite provider (DD-14) 不變；不下 BP2/BP3
-- B.4.6 cache-miss-diagnostic recordSystemBlockHash 改餵 `staticBlock.hash` 而非 `system.join("\n")`（DD-10 amended）
+- B.4.1 在 [llm.ts:483-604](../../packages/opencode/src/session/llm.ts#L483-L604) 直接以新路徑取代舊 `systemPartEntries.map().join("\n")`；無 feature flag、無雙路徑
+- B.4.2 新流程：`buildStaticBlock(tuple)` → 單一純 static system message；`buildPreface(input)` → user-role message with `kind=context-preface`，插入 user message 之前
+- B.4.3 plugin hook：static 走既有 `experimental.chat.system.transform`（接收純 static block）；preface 走新 `experimental.chat.context.transform`
+- B.4.4 lite provider (DD-14) 不變；不下 BP2/BP3
+- B.4.5 cache-miss-diagnostic recordSystemBlockHash 改餵 `staticBlock.hash` 而非 `system.join("\n")`（DD-10 amended）
+- B.4.6 既有 unit tests：預期部分需要更新（system 結構從 9-layer-join 變 1-block-static）；逐個審查不是無腦改
 
 ### 8.5 Phase B.5 — Cache breakpoint allocator (4-BP)
 
@@ -149,26 +150,22 @@ commit: `5360a0716`. Phase A 對 `system.join` 視為單塊（對齊現況）；
 - B.8.2 新檔 `docs/prompt_dynamic_context.md`：preface 結構、tier ranking、breakpoint 配置、plugin hook migration guide
 - B.8.3 在 [specs/architecture.md](../architecture.md) 加 Phase B 落地紀錄
 
-### 8.9 Phase B.9 — Validation gate
+### 8.9 Phase B.9 — Validation gate + finalize
 
 - B.9.1 全部 unit + integration tests 在 beta worktree 跑綠（記得 `source .beta-env/activate.sh`）
 - B.9.2 `bun run typecheck` 無新錯誤（不計 share-next.ts pre-existing）
-- B.9.3 LLM 行為 A/B test（R1 mitigation）：固定任務跑兩次（flag on/off），比對 preload 內 "DO NOT run ls" 之類指引的遵從度。差異 > 5% → 加重複申明或回退 DD-1
+- B.9.3 ~~LLM A/B test~~ 跳過 — R1 mitigation 已 baked into B.2.3 (directive header)
 - B.9.4 手動煙霧：跑 10 turns，確認 `prompt.cache.preface.{t1,t2}.hit` telemetry 出現
 - B.9.5 寫 phase summary `docs/events/event_<YYYYMMDD>_phase-b-landed.md`
-- B.9.6 fetch-back via `test/prompt-cache-hardening-phase-b`（per beta-workflow §7）；STOP for user finalize
+- B.9.6 rebase 到最新 main、解衝突；STOP for user finalize approval
 
-### 8.10 Phase B.10 — Dogfood (flag default OFF)
+### 8.10 Phase B.10 — Finalize + cleanup
 
-- B.10.1 預設 flag OFF；通知有用 `experimental.chat.system.transform` 的 plugin 開發者遷移
-- B.10.2 觀察 1 週 telemetry：BP1/BP2/BP3 命中率、`compaction.cache_miss_diagnosis.kind=system-prefix-churn` 比例 < 10%
-- B.10.3 量測 acceptance check 達標：BP1 ≥ 95%、BP2 ≥ 80%、BP3 ≥ 60%（per [spec.md Acceptance Checks](./spec.md#acceptance-checks)）
-
-### 8.11 Phase B.11 — Default-on (gated)
-
-- B.11.1 取得使用者批准
-- B.11.2 預設 flag ON；通知 plugin 兼容期結束預告（next release 移除舊 hook 對 dynamic 內容的兼容）
-- B.11.3 一個 release 後移除 `plugin.legacy_dynamic_injection_warn` 兼容路徑
+- B.10.1 `git merge --no-ff beta/prompt-cache-hardening-phase-b` 進 main
+- B.10.2 spec 走 `plan-promote --to verified` 然後 `--to living`（per design.md amended Migration/Rollout）
+- B.10.3 worktree remove + branch delete（同 Phase A cleanup pattern）
+- B.10.4 監測 production telemetry 1-2 週，確認 cache hit rate 達標：BP1 ≥ 95%、BP2 ≥ 80%、BP3 ≥ 60% (per spec.md acceptance checks)；若不達標開 follow-up amend
+- B.10.5 一個 release 後移除 `plugin.legacy_dynamic_injection_warn` 兼容路徑（B.6.2）
 
 ### 8.12 Phase A → Phase B 接縫表
 
@@ -197,9 +194,8 @@ commit: `5360a0716`. Phase A 對 `system.join` 視為單塊（對齊現況）；
 ## Stop gates
 
 - ~~6.7~~ Phase A 已 finalize
-- B.0.1（provider-account-decoupling Phase 9 cutover 未完成不得進 B.1）
-- B.0.2 telemetry 觀察結果 → 若 churn 比例極低，徵詢使用者是否撤回 Phase B
-- B.9.6 Phase B 全綠後 STOP for user finalize
-- B.10 dogfood 1 週後評估
-- B.11.1（預設開 flag）需獨立批准
+- ~~B.0.1~~ Phase 9 cutover 已完成（marker 2026-05-03T14:50Z）
+- ~~B.0.2~~ telemetry gate 跳過（user 2026-05-04 決定）
+- B.9.6 Phase B validation 全綠後 STOP for user finalize approval
+- B.10.4 production telemetry < acceptance check 需 follow-up amend
 - 任何衝突或測試紅 — 立即停手回報

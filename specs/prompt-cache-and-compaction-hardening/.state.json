@@ -130,6 +130,14 @@
         "packages/opencode/test/scripts/migrate-decoupling.test.ts"
       ],
       "commit": "660f652c44cba2e5d7d893944e7e62f96f30cf38"
+    },
+    {
+      "from": "living",
+      "to": "living",
+      "at": "2026-05-03T16:08:21.029Z",
+      "by": "pkcs12",
+      "mode": "amend",
+      "reason": "Phase B recalibration v2 (2026-05-04, user direct-ship decision): drop telemetry observation gate (收益方向確定); drop feature flag wiring (new path = sole path day 1); drop dogfood + default-on dance; bake R1 mitigation into B.2.3 (preface directive header). Surgery scope same (DD-1..16 unchanged); execution path simpler. Rollback via git revert."
     }
   ]
 }
