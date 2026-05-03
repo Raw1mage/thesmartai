@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "designed",
+  "state": "planned",
   "profile": [],
   "history": [
     {
@@ -18,6 +18,14 @@
       "by": "pkcs12",
       "mode": "promote",
       "reason": "All 6 OQ resolved 2026-05-04 via question tool. spec.md (R1-R5 GIVEN/WHEN/THEN), design.md (DD-1..DD-14), c4.json (6 components, 10 relationships), sequence.json (5 scenarios: dehydrate happy / reread happy / reread expired / wire serialize / GC sweep), data-schema.json (8 contracts), idef0.json (A0..A5 + A1 decomp), grafcet.json (3 entry branches: dehydrate / reread / GC) all drafted. Hotfix scope; v1 = images only, PDF deferred."
+    },
+    {
+      "from": "designed",
+      "to": "planned",
+      "at": "2026-05-03T17:56:30.505Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "tasks.md (T.0..T.6, hotfix sizing 5 implementation phases) + handoff.md + test-vectors.json (R1-R5 + tweaks) + errors.md (5 error/warn classes) + observability.md (8 telemetry events + metrics + alerts) drafted. Beta surface: opencode-worktrees/attachment-lifecycle on beta/attachment-lifecycle from main. Direct-ship, no flag."
     }
   ]
 }
