@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "planned",
+  "state": "living",
   "profile": [],
   "history": [
     {
@@ -26,6 +26,46 @@
       "by": "pkcs12",
       "mode": "promote",
       "reason": "Research outcomes folded in (ja, iO_, I7, $Q resolved), spec/design layer-2 supersedes applied; tasks/handoff/test-vectors/errors/observability drafted; OAuth-only + non-interactive deployment posture captured (DD-16, DD-17)"
+    },
+    {
+      "from": "planned",
+      "to": "implementing",
+      "at": "2026-05-03T08:33:01.904Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "beta-workflow admission passed; beta/claude-provider-realign created at opencode-worktrees/; first task starting (1.1 add redact-thinking constant)"
+    },
+    {
+      "at": "2026-05-03T08:35:08.658Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "77b7787e6c041ee4f353067ed44ce8faf164110c"
+    },
+    {
+      "at": "2026-05-03T08:37:20.963Z",
+      "by": "pkcs12",
+      "mode": "sync",
+      "reason": "post-task sync, clean",
+      "result": "clean",
+      "commit": "77b7787e6c041ee4f353067ed44ce8faf164110c"
+    },
+    {
+      "from": "implementing",
+      "to": "verified",
+      "at": "2026-05-03T09:06:10.361Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "all 36 tasks complete; 32 matrix tests pass; manual e2e header capture byte-equivalent; merged to main via test/claude-provider-realign at d78fd7347"
+    },
+    {
+      "from": "verified",
+      "to": "living",
+      "at": "2026-05-03T09:06:15.383Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "merged to main; spec is now the living truth for assembleBetas behavior"
     }
   ]
 }
