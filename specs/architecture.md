@@ -472,12 +472,35 @@ Legacy all-in-one `opencode.json` continues to work unchanged — the split file
 
 - `packages/opencode/src/provider/transform.ts` Anthropic branch returns the `xhigh` variant (budget `min(32_000, model.limit.output - 1)`) for models whose id matches `claude-opus-4-N` with `N >= 7`, or whose `release_date >= "2026-03-19"`. Mirrors the OpenAI `xhigh` gate pattern.
 
-### Codex family rotation rule (plans/codex-rotation-hotfix, 2026-04-18)
+### Codex family rotation rule (plans/codex-rotation-hotfix, 2026-04-18; superseded in part by specs/provider-account-decoupling 2026-05-03)
 
 - Codex and openai share the ChatGPT subscription `wham/usage` endpoint. `RateLimitJudge.getBackoffStrategy` returns `"cockpit"` for both families; `fetchCockpitBackoff` treats them identically via the `COCKPIT_WHAM_USAGE_FAMILIES` set. The pure helper `evaluateWhamUsageQuota` drives per-candidate `isQuotaLimited` inside `rotation3d.buildFallbackCandidates`, so a codex account that drained its 5H or weekly window is skipped instead of blindly retried.
-- `rotation3d.enforceCodexFamilyOnly` applies after candidate scoring: when the current vector's providerId is `codex`, non-codex candidates are removed from the pool (with a per-candidate `log.info` recording the rejection). Auto-rotation is strictly same-family; manual provider switches from UI/TUI remain unaffected.
-- When `findFallback` returns null under the codex-only path, `session/llm.ts::handleRateLimitFallback` throws `CodexFamilyExhausted` (NamedError defined in `rate-limit-judge.ts`). `session/processor.ts` wraps each in-catch-block `handleRateLimitFallback` call with a local try/catch that surfaces the error via `MessageV2.fromError` and sets session state to idle; the preflight call in the outer try block bubbles the throw into the existing catch-fallthrough path.
+- ~~`rotation3d.enforceCodexFamilyOnly`~~ **deleted 2026-05-03 by `specs/provider-account-decoupling/` DD-5.** Rotation comparisons are now pure equality on family-form `providerId`. Same-family containment is enforced structurally (registry only holds family entries; per-account state lives under `providers[family].accounts[accountId]`), not by a string-shape gate. Codex follows the same rotation policy as every other family.
+- When `findFallback` returns null and the current vector is codex, `session/llm.ts::handleRateLimitFallback` throws `CodexFamilyExhausted` (NamedError defined in `rate-limit-judge.ts`). `session/processor.ts` wraps each in-catch-block `handleRateLimitFallback` call with a local try/catch that surfaces the error via `MessageV2.fromError` and sets session state to idle; the preflight call in the outer try block bubbles the throw into the existing catch-fallthrough path.
 - `account/rotation/backoff.ts::parseRateLimitReason` adds passive message-pattern guards for codex 5H / response-time-window / weekly-usage strings as a belt-and-suspenders when cockpit is unreachable, mapping them to `QUOTA_EXHAUSTED`.
+
+### Provider / Family / Account Naming (specs/provider-account-decoupling, 2026-05-03)
+
+Three orthogonal dimensions are addressed throughout the dispatch chain:
+
+- **Family** (`providerId`) — canonical, stable, in `Account.knownFamilies()`. Examples: `codex`, `openai`, `anthropic`, `gemini-cli`. Regex: `^[a-z][a-z0-9-]*$`. **The ONLY shape that may appear as a key in the providers registry.**
+- **AccountId** — opaque per-account identifier. Today happens to be `<family>-(api|subscription)-<slug>`, but treat as opaque outside `Account.generateId`. **MUST NEVER appear as `providerId` outside accounts.json storage keys** — this is the regression that caused the 2026-05-02 `CodexFamilyExhausted` mis-fire.
+- **ModelId** — model name, e.g. `gpt-5.5`, `claude-opus-4-7`.
+
+Boundary enforcement:
+
+- `provider/registry-shape.ts:assertFamilyKey(providerId, knownFamilies)` is called at every `providers[X] = ...` write site in `provider.ts`. Throws `RegistryShapeError` on miss — no resolution attempt, no silent fallback.
+- `Auth.get(family, accountId?)` — two-arg only. Single-arg form removed. Throws `UnknownFamilyError` on bad family, `NoActiveAccountError` when accountId omitted and the family has no `activeAccount` set.
+- `Provider.getSDK(family, accountId, modelId)` — three-arg only. Caller carries `ModelDispatch { family, accountId, modelId }` from the session processor through the dispatch path.
+- `Account.parseProvider` and `Account.resolveFamilyFromKnown` are tagged `@internal:migration-only` — kept ONLY so the one-shot migration script can normalise legacy storage fields. Runtime dispatch paths must not call them; new callers re-introduce the bug class.
+
+One-shot storage migration:
+
+- `packages/opencode/scripts/migrate-provider-account-decoupling.ts` rewrites legacy per-account `providerId` strings on disk (`storage/message/<sid>/<mid>.json` top-level `providerId` and `model.providerId`; `storage/session/<sid>/info.json` `execution.providerId`) to canonical family form.
+- Subcommands: `--dry-run` (default, safe to re-run), `--apply` (backup → rewrite → marker), `--verify` (read-only consistency check).
+- Backup: `<storage>/.backup/provider-account-decoupling-<ISO>/` (full `accounts.json` + `storage/{session,message}` snapshot).
+- Marker: `<storage>/.migration-state.json` with `{ version: "1", migrated_at, backup_path }`.
+- Daemon boot guard (`server/migration-boot-guard.ts`, called from `cli/cmd/serve.ts`) refuses to start if the marker is missing or carries a non-`"1"` version, exiting 1 with a remediation hint per AGENTS.md rule 1.
 
 ## Managed App Registry (MCP Apps)
 

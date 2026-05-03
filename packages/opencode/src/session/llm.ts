@@ -444,10 +444,16 @@ export namespace LLM {
     })
 
     const [language, cfg, provider, auth] = await Promise.all([
-      Provider.getLanguage(executionModel),
+      // @spec specs/provider-account-decoupling DD-3 — getLanguage carries
+      // the accountId explicitly so getSDK merges per-account auth/options
+      // for THIS specific account, not just the family's active.
+      Provider.getLanguage(executionModel, currentAccountId ?? undefined),
       Config.get(),
       Provider.getProvider(executionModel.providerId),
-      Auth.get(executionModel.providerId),
+      // @spec specs/provider-account-decoupling DD-2 — dispatch carries account
+      // identity explicitly. currentAccountId is the session-pinned account
+      // (see preflight identity resolution earlier in this function).
+      Auth.get(executionModel.providerId, currentAccountId ?? undefined),
     ])
     const billingMode = resolveProviderBillingMode(cfg, executionModel.providerId)
     const isLiteProvider =

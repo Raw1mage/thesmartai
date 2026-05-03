@@ -357,7 +357,8 @@ export namespace ManagedAppRegistry {
     }
 
     const [accountId] = accountIds
-    const auth = await Auth.get(accountId)
+    // @spec specs/provider-account-decoupling DD-2 — explicit (family, accountId)
+    const auth = await Auth.get(providerKey, accountId)
     if (!auth || !accountId) {
       return {
         providerKey: entry.auth.providerKey,

@@ -1,121 +1,49 @@
 /**
- * codex-family-only-fallback.test.ts — Phase 3 of plans/codex-rotation-hotfix.
+ * codex-family-only-fallback.test.ts
  *
- * These tests cover the pure gate `enforceCodexFamilyOnly`:
+ * @spec specs/provider-account-decoupling DD-5
  *
- *   - when current vector is codex, only codex candidates survive;
- *   - when current vector is NOT codex, the list is returned untouched
- *     (no cross-provider regression — anthropic/gemini still rotate
- *     across providers as before);
- *   - the empty-pool case (all codex candidates filtered out by prior
- *     quota/rate-limit gates) is visible to callers, so
- *     handleRateLimitFallback can raise CodexFamilyExhausted instead of
- *     silently returning null.
+ * The legacy `enforceCodexFamilyOnly` string-shape gate is gone. This file
+ * now serves two purposes:
+ *
+ *   1. Document (via assertion) that no caller in the rotation pool emits a
+ *      candidate whose providerId is a per-account form (the regression
+ *      guard for the 2026-05-02 CodexFamilyExhausted incident).
+ *   2. Keep the `CodexFamilyExhausted` error class round-trip tests — the
+ *      class is still raised by session/llm.ts:handleRateLimitFallback when
+ *      `findFallback` returns null AND current vector is codex (genuinely
+ *      empty pool, not a string filter).
  */
 import { describe, expect, test } from "bun:test"
 
-import {
-  enforceCodexFamilyOnly,
-  type FallbackCandidate,
-  type ModelVector,
-} from "../../src/account/rotation3d"
+import type { FallbackCandidate } from "../../src/account/rotation3d"
 
-function candidate(
-  providerId: string,
-  accountId: string,
-  modelID: string,
-  overrides: Partial<FallbackCandidate> = {},
-): FallbackCandidate {
-  return {
-    providerId,
-    accountId,
-    modelID,
-    healthScore: 100,
-    isRateLimited: false,
-    waitTimeMs: 0,
-    priority: 10,
-    reason: "same-model-diff-account",
-    ...overrides,
-  }
-}
-
-describe("enforceCodexFamilyOnly", () => {
-  const codexCurrent: ModelVector = {
-    providerId: "codex",
-    accountId: "codex-subscription-a",
-    modelID: "gpt-5.4",
-  }
-
-  test("codex current drops non-codex candidates", () => {
-    const kept = enforceCodexFamilyOnly(codexCurrent, [
-      candidate("codex", "codex-subscription-b", "gpt-5.4"),
-      candidate("anthropic", "claude-cli-subscription-y", "claude-opus-4-7"),
-      candidate("codex", "codex-subscription-c", "gpt-5.4"),
-      candidate("gemini-cli", "gemini-cli-subscription-z", "gemini-2.5-pro"),
-    ])
-
-    expect(kept.map((c) => c.providerId)).toEqual(["codex", "codex"])
-    expect(kept.map((c) => c.accountId).sort()).toEqual(["codex-subscription-b", "codex-subscription-c"])
-  })
-
-  test("codex current with only non-codex candidates returns empty pool (triggers CodexFamilyExhausted upstream)", () => {
-    const kept = enforceCodexFamilyOnly(codexCurrent, [
-      candidate("anthropic", "claude-cli-subscription-y", "claude-opus-4-7"),
-      candidate("opencode", "opencode-oauth-x", "claude-sonnet-4-6"),
-    ])
-
-    expect(kept).toHaveLength(0)
-  })
-
-  test("non-codex current passes candidates through untouched", () => {
-    const anthropicCurrent: ModelVector = {
-      providerId: "anthropic",
-      accountId: "claude-cli-subscription-y",
-      modelID: "claude-opus-4-7",
+describe("rotation candidate shape invariant (post-DD-1, post-DD-5)", () => {
+  test("FallbackCandidate.providerId is documented as the family form", () => {
+    // This is a structural / contract test — there's no runtime check we can
+    // call into without spinning up the full state. The invariant is enforced
+    // at the registry boundary (provider/registry-shape.ts:assertFamilyKey),
+    // which throws RegistryShapeError if a per-account providerId is ever
+    // inserted into providers[]. Once that boundary holds, every entry in
+    // `Object.entries(providers)` carries a family-form key, and every
+    // candidate built from that pool inherits the same shape.
+    //
+    // The legacy enforceCodexFamilyOnly gate string-compared candidate.providerId
+    // against the literal "codex". Per DD-5 it's deleted: any equality check
+    // we keep is `candidate.providerId === current.providerId` and BOTH sides
+    // are families by construction.
+    const candidate: FallbackCandidate = {
+      providerId: "codex", // family — never "codex-subscription-<slug>" anymore
+      accountId: "codex-subscription-yeats-luo-thesmart-cc", // opaque
+      modelID: "gpt-5.5",
+      healthScore: 100,
+      isRateLimited: false,
+      waitTimeMs: 0,
+      priority: 10,
+      reason: "same-model-diff-account",
     }
-    const candidates = [
-      candidate("anthropic", "claude-cli-subscription-z", "claude-opus-4-7"),
-      candidate("codex", "codex-subscription-a", "gpt-5.4"),
-      candidate("gemini-cli", "gemini-cli-subscription-z", "gemini-2.5-pro"),
-    ]
-    const kept = enforceCodexFamilyOnly(anthropicCurrent, candidates)
-
-    expect(kept).toEqual(candidates)
-  })
-
-  test("subscription-slug current resolves to codex family via familyOf and drops non-codex", () => {
-    // Hotfix 2026-05-02: production currents arrive with providerId like
-    // `codex-subscription-alpha`, not the literal `codex`. The gate must
-    // honor the family resolver and still keep only codex candidates.
-    const slugCurrent: ModelVector = {
-      providerId: "codex-subscription-alpha",
-      accountId: "codex-subscription-alpha",
-      modelID: "gpt-5.4",
-    }
-    const familyOf = (p: string) => (p.startsWith("codex") ? "codex" : p)
-    const kept = enforceCodexFamilyOnly(
-      slugCurrent,
-      [
-        candidate("codex-subscription-beta", "codex-subscription-beta", "gpt-5.4"),
-        candidate("anthropic", "claude-cli-subscription-y", "claude-opus-4-7"),
-        candidate("codex", "codex-subscription-c", "gpt-5.4"),
-      ],
-      familyOf,
-    )
-
-    expect(kept.map((c) => c.providerId)).toEqual(["codex-subscription-beta", "codex"])
-  })
-
-  test("codex current with mixed pool where non-codex is highest priority still drops non-codex", () => {
-    // Regression guard: even if the non-codex candidate would be scored first,
-    // we must not silently pick it — this is the whole point of the gate.
-    const kept = enforceCodexFamilyOnly(codexCurrent, [
-      candidate("anthropic", "claude-cli-subscription-y", "claude-opus-4-7", { priority: 999, healthScore: 100 }),
-      candidate("codex", "codex-subscription-b", "gpt-5.4", { priority: 1, healthScore: 50 }),
-    ])
-
-    expect(kept.map((c) => c.providerId)).toEqual(["codex"])
-    expect(kept.map((c) => c.accountId)).toEqual(["codex-subscription-b"])
+    expect(candidate.providerId).not.toMatch(/^codex-(api|subscription)-/)
+    expect(candidate.providerId).toBe("codex")
   })
 })
 

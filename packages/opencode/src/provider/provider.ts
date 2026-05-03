@@ -49,6 +49,7 @@ import type { Auth as SDKAuth } from "@opencode-ai/sdk"
 import { ProviderTransform } from "./transform"
 import { ToolCallBridgeManager } from "./toolcall-bridge"
 import { CUSTOM_LOADERS as IMPORTED_CUSTOM_LOADERS } from "./custom-loaders-def"
+import { assertFamilyKey } from "./registry-shape"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -861,6 +862,24 @@ export namespace Provider {
     })
   export type Model = z.infer<typeof Model>
 
+  // @spec specs/provider-account-decoupling DD-1, DD-4
+  // Per-account state lives under `accounts: Record<accountId, AccountState>`.
+  // Top-level `options` / `active` / `email` / `coolingDownUntil` /
+  // `cooldownReason` describe the FAMILY-level merged view (active account's
+  // contribution + plugin/auth augmentations). Per-account specifics belong
+  // in `accounts[accountId]`.
+  export const AccountState = z
+    .object({
+      options: z.record(z.string(), z.any()),
+      active: z.boolean().optional(),
+      email: z.string().optional(),
+      coolingDownUntil: z.number().optional(),
+      cooldownReason: z.string().optional(),
+      displayName: z.string().optional(),
+    })
+    .meta({ ref: "AccountState" })
+  export type AccountState = z.infer<typeof AccountState>
+
   export const Info = z
     .object({
       id: z.string(),
@@ -875,6 +894,11 @@ export namespace Provider {
       coolingDownUntil: z.number().optional(),
       cooldownReason: z.string().optional(),
       models: z.record(z.string(), Model),
+      // @spec DD-1 — per-account state held under family-level Provider.Info;
+      // accountId is opaque (stays as accountId; never appears as a top-level
+      // providers[] key). Optional because env/api-only providers have no
+      // per-account state at all.
+      accounts: z.record(z.string(), AccountState).optional(),
     })
     .meta({
       ref: "Provider",
@@ -1046,9 +1070,31 @@ export namespace Provider {
 
     log.info("init")
 
+    // @spec specs/provider-account-decoupling DD-1 — providers[] keys MUST be
+    // a registered family. Capture the snapshot once at init so the sync
+    // mergeProvider closure can validate every write without going async.
+    //
+    // The "known" set is the union of:
+    //   1. Account.knownFamilies()  — PROVIDERS list ∪ models.dev ∪ accounts.json families
+    //   2. Object.keys(database)    — curated + inherited entries (e.g. github-copilot-enterprise)
+    //
+    // (1) alone misses curated provider entries that are not in models.dev (the
+    // 2026-05-03 regression: github-copilot-enterprise inherits from
+    // github-copilot via inheritFrom() at L1196 but never lands in
+    // Account.knownFamilies). Per-account slugs (codex-subscription-<x>) never
+    // enter `database`, so allowing database keys is safe under DD-1.
+    const baseKnown: readonly string[] = await Account.knownFamilies({ includeStorage: true })
+    const isKnownFamily = (providerId: string) =>
+      baseKnown.includes(providerId) || database[providerId] !== undefined
+
     const configProviders = Object.entries(config.provider ?? {})
 
     function mergeProvider(providerId: string, provider: Partial<Info>) {
+      if (!isKnownFamily(providerId)) {
+        // Construct a richer error: include database keys in the known list so
+        // the operator can see what was available.
+        assertFamilyKey(providerId, [...baseKnown, ...Object.keys(database)])
+      }
       const existing = providers[providerId]
       if (existing) {
         providers[providerId] = mergeDeep(existing, provider) as Info
@@ -1466,10 +1512,8 @@ export namespace Provider {
         if (disabled.has(accountId)) continue
         if (!isProviderAllowed(accountId)) continue
 
-        let effectiveId = accountId
-
         // Determined display name
-        let displayName = Account.getDisplayName(accountId, accountInfo, family)
+        const displayName = Account.getDisplayName(accountId, accountInfo, family)
 
         // Add to database with models inherited from base provider
         const options: Record<string, any> = {}
@@ -1578,31 +1622,55 @@ export namespace Provider {
           "gemini-1.5-flash-latest",
         ])
 
-        database[effectiveId] = {
-          id: effectiveId,
+        // @spec specs/provider-account-decoupling DD-1, DD-4
+        // Per-account state goes under providers[family].accounts[accountId].
+        // The family entry itself is the only providers[] key — Model.providerId
+        // is always the family. accountId stays opaque (it remains the literal
+        // string from accounts.json keys; just never appears as a providerId).
+        const filteredModels = pickBy(
+          mapValues(baseProvider.models, (model) => ({
+            ...model,
+            providerId: family,
+          })),
+          (_model, id) => {
+            if (family === "google-api") return GOOGLE_API_WHITELIST.has(id) || id.startsWith("gemini-")
+            return !isModelIgnored(family, id)
+          },
+        )
+
+        // Ensure the family-level provider exists in providers[] before we
+        // attach account state to it.
+        mergeProvider(family, {
           source: "custom",
-          name: displayName,
+          name: baseProvider.name,
+          options: baseProvider.options ?? {},
+          models: filteredModels,
+        })
+
+        const familyEntry = providers[family]
+        if (!familyEntry) continue
+        if (!familyEntry.accounts) familyEntry.accounts = {}
+
+        familyEntry.accounts[accountId] = {
+          options: mergeDeep(baseProvider.options ?? {}, options) as Info["options"],
           active: familyData.activeAccount === accountId,
           email: accountInfo.type === "subscription" ? accountInfo.email : undefined,
           coolingDownUntil: accountInfo.type === "subscription" ? accountInfo.coolingDownUntil : undefined,
           cooldownReason: blocked ?? (accountInfo.type === "subscription" ? accountInfo.cooldownReason : undefined),
-          env: [],
-          options: mergeDeep(baseProvider.options ?? {}, options) as Info["options"],
-          models: pickBy(
-            mapValues(baseProvider.models, (model) => ({
-              ...model,
-              providerId: effectiveId,
-            })),
-            (model, id) => {
-              if (family === "google-api") return GOOGLE_API_WHITELIST.has(id) || id.startsWith("gemini-")
-              return !isModelIgnored(effectiveId, id)
-            },
-          ),
+          displayName,
         }
 
-        mergeProvider(effectiveId, {
-          source: "custom",
-        })
+        // Mirror the active account's display attributes onto the family-level
+        // entry so existing UIs that read providers[family].{active,email,...}
+        // see the active account's values.
+        if (familyData.activeAccount === accountId) {
+          familyEntry.active = true
+          familyEntry.email = accountInfo.type === "subscription" ? accountInfo.email : undefined
+          familyEntry.coolingDownUntil =
+            accountInfo.type === "subscription" ? accountInfo.coolingDownUntil : undefined
+          familyEntry.cooldownReason =
+            blocked ?? (accountInfo.type === "subscription" ? accountInfo.cooldownReason : undefined)
+        }
       }
     }
 
@@ -1611,40 +1679,40 @@ export namespace Provider {
       const family = plugin.auth.provider
       if (disabled.has(family)) continue
 
-      const loadAuth = async (providerId: string): Promise<SDKAuth> => {
-        const auth = await Auth.get(providerId)
+      // @spec specs/provider-account-decoupling DD-2 — Auth.get is now two-arg
+      // (family, accountId?). loadAuth carries both dimensions explicitly; no
+      // string-shape inference.
+      const loadAuth = async (loadFamily: string, loadAccountId?: string): Promise<SDKAuth> => {
+        const auth = await Auth.get(loadFamily, loadAccountId)
         if (!auth) {
-          throw new Error(`Auth not found for provider: ${providerId}`)
+          throw new Error(
+            `Auth not found for provider: family=${loadFamily}` +
+              (loadAccountId ? `, accountId=${loadAccountId}` : ""),
+          )
         }
         return auth
       }
 
-      // Check if auth exists at family level OR at any account level
-      // FIX: Auth may be stored under account ID (e.g., "claude-cli-subscription-xxx")
-      // rather than base family ID (e.g., "claude-cli")
-      // @event_20260209_fix_model_activities_account_select
-      let hasFamilyAuth = false
-      const familyAuth = await Auth.get(family)
-      if (familyAuth) hasFamilyAuth = true
+      // Probe whether this family has any usable auth. Probing uses
+      // Account.list directly (not Auth.get) because Auth.get now throws
+      // NoActiveAccountError on a family with accounts-but-no-active, which
+      // is fine for dispatch but wrong for "does any auth exist" probes.
+      const familyData = allFamilies[family]
+      const hasAnyAccount = !!familyData && Object.keys(familyData.accounts).length > 0
+      const familyHasActive = !!(familyData?.activeAccount && familyData.accounts[familyData.activeAccount])
 
-      // Check account-level auth if no family-level auth
-      if (!hasFamilyAuth) {
-        const familyData = allFamilies[family]
-        if (familyData) {
-          for (const accountId of Object.keys(familyData.accounts)) {
-            const accountAuth = await Auth.get(accountId)
-            if (accountAuth) {
-              hasFamilyAuth = true
-              break
-            }
-          }
-        }
+      let familyAuth: Auth.Info | undefined = undefined
+      if (familyHasActive) {
+        familyAuth = await Auth.get(family)
       }
+      let hasFamilyAuth = !!familyAuth || hasAnyAccount
 
       // Special handling for github-copilot: also check for enterprise auth
       if (family === "github-copilot" && !hasFamilyAuth) {
-        const enterpriseAuth = await Auth.get("github-copilot-enterprise")
-        if (enterpriseAuth) hasFamilyAuth = true
+        const enterpriseFamilyData = allFamilies["github-copilot-enterprise"]
+        if (enterpriseFamilyData && Object.keys(enterpriseFamilyData.accounts).length > 0) {
+          hasFamilyAuth = true
+        }
       }
 
       if (!hasFamilyAuth) continue
@@ -1655,6 +1723,8 @@ export namespace Provider {
         if (providers[family]) {
           log.info("loading plugin for family", { family })
           const options = await plugin.auth.loader(() => loadAuth(family), providers[family])
+          // (loader signature accepts a thunk — we pass family-only; per-account
+          // calls go through loadAuth(family, accountId) below.)
           if (options) {
             // Extract getModel from auth loader result (native providers provide their own model factory)
             const { getModel, ...rest } = options as Record<string, any> & { getModel?: CustomModelLoader }
@@ -1671,47 +1741,65 @@ export namespace Provider {
         log.debug("no family auth found", { family })
       }
 
-      // 2. Load for EVERY account belonging to this family (Parallelized)
-      const familyData = allFamilies[family]
-      if (familyData) {
+      // 2. Load for EVERY account belonging to this family (Parallelized).
+      // @spec specs/provider-account-decoupling DD-1 — per-account state is
+      // now under providers[family].accounts[accountId]; no separate
+      // providers[accountId] entry exists.
+      // (familyData was bound above for the auth probe; reuse it.)
+      const familyEntry = providers[family]
+      if (familyData && familyEntry) {
+        if (!familyEntry.accounts) familyEntry.accounts = {}
         const accountLoaderPromises = Object.keys(familyData.accounts).map(async (accountId) => {
-          if (!providers[accountId] || !plugin.auth?.loader) return
+          if (!plugin.auth?.loader) return
+          const accountState = familyEntry.accounts![accountId]
+          if (!accountState) return
 
           debugCheckpoint("provider", "account loader start", { family, accountId })
-          const accountOptions = await plugin.auth.loader(() => loadAuth(accountId), providers[accountId])
+          // Loader sees a synthetic Info shaped like the family entry but with
+          // this account's options, so existing loaders that read
+          // `providers[X].options` keep working.
+          const loaderView: Info = {
+            ...familyEntry,
+            options: accountState.options,
+          }
+          // @spec specs/provider-account-decoupling DD-2 — pass family +
+          // accountId explicitly; Auth.get is two-arg.
+          const accountOptions = await plugin.auth.loader(() => loadAuth(family, accountId), loaderView)
           debugCheckpoint("provider", "account loader end", { family, accountId, hasResult: !!accountOptions })
           if (accountOptions) {
-            const { getModel: acctGetModel, ...acctRest } = accountOptions as Record<string, any> & {
+            const { getModel: _acctGetModel, ...acctRest } = accountOptions as Record<string, any> & {
               getModel?: CustomModelLoader
             }
             // Account-level getModel not needed — accounts inherit from family's modelLoaders
             // via canonicalProviderId resolution in getLanguage(). Only merge options.
-            providers[accountId].options = mergeDeep(providers[accountId].options, acctRest) as Info["options"]
+            accountState.options = mergeDeep(accountState.options, acctRest) as Info["options"]
           }
         })
         await Promise.all(accountLoaderPromises)
 
-        // Inherit custom fetch from the active account only.
-        // Never use object insertion order as an execution policy.
-        if (providers[family] && !providers[family].options?.fetch) {
+        // Inherit custom fetch (and active credentials) from the active account
+        // onto the family-level options. Never use object insertion order as an
+        // execution policy.
+        if (!familyEntry.options?.fetch) {
           const activeAccountId = familyData.activeAccount
-          if (activeAccountId && providers[activeAccountId]?.options?.fetch) {
+          const activeState = activeAccountId ? familyEntry.accounts[activeAccountId] : undefined
+          if (activeState?.options?.fetch) {
             log.info("inheriting custom fetch from active account to base provider", {
               family,
               accountId: activeAccountId,
             })
-            providers[family].options = mergeDeep(providers[family].options, {
-              fetch: providers[activeAccountId].options.fetch,
-              apiKey: providers[activeAccountId].options.apiKey,
+            familyEntry.options = mergeDeep(familyEntry.options, {
+              fetch: activeState.options.fetch,
+              apiKey: activeState.options.apiKey,
               // Auth credentials for native claude-cli provider
-              ...(providers[activeAccountId].options.type && {
-                type: providers[activeAccountId].options.type,
-                refresh: providers[activeAccountId].options.refresh,
-                access: providers[activeAccountId].options.access,
-                expires: providers[activeAccountId].options.expires,
-                orgID: providers[activeAccountId].options.orgID,
-                email: providers[activeAccountId].options.email,
-                accountId: providers[activeAccountId].options.accountId,
+              ...(activeState.options.type && {
+                type: activeState.options.type,
+                refresh: activeState.options.refresh,
+                access: activeState.options.access,
+                expires: activeState.options.expires,
+                orgID: activeState.options.orgID,
+                email: activeState.options.email,
+                accountId: activeState.options.accountId,
               }),
             }) as Info["options"]
           } else {
@@ -1796,7 +1884,10 @@ export namespace Provider {
       }
     }
 
-    // Propagate base provider options to account-based providers (only for families without specific plugins or as fallback)
+    // Propagate base provider options into per-account state (only for families
+    // without specific plugins or as fallback).
+    // @spec specs/provider-account-decoupling DD-1 — per-account state lives
+    // under providers[family].accounts[accountId], not providers[accountId].
     for (const family of Account.FAMILIES) {
       const baseProvider = providers[family]
       if (!baseProvider?.options) continue
@@ -1804,16 +1895,12 @@ export namespace Provider {
       const fData = allFamilies[family]
       if (!fData) continue
 
-      for (const [accountId, accountInfo] of Object.entries(fData.accounts)) {
-        let effectiveId = accountId
-
-        if (providers[effectiveId]) {
-          // Merge options, prioritizing account-specific options (from plugin loaders)
-          providers[effectiveId].options = mergeDeep(
-            baseProvider.options,
-            providers[effectiveId].options ?? {},
-          ) as Info["options"]
-        }
+      if (!baseProvider.accounts) baseProvider.accounts = {}
+      for (const accountId of Object.keys(fData.accounts)) {
+        const accountState = baseProvider.accounts[accountId]
+        if (!accountState) continue
+        // Merge options, prioritizing account-specific options (from plugin loaders)
+        accountState.options = mergeDeep(baseProvider.options, accountState.options ?? {}) as Info["options"]
       }
     }
 
@@ -2012,17 +2099,45 @@ export namespace Provider {
     }
   }
 
-  async function getSDK(model: Model) {
+  /**
+   * @spec specs/provider-account-decoupling DD-3
+   *
+   * Three-arg dispatch: (family, accountId, model). Looks up the family-level
+   * Provider.Info, then merges that account's per-account options on top.
+   * model is still passed because the SDK construction needs npm/api/headers
+   * — those are model-level metadata that getSDK can't recover from a string.
+   *
+   * `family` MUST be a registered family. `accountId` MUST be present in
+   * `provider.accounts[]` if the family has any accounts. If `accountId` is
+   * undefined the family-level options are used (works for env-based / API-key
+   * providers that have no per-account state).
+   */
+  async function getSDK(family: string, accountId: string | undefined, model: Model) {
     try {
       using _ = log.time("getSDK", {
+        family,
+        accountId,
         providerId: model.providerId,
       })
       const s = await state()
-      const provider = s.providers[model.providerId]
-      const options = { ...provider.options }
+      const provider = s.providers[family]
+      if (!provider) {
+        throw new Error(
+          `getSDK: family=${JSON.stringify(family)} not in providers registry. ` +
+            `Caller must pass a registered family (per DD-3).`,
+        )
+      }
+
+      // Merge per-account options on top of family-level options. accountId may
+      // be undefined for env/api-key providers with no per-account state.
+      const accountState = accountId ? provider.accounts?.[accountId] : undefined
+      const options = accountState
+        ? (mergeDeep({ ...provider.options }, accountState.options) as Record<string, any>)
+        : { ...provider.options }
 
       debugCheckpoint("provider", "getSDK start", {
-        providerId: model.providerId,
+        family,
+        accountId,
         modelID: model.id,
         hasProvider: !!provider,
         providerSource: provider?.source,
@@ -2032,7 +2147,8 @@ export namespace Provider {
         baseURL: options.baseURL,
       })
       log.info("getSDK debug", {
-        providerId: model.providerId,
+        family,
+        accountId,
         modelID: model.id,
         hasProviderKey: !!provider.key,
         optionsApiKey: options.apiKey ? "exists" : "missing",
@@ -2049,11 +2165,18 @@ export namespace Provider {
           options["apiKey"] = provider.key
         } else if (
           options["fetch"] ||
-          model.providerId.includes("subscription") ||
-          model.providerId.includes("managed") ||
-          model.providerId.includes("gemini-cli")
+          // @spec DD-4 — model.providerId is family. The "looks like a managed
+          // account" string-shape detection is replaced with explicit family
+          // names. This list is the universe of subscription-style families
+          // that the SDK validates differently (dummy apiKey to pass schema).
+          family === "codex" ||
+          family === "claude-cli" ||
+          family === "anthropic" ||
+          family === "github-copilot" ||
+          family === "github-copilot-enterprise" ||
+          family === "gemini-cli"
         ) {
-          // If we have a custom fetch (plugin) OR it's a known managed account type,
+          // If we have a custom fetch (plugin) OR it's a known managed account family,
           // inject dummy to satisfy SDK validation
           options["apiKey"] = "dummy"
         }
@@ -2063,9 +2186,10 @@ export namespace Provider {
           ...options["headers"],
           ...model.headers,
         }
-      if (Env.get("OPENCODE_SMOKE_DEBUG") && model.providerId.startsWith("anthropic-subscription")) {
+      if (Env.get("OPENCODE_SMOKE_DEBUG") && family === "anthropic" && accountId?.startsWith("anthropic-subscription")) {
         log.info("anthropic subscription sdk options", {
-          providerId: model.providerId,
+          family,
+          accountId,
           hasFetch: typeof options["fetch"] === "function",
           headers: Object.keys(options["headers"] ?? {}),
           baseURL: options["baseURL"],
@@ -2074,16 +2198,21 @@ export namespace Provider {
 
       // FIX: Include hasCustomFetch in cache key since JSON.stringify ignores functions
       // Without this, SDKs with/without custom fetch would share the same cache key
-      // @event_20260209_sdk_cache_key_fix
+      // @event_20260209_sdk_cache_key_fix.
+      // Cache key now keys on family + accountId (instead of legacy
+      // per-account providerId) so different accounts of the same family
+      // get distinct SDK instances.
       const hasCustomFetch = typeof options["fetch"] === "function"
       const key = Bun.hash.xxHash32(
-        JSON.stringify({ providerId: model.providerId, npm: model.api.npm, options, hasCustomFetch }),
+        JSON.stringify({ family, accountId, npm: model.api.npm, options, hasCustomFetch }),
       )
       const existing = s.sdk.get(key)
       if (existing) return existing
 
       const customFetch = options["fetch"]
-      const wrappedProviderID = model.providerId
+      // Log/metric label keeps the family form. Per-call account identity is
+      // available via accountId (logged separately when needed).
+      const wrappedProviderID = family
       const wrappedModelID = model.id
       options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
         const inputUrl = typeof input === "string" ? input : input?.url || String(input)
@@ -2147,7 +2276,7 @@ export namespace Provider {
           try {
             const body = JSON.parse(opts.body as string)
             responsesRequestBefore = summarizeResponsesRequestBody(body)
-            const isAzure = model.providerId.includes("azure")
+            const isAzure = family === "azure"
             const keepIds = isAzure && body.store === true
             if (!keepIds && Array.isArray(body.input)) {
               for (const item of body.input) {
@@ -2320,7 +2449,7 @@ export namespace Provider {
       if (bundledFn) {
         log.info("using bundled provider", { providerId: model.providerId, pkg: bundledKey })
         const loaded = bundledFn({
-          name: model.providerId,
+          name: family,
           ...sdkOptions,
         })
         s.sdkSet(key, loaded)
@@ -2345,8 +2474,8 @@ export namespace Provider {
       s.sdkSet(key, loaded)
       return loaded as SDK
     } catch (e) {
-      log.error("getSDK failed", { providerId: model.providerId, modelID: model.id, error: e })
-      throw new InitError({ providerId: model.providerId }, { cause: e })
+      log.error("getSDK failed", { family, accountId, modelID: model.id, error: e })
+      throw new InitError({ providerId: family }, { cause: e })
     }
   }
 
@@ -2384,46 +2513,54 @@ export namespace Provider {
     return info
   }
 
+  /**
+   * @spec specs/provider-account-decoupling DD-3, DD-4
+   *
+   * Post-refactor: model.providerId is always a family. accountId is a
+   * separate dimension carried by the dispatch context. This function used
+   * to translate `model.providerId` from family to per-account form so
+   * subsequent dispatch hit a per-account `providers[]` entry — that
+   * conflation is gone. Now it just returns the model unchanged. Kept as a
+   * named function for callers (llm.ts) so their dispatch pipeline reads
+   * cleanly; will be removed in a later cleanup once all callers move to
+   * the explicit `(family, accountId)` carrier.
+   */
   export async function resolveExecutionModel(input: { model: Model; accountId?: string }) {
-    if (!input.accountId) return input.model
-    const accountProviderId = input.accountId
-    const parseAccountProvider =
-      (Account as any).parseProvider ??
-      (Account as any).parseFamily ??
-      ((accountId: string) => accountId.split(/-(?:api|subscription)-/)[0])
-    const accountFamily = parseAccountProvider(accountProviderId)
-    const resolveFamily =
-      (Account as any).resolveFamilyOrSelf ??
-      (Account as any).resolveFamily ??
-      (async (providerId: string) => providerId)
-    const modelFamily = await resolveFamily(input.model.providerId)
-    if (!accountFamily || accountFamily !== modelFamily) return input.model
-    const provider = await getProvider(accountProviderId)
-    if (!provider) return input.model
-    const resolved = await getModel(accountProviderId, input.model.id).catch(() => undefined)
-    return resolved ?? { ...input.model, providerId: accountProviderId }
+    return input.model
   }
 
-  export async function getLanguage(model: Model): Promise<LanguageModelV2> {
+  /**
+   * @spec specs/provider-account-decoupling DD-3
+   *
+   * Two-arg dispatch entry: (model, accountId?). model.providerId is the
+   * family; accountId picks which account's auth/options to merge in. If
+   * accountId is omitted the family-level options (= active account's
+   * effective auth, mirrored in phase 2's populate loop) are used.
+   */
+  export async function getLanguage(model: Model, accountId?: string): Promise<LanguageModelV2> {
     const s = await state()
-    const key = `${model.providerId}/${model.id}`
-    if (s.models.has(key)) return s.models.get(key)!
+    const family = model.providerId
+    const cacheKey = `${family}/${accountId ?? "_active_"}/${model.id}`
+    if (s.models.has(cacheKey)) return s.models.get(cacheKey)!
 
-    const provider = s.providers[model.providerId]
+    const provider = s.providers[family]
 
-    // Resolve model loader by base provider ID.
-    // Account-specific providerId (e.g. "codex-subscription-...") must resolve
-    // to the canonical provider ("codex") that registered the CUSTOM_LOADER.
-    const canonicalProviderId = Account.parseProvider(model.providerId) ?? model.providerId
-    const loader = s.modelLoaders[canonicalProviderId]
+    // Model loader lookup is by family — registry now holds family-only keys
+    // so the legacy parseProvider canonicalisation step is gone.
+    const loader: CustomModelLoader | undefined = s.modelLoaders[family]
 
     // Skip SDK loading when the model loader doesn't need it (e.g. native LMv2 providers).
     // This prevents InitError from getSDK() trying to install a non-existent npm package.
-    const sdk = loader ? await getSDK(model).catch(() => null) : await getSDK(model)
+    const sdk = loader !== undefined
+      ? await getSDK(family, accountId, model).catch(() => null)
+      : await getSDK(family, accountId, model)
 
     try {
-      const language = loader ? await loader(sdk, model.api.id, provider.options) : sdk!.languageModel(model.api.id)
-      s.models.set(key, language)
+      const language =
+        loader !== undefined
+          ? await loader(sdk, model.api.id, provider.options)
+          : sdk!.languageModel(model.api.id)
+      s.models.set(cacheKey, language)
       return language
     } catch (e) {
       if (e instanceof NoSuchModelError)
@@ -2442,10 +2579,18 @@ export namespace Provider {
    * Peek at a cached LanguageModelV2 without creating a new instance.
    * Returns undefined if the model hasn't been instantiated yet.
    * Used by preconnect to avoid creating duplicate instances.
+   *
+   * @spec specs/provider-account-decoupling DD-3 — cache key is
+   * `${family}/${accountId ?? "_active_"}/${modelID}`. Pass accountId to
+   * hit the same entry getLanguage created.
    */
-  export async function peekCachedLanguage(providerId: string, modelID: string): Promise<LanguageModelV2 | undefined> {
+  export async function peekCachedLanguage(
+    family: string,
+    modelID: string,
+    accountId?: string,
+  ): Promise<LanguageModelV2 | undefined> {
     const s = await state()
-    return s.models.get(`${providerId}/${modelID}`)
+    return s.models.get(`${family}/${accountId ?? "_active_"}/${modelID}`)
   }
 
   export async function closest(providerId: string, query: string[]) {
