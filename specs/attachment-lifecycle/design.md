@@ -120,6 +120,33 @@ This spec adds a "dehydrate after read, retain on disk" lifecycle: assistant tur
   - Reason: tool result content lives in conversation history. If we returned binary directly, it'd accumulate as cache-prefix-mutation source — same anti-pattern as v3.
   - Consequence: model needs to plan one turn ahead to reread. Tool description tells it: "After this returns, your next response can examine the image."
 
+- **DD-22 (NEW 2026-05-04 v5 — third architectural pivot)** **Pure AI-driven opt-in: upload announces, never auto-queues**. The upload-commit hook (`addOnUpload` site in prompt.ts) becomes a no-op for activeImageRefs. Inline only happens via explicit `reread_attachment` voucher call.
+  - Reason: v4's auto-queue created a new force-feed risk — a user dropping 10+ debug screenshots in one message would either silently lose images past the FIFO cap (= bad UX) or blow per-turn token budget if cap raised (= context bloat returns). Pure opt-in delegates the budget decision to the AI, which can read the inventory and decide which 1-2 images actually matter.
+  - Cost: 1 extra round-trip on first read of any image. Even the canonical "look at this" + 1 image case becomes 2 turns: turn N (AI sees inventory + calls reread, ends), turn N+1 (image inlines, AI responds substantively).
+  - Trade-off: latency UP by 1 turn for trivial cases; context-bloat risk → 0 regardless of upload count. User accepted this trade-off explicitly: "塞多少圖都不怕".
+  - `addOnUpload` helper kept (now unused) for future re-enablement; deletion deferred until v5 has bake time.
+  - Replaces DD-20's "Add on upload" lifecycle hook semantics. Drain-after-assistant (DD-20's other hook) is unchanged.
+
+- **DD-22.1 (NEW v5)** **Inventory text block in preface trailing**. New text content placed in trailing tier (BP4 zone, before any image blocks):
+  ```
+  <attached_images count="N">
+  - filename1 (mime, optional dimensions)
+  - filename2 (mime)
+  ...
+  Active in this preface: filename_a, filename_b   (or "(none)")
+  Use reread_attachment(filename) to bring an image into your next response.
+  </attached_images>
+  ```
+  - Source: walk session messages, collect every `attachment_ref` part where mime is `image/*` AND (`session_path` OR `repo_path` populated). Newest-first ordering.
+  - Sort: most-recent-upload first (debug-flow priority).
+  - Token cost: ~30-60 chars per entry → 50 images ≈ 3KB ≈ 750 tokens. Bounded by inventory text, not image bytes.
+  - Empty case: when 0 images in session, omit the entire block (zero overhead).
+  - Cache: per-turn churn (each new upload changes the list, drain changes the "Active in this preface" line) → BP4 zone where churn is expected.
+
+- **DD-22.2 (NEW v5)** **FIFO cap repurposed**: `attachment_active_set_max` no longer bounds upload (irrelevant — uploads don't auto-queue). It now bounds AI-driven reread accumulation: defensive ceiling so a buggy/looping AI can't `reread_attachment` 100 different filenames in one turn and queue them all. Default raised to 8 (was 3); range 1-50.
+
+- **DD-22.3 (NEW v5)** **Voucher tool description rewrite**. The reread tool's description loses the "previously-attached" framing (which implied "you already saw it"); becomes "fetch a session-attached image into your next response so you can see its pixels." Tool name kept as `reread_attachment` for now to avoid breaking existing prompt cache; rename to `view_attachment` deferred as a follow-up.
+
 - ~~**DD-17 (NEW 2026-05-04 v3 — architectural pivot)** **Main agent reads images inline by default**.~~ **(v3, SUPERSEDED 2026-05-04 by DD-19)** Inlining at user-message position in conversation history put big delta in cache-stable zone, violating Phase B discipline. `MessageV2.toModelMessages` branches as follows when emitting an `attachment_ref` for image mimes:
   - `dehydrated !== true` AND `repo_path` populated AND mime starts with `image/` → emit `{type: "file", url: "data:image/png;base64,...", mediaType: ..., filename: ...}` content block (read bytes from `<worktree>/<repo_path>` at conversion time). The main agent (multimodal) sees the actual image.
   - `dehydrated === true` → emit `<dehydrated_attachment ...>annotation</dehydrated_attachment>` text block (per existing DD-8). Image collapsed to text post-read.

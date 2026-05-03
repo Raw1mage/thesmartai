@@ -83,6 +83,35 @@ Image attachments uploaded by the user collapse into a small text annotation aft
 - **AND** Phase B BP1/BP2/BP3 cache savepoints continue to hit on the system + preface T1 + preface T2 portions
 - **AND** BP4 cache invalidation per turn is the only expected churn (matches Phase B's discipline)
 
+### Requirement R10: Upload announces, AI opts in (NEW v5 2026-05-04)
+
+> **Architectural pivot**: replaces v4's "auto-queue every uploaded image into next turn's preface trailing" with a pure opt-in model. Upload now ONLY stages binary + announces inventory; AI explicitly calls `reread_attachment` (renamed `view_attachment` per DD-22.5 if adopted) to bring specific images into the next turn's preface. Eliminates force-feed risk regardless of upload count.
+
+#### Scenario: user uploads N images, none auto-inline
+- **GIVEN** a user message with N image `attachment_ref` parts (any N including N>10)
+- **AND** `attachment_inline_enabled=true`
+- **WHEN** the upload-commit hook runs
+- **THEN** `session.execution.activeImageRefs` is NOT modified (stays empty / unchanged)
+- **AND** the binary lands in `${Global.Path.data}/sessions/<sessionID>/attachments/<filename>` per the v4 hotfix routing
+- **AND** the next turn's preface trailing tier emits NO image content blocks (because activeImageRefs is empty)
+- **AND** the next turn's preface trailing tier emits an `<attached_images>` text inventory listing all session image attachments with metadata
+
+#### Scenario: AI reads inventory, calls voucher, image inlines next turn
+- **GIVEN** the inventory advertises `screenshot.png`, `error.png`, `debug.png` (3 uploaded images, 0 active)
+- **WHEN** AI calls `reread_attachment({filename: "screenshot.png"})` during turn N
+- **THEN** activeImageRefs gains `screenshot.png`
+- **AND** turn N+1 preface trailing inlines screenshot.png ONLY (the other two stay in inventory only)
+- **AND** AI sees pixel content for screenshot.png on turn N+1
+- **AND** drainAfterAssistant clears activeImageRefs at the end of turn N+1; turn N+2 inlines no image unless AI requests again
+
+#### Scenario: 50 uploaded images do not inflate context
+- **GIVEN** a session with 50 uploaded image `attachment_ref` parts (e.g. user dropped a debug folder)
+- **AND** activeImageRefs is empty
+- **WHEN** the next turn assembles
+- **THEN** the preface trailing tier carries the inventory (~50 lines of text, ~3-5KB) but ZERO image binary
+- **AND** total preface trailing token cost stays bounded by inventory text size, not by image count
+- **AND** AI can call `reread_attachment` for the 1-2 images it needs
+
 ### ~~Requirement: Dehydrate every image attachment after its first read~~ (v1, SUPERSEDED 2026-05-04 by R6′)
 
 #### Scenario: assistant turn with `finish="stop"` triggers dehydration

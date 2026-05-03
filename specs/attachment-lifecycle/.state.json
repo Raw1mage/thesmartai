@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "living",
+  "state": "designed",
   "profile": [],
   "history": [
     {
@@ -50,6 +50,14 @@
       "by": "pkcs12",
       "mode": "promote",
       "reason": "v4 + hotfix on main"
+    },
+    {
+      "from": "living",
+      "to": "designed",
+      "at": "2026-05-03T20:29:39.553Z",
+      "by": "pkcs12",
+      "mode": "extend",
+      "reason": "v5 architectural shift: pure AI-opt-in. Upload no longer auto-queues images for inline; runtime stores binary + announces via preface inventory; AI calls voucher tool to bring specific images into next turn's preface. Eliminates force-feed risk; cost = 1 extra round-trip on first read."
     }
   ]
 }

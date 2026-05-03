@@ -143,6 +143,28 @@ Vision subagent stays available but stops being the default route for images. Pe
 - [x] T.5.6 Rebase to latest main; merge clean.
 - [x] T.5.7 STOP for user finalize approval.
 
+## 7. Phase T.7 — v5 Pure AI-opt-in (extend, 2026-05-04)
+
+> Architectural shift per DD-22 / R10. Upload no longer auto-queues into activeImageRefs; AI sees an `<attached_images>` inventory in preface trailing and explicitly calls reread_attachment for the images it actually wants to see.
+
+- [ ] T.7.1 (v5) Disable the addOnUpload call in [prompt.ts:2419-2438](../../packages/opencode/src/session/prompt.ts#L2419) (the post-persistUserMessage hook). Either gate behind a debug-only flag or comment out + leave a `// v5: opt-in only — addOnUpload kept for future re-enable` marker. activeImageRefs now only grows via reread_attachment.
+
+- [ ] T.7.2 (v5) New helper `packages/opencode/src/session/attached-images-inventory.ts`:
+  - `buildInventoryText(messages, activeImageRefs): string` — walks all session messages, collects image attachment_refs (mime image/* AND (session_path OR repo_path) populated), emits the `<attached_images count="N">…</attached_images>` text block per DD-22.1.
+  - Returns empty string when 0 images (so caller can omit cleanly).
+  - Newest-first ordering. Annotates `Active in this preface: …` based on activeImageRefs intersection.
+  - 6 unit tests: empty / 1 image / multiple / dimensions present / sort order / active subset annotation.
+
+- [ ] T.7.3 (v5) Wire inventory text into llm.ts preface trailing assembly: append the inventory string into `prefaceInput.trailingExtras` (before existing extras) so it lands BEFORE any image content blocks.
+
+- [ ] T.7.4 (v5) Bump `attachment_active_set_max` default to 8 (was 3); range 1-50 (was 1-20). Per DD-22.2 — repurposed to bound AI-driven reread accumulation, no longer relevant to upload count.
+
+- [ ] T.7.5 (v5) Update `reread_attachment` tool description per DD-22.3: drop "previously-attached" framing, lead with "Fetch a session-attached image into your next response so you can see its pixels."
+
+- [ ] T.7.6 (v5) Smoke test: upload 5 images in one user message. Verify (a) activeImageRefs stays empty after upload commit, (b) next turn preface contains inventory listing all 5, (c) ZERO `{type:"file"}` blocks emitted in preface trailing, (d) total preface trailing token cost ≪ even one image's worth.
+
+- [ ] T.7.7 (v5) Update event doc `docs/events/event_2026-05-04_attachment-lifecycle-v4-landed.md` with v5 amendment section, OR write a new `event_2026-05-04_attachment-lifecycle-v5-opt-in.md` covering the pivot.
+
 ## 6. Phase T.6 — Finalize + cleanup
 
 - [x] T.6.1 `git merge --no-ff beta/attachment-lifecycle` into main (in mainRepo).
