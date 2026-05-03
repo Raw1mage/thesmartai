@@ -31,6 +31,24 @@ export namespace Account {
   ] as const
   export type Provider = (typeof PROVIDERS)[number]
 
+  /**
+   * @spec specs/provider-account-decoupling DD-1 follow-up (2026-05-03)
+   *
+   * Synthetic / inherited families that exist in the runtime registry but are
+   * NOT in PROVIDERS, models.dev, or accounts.json. github-copilot-enterprise
+   * is the canonical example — it inherits from github-copilot via
+   * inheritFrom() in provider.ts:1210 but never lands in models.dev.
+   *
+   * `knownFamilies()` unions this set so Auth.get / assertFamilyKey accept
+   * these as registered. Mirrors `GENERIC_RUNTIME_FAMILIES` in
+   * provider/canonical-family-source.ts:44 — kept in sync there.
+   *
+   * Static (no async lookup) — avoids the deadlock where Auth.get during
+   * init would lazy-import Provider.state() while state() itself is still
+   * initializing.
+   */
+  export const RUNTIME_SYNTHETIC_FAMILIES = ["github-copilot-enterprise"] as const
+
   /** @deprecated Use PROVIDERS instead */
   export const FAMILIES = PROVIDERS
   // Account type schemas
@@ -242,7 +260,11 @@ export namespace Account {
     const { ModelsDev } = await import("../provider/models")
     const fromModels = Object.keys(await ModelsDev.get().catch(() => ({}) as Record<string, unknown>))
     const fromStorage = includeStorage ? providerKeysOf(await state()) : []
-    return Array.from(new Set([...PROVIDERS, ...fromModels, ...fromStorage]))
+    // @spec specs/provider-account-decoupling DD-1 follow-up — include
+    // synthetic families like github-copilot-enterprise that exist in the
+    // runtime registry via inheritFrom() but never land in models.dev or
+    // accounts.json. See RUNTIME_SYNTHETIC_FAMILIES above.
+    return Array.from(new Set([...PROVIDERS, ...RUNTIME_SYNTHETIC_FAMILIES, ...fromModels, ...fromStorage]))
   }
 
   const listKnownFamiliesInternal = listKnownProvidersInternal
