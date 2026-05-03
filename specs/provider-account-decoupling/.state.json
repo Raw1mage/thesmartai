@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "state": "verified",
+  "state": "living",
   "profile": [],
   "history": [
     {
@@ -42,6 +42,14 @@
       "by": "pkcs12",
       "mode": "promote",
       "reason": "phases 5-8 landed; rebased onto main HEAD c27a127e8; 9 boundary + migration tests passing; architecture.md updated; cutover doc at docs/events/event_2026-05-03_provider-account-decoupling-cutover.md. Phase 9 is operator-driven post-merge."
+    },
+    {
+      "from": "verified",
+      "to": "living",
+      "at": "2026-05-03T15:15:42.722Z",
+      "by": "pkcs12",
+      "mode": "promote",
+      "reason": "cutover applied 2026-05-03T14:50Z; markers in place for pkcs12 + liam; daemons restarted via webctl; UI smoke verified by user (operator confirmed 'can use'). Two hotfixes also landed: 722fbeb45 (assertFamilyKey accepts database keys) and 1ac82db2c (Account.knownFamilies includes RUNTIME_SYNTHETIC_FAMILIES, esp. github-copilot-enterprise). Lessons captured in cutover event log."
     }
   ]
 }

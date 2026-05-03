@@ -49,3 +49,24 @@ Rollback path: copy `<storage>/.backup/provider-account-decoupling-<ISO>/` over 
 
 - `specs/architecture.md ### Codex family rotation rule` retains the historical narrative with strikethrough on the deleted gate. Once enough time has passed that the strikethrough is no longer pedagogically useful, fold the section into the new `## Provider/Family/Account Naming` block.
 - Consider deleting `Account.parseProvider` / `Account.resolveFamilyFromKnown` after the migration ships — they currently survive only for the migrator's offline use. A future cleanup pass can move that algorithm fully into `scripts/migrate-provider-account-decoupling.ts` (it is already inlined there).
+
+## Cutover actually executed (2026-05-03 22:50 → 23:11 +08:00)
+
+| When (UTC) | What | Outcome |
+| --- | --- | --- |
+| 14:50:02Z | `--apply` for pkcs12 (uid 1000) | rewrote 6 files (`claude-cli-subscription-claude-cli` → `claude-cli`); 6739 already-clean. Backup: `~/.local/share/opencode/storage/.backup/provider-account-decoupling-2026-05-03T14-50-02-489Z` |
+| 14:50:11Z | `--apply` for liam (uid 1004) via sudo -u liam | rewrote 0 files (storage uses `.db`, not JSON walker target); marker still written. Backup: `/home/liam/.local/share/opencode/storage/.backup/provider-account-decoupling-2026-05-03T14-50-11-418Z` |
+| 14:50:30Z | `--verify` for both | both `verify ok: no further rewrites needed` |
+| 14:55Z | Daemon respawn via webctl restart | both daemons came back; boot guard accepted markers |
+| 15:00Z | Frontend XDG symlink added | `~/.local/share/opencode/frontend → packages/app/dist` for both users — daemons no longer need OPENCODE_FRONTEND_PATH env to find index.html |
+| 15:08Z | `Auth.get` regression observed | `github-copilot-enterprise` (synthetic family inherited via `inheritFrom`) hit the new strict gate; UI showed "Unknown error" toasts |
+| 15:09Z | Hotfix attempt 1 (`566ab6834`) — REVERTED at `6103fac0c` | Tried lazy-import of `Provider.knownProviderIds` from inside `Auth.get`; deadlocked during init because state() population calls Auth.get. Symptom: `/api/v2/provider` hung → 504 Gateway Timeout |
+| 15:11Z | Hotfix attempt 2 (`1ac82db2c`) — KEPT | Added static `RUNTIME_SYNTHETIC_FAMILIES = ["github-copilot-enterprise"]` to `Account.knownFamilies`. No async lookup, no circular dependency. UI returned to working state. |
+| 15:12Z | Liam daemon stopped | spawned during cutover for migration only; gateway will lazily respawn on demand if liam becomes active |
+
+### Lessons captured
+
+1. **`Auth.get` from inside provider init is deadlock territory.** Any expansion of the strict-shape check that depends on `Provider.state()` will hang because state() initialization loads plugins which call Auth.get. Use a static set or push the expansion into `Account.knownFamilies` instead.
+2. **The dev-mode daemon launch lacks `OPENCODE_FRONTEND_PATH`.** The systemd unit / production launcher set it; manual `bun ... serve` does not. Permanent fix: symlink `~/.local/share/opencode/frontend → packages/app/dist`.
+3. **Synthetic families like `github-copilot-enterprise` need explicit registration.** They live in the runtime registry via `inheritFrom()` but never enter `models.dev` / accounts.json / PROVIDERS. Both `assertFamilyKey` (commit `722fbeb45`) and `Account.knownFamilies` (commit `1ac82db2c`) need the same expansion.
+4. **Browser cookie flush alone doesn't break the auth/renew loop.** The frontend keeps polling `/auth/renew` without auto-redirecting to login. Operator must manually visit `/global/auth/login` to break out.

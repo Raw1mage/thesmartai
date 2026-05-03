@@ -72,9 +72,9 @@ Phased checklist. Implementing-state agent loads exactly one phase's `- [ ]` ite
 
 > Operator-driven; daemon must be stopped during the window. Full runbook + rollback path: [docs/events/event_2026-05-03_provider-account-decoupling-cutover.md](../../docs/events/event_2026-05-03_provider-account-decoupling-cutover.md). Spec promotes `verified → living` after smoke (§ 9.6) passes.
 
-- [ ] 9.1 `opencode daemon stop`
-- [ ] 9.2 `bun run packages/opencode/scripts/migrate-provider-account-decoupling.ts --dry-run` — review diff
-- [ ] 9.3 `bun run packages/opencode/scripts/migrate-provider-account-decoupling.ts --apply` — backup + sweep + marker
-- [ ] 9.4 Smoke check: cat `.migration-state.json`; verify backup tarball exists
-- [ ] 9.5 Start new daemon binary; confirm boot succeeds (marker check passes)
-- [ ] 9.6 End-to-end smoke: codex completion on `yeats.luo@thesmart.cc`; force a transient error; verify same-family fallback to a different codex account succeeds
+- [x] 9.1 `opencode daemon stop`
+- [x] 9.2 `bun run packages/opencode/scripts/migrate-provider-account-decoupling.ts --dry-run` — review diff
+- [x] 9.3 `bun run packages/opencode/scripts/migrate-provider-account-decoupling.ts --apply` — backup + sweep + marker
+- [x] 9.4 Smoke check: cat `.migration-state.json`; verify backup tarball exists
+- [x] 9.5 Start new daemon binary; confirm boot succeeds (marker check passes)
+- [x] 9.6 End-to-end smoke: codex completion on `yeats.luo@thesmart.cc`; force a transient error; verify same-family fallback to a different codex account succeeds
