@@ -21,11 +21,40 @@ The model rarely needs to re-look at an image once it has responded to it. A "po
 - 2026-05-04: initial draft (proposal-only at this stage)
 - 2026-05-04 v2: 6 OQs resolved (annotation = response text, storage = XDG, trigger = always, v1 = images, TTL = 7d, subagent = per-session)
 - 2026-05-04 v2-amend: discovered `repo-incoming-attachments` already owns binary lifecycle (per-project `<worktree>/incoming/`). Scope reduced from 5 to 3 implementation phases. DD-2/DD-4/DD-11 superseded.
-- 2026-05-04 v3 (current): **architectural pivot** — discovered the original premise (image binary stays in main agent context) is FALSE. opencode currently routes image attachment_ref to a **vision subagent** which produces a ≤1500 token text summary; main agent never sees the image binary. This collapses 188K image tokens to ~470-byte routing hints in conversation, but at the cost of architectural lossiness (multimodal main models like GPT-5.5 / Claude / Gemini cannot use their native vision capability). v3 redefines the goal as: **main multimodal agent reads images inline; dehydrate to annotation after first read; vision subagent becomes opt-in fallback for non-multimodal main or deeper-analysis cases**. Schema fields, annotation extractor, tweaks knobs, and post-completion hook from T.1/T.2.1 (already shipped) remain reusable; what changes is the wire-format conversion (was: text routing hint; now: inline image content block when not dehydrated) and the role of the vision subagent (was: default; now: opt-in).
+- 2026-05-04 v3: architectural pivot 1 — discovered opencode never inlines image binary; currently routes through vision subagent for ≤1500 token text summary. v3 proposed inlining image into user message + dehydrate-by-mutation after first read.
+- 2026-05-04 v4 (current): **architectural pivot 2** — v3's dehydrate-by-mutation **violates Phase B's "static-front, dynamic-back" cache locality principle**. Mutating historical user message bytes (deep in conversation history) invalidates cache prefix from that point. Phase B's discipline says: big-delta content belongs at the END of context (preface trailing zone, BP4 zone), where invalidation is cheap. v4 redesigns: **image binary inlines into preface trailing per-turn (NOT into conversation history); conversation history's `attachment_ref` parts STAY as small text routing-refs, byte-stable forever**. No mutation. No dehydration flag. The "annotation" is just the assistant's natural response text (lives in assistant message text, byte-stable forever). Reread tool returns a "voucher" that signals "include image X in next turn's preface trailing" instead of returning binary inline. v4 reverts the 4 v3 implementation commits (`f39d70e71`..`8039fcf65`); they're wrong-direction.
 
-## Effective Requirement Description (v3 2026-05-04)
+## Effective Requirement Description (v4 2026-05-04 — current)
 
-0. **Inline read by main agent (NEW v3)**: When `attachment_ref` is image mime AND `repo_path` is populated AND `dehydrated !== true`, `MessageV2.toModelMessages` emits a real **inline image content block** (data URI from the on-disk binary) so the main multimodal agent can use its native vision capability. The legacy "use the attachment tool, agent=vision" routing hint is replaced by direct inline. The vision subagent path remains available as **opt-in** when the main agent explicitly chooses (e.g. for deep analysis, or when the main is a non-multimodal model).
+**Core principle**: Image binaries belong in the **preface trailing tier** (per-turn dynamic, BP4 zone, expected to invalidate every turn). They MUST NOT enter conversation history. Conversation history stays byte-stable forever; cache locality preserved.
+
+1. **Image binary inlines via preface trailing** (NOT user message): When the LLM request is assembled, the system computes "active image refs" — images that should be visible to the main agent THIS turn. Each active image is rendered as `{type: "file", url: "data:<mime>;base64,...", mediaType: ..., filename: ...}` content block appended to the preface message's trailing tier. Conversation history's `attachment_ref` parts stay as compact text routing-refs forever (~470 bytes each, byte-stable).
+
+2. **Active image set per session** (`session.execution.activeImageRefs[]`):
+   - **Add**: when user uploads (next user turn marks the new attachment_ref as active); when AI calls `reread_attachment(filename)` (queues for next turn)
+   - **Remove**: after the next assistant turn completes — image was already shown, AI's response captured the analysis, no need to keep it active
+   - Rule: at most 1 turn of "active" lifespan unless explicitly extended via reread
+
+3. **Re-read tool** (`reread_attachment(filename)`):
+   - Returns small text "voucher": `{type:"text", text:"Image '<file>' queued for vision in your next turn."}`
+   - Side effect: pushes filename onto `session.execution.activeImageRefs[]`
+   - Next turn: preface trailing inlines that image
+   - AI sees the image on the turn AFTER calling reread (acceptable latency)
+
+4. **Annotation = assistant's natural response text** (no extra mechanism): When AI sees image and responds, its response text IS the annotation. Lives in assistant message → conversation history → byte-stable forever. Future turns reference the analysis through normal conversation context. No `dehydrated` flag, no `annotation` field, no extraction step.
+
+5. **Vision subagent → opt-in fallback** (per v3 DD-18, retained): The `attachment(mode=read, agent=vision)` tool dispatch path stays for cases where the model wants a focused vision-subagent analysis (deep analysis, non-multimodal main). Default route flips to inline (via preface trailing).
+
+6. **Cache profile** (the crucial property):
+   - Conversation history NEVER mutates → BP1/BP2/BP3 cached, conversation tail bytes byte-stable
+   - Image inline ONLY in preface trailing → invalidation rides BP4 (per-turn anyway)
+   - Turn N (image active): trailing has image, BP4 fresh (expected). Image cached at BP4 savepoint.
+   - Turn N+1 (no reread): trailing doesn't have image. BP4 fresh. **Conversation history byte-stable, BP4 prior savepoint partially reused for the conversation portion**. Only preface trailing + new user msg are fresh.
+   - **No mid-history mutation. No surprise cache invalidation. Phase B discipline preserved.**
+
+## Effective Requirement Description (v3 2026-05-04 — SUPERSEDED by v4)
+
+0. **Inline read by main agent (NEW v3)**: When `attachment_ref` is image mime AND `repo_path` is populated AND `dehydrated !== true`, `MessageV2.toModelMessages` emits a real **inline image content block** (data URI from the on-disk binary) so the main multimodal agent can use its native vision capability. The legacy "use the attachment tool, agent=vision" routing hint is replaced by direct inline. The vision subagent path remains available as **opt-in** when the main agent explicitly chooses (e.g. for deep analysis, or when the main is a non-multimodal model). **(SUPERSEDED — inlining into user message put a big delta in conversation tail, violating Phase B's cache locality discipline. v4 moves inline to preface trailing.)**
 
 1. **Post-read dehydration**: After the assistant turn that consumed an attachment finishes (`finish="stop"`), replace the `attachment_ref` part in conversation history with a **dehydrated stub** containing:
    - Original filename

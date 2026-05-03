@@ -18,7 +18,72 @@ Image attachments uploaded by the user collapse into a small text annotation aft
 
 ## Requirements
 
-### Requirement: Dehydrate every image attachment after its first read
+> **v4 (2026-05-04 — current)** Requirements R6′–R10 below describe the active design. Earlier R1–R5 (dehydrate-by-mutation) are kept for traceability but marked SUPERSEDED. v4 reframes: image binary lives in **preface trailing** per turn, never in conversation history.
+
+### Requirement R6′: Image binary inlines via preface trailing (NEW v4)
+
+#### Scenario: turn with active image refs renders inline image in preface trailing
+- **GIVEN** session has `session.execution.activeImageRefs = ["image.png"]`
+- **AND** the user message at conversation tail contains `attachment_ref` part with `repo_path = "incoming/image.png"`, `mime = "image/png"`
+- **WHEN** llm.ts assembles the LLM request via `buildPreface(...)` with `trailingExtras` populated by an "active image inliner" helper
+- **THEN** the preface message's content array includes a `{type: "file", url: "data:image/png;base64,...", mediaType: "image/png", filename: "image.png"}` content block in the trailing tier
+- **AND** the conversation history's `attachment_ref` part remains as the existing routing-hint text (no inlining there)
+- **AND** the assembled wire payload's preface trailing contains the image binary (~20K tokens for a typical PNG); conversation history bytes are unchanged
+
+#### Scenario: turn with no active image refs has no inline image
+- **GIVEN** `session.execution.activeImageRefs` is empty or undefined
+- **WHEN** llm.ts assembles the LLM request
+- **THEN** preface trailing contains no image content blocks (only the existing trailing extras like lazy catalog hints)
+- **AND** conversation history is unchanged
+
+### Requirement R7′: Active image set lifecycle (NEW v4)
+
+#### Scenario: user upload adds to active set
+- **GIVEN** a new user message with image `attachment_ref` parts containing `repo_path`
+- **WHEN** the user message is committed to session storage
+- **THEN** each new image's identifier is appended to `session.execution.activeImageRefs`
+- **AND** subsequent assembled requests inline that image via preface trailing
+
+#### Scenario: assistant turn completion drains active set
+- **GIVEN** `session.execution.activeImageRefs` is non-empty
+- **AND** an assistant turn completes (any finish reason)
+- **WHEN** the post-completion hook fires
+- **THEN** `session.execution.activeImageRefs` is cleared
+- **AND** the next assembled request has no inline images (unless reread or new upload added refs)
+
+#### Scenario: multiple turns same image
+- **GIVEN** image was inlined turn N, drained after assistant N
+- **WHEN** turn N+1 starts (user typed text only, no new upload, no reread)
+- **THEN** preface trailing has no image
+- **AND** conversation history's `attachment_ref` text reference is unchanged
+- **AND** AI's prior response text (in assistant message N) carries forward as the durable understanding
+
+### Requirement R8′: Reread tool returns voucher (NEW v4)
+
+#### Scenario: AI calls reread, image inlines on next turn
+- **GIVEN** session has a dehydrated/past attachment_ref with filename `image.png` and valid `repo_path`
+- **WHEN** AI invokes `reread_attachment({filename: "image.png"})` during turn N
+- **THEN** the tool returns `{type: "text", text: "Image 'image.png' queued for vision in your next turn."}`
+- **AND** `session.execution.activeImageRefs` gains the entry
+- **AND** turn N+1's preface trailing inlines the image via R6′
+- **AND** AI sees image content on turn N+1, can analyze it freshly
+
+#### Scenario: reread for missing/non-existent attachment
+- **GIVEN** filename does not match any attachment_ref in this session, OR the file at `<worktree>/<repo_path>` is gone (user deleted)
+- **WHEN** AI invokes `reread_attachment`
+- **THEN** the tool returns `{type: "text", text: "<error message>"}` with the appropriate reason
+- **AND** activeImageRefs is NOT updated
+
+### Requirement R9′: Cache locality preserved (NEW v4)
+
+#### Scenario: conversation history bytes byte-stable across turns
+- **GIVEN** any session that has dehydrated images (text refs in history) and active images (binary in trailing)
+- **WHEN** sequential LLM requests are assembled across N turns
+- **THEN** for any historical user message M (where M < N), its serialized bytes (the routing-hint text) are identical across all subsequent turn requests
+- **AND** Phase B BP1/BP2/BP3 cache savepoints continue to hit on the system + preface T1 + preface T2 portions
+- **AND** BP4 cache invalidation per turn is the only expected churn (matches Phase B's discipline)
+
+### ~~Requirement: Dehydrate every image attachment after its first read~~ (v1, SUPERSEDED 2026-05-04 by R6′)
 
 #### Scenario: assistant turn with `finish="stop"` triggers dehydration
 - **GIVEN** a user message with one or more `attachment_ref` parts of mime type `image/*`

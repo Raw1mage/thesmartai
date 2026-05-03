@@ -103,7 +103,24 @@ This spec adds a "dehydrate after read, retain on disk" lifecycle: assistant tur
   - Reason: clean separation of concerns: repo-incoming owns `repo_path` / `sha256` / upload mechanics; attachment-lifecycle owns `dehydrated` / `annotation` / lifecycle-after-read.
   - Consequence: schema delta in T.1.1 is just `dehydrated?: boolean` + `annotation?: string`.
 
-- **DD-17 (NEW 2026-05-04 v3 — architectural pivot)** **Main agent reads images inline by default**. `MessageV2.toModelMessages` branches as follows when emitting an `attachment_ref` for image mimes:
+- **DD-19 (NEW 2026-05-04 v4 — second architectural pivot)** **Image binary inlines via preface trailing tier, NEVER conversation history**. Conversation history's `attachment_ref` parts stay as compact text routing-refs (~470 bytes), byte-stable forever.
+  - When LLM request is assembled, the system computes an "active image set" for this turn (DD-20) and appends each image as a `{type:"file"}` content block to the **preface message's trailing tier** (Phase B context-preface.ts trailingExtras).
+  - `MessageV2.toModelMessages` for `attachment_ref` parts in conversation history continues to emit the existing routing-hint text (with softened language per DD-18). NO branching on `dehydrated` — there's no `dehydrated` flag in v4. NO inline image emission from this conversion site.
+  - Reason: Phase B's cache discipline says big-delta content rides BP4 (preface trailing zone, per-turn dynamic). Image binary fits this pattern exactly. v3's user-message inlining + dehydrate-by-mutation violated this discipline; mutating turn N's user message bytes invalidated cache prefix from that point onwards (anti-pattern).
+  - Consequence: schema delta from v3 (`dehydrated`, `annotation` fields) is REVERTED — those fields are unnecessary in v4. The 4 v3 implementation commits (`f39d70e71`..`8039fcf65`) were reset.
+
+- **DD-20 (NEW 2026-05-04 v4)** **Active image set state**: `session.execution.activeImageRefs?: string[]` (filenames or ref_ids; pick at impl time). Lifecycle:
+  - **Add on user upload**: when a user message lands with new image `attachment_ref` parts (mime starts with `image/` AND `repo_path` populated), each ref's identifier is appended.
+  - **Add on AI reread**: when AI calls `reread_attachment(filename)`, the filename is appended.
+  - **Drain after assistant response**: when the assistant turn that consumed the image reaches `finish="stop"`, the active set is cleared.
+  - Effect: image is inlined in preface trailing for exactly one assistant turn, then stops appearing. AI's response text (in assistant message) carries forward as the durable understanding.
+  - Schema: `ExecutionIdentity` extension, optional array. Backwards compatible; old sessions default to undefined → empty.
+
+- **DD-21 (NEW 2026-05-04 v4)** **Reread tool returns voucher, not binary**: `reread_attachment(filename)` returns `{type:"text", text:"Image '<filename>' queued for vision in your next turn."}` and pushes the filename onto `session.execution.activeImageRefs`. The image inlines into preface trailing on the NEXT turn. Latency cost: 1 extra turn. Benefit: image binary never enters conversation history (would otherwise live in tool result forever).
+  - Reason: tool result content lives in conversation history. If we returned binary directly, it'd accumulate as cache-prefix-mutation source — same anti-pattern as v3.
+  - Consequence: model needs to plan one turn ahead to reread. Tool description tells it: "After this returns, your next response can examine the image."
+
+- ~~**DD-17 (NEW 2026-05-04 v3 — architectural pivot)** **Main agent reads images inline by default**.~~ **(v3, SUPERSEDED 2026-05-04 by DD-19)** Inlining at user-message position in conversation history put big delta in cache-stable zone, violating Phase B discipline. `MessageV2.toModelMessages` branches as follows when emitting an `attachment_ref` for image mimes:
   - `dehydrated !== true` AND `repo_path` populated AND mime starts with `image/` → emit `{type: "file", url: "data:image/png;base64,...", mediaType: ..., filename: ...}` content block (read bytes from `<worktree>/<repo_path>` at conversion time). The main agent (multimodal) sees the actual image.
   - `dehydrated === true` → emit `<dehydrated_attachment ...>annotation</dehydrated_attachment>` text block (per existing DD-8). Image collapsed to text post-read.
   - `repo_path` undefined → fall back to existing legacy text routing hint (pre-repo-incoming sessions, no binary location to inline from).
@@ -126,7 +143,13 @@ This spec adds a "dehydrate after read, retain on disk" lifecycle: assistant tur
 - ~~**R2 Disk growth** — incoming staging accumulates ~50-200KB per image × N sessions. With 7-day TTL, worst case is ~10MB-100MB depending on usage pattern. Mitigation: TTL configurable; GC telemetry visible.~~ **(v1, SUPERSEDED 2026-05-04 — under DD-2', binary lives in repo and is user-managed; disk growth is not this spec's concern)**
 - **R3 Re-read miss** — model calls `reread_attachment` but the file at `<worktree>/<repo_path>` has been removed (user `git clean`, `rm`, or never landed because pre-repo-incoming session). Mitigation: tool returns clear `attachment_not_found` error; model can ask user to re-upload.
 
-- **R6 (NEW v3) First-turn token cost rises** — DD-17 inlines image binary on first turn; before this pivot the main agent only saw a 470-byte routing hint. For a 50KB image at ~20K image tokens, first-turn input cost goes from 470B → 20K. Mitigation: dehydration (T.2.1) collapses to ~4000-char annotation on the very next turn; net across the session cost drops dramatically because subsequent turns send annotation (≤1K tokens) instead of subagent task result text (5K-20K tokens per analysis × multiple re-reads). Worth quantifying with telemetry post-deploy.
+- ~~**R6 (NEW v3)**~~ **(v3, SUPERSEDED 2026-05-04 by R6')** First-turn cost framing was tied to user-message inlining; under v4 image lives in preface trailing.
+
+- **R6' (v4 NEW)** First-turn cost rises but is bounded to one turn's BP4: image binary in preface trailing makes BP4 fresh on the turn the image appears. BP4 is per-turn fresh anyway, so the marginal cost is just the image bytes vs no-image. On the next turn (no reread), the image is gone from preface trailing → BP4 again fresh (no image), conversation history BP1/BP2/BP3 still cached. Net effect: image bytes paid once, never accumulate.
+
+- **R9 (NEW v4) Active set leak / stale entries**: if assistant turn errors or aborts, the activeImageRefs may not drain → image keeps appearing in trailing across turns. Mitigation: drain on ANY assistant turn completion (not just finish="stop"); secondary safety net — cap activeImageRefs to N (e.g. 3) with FIFO eviction.
+
+- **R10 (NEW v4) Subagent inheritance**: parent session's activeImageRefs should NOT bleed into subagent's preface trailing. Subagent has its own ExecutionIdentity → its own activeImageRefs (defaults empty). If subagent needs the parent's image, parent must explicitly pass it through the dispatch context.
 
 - **R7 (NEW v3) Lite provider broken** — non-multimodal lite providers (per Phase B DD-14 they keep a single concise system prompt) cannot consume `type: "file"` image content blocks. Mitigation: DD-17 conversion checks if the model supports image input (via `Provider.Model.capabilities` or similar); if not, fall back to vision-subagent routing hint as today. Lite path unaffected.
 

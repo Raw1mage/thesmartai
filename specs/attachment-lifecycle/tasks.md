@@ -6,7 +6,13 @@
 
 User-framed as a "small hotfix" — 3 implementation phases, no feature flag, direct-ship architecture.
 
-> **Recalibration v2 (2026-05-04)**: discovered `repo-incoming-attachments` (state=`implementing`) already owns the binary lifecycle (per-project `<worktree>/incoming/<filename>` + `attachment_ref.repo_path` + sha256 dedup). attachment-lifecycle scope reduces to: schema delta (2 fields) + post-completion hook + reread tool. **No IncomingStore, no GC** — the binary lives in the repo and is user-managed. Per design.md DD-2' / DD-4' / DD-15 / DD-16.
+> **Recalibration v2 (2026-05-04)**: discovered `repo-incoming-attachments` already owns binary lifecycle.
+>
+> **Recalibration v3 (2026-05-04)**: vision subagent text-summary is the architectural mismatch; main agent should inline image directly.
+>
+> **Recalibration v4 (2026-05-04, current)**: v3's "inline into user message + dehydrate-by-mutation" violates Phase B's "static-front, dynamic-back" cache locality discipline. **Image inline goes to preface trailing tier (BP4 zone), NEVER conversation history**. Conversation history bytes byte-stable forever. No mutation. No dehydrated/annotation flags. Per design.md DD-19 / DD-20 / DD-21.
+>
+> v3 implementation commits (`f39d70e71`..`8039fcf65`) reverted on beta. v4 task list below replaces v3 T.1..T.4.
 
 ## 0. Prerequisites
 
@@ -19,26 +25,44 @@ User-framed as a "small hotfix" — 3 implementation phases, no feature flag, di
 - [x] T.0.3 Baseline test sweep on `packages/opencode/src/session/` — 52 Phase A/B tests pass (matches main).
 - [x] T.0.4 (NEW) Read [`specs/repo-incoming-attachments/`](../repo-incoming-attachments/) — confirm `attachment_ref.repo_path` is populated by `routeOversizedAttachment` for all NEW image uploads. Skip dehydration when `repo_path` is undefined (DD-15).
 
-## 1. Phase T.1 — Foundation: schema + AnnotationExtractor
+## 1. Phase T.1 — v4 Foundation: ExecutionIdentity schema + active set lifecycle
 
-- [ ] T.1.1 Extend `MessageV2.AttachmentRefPart` schema with **two** new optional fields (DD-16):
-  - `dehydrated?: z.boolean()`
-  - `annotation?: z.string().max(4000)`
-  - (already-existing `repo_path?` and `sha256?` from repo-incoming spec — reused, no change.)
-  - Roundtrip test: old part with no fields parses; new part with `dehydrated=true` + annotation parses; annotation > 4000 chars rejects.
+- [ ] T.1.1 (v4) Extend `Session.ExecutionIdentity` Zod schema with `activeImageRefs?: z.array(z.string()).optional()` (DD-20). Backwards compatible — old sessions default undefined → empty array semantics. 4 roundtrip tests: absent / empty array / single entry / multiple entries.
 
-- ~~T.1.2 IncomingStore filesystem wrapper~~ **(removed by v2 recalibration — `<worktree>/incoming/` already owned by `repo-incoming-attachments`; reread tool reads via existing `tool/attachment.ts` pattern using `repo_path`)**
+- [ ] T.1.2 (v4) Pure helper `packages/opencode/src/session/active-image-refs.ts` with three operations:
+  - `addOnUpload(session, userMessage): string[]` — scan a freshly-committed user message for image attachment_ref parts (mime image/* + repo_path populated); return identifiers to add.
+  - `addOnReread(session, filename): boolean` — push filename onto activeImageRefs; return true on success.
+  - `drainAfterAssistant(session): string[]` — clear activeImageRefs; return what was drained for telemetry.
+  - 8 unit tests cover each op + edge cases (no images / no repo_path / dedup / cap-N FIFO).
 
-- [ ] T.1.2 (renumbered) New helper in `packages/opencode/src/session/processor.ts` (or extracted to `attachment-annotator.ts`):
-  - `extractAnnotation(responseText: string): string` — trim + 4000 char cap + head/tail truncation marker (DD-12).
-  - 6 unit tests: under cap / at cap / over cap (head+tail) / empty / whitespace-only / multi-line preservation.
+- [ ] T.1.3 (v4) Tweaks knobs in `packages/opencode/src/config/tweaks.ts`:
+  - `attachment_inline_enabled: boolean` (default true)
+  - `attachment_active_set_max: number` (default 3, FIFO cap per R9 mitigation)
+  - 4 tests cover defaults / disabled / custom cap / invalid range.
 
-- [ ] T.1.3 (renumbered) Tweaks knobs in `packages/opencode/src/config/tweaks.ts`:
-  - `attachment_dehydrate_enabled: boolean` (default true)
-  - `attachment_annotation_max_chars: number` (default 4000)
-  - ~~`attachment_incoming_ttl_days`~~ (removed — no GC under DD-4')
+~~### v3 T.1.1/T.1.2/T.1.3 (SUPERSEDED 2026-05-04 by v4 T.1)~~
+v3 added `dehydrated` + `annotation` fields to AttachmentRefPart, an `extractAnnotation` helper, and dehydration tweaks. All reverted; v4 doesn't need them — annotation lives in assistant message text, no dehydration flag.
 
-## 2. Phase T.2 — Behavior: DehydrationHook + WireFormatTransformer
+## 2. Phase T.2 — v4 Behavior: preface trailing inliner + lifecycle wiring
+
+- [ ] T.2.1 (v4) Inline image emitter in `packages/opencode/src/session/context-preface.ts`:
+  - New helper `buildActiveImageContentBlocks(activeImageRefs, sessionMessages, projectRoot): Array<{type:"file",url,mediaType,filename}>`
+  - For each ref in activeImageRefs: find matching attachment_ref in conversation history; resolve absolute path via `IncomingPaths.projectRoot()` + `attachment_ref.repo_path`; read bytes; emit AI SDK file content block with data URI.
+  - Skip silently (with telemetry) if file missing — don't break preface assembly.
+  - 6 unit tests cover: 0 active / 1 active / 2 active / file-missing skip / mime variants / determinism.
+
+- [ ] T.2.2 (v4) Wire into `buildPreface(input)`: extend `BuildPrefaceInput` with optional `activeImageBlocks: Array<{...}>`; emit them as the LAST entries in `trailingExtras` (after lazy catalog / notices). Pure function, byte-deterministic given inputs.
+
+- [ ] T.2.3 (v4) Wire into `llm.ts` system+preface assembly path:
+  - Read `session.execution.activeImageRefs` (new field per T.1.1)
+  - Call `buildActiveImageContentBlocks(...)`
+  - Pass to `buildPreface(...)` via the new `activeImageBlocks` field
+  - 3 integration smoke tests: empty active set / 1 active image / 2 active images cumulative.
+
+- [ ] T.2.4 (v4) Lifecycle hooks:
+  - **Add on upload**: in user message commit path (likely `Session.updateMessage` or upstream user-message-parts.ts), call `ActiveImageRefs.addOnUpload(...)` after committing.
+  - **Drain after assistant**: in `processor.ts` post-completion site (same site v3 hook used), call `ActiveImageRefs.drainAfterAssistant(...)` (replacing the old dehydration call).
+  - 6 tests cover: upload adds / drain removes / drain clears even on finish≠stop (R9 mitigation) / multiple uploads dedup / FIFO cap when exceeded / subagent doesn't inherit parent's active refs (R10).
 
 - [ ] T.2.1 Wire post-completion hook in `processor.ts`:
   - After assistant message reaches `finish="stop"`, scan parent user message for image `attachment_ref` parts
@@ -63,9 +87,24 @@ User-framed as a "small hotfix" — 3 implementation phases, no feature flag, di
 
 - [ ] T.2.4 (NEW v3) **Model-capability detection helper**: a small predicate `modelSupportsInlineImage(model: Provider.Model): boolean` that returns true when the model's capabilities indicate image input support. Used by T.2.2 inline branch. Defaults conservatively (when capability info missing, fall back to text-routing). 4 tests covering Anthropic / OpenAI / Codex GPT-5.5 / Lite providers.
 
-## 3. Phase T.3 — RereadAttachmentTool
+## 3. Phase T.3 — v4 RereadAttachmentTool (voucher)
 
-- [ ] T.3.1 New file `packages/opencode/src/tool/reread-attachment.ts`:
+- [ ] T.3.1 (v4) New file `packages/opencode/src/tool/reread-attachment.ts`:
+  - Tool name: `reread_attachment`
+  - Input schema: `{filename: string}`
+  - Body: validate filename matches an attachment_ref in current session messages with valid `repo_path`; call `ActiveImageRefs.addOnReread(session, filename)`; return `{type:"text", text:"Image '<filename>' queued for vision in your next turn."}`.
+  - Error path: filename not found → `{type:"text", text:"<error: no attachment named ...>"}`.
+  - 5 tests: happy / unknown filename / repo_path file missing / activeImageRefs FIFO cap / telemetry.
+  - Tool description tells the model: "Queue a previously-attached image for inline viewing on your NEXT response. Use when an image's text reference doesn't give you enough info to answer."
+
+- [ ] T.3.2 (v4) Register tool in `packages/opencode/src/tool/index.ts` core registry.
+
+- [ ] T.3.3 (v4) Integration test: full flow upload → AI sees image inline turn N → AI responds → drain → AI calls reread on turn N+1 → image inlines on turn N+2.
+
+~~### v3 T.3.x (SUPERSEDED — tool returned binary in tool result, putting image in conversation history)~~
+v4 returns a "voucher" text string and queues the actual binary inlining for the next turn's preface trailing.
+
+## 3-old. Phase T.3 — v3 RereadAttachmentTool (SUPERSEDED)
   - Tool name: `reread_attachment`
   - Input schema: `{filename: string}`
   - Body: walk session messages, find a `attachment_ref` with matching filename + `dehydrated=true` + `repo_path` populated; resolve absolute path via `IncomingPaths.projectRoot()` + part.repo_path; read bytes via `fs.readFile`. If found → return `{type: "image", url: data URI, est_tokens, byte_size}`; if file missing → `{error: "attachment_not_found", message: ...}`; if no matching dehydrated part → `{error: "attachment_not_found", message: ...}`.
