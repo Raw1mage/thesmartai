@@ -1,0 +1,99 @@
+{
+  "diagram_title": "Manage Attachment Lifecycle",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Dehydrate Attachment After Read",
+      "description": "Post-assistant-completion hook collapses image attachment_ref parts to text annotation + filesystem-staged binary (C1, DD-1, DD-3, DD-5).",
+      "decomposition": "A1"
+    },
+    {
+      "id": "A2",
+      "title": "Stage Binary On Disk",
+      "description": "Write binary to ~/.local/state/opencode/incoming/<sid>/<filename> (C2, DD-2).",
+      "decomposition": null
+    },
+    {
+      "id": "A3",
+      "title": "Reread Staged Binary",
+      "description": "Tool exposing IncomingStore.get to the model; returns fresh image content block (C3, DD-9).",
+      "decomposition": null
+    },
+    {
+      "id": "A4",
+      "title": "Serialize Dehydrated Stub To Wire",
+      "description": "MessageV2.toModelMessages branches on dehydrated=true → emit text block instead of image_url (C4, DD-8).",
+      "decomposition": null
+    },
+    {
+      "id": "A5",
+      "title": "Garbage Collect Expired Staging",
+      "description": "Sweep incoming/<sid>/ for sessions deleted > TTL days ago (C5, DD-4, DD-11).",
+      "decomposition": null
+    }
+  ],
+  "arrows": [
+    { "id": "AR1", "source": "EXTERNAL", "target": "A1:input", "label": "assistant message with finish=stop", "type": "input" },
+    { "id": "AR2", "source": "EXTERNAL", "target": "A1:control", "label": "DD-3 always-dehydrate policy + DD-10 skip-on-failed-turn rule", "type": "control" },
+    { "id": "AR3", "source": "EXTERNAL", "target": "A1:mechanism", "label": "Session.messages, Session.updatePart, IncomingStore", "type": "mechanism" },
+    { "id": "AR4", "source": "A1:output", "target": "A2:input", "label": "(filename, sessionID, bytes)", "type": "input" },
+    { "id": "AR5", "source": "A2:output", "target": "A1:input", "label": "absolute incoming path", "type": "output" },
+    { "id": "AR6", "source": "A1:output", "target": "EXTERNAL", "label": "rewritten attachment_ref part with dehydrated=true + annotation; binary moved", "type": "output" },
+    { "id": "AR7", "source": "EXTERNAL", "target": "A3:input", "label": "model tool call reread_attachment(filename)", "type": "input" },
+    { "id": "AR8", "source": "A3:output", "target": "EXTERNAL", "label": "fresh image content block OR attachment_expired error", "type": "output" },
+    { "id": "AR9", "source": "EXTERNAL", "target": "A4:input", "label": "MessageV2 conversation messages list", "type": "input" },
+    { "id": "AR10", "source": "A4:output", "target": "EXTERNAL", "label": "ModelMessage[] for AI SDK; dehydrated parts as text blocks", "type": "output" },
+    { "id": "AR11", "source": "EXTERNAL", "target": "A5:input", "label": "daemon startup tick OR daily cron tick", "type": "input" },
+    { "id": "AR12", "source": "EXTERNAL", "target": "A5:control", "label": "TTL = 7 days post-session.deleted (configurable)", "type": "control" },
+    { "id": "AR13", "source": "A5:output", "target": "EXTERNAL", "label": "incoming/<sid>/ removed for expired sessions; telemetry attachment.gc.swept", "type": "output" }
+  ],
+  "decompositions": {
+    "A1": {
+      "diagram_title": "Dehydrate Attachment After Read",
+      "node_reference": "A1",
+      "activities": [
+        {
+          "id": "A11",
+          "title": "Extract Annotation",
+          "description": "Pure function over assistant response text → trimmed annotation ≤ 4000 chars (head + tail truncation if longer). C6, DD-12.",
+          "decomposition": null
+        },
+        {
+          "id": "A12",
+          "title": "Move Binary To Incoming",
+          "description": "Read binary from sqlite attachments table → write to filesystem via IncomingStore.put → delete sqlite row.",
+          "decomposition": null
+        },
+        {
+          "id": "A13",
+          "title": "Rewrite Attachment Part",
+          "description": "Session.updatePart with dehydrated=true, annotation, sha256, incoming_path. Idempotent guard via dehydrated check (DD-5).",
+          "decomposition": null
+        }
+      ],
+      "arrows": [
+        { "id": "AR1.1", "source": "EXTERNAL", "target": "A11:input", "label": "assistant response text", "type": "input" },
+        { "id": "AR1.2", "source": "A11:output", "target": "A13:input", "label": "trimmed annotation string", "type": "input" },
+        { "id": "AR1.3", "source": "EXTERNAL", "target": "A12:input", "label": "(sessionID, filename, binary bytes from sqlite)", "type": "input" },
+        { "id": "AR1.4", "source": "A12:output", "target": "A13:input", "label": "absolute incoming path", "type": "input" },
+        { "id": "AR1.5", "source": "EXTERNAL", "target": "A13:control", "label": "DD-5 idempotency: skip if part already has dehydrated=true", "type": "control" },
+        { "id": "AR1.6", "source": "A13:output", "target": "EXTERNAL", "label": "rewritten attachment_ref part persisted to session storage", "type": "output" }
+      ]
+    }
+  },
+  "validation_notes": [
+    "Each activity has at least one input arrow + one output arrow per IDEF0 §5 ICOM rules.",
+    "ModuleRefs in grafcet.json reference these activity IDs."
+  ],
+  "traceability_matrix": [
+    { "activity": "A1", "components": ["C1"], "decisions": ["DD-1", "DD-3", "DD-5", "DD-10"], "requirements": ["R1"] },
+    { "activity": "A11", "components": ["C6"], "decisions": ["DD-12"], "requirements": ["R1"] },
+    { "activity": "A12", "components": ["C2"], "decisions": ["DD-2"], "requirements": ["R1"] },
+    { "activity": "A13", "components": ["C1"], "decisions": ["DD-5", "DD-7"], "requirements": ["R1"] },
+    { "activity": "A2", "components": ["C2"], "decisions": ["DD-2"], "requirements": ["R4"] },
+    { "activity": "A3", "components": ["C3"], "decisions": ["DD-9"], "requirements": ["R3"] },
+    { "activity": "A4", "components": ["C4"], "decisions": ["DD-8"], "requirements": ["R2"] },
+    { "activity": "A5", "components": ["C5"], "decisions": ["DD-4", "DD-11"], "requirements": ["R5"] }
+  ]
+}

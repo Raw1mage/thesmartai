@@ -1,0 +1,94 @@
+{
+  "$schema": "https://plan-builder.local/schemas/c4.json",
+  "title": "C4 model — attachment-lifecycle",
+  "level": "component",
+  "systems": [
+    {
+      "id": "opencode-session",
+      "name": "opencode session subsystem",
+      "description": "Per-session conversation, attachment storage, and tool routing"
+    }
+  ],
+  "containers": [
+    {
+      "id": "opencode-daemon",
+      "name": "opencode daemon (bun)",
+      "technology": "bun + TypeScript",
+      "description": "Long-running per-user daemon serving sessions"
+    },
+    {
+      "id": "session-storage",
+      "name": "Session sqlite storage",
+      "technology": "sqlite (per-session DB at ~/.local/share/opencode/storage/session/<sid>.db)",
+      "description": "Holds messages, parts, attachments table (binary blobs)"
+    },
+    {
+      "id": "incoming-staging",
+      "name": "Incoming staging (XDG state-home)",
+      "technology": "filesystem at ~/.local/state/opencode/incoming/<sid>/",
+      "description": "Per-session disk cache for dehydrated attachment binaries with 7-day TTL post-session.deleted"
+    }
+  ],
+  "components": [
+    {
+      "id": "C1",
+      "name": "DehydrationHook",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/processor.ts (post-completion hook)",
+      "idef0Ref": "A1",
+      "description": "Runs after assistant message reaches finish='stop'. Scans the parent user message for image attachment_ref parts; for each, moves binary to incoming staging and rewrites the part with annotation + dehydrated=true."
+    },
+    {
+      "id": "C2",
+      "name": "IncomingStore",
+      "container": "incoming-staging",
+      "moduleRef": "packages/opencode/src/session/storage/incoming-store.ts (NEW)",
+      "idef0Ref": "A2",
+      "description": "Filesystem wrapper for ~/.local/state/opencode/incoming/<sid>/. Operations: put(sid, filename, bytes) → path; get(sid, filename) → bytes; list(sid) → filenames; deleteSession(sid) → bytesFreed."
+    },
+    {
+      "id": "C3",
+      "name": "RereadAttachmentTool",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/tool/reread-attachment.ts (NEW)",
+      "idef0Ref": "A3",
+      "description": "Tool exposing IncomingStore.get to the model. Returns a fresh image content block on success; structured error on missing/expired."
+    },
+    {
+      "id": "C4",
+      "name": "WireFormatTransformer",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/message-v2.ts toModelMessages (extended)",
+      "idef0Ref": "A4",
+      "description": "Converts MessageV2 parts to AI SDK content blocks. Branches on attachment_ref.dehydrated: true → emit <dehydrated_attachment> text block; false → emit image_url block as today."
+    },
+    {
+      "id": "C5",
+      "name": "GarbageCollector",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/storage/garbage-collect-incoming.ts (NEW)",
+      "idef0Ref": "A5",
+      "description": "Sweeps incoming/<sid>/ directories for sessions deleted > TTL days ago. Triggered at daemon startup + daily cron timer."
+    },
+    {
+      "id": "C6",
+      "name": "AnnotationExtractor",
+      "container": "opencode-daemon",
+      "moduleRef": "packages/opencode/src/session/processor.ts (inline helper)",
+      "idef0Ref": "A11",
+      "description": "Pure function: takes assistant response text → returns trimmed annotation (≤ 4000 chars, head+tail truncation if longer). DD-12."
+    }
+  ],
+  "relationships": [
+    { "id": "REL1", "source": "C1", "target": "C6", "description": "Calls extractAnnotation(responseText) for each attachment", "technology": "function call" },
+    { "id": "REL2", "source": "C1", "target": "C2", "description": "put(sid, filename, bytes) for each image binary", "technology": "function call" },
+    { "id": "REL3", "source": "C1", "target": "session-storage", "description": "Updates attachment_ref part: sets dehydrated=true, annotation, sha256, incoming_path. Deletes binary row from attachments table.", "technology": "Session.updatePart + sqlite UPDATE/DELETE" },
+    { "id": "REL4", "source": "C3", "target": "C2", "description": "get(sid, filename) on tool invocation", "technology": "function call" },
+    { "id": "REL5", "source": "C3", "target": "opencode-daemon", "description": "Returns image content block as tool result", "technology": "tool framework" },
+    { "id": "REL6", "source": "C4", "target": "session-storage", "description": "Reads attachment_ref parts during messages → ModelMessage conversion", "technology": "Session.messages" },
+    { "id": "REL7", "source": "C5", "target": "C2", "description": "deleteSession(sid) for sessions past TTL", "technology": "function call" },
+    { "id": "REL8", "source": "C5", "target": "session-storage", "description": "Reads session.time.deleted for TTL eligibility check", "technology": "Session.list (filter deleted > TTL ago)" },
+    { "id": "REL9", "source": "opencode-daemon", "target": "C5", "description": "Triggers GC sweep at startup + daily cron", "technology": "function call" },
+    { "id": "REL10", "source": "opencode-daemon", "target": "C1", "description": "post-completion lifecycle event triggers dehydration hook", "technology": "Bus event or inline call from processor" }
+  ]
+}

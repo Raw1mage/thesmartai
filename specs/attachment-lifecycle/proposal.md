@@ -19,6 +19,7 @@ The model rarely needs to re-look at an image once it has responded to it. A "po
 ## Requirement Revision History
 
 - 2026-05-04: initial draft (proposal-only at this stage)
+- 2026-05-04 v2: 6 open questions resolved via question tool — annotation = response text, storage = XDG state-home with GC mechanism, trigger = always dehydrate (binary preserved on disk), v1 scope = images only (PDF deferred to its own spec). TTL = 7 days post `session.deleted`, subagent uses per-session staging (no inherited attachments).
 
 ## Effective Requirement Description
 
@@ -108,11 +109,11 @@ The model rarely needs to re-look at an image once it has responded to it. A "po
 - **Plugin contract**: new optional Bus event `attachment.dehydrated` for plugins to observe.
 - **Backward compat**: Old sessions with non-dehydrated attachments continue to work; dehydration is forward-only.
 
-## Open Questions (resolve in `designed` phase)
+## Open Questions (resolved 2026-05-04)
 
-1. **Annotation source**: response text? dedicated tiny LLM call? model-emitted inline marker?
-2. **Storage location**: `~/.local/state/opencode/incoming/<sessionID>/` (state dir, GC'd on `session.deleted`) vs `Instance.directory/.incoming/` (project-relative, survives across sessions in same directory)?
-3. **Trigger granularity**: dehydrate ALL attachments in a turn, or only those the response referenced? Latter requires response analysis.
-4. **TTL default**: 24h after `session.deleted`? Until daemon restart? Configurable.
-5. **Subagent attachments**: when subagent receives parent context with attachments, does its dehydration write back to parent's `/incoming` or its own?
-6. **Multi-modal**: text/PDF attachments — same flow?
+1. ✅ **Annotation source** = use the assistant turn's response text directly as the annotation. Zero extra cost. Risk: if response text is brief/dismissive, annotation is sparse — acceptable trade-off for hotfix scope.
+2. ✅ **Storage location** = XDG state-home, `~/.local/state/opencode/incoming/<sessionID>/<filename>`. Plus an explicit GC mechanism (daemon-startup + daily-cron sweep).
+3. ✅ **Trigger granularity** = always dehydrate every attachment in the just-completed turn; binary preserved at the storage location so AI can `reread_attachment` later.
+4. ✅ **TTL** = 7 days after `session.deleted` (sensible default). GC sweeps every daemon startup + once per day via cron.
+5. ✅ **Subagent** = each session has its own `incoming/<sessionID>/`; parent's attachments do NOT bleed into child's incoming. If subagent needs parent's attachment, parent must re-attach in the dispatch context explicitly.
+6. ✅ **v1 scope** = **images only** (PNG / JPG / WebP / GIF / etc). PDF / text / code attachments are deferred to a separate spec — a placeholder will be created when needed.
