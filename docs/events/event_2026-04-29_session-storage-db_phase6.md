@@ -2,7 +2,7 @@
 
 ## Scope
 
-- Spec: `specs/session-storage-db`
+- Spec: `specs/_archive/session-storage-db`
 - Phase: 6 — `opencode session-inspect`
 - In scope: read-only `list`, `show`, and `check` diagnostics for SQLite and legacy sessions.
 - Out of scope: write/fix commands, live daemon smoke tests, production data mutation.

@@ -1,6 +1,6 @@
 # 2026-04-19 — session-poll-cache
 
-Spec: [specs/session-poll-cache/](../../specs/session-poll-cache/)
+Spec: [specs/_archive/session-poll-cache/](../../specs/_archive/session-poll-cache/)
 Implementation branch: `beta/session-poll-cache` at `/home/pkcs12/projects/opencode-beta`
 Base branch: `main`
 State machine: `proposed` → `designed` → `planned` → `implementing` (2026-04-19)
@@ -53,7 +53,7 @@ Completed: 2026-04-19
 - `bun run typecheck` — no new errors introduced by these files (pre-existing
   baseline errors in `cli/cmd/uninstall.ts`, `mcp/index.ts`, etc. untouched)
 - `bun test test/config/tweaks.test.ts` — 9 pass, 0 fail, 309 ms
-- `bun run scripts/plan-sync.ts specs/session-poll-cache/` — clean (no drift)
+- `bun run scripts/plan-sync.ts specs/_archive/session-poll-cache/` — clean (no drift)
 
 ### Key decisions captured this phase
 
@@ -133,7 +133,7 @@ trust the existing bus infrastructure.
 
 - `bun run typecheck` — no new errors
 - `bun test test/server/session-cache.test.ts` — 10 pass, 0 fail, 1.2 s
-- `bun run scripts/plan-sync.ts specs/session-poll-cache/` — clean (no drift)
+- `bun run scripts/plan-sync.ts specs/_archive/session-poll-cache/` — clean (no drift)
 
 ### Drift / follow-ups
 
@@ -210,7 +210,7 @@ before they can 304 again. Captured in invariants.md note and spec DD-3.
   tweaks.ts, or routes/session.ts
 - `bun test test/config/tweaks.test.ts test/server/session-cache.test.ts`
   — 13 + 9 = 22 pass, 0 fail, 1.3 s
-- `bun run scripts/plan-sync.ts specs/session-poll-cache/` — runs after this
+- `bun run scripts/plan-sync.ts specs/_archive/session-poll-cache/` — runs after this
   phase commit
 
 ### Drift / follow-ups
@@ -275,7 +275,7 @@ Completed: 2026-04-19
   cache-health.ts, tweaks.ts
 - Combined test run (`tweaks + session-cache + rate-limit`): 34 pass,
   0 fail, 1.2 s
-- `bun run scripts/plan-sync.ts specs/session-poll-cache/` — runs after
+- `bun run scripts/plan-sync.ts specs/_archive/session-poll-cache/` — runs after
   this phase commit
 
 ### Drift / follow-ups
@@ -310,7 +310,7 @@ Completed: 2026-04-19 (with one deferred item)
     throttledCount, activeBuckets update
   - Effective tweaks.cfg path + present flag surface in the `source`
     field for ops visibility
-- `specs/session-poll-cache/data-schema.json` amended to include the
+- `specs/_archive/session-poll-cache/data-schema.json` amended to include the
   `source` field (path + present) under `CacheHealthResponse` — the
   field is useful for ops and was present in the route code from
   Phase 1, but originally missing from the schema.
@@ -377,7 +377,7 @@ Completed (the development side): 2026-04-19
 
 AC-1 (CPU drop) and AC-2 (304 ratio) are fundamentally "observed
 numbers against a live daemon" — not amenable to automated test. The
-runbook lives in `specs/session-poll-cache/handoff.md#phase-6-ops-runbook`
+runbook lives in `specs/_archive/session-poll-cache/handoff.md#phase-6-ops-runbook`
 and spells out:
 
 1. Start daemon with `OPENCODE_TWEAKS_PATH=/tmp/tweaks.baseline.cfg`
@@ -439,7 +439,7 @@ When ops records the numbers, they should:
 1. Append a "## Phase 6 ops result" section to this file with the
    baseline-vs-cache-on p50/p95/CPU%/304-ratio figures.
 2. Flip task 7.4 to `- [x]` with a ref to the results section.
-3. Run `plan-promote.ts specs/session-poll-cache/ --to verified`.
+3. Run `plan-promote.ts specs/_archive/session-poll-cache/ --to verified`.
 4. Proceed with beta-workflow fetch-back → finalize → `living`
    promotion.
 

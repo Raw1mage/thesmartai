@@ -1,7 +1,7 @@
 # Phase 1 — session-storage-db (Foundation: extract LegacyStore)
 
 **Date**: 2026-04-29
-**Spec**: `/specs/session-storage-db/`
+**Spec**: `/specs/_archive/session-storage-db/`
 **State**: planned → implementing (first checkbox triggered the transition; phase 1 now closed)
 **Branch**: `beta/session-storage-db` (beta worktree, forked from `main` at `f1c08f3c1`)
 

@@ -1,6 +1,6 @@
 # Event 2026-05-03: claude-provider beta-fingerprint realign — execution log
 
-Spec: `specs/claude-provider-beta-fingerprint-realign/`
+Spec: `specs/_archive/claude-provider-beta-fingerprint-realign/`
 Beta worktree: `/home/pkcs12/projects/opencode-worktrees/claude-provider-realign`
 Beta branch: `beta/claude-provider-realign` (forked from main @ `77b7787e6`)
 

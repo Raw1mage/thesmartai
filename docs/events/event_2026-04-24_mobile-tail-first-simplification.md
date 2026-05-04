@@ -1,8 +1,8 @@
 # event: mobile-tail-first-simplification — architectural deletion of session continuity machinery
 
 **Date**: 2026-04-24
-**Spec**: `specs/mobile-tail-first-simplification/` (state: planned → verified after fetch-back)
-**Supersedes (partial)**: `specs/frontend-session-lazyload` R1 (SSE bounded replay) / R2 (cursor pagination on cold open)
+**Spec**: `specs/_archive/mobile-tail-first-simplification/` (state: planned → verified after fetch-back)
+**Supersedes (partial)**: `specs/_archive/frontend-session-lazyload` R1 (SSE bounded replay) / R2 (cursor pagination on cold open)
 **Branch**: `beta/mobile-tail-first-simplification`
 **Stop gate released by**: user ("手機永遠tail first這件事先做。然後廢掉那些繁複的continuity機制")
 

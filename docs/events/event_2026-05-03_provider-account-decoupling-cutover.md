@@ -1,7 +1,7 @@
 # 2026-05-03 — provider-account-decoupling, full sweep + cutover prep
 
 Branch: `beta/provider-account-decoupling`
-Spec: `specs/provider-account-decoupling/`
+Spec: `specs/_archive/provider-account-decoupling/`
 
 ## What landed
 

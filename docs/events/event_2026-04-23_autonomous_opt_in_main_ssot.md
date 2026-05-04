@@ -22,7 +22,7 @@ These built the richer layered gate: `SessionActiveSpec` binding, `AutorunArmed`
 
 User preferred to move forward on main's simpler gate rather than resurrect shelf. Shelf content discarded (local reset of beta worktree to `main`). Spec revised:
 
-- DD-11 added to `specs/autonomous-opt-in/design.md` codifying main-as-SSOT
+- DD-11 added to `specs/_archive/autonomous-opt-in/design.md` codifying main-as-SSOT
 - DD-1, DD-2, DD-4, DD-5, DD-7 marked `[SUPERSEDED by DD-11]`
 - DD-6 and DD-8 marked `[REVISED]`
 - Phase 1 / Phase 2 / Phase 3 marked `[-]` cancelled in `tasks.md` with per-task reasons
@@ -69,6 +69,6 @@ Total: 60 new tests (40 autorun + 5 parser + 18 detector - see breakdown above),
 
 ## References
 
-- spec package: `specs/autonomous-opt-in/` (state=implementing after this build; promote to verified after Phase 8)
+- spec package: `specs/_archive/autonomous-opt-in/` (state=implementing after this build; promote to verified after Phase 8)
 - beta branch: `beta/autonomous-opt-in-main-ssot` (5 commits on top of main@899fe6fbc)
 - superseded design: `shelf/autonomous-opt-in` (abandoned, can be deleted when user confirms)

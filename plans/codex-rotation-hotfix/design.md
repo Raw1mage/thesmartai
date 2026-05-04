@@ -100,5 +100,5 @@ request → llm.stream → processor pre-flight
 
 ## Supporting Docs (Optional)
 
-- `specs/codex/provider-hotfix/` — sibling hotfix family shipped earlier today.
+- `specs/_archive/codex/provider-hotfix/` — sibling hotfix family shipped earlier today.
 - `plans/manual-pin-bypass-preflight/` — precedent for honor-explicit-operator-intent.

@@ -6,9 +6,9 @@ Companion to [event_2026-05-03_provider-account-decoupling-cutover.md](event_202
 
 - `/home/pkcs12/projects/opencode` is on `main` at `bc1a7407d` — a merge commit folding `beta/provider-account-decoupling` into main with `--no-ff`. The 10 phase commits are visible in `git log` underneath.
 - Branch ref `beta/provider-account-decoupling` is still alive; the worktree at `/home/pkcs12/projects/opencode-beta` is also still alive (do not delete).
-- Spec `specs/provider-account-decoupling/.state.json` is at `verified`. `tasks.md` Phases 1–8 are all checked off; Phase 9 (cutover) is intentionally still unchecked because it is operator-driven.
+- Spec `specs/_archive/provider-account-decoupling/.state.json` is at `verified`. `tasks.md` Phases 1–8 are all checked off; Phase 9 (cutover) is intentionally still unchecked because it is operator-driven.
 - Nothing pushed. Nothing migrated. Daemon is still running the *old* binary; `.migration-state.json` does not exist yet.
-- Main repo working tree carries unrelated in-flight state (`M specs/prompt-cache-and-compaction-hardening/.state.json` plus four untracked paths under `docs/`, `plans/`, `templates/`). **Not part of this branch's work — do not commit, do not stash.**
+- Main repo working tree carries unrelated in-flight state (`M specs/_archive/prompt-cache-and-compaction-hardening/.state.json` plus four untracked paths under `docs/`, `plans/`, `templates/`). **Not part of this branch's work — do not commit, do not stash.**
 
 ## What this branch did, in one sentence
 
@@ -26,7 +26,7 @@ That marker only appears after `migrate-provider-account-decoupling.ts --apply` 
 
 Each step is a separate user-consent gate. Do not chain them.
 
-1. **Inspect main working tree.** Confirm the `M specs/prompt-cache-and-compaction-hardening/.state.json` and the four untracked paths are still present and identical to entry state. If any of them moved, stop and ask — the user has parallel work.
+1. **Inspect main working tree.** Confirm the `M specs/_archive/prompt-cache-and-compaction-hardening/.state.json` and the four untracked paths are still present and identical to entry state. If any of them moved, stop and ask — the user has parallel work.
 
 2. **Dry-run the migrator.** Read-only; safe to repeat.
    ```
@@ -90,7 +90,7 @@ Expected: 10 pass, 0 fail. The wider provider test suite carries 4 pre-existing 
 
 ## Where to look if you need more context
 
-- Spec package: `specs/provider-account-decoupling/` (proposal, design, tasks, errors, observability, c4, sequence, idef0, grafcet, test-vectors, data-schema, handoff).
+- Spec package: `specs/_archive/provider-account-decoupling/` (proposal, design, tasks, errors, observability, c4, sequence, idef0, grafcet, test-vectors, data-schema, handoff).
 - Phase landing summary + rebase decisions: `docs/events/event_2026-05-03_provider-account-decoupling-cutover.md`.
 - Per-phase build narratives: `docs/events/event_2026-05-02_provider-account-decoupling-phase{1,2,3,4}.md`.
 - Architecture documentation: `specs/architecture.md`, section `### Provider / Family / Account Naming` (added by Phase 8.3).

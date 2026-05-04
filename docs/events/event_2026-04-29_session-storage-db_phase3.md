@@ -1,7 +1,7 @@
 # Phase 3 — session-storage-db (Router dual-track dispatcher)
 
 **Date**: 2026-04-29
-**Spec**: `/specs/session-storage-db/`
+**Spec**: `/specs/_archive/session-storage-db/`
 **State**: implementing (phase 3 closed)
 **Branch**: `beta/session-storage-db` (beta worktree)
 

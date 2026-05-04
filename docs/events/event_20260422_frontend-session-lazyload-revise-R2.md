@@ -1,7 +1,7 @@
 # Event: frontend-session-lazyload revise — Phase R2 (messages cursor pagination)
 
 **Date**: 2026-04-22
-**Spec**: `specs/frontend-session-lazyload/` (state=designed, mode=revise)
+**Spec**: `specs/_archive/frontend-session-lazyload/` (state=designed, mode=revise)
 **Beta branch**: `beta/frontend-session-lazyload-revise` @ `4d0151e34`
 **Predecessor**: R1 event (`event_20260422_frontend-session-lazyload-revise-R1.md`)
 

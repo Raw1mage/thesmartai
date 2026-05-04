@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Acceptance bench for specs/session-poll-cache AC-1 / AC-2.
+ * Acceptance bench for specs/_archive/session-poll-cache AC-1 / AC-2.
  *
  * What it measures:
  *   - p50 / p95 handler latency (as seen by the client) for

@@ -1,6 +1,6 @@
 # Event — 2026-04-19 question-tool-abort-fix
 
-Implementation log for [specs/question-tool-abort-fix/](../../specs/question-tool-abort-fix/).
+Implementation log for [specs/_archive/question-tool-abort-fix/](../../specs/_archive/question-tool-abort-fix/).
 
 ## Context
 
@@ -10,7 +10,7 @@ User reported a reproducible failure mode on the webapp: after answering an `Ask
 - (B) `QuestionDock` cached user input by `request.id`, which changes on AI re-ask
 - (C) `prompt-runtime.cancel()` didn't carry a reason label, so logs can't tell which caller triggered the abort
 
-Spec package created via `plan-builder` at `specs/question-tool-abort-fix/` (state=planned). Beta branch `beta/question-tool-abort-fix` created from `main@0e3730f8f`.
+Spec package created via `plan-builder` at `specs/_archive/question-tool-abort-fix/` (state=planned). Beta branch `beta/question-tool-abort-fix` created from `main@0e3730f8f`.
 
 ## Phase 1 — Server Foundation (Requirement A)
 
@@ -71,6 +71,6 @@ Spec package created via `plan-builder` at `specs/question-tool-abort-fix/` (sta
 
 ## References
 
-- Spec: [specs/question-tool-abort-fix/spec.md](../../specs/question-tool-abort-fix/spec.md)
-- Design: [specs/question-tool-abort-fix/design.md](../../specs/question-tool-abort-fix/design.md)
+- Spec: [specs/_archive/question-tool-abort-fix/spec.md](../../specs/_archive/question-tool-abort-fix/spec.md)
+- Design: [specs/_archive/question-tool-abort-fix/design.md](../../specs/_archive/question-tool-abort-fix/design.md)
 - Branch: `beta/question-tool-abort-fix` @ opencode-beta worktree

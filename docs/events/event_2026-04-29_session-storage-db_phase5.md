@@ -2,9 +2,9 @@
 
 ## Scope
 
-- Spec: `specs/session-storage-db`
+- Spec: `specs/_archive/session-storage-db`
 - Phase: 5 — Dreaming mode; idle-time legacy migration
-- In scope: 5.1–5.7 from `specs/session-storage-db/tasks.md`
+- In scope: 5.1–5.7 from `specs/_archive/session-storage-db/tasks.md`
 - Out of scope: live daemon restart, production legacy directory deletion, and Phase 4 deferred benchmarks unless separately approved.
 
 ## Task List
@@ -35,7 +35,7 @@
 - `bun test "packages/opencode/src/session/storage/dreaming.test.ts"` — 7 pass, 0 fail.
 - Live daemon restart/smoke test: not run; remains approval-gated.
 - Production legacy deletion: not run; tests use fixture session IDs only.
-- Architecture Sync: Verified (No doc changes). Basis: Phase 5 implements the already-documented DreamingWorker boundary in `specs/session-storage-db/design.md` and `specs/architecture.md` does not yet need a new cross-system boundary beyond the active spec package.
+- Architecture Sync: Verified (No doc changes). Basis: Phase 5 implements the already-documented DreamingWorker boundary in `specs/_archive/session-storage-db/design.md` and `specs/architecture.md` does not yet need a new cross-system boundary beyond the active spec package.
 
 ## Issues
 

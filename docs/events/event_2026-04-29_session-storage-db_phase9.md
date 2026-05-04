@@ -2,7 +2,7 @@
 
 ## Scope
 
-- Spec: `specs/session-storage-db`
+- Spec: `specs/_archive/session-storage-db`
 - Phase: 9 — cleanup gates and manual migration operator path.
 - In scope: operator-visible legacy pending count milestone, single-session force migration CLI, and follow-up LegacyStore retirement gate documentation.
 - Out of scope: production bulk migration, daemon restart, Grafana exporter provisioning, and deleting LegacyStore / Router legacy branches.
@@ -13,7 +13,7 @@
 - Added `opencode storage status` to report `legacy_sessions_pending_count`, update the existing ActivityBeacon-backed gauge, and print the `0 for >= 7 days` LegacyStore retirement milestone.
 - Added `opencode storage migrate-now <sid>` to force-migrate exactly one named legacy session through `DreamingWorker.migrateSession`; already-SQLite and post-rename debris sessions return a clear no-op message.
 - Added `packages/opencode/src/cli/cmd/storage.test.ts` covering status output, single-session migration without sweeping other legacy sessions, already-SQLite no-op behavior, and post-rename debris no-op behavior.
-- Updated `specs/session-storage-db/observability.md` and `tasks.md` for Phase 9 completion.
+- Updated `specs/_archive/session-storage-db/observability.md` and `tasks.md` for Phase 9 completion.
 
 ## Validation
 

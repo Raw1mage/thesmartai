@@ -62,7 +62,7 @@ run() and the legacy `process()` path remains in effect for those cases.
 - `packages/opencode/src/session/compaction-run.test.ts` — added 5
   executor tests (schema happy path, replay-tail happy path, low-cost
   happy path + plugin-null fallback, replay-tail over-budget).
-- `specs/compaction-redesign/tasks.md` — phase 5 boxes checked (5.5
+- `specs/_archive/compaction-redesign/tasks.md` — phase 5 boxes checked (5.5
   marked in-progress with rationale).
 
 ## Remaining (phase 6+)

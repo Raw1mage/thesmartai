@@ -61,7 +61,7 @@
 - **DD-2** 新 frontend 連 daemon 的 session open contract 應改為：`session.get/meta` → `tail page` → render → background/scroll-triggered older history fetch。
 - **DD-3** `history.loadMore()` 應從「擴大 limit 全量重抓」改為 cursor/before-based append older messages。
 - **DD-4** CMS/user-daemon path 不可丟失 `since`；若導入 cursor/before，proxy 也必須完整透傳，否則手機/CMS 路徑仍會退化。
-- **DD-5** 這項需求已超出既有 `specs/frontend-session-lazyload/` 的「只靠 meta + page size + render-side lazyload」範圍；後續應以 `revise` 或 `extend` 方式重開該 spec，而不是當作微調。
+- **DD-5** 這項需求已超出既有 `specs/_archive/frontend-session-lazyload/` 的「只靠 meta + page size + render-side lazyload」範圍；後續應以 `revise` 或 `extend` 方式重開該 spec，而不是當作微調。
 - **DD-6** mobile 不穩定症狀先作為本 spec 的 **validation companions**：實作 tail-first attach 時必須一併驗證「prompt round-trip / subagent continuity / session auth continuity」沒有被 attach timeout/reconnect 路徑破壞。若仍存在，必須拆出獨立 reliability spec，不可硬塞在 lazyload 實作裡。
 
 ## 建議後續任務
@@ -70,7 +70,7 @@
 2. 修正 `callSessionMessages()` 代理介面，完整透傳 `since`。
 3. 設計 `session.messages` 的 `beforeMessageID` / `cursor` older-history API，避免 `loadMore()` 全量重抓。
 4. 將 `sync.session.sync()` 重構為 open-session attach protocol：tail-first hydrate，older history lazy append。
-5. 重新同步 `specs/frontend-session-lazyload/`（目前 tasks 與 `.state.json=verified` 顯示不一致，需要先收斂 spec 真實狀態）。
+5. 重新同步 `specs/_archive/frontend-session-lazyload/`（目前 tasks 與 `.state.json=verified` 顯示不一致，需要先收斂 spec 真實狀態）。
 6. 在 mobile/CMS 驗證腳本/手動驗證中加入：prompt submit→reply、subagent completion relay、登入持久性；若失敗且與 attach timeout 無直接證據連結，另開 reliability plan。
 
 ## Validation

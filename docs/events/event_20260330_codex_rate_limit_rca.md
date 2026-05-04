@@ -18,7 +18,7 @@ Status: Done
 - `/home/pkcs12/projects/opencode/packages/opencode/src/account/quota/openai.ts`
 - `/home/pkcs12/projects/opencode/packages/opencode/src/account/rate-limit-judge.ts`
 - `/home/pkcs12/projects/opencode/packages/opencode/src/session/processor.ts`
-- `/home/pkcs12/projects/opencode/specs/codex/websocket/`
+- `/home/pkcs12/projects/opencode/specs/_archive/codex/websocket/`
 
 ### OUT
 

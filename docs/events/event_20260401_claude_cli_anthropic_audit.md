@@ -10,7 +10,7 @@
 IN:
 
 - `/home/pkcs12/projects/opencode/specs/architecture.md`
-- `/home/pkcs12/projects/opencode/specs/account-management/slices/20260327_provider-llmgateway-bug/`
+- `/home/pkcs12/projects/opencode/specs/_archive/account-management/slices/20260327_provider-llmgateway-bug/`
 - `/home/pkcs12/projects/opencode/docs/events/archive/event_log_20260208_claude_cli_plugin_refactor.md`
 - `/home/pkcs12/projects/opencode/docs/events/archive/event_log_20260214_claude_cli_oauth_fix.md`
 - `/home/pkcs12/projects/opencode/packages/opencode/src/provider/`
@@ -75,8 +75,8 @@ OUT:
 - 文件證據：
   - `/home/pkcs12/projects/opencode/specs/architecture.md:147`
   - `/home/pkcs12/projects/opencode/specs/architecture.md:151`
-  - `/home/pkcs12/projects/opencode/specs/account-management/slices/20260327_provider-llmgateway-bug/design.md:23`
-  - `/home/pkcs12/projects/opencode/specs/account-management/slices/20260327_provider-llmgateway-bug/implementation-spec.md:21`
+  - `/home/pkcs12/projects/opencode/specs/_archive/account-management/slices/20260327_provider-llmgateway-bug/design.md:23`
+  - `/home/pkcs12/projects/opencode/specs/_archive/account-management/slices/20260327_provider-llmgateway-bug/implementation-spec.md:21`
 - 實作證據：
   - `/home/pkcs12/projects/opencode/packages/opencode/src/provider/supported-provider-registry.ts:25`
   - `/home/pkcs12/projects/opencode/packages/opencode/src/plugin/anthropic.ts:112`

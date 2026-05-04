@@ -86,7 +86,7 @@
 - Telemetry consolidation: directly merge dated telemetry optimization provenance into the semantic telemetry root.
 - Semantic root naming: use conservative names.
 - Planned semantic roots:
-  - `specs/account-management/`
+  - `specs/_archive/account-management/`
   - `specs/planner-lifecycle/`
   - `specs/beta-tool/`
   - existing `specs/telemetry/`
@@ -94,7 +94,7 @@
   - `plans/20260321_inline-agent-switch/`
   - `plans/20260320_remote-terminal/`
 - Executed semantic normalizations:
-  - `specs/20260318_account-management-refactor/` -> `specs/account-management/`
+  - `specs/20260318_account-management-refactor/` -> `specs/_archive/account-management/`
   - `specs/20260321_specs/` -> `specs/planner-lifecycle/`
   - `specs/20260320_telemetry-implementation/` -> `specs/telemetry/provenance/20260320_telemetry-implementation/`
   - `specs/20260321_telemetry-optimization/` -> `specs/telemetry/provenance/20260321_telemetry-optimization/`
@@ -128,10 +128,10 @@
 - Preserved by explicit instruction:
   - `plans/shared-context-structure/`
   - `plans/20260316_kill-switch-plan/`
-  - `specs/account-management/`
+  - `specs/_archive/account-management/`
   - `specs/continuous-orchestration/`
   - `specs/beta-tool/`
-  - `specs/codex/protocol/`
+  - `specs/_archive/codex/protocol/`
 
 ## Third-pass Validation
 
@@ -150,8 +150,8 @@
 
 - User then requested a stronger semantic regrouping entirely within `/specs` taxonomy.
 - Explicit move decisions:
-  - `specs/account-management/` -> `plans/account-management/`
-  - `specs/codex-protocol/` -> `plans/codex-protocol/`
+  - `specs/_archive/account-management/` -> `plans/account-management/`
+  - `specs/_archive/codex-protocol/` -> `plans/codex-protocol/`
 - Explicit builder framework merge:
   - `specs/beta-tool/`
   - `specs/build_beta/`
@@ -162,7 +162,7 @@
   - `specs/continuous-orchestration/`
   - `specs/subagents/`
   - `specs/20260315_openclaw_reproduction/`
-  - -> `specs/agent_framework/`
+  - -> `specs/_archive/agent_framework/`
 - Merge execution preserved source material conservatively under `sources/` subdirectories inside each new canonical root, while adding canonical six-pack summary files at the new root top level.
 
 ## Fourth-pass Validation
@@ -175,11 +175,11 @@
   - `specs/builder_framework/sources/beta-tool/`
   - `specs/builder_framework/sources/build_beta/`
   - `specs/builder_framework/sources/planner-lifecycle/`
-- Verified `specs/agent_framework/` exists with canonical summary files and preserved source slices under:
-  - `specs/agent_framework/sources/autorunner/`
-  - `specs/agent_framework/sources/continuous-orchestration/`
-  - `specs/agent_framework/sources/subagents/`
-  - `specs/agent_framework/sources/20260315_openclaw_reproduction/`
+- Verified `specs/_archive/agent_framework/` exists with canonical summary files and preserved source slices under:
+  - `specs/_archive/agent_framework/sources/autorunner/`
+  - `specs/_archive/agent_framework/sources/continuous-orchestration/`
+  - `specs/_archive/agent_framework/sources/subagents/`
+  - `specs/_archive/agent_framework/sources/20260315_openclaw_reproduction/`
 - Verified merged source roots no longer exist as top-level `/specs/*` roots.
 - Architecture Sync: Verified (No doc changes) — `specs/architecture.md` documents lifecycle and system boundaries rather than transient taxonomy names, and this regrouping did not change module boundaries, data flow, or runtime contracts.
 
@@ -200,7 +200,7 @@
 - Final approved audited-root reorganization executed:
   - `specs/20260317_scheduler-persistence-daemon/` -> `plans/20260317_scheduler-persistence-daemon/`
   - `specs/20260318_webapp-provider-gemini-cli-api-key-account-name-account-name-ge/` -> absorbed into `plans/account-management/sources/20260318_webapp-provider-gemini-cli-api-key-account-name-account-name-ge/`
-  - `specs/20260319_tui-thin-client-attach/` -> absorbed into `specs/agent_framework/sources/20260319_tui-thin-client-attach/`
+  - `specs/20260319_tui-thin-client-attach/` -> absorbed into `specs/_archive/agent_framework/sources/20260319_tui-thin-client-attach/`
 
 ## Final-pass Validation
 
@@ -213,7 +213,7 @@
 - Verified destination roots now contain preserved material:
   - `plans/20260317_scheduler-persistence-daemon/`
   - `plans/account-management/sources/`
-  - `specs/agent_framework/sources/20260319_tui-thin-client-attach/`
+  - `specs/_archive/agent_framework/sources/20260319_tui-thin-client-attach/`
 - Architecture Sync: Verified (No doc changes) — `specs/architecture.md` already captures the repository lifecycle contract (`/plans` for active dated packages, semantic `/specs` for formalized specs) and the final pass only corrected taxonomy/provenance placement without changing module boundaries, data flow, or runtime contracts.
 
 ## Remaining
@@ -222,4 +222,4 @@
 - `specs/system-prompt/` remains better treated as reference/architecture inventory than as a feature spec; if desired later, it should be normalized by documentation strategy rather than forced into prompt-interface taxonomy.
 - New canonical roots may still warrant later content-level flattening if you want fewer preserved `sources/` subtrees:
   - `specs/builder_framework/`
-  - `specs/agent_framework/`
+  - `specs/_archive/agent_framework/`

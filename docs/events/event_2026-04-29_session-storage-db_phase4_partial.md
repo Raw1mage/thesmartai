@@ -1,7 +1,7 @@
 # Phase 4 (partial) — session-storage-db (Hot path swap, infra portion)
 
 **Date**: 2026-04-29
-**Spec**: `/specs/session-storage-db/`
+**Spec**: `/specs/_archive/session-storage-db/`
 **State**: implementing (phase 4 partial — 4.1, 4.2, 4.3 closed; 4.4, 4.5 awaiting user approval)
 **Branch**: `beta/session-storage-db` (beta worktree)
 

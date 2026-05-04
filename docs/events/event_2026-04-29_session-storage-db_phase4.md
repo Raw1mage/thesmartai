@@ -2,7 +2,7 @@
 
 ## Scope
 
-- Spec: `specs/session-storage-db`
+- Spec: `specs/_archive/session-storage-db`
 - Phase: 4 — Hot path swap; new sessions use `SqliteStore`
 - Completed: 4.1, 4.2, 4.3
 - Deferred by user decision: 4.4, 4.5

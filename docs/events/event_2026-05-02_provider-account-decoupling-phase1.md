@@ -1,6 +1,6 @@
 # 2026-05-02 — provider-account-decoupling phase 1 (boundary infrastructure)
 
-Spec: [specs/provider-account-decoupling/](../../specs/provider-account-decoupling/)
+Spec: [specs/_archive/provider-account-decoupling/](../../specs/_archive/provider-account-decoupling/)
 Branch: `beta/provider-account-decoupling` in `/home/pkcs12/projects/opencode-beta`
 Backup taken: `/home/pkcs12/.local/share/opencode/storage/.backup/pre-beta-provider-account-decoupling-20260501T180314Z/`
 

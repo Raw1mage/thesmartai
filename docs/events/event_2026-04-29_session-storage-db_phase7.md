@@ -2,7 +2,7 @@
 
 ## Scope
 
-- Spec: `specs/session-storage-db`
+- Spec: `specs/_archive/session-storage-db`
 - Phase: 7 — Observability events, metrics, logs, and admin corruption surface.
 - In scope: storage Bus event alignment, ActivityBeacon-backed metrics, structured logs, and a persistent session-page corruption banner.
 - Out of scope: live daemon smoke tests, Grafana exporter wiring, and production data mutation.

@@ -7,7 +7,7 @@
 - 1.1 Extended `TERMINAL_FINISHES` in tool/task.ts:2073-2086 with `rate_limited` + `quota_low` (preserving existing `stop`/`error`/`length`/`canceled`)
 - 1.2 Added `pendingSubagentNotices: PendingSubagentNotice.array().optional()` to Session.Info schema in session/index.ts (backward-compatible — absent = empty)
 - 1.3 Added new `Tweaks.SubagentConfig` interface + `SUBAGENT_DEFAULTS` + `KNOWN_KEYS` entries + parsing block + `Tweaks.subagent()` accessor in config/tweaks.ts. Two knobs: `subagent_escalation_wait_ms` (5000-300000, default 30000), `subagent_quota_low_red_line_percent` (0-50, default 5)
-- 1.4 Added `MessageV2.PendingSubagentNotice` zod schema in session/message-v2.ts after Info union (with statusEnum, finishEnum, errorDetail, rotateHint, cancelReason). Source-of-truth path `/specs/responsive-orchestrator/data-schema.json#PendingSubagentNotice` referenced inline
+- 1.4 Added `MessageV2.PendingSubagentNotice` zod schema in session/message-v2.ts after Info union (with statusEnum, finishEnum, errorDetail, rotateHint, cancelReason). Source-of-truth path `/specs/_archive/responsive-orchestrator/data-schema.json#PendingSubagentNotice` referenced inline
 
 ## Key decisions
 - No new DD added this phase. Spec terminology adjusted: codebase uses `canceled` (American spelling), not `cancelled`. PendingSubagentNotice schema mirrors that. data-schema.json says `cancelled` in some places — drift to fix opportunistically next phase via plan-sync (not blocking).

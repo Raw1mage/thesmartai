@@ -166,7 +166,7 @@ Architecture Sync: Verified (No doc changes)
   3. runtime 沒把 continuation 邊界視為 invalidation boundary
   4. fallback HTTP 或下一輪仍帶舊 `previous_response_id`
   5. upstream 回 `400 Previous response ... not found`
-- 這也暴露 spec/runtime drift：`specs/codex/websocket/spec.md` 與 `tasks.md` 曾承諾 4xx/5xx 要 clear previous_response_id cache、`previous_response_not_found` 要 reset full context，但 traced runtime 未見完整對應實作。
+- 這也暴露 spec/runtime drift：`specs/_archive/codex/websocket/spec.md` 與 `tasks.md` 曾承諾 4xx/5xx 要 clear previous_response_id cache、`previous_response_not_found` 要 reset full context，但 traced runtime 未見完整對應實作。
 
 ### Timeout RCA Validation
 

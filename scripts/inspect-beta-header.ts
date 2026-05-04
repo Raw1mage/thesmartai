@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Live header capture — Task 4.8 evidence for
- * specs/claude-provider-beta-fingerprint-realign/.
+ * specs/_archive/claude-provider-beta-fingerprint-realign/.
  *
  * Reproduces the EXACT call chain inside ClaudeCodeLanguageModel.doStream so
  * the wire-bytes of `anthropic-beta` are observed end-to-end without a real

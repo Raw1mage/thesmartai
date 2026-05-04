@@ -1,6 +1,6 @@
 # Phase 1 Landed — Layer 2 Tool Self-Bounding
 
-**Spec**: `specs/tool-output-chunking/` (context-management subsystem)
+**Spec**: `specs/_archive/tool-output-chunking/` (context-management subsystem)
 **Phase**: 1 of 5
 **Branch**: `beta/phase-1-context-management`
 **Tip**: `9dd9d922b`
@@ -43,7 +43,7 @@ Each bounded tool got the smallest possible insertion: a post-hoc token check th
 
 - `ctx.outputBudget` is not yet **populated by the runtime** with a model-aware value. `ToolBudget.resolve` falls back to `tweaks.toolOutputBudgetSync().absoluteCap` until the runtime side is wired (later phase). This means today the budget is a flat 50K (or 60K for task / 40K for bash) rather than `min(model.contextWindow * 0.30, absoluteCap)`. Tools written against `ToolBudget.resolve` pick up the model-aware budget transparently when wired.
 - The pre-existing `Truncate.output` post-hoc layer in `tool/tool.ts:76` (line/byte-based: 2000 lines, 256KB) **stays as the universal safety net**. Layer 2 is the model-aware overlay; the existing layer is still the first gate for most tools in practice.
-- Layers 1 (hybrid-llm), 3 (visibility), 4 (compact_now), 5 (pin/drop/recall) all in `specs/tool-output-chunking/` Phases 2-5.
+- Layers 1 (hybrid-llm), 3 (visibility), 4 (compact_now), 5 (pin/drop/recall) all in `specs/_archive/tool-output-chunking/` Phases 2-5.
 
 ## Loop incident worth recording
 
@@ -67,4 +67,4 @@ bff787e06 chore(claude): remove @AGENTS.md import from CLAUDE.md  (parallel)
 
 ## Next
 
-Phase 2 — Layer 1 hybrid-llm + retire kind chain. Highest-risk slice; closes G-1, G-3, G-4, G-6, G-8, G-9. Needs the framing prompt (`specs/tool-output-chunking/hybrid-llm-framing.md`) moved to runtime path and a careful rewrite of `compaction.ts` and `memory.ts`. See `specs/tool-output-chunking/tasks.md ## 2. Phase 2`.
+Phase 2 — Layer 1 hybrid-llm + retire kind chain. Highest-risk slice; closes G-1, G-3, G-4, G-6, G-8, G-9. Needs the framing prompt (`specs/_archive/tool-output-chunking/hybrid-llm-framing.md`) moved to runtime path and a careful rewrite of `compaction.ts` and `memory.ts`. See `specs/_archive/tool-output-chunking/tasks.md ## 2. Phase 2`.

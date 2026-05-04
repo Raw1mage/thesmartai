@@ -1,7 +1,7 @@
 # Event: session-storage-db runtime continuation
 
 **Date**: 2026-04-29  
-**Spec**: `specs/session-storage-db/`  
+**Spec**: `specs/_archive/session-storage-db/`  
 **Branch**: `test/session-storage-db`  
 **State**: implementing
 
@@ -13,7 +13,7 @@ Continue the already-started DB runtime support. User clarified that the old `ph
 
 IN:
 
-- Treat `specs/session-storage-db/` as the active execution contract.
+- Treat `specs/_archive/session-storage-db/` as the active execution contract.
 - Re-establish baseline evidence for the current branch.
 - Continue into Phase 5 Dreaming mode implementation if baseline is green.
 
@@ -38,5 +38,5 @@ OUT:
 
 ## Remaining
 
-- Implement Phase 5 Dreaming mode tasks from `specs/session-storage-db/tasks.md`.
+- Implement Phase 5 Dreaming mode tasks from `specs/_archive/session-storage-db/tasks.md`.
 - Re-run storage tests and plan-sync after each completed task checkbox.

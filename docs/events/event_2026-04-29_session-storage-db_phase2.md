@@ -1,7 +1,7 @@
 # Phase 2 — session-storage-db (SQLite store v1: primitives + Backend)
 
 **Date**: 2026-04-29
-**Spec**: `/specs/session-storage-db/`
+**Spec**: `/specs/_archive/session-storage-db/`
 **State**: implementing (phase 2 closed)
 **Branch**: `beta/session-storage-db` (beta worktree)
 **Commits**: `29c010d5d` (2.1-2.4 primitives) + `aba0a8a0c` (2.5-2.9 Backend + tests)

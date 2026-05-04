@@ -22,7 +22,7 @@
 ## Planning Checkpoints
 
 ### Baseline
-- `specs/scheduler-channels/` 已存在完整 durability + channel 規劃，且多數 task 已標記完成。
+- `specs/_archive/scheduler-channels/` 已存在完整 durability + channel 規劃，且多數 task 已標記完成。
 - `docs/events/event_20260327_cron_not_running_on_schedule.md` 已證明分鐘級 heartbeat 與 create/update seeding 是重要基線。
 - `docs/events/event_20260327_cron_no_execution_log_runtime_lifecycle.md` 已證明真實 `serve --unix-socket` 路徑若未啟動 lifecycle，會導致完全沒有 run log。
 

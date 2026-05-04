@@ -1,7 +1,7 @@
 # Upstream codex diff triage (rust-v0.122.0 → rust-v0.125.0-alpha.1)
 
 日期：2026-04-24
-Spec：`specs/codex-fingerprint-alignment/` Phase 3 task 2.3
+Spec：`specs/_archive/codex-fingerprint-alignment/` Phase 3 task 2.3
 
 ## Scope
 

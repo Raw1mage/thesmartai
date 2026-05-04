@@ -42,6 +42,6 @@ User required beta workflow documentation to enforce a stricter post-merge close
 - Documentation-only update; no code/runtime behavior changes were applied.
 - Updated files:
   - `templates/skills/beta-workflow/SKILL.md`
-  - `specs/agent_framework/slices/builder_framework/sources/planner-lifecycle/spec.md`
+  - `specs/_archive/agent_framework/slices/builder_framework/sources/planner-lifecycle/spec.md`
   - `specs/architecture.md`
 - Architecture Sync: Updated (planner/spec lifecycle contract wording adjusted).

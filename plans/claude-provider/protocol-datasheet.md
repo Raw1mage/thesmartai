@@ -10,7 +10,7 @@
 > See `refs/claude-code-npm/REFS.md` for cutover details.
 >
 > **Beta-flag assembly logic** is captured in detail at
-> `specs/claude-provider-beta-fingerprint-realign/design.md` § Research
+> `specs/_archive/claude-provider-beta-fingerprint-realign/design.md` § Research
 > Outcomes (DD-11 through DD-15). Section 11 below is the current truth.
 
 ---
@@ -273,7 +273,7 @@ All current models: 200k tokens (context-1m beta enables 1M for supported models
 > `I7`, `$Q` resolved at offsets 3481451, 3480483, 38983, 2317694 respectively.
 >
 > Source-of-truth in opencode: `packages/opencode-claude-provider/src/protocol.ts`
-> function `assembleBetas`. Test matrix: `specs/claude-provider-beta-fingerprint-realign/test-vectors.json`.
+> function `assembleBetas`. Test matrix: `specs/_archive/claude-provider-beta-fingerprint-realign/test-vectors.json`.
 
 ### 11.1 Helper predicates
 
@@ -317,7 +317,7 @@ Effect: `redact-thinking-2026-02-12` never fires from opencode runtime; the matr
 ### 11.4 Divergences fixed by this realign
 
 Pre-realign (commit 4f6039bf1 and earlier): `assembleBetas` collapsed three flags into a `MINIMUM_BETAS` always-send set, mis-gated `prompt-caching-scope` on `isOAuth` instead of `ja()`, omitted `redact-thinking` entirely, and produced flags in a non-upstream order. Six divergences are enumerated in
-`specs/claude-provider-beta-fingerprint-realign/proposal.md` § Why; full DECISIONS in `design.md` DD-1 through DD-17.
+`specs/_archive/claude-provider-beta-fingerprint-realign/proposal.md` § Why; full DECISIONS in `design.md` DD-1 through DD-17.
 
 ---
 

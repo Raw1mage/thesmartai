@@ -81,12 +81,12 @@
 - `packages/opencode/src/session/workflow-runner.test.ts`
 - `packages/opencode/src/session/prompt/runner.txt` (deleted)
 - `specs/architecture.md`
-- `specs/autonomous-opt-in/design.md`
-- `specs/autonomous-opt-in/proposal.md`
+- `specs/_archive/autonomous-opt-in/design.md`
+- `specs/_archive/autonomous-opt-in/proposal.md`
 
 ## Remaining
 
-- 若要完全落實 `specs/autonomous-opt-in/`，後續仍需補上 session-spec binding、explicit arm trigger、plan refill/disarm lifecycle。
+- 若要完全落實 `specs/_archive/autonomous-opt-in/`，後續仍需補上 session-spec binding、explicit arm trigger、plan refill/disarm lifecycle。
 
 ## Follow-up Bugfix: subagent self-loop after runloop gate change
 

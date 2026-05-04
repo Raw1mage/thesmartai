@@ -88,6 +88,6 @@ in one file.
 
 - `packages/opencode/src/session/compaction.ts` — `recordCompaction`
   gains `@deprecated` JSDoc + `log.warn`.
-- `specs/compaction-redesign/spec.md` — R-9 rewritten with realignment
+- `specs/_archive/compaction-redesign/spec.md` — R-9 rewritten with realignment
   table and updated acceptance scenarios.
-- `specs/compaction-redesign/tasks.md` — phase 9 boxes finalized.
+- `specs/_archive/compaction-redesign/tasks.md` — phase 9 boxes finalized.

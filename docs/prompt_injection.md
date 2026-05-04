@@ -2,7 +2,7 @@
 
 本文件說明 OpenCode 如何在每次 LLM 請求中組裝 prompt 內容，包含 system role 與 user-role context preface 兩個物理載體。
 
-> **權威來源**：`specs/prompt-cache-and-compaction-hardening/`（Phase B 落地後）
+> **權威來源**：`specs/_archive/prompt-cache-and-compaction-hardening/`（Phase B 落地後）
 > **組裝核心**：`packages/opencode/src/session/llm.ts`、`packages/opencode/src/session/static-system-builder.ts`、`packages/opencode/src/session/context-preface.ts`
 > **延伸閱讀**：[prompt_dynamic_context.md](./prompt_dynamic_context.md)（dynamic 內容承載架構）
 
@@ -10,7 +10,7 @@
 
 ## 1. 總覽：雙軌架構（Phase B 後）
 
-Phase B（specs/prompt-cache-and-compaction-hardening）之後，prompt 內容由**兩個物理載體**承載，各自走不同的 cache 命中策略：
+Phase B（specs/_archive/prompt-cache-and-compaction-hardening）之後，prompt 內容由**兩個物理載體**承載，各自走不同的 cache 命中策略：
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐

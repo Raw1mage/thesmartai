@@ -16,7 +16,7 @@ Status: Aborted
 
 - `/home/pkcs12/projects/opencode/webctl.sh`
 - `/home/pkcs12/projects/opencode/specs/architecture.md`
-- `/home/pkcs12/projects/opencode/specs/codex/websocket/`
+- `/home/pkcs12/projects/opencode/specs/_archive/codex/websocket/`
 - `/home/pkcs12/projects/opencode/docs/events/event_20260330_codex_incremental_delta_rca.md`
 - `/home/pkcs12/projects/opencode/docs/events/event_20260330_codex_websocket_promotion.md`
 - daemon / websocket / continuation 相關 runtime log

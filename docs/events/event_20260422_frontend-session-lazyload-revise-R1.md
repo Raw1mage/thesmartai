@@ -1,7 +1,7 @@
 # Event: frontend-session-lazyload revise — Phase R1 (SSE bounded replay)
 
 **Date**: 2026-04-22
-**Spec**: `specs/frontend-session-lazyload/` (state=designed, mode=revise)
+**Spec**: `specs/_archive/frontend-session-lazyload/` (state=designed, mode=revise)
 **Beta branch**: `beta/frontend-session-lazyload-revise` @ `d674b120e`
 **Trigger**: 2026-04-22 production RCA — gateway received 7× `POST /prompt_async` for `ses_24b2d916dffeaKQcN79znevt1b` during 19:31–19:35, daemon structured log recorded 0× `prompt_async inbound`. Diagnosis: splice proxy reverse-pressure from daemon event-loop starvation, triggered by SSE reconnect handshake serialising 1000 ring-buffer events through `await stream.writeSSE`.
 

@@ -23,7 +23,7 @@
 ## Validation
 - `bun test packages/opencode/test/incoming/` — 22/22 PASS, 0 failures, 45 expect() calls, 909 ms
 - `bunx tsc --noEmit -p packages/opencode/tsconfig.json` — `incoming/` clean (other packages have pre-existing TS errors unrelated to this work)
-- `bun run scripts/plan-sync.ts specs/repo-incoming-attachments/` — drift = `clean`
+- `bun run scripts/plan-sync.ts specs/_archive/repo-incoming-attachments/` — drift = `clean`
 
 ## Drift handled
 None. sync-clean.

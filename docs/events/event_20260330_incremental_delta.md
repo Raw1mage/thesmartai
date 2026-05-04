@@ -3,11 +3,11 @@
 - **Date**: 2026-03-30
 - **Type**: Plan promotion (plans/ -> specs/)
 - **Source**: `plans/20260330_incremental-delta/`
-- **Destination**: `specs/codex/incremental_delta/`
+- **Destination**: `specs/_archive/codex/incremental_delta/`
 
 ## Summary
 
-Codex incremental delta RCA 與 fix plan 正式從 plans/ 升格至 specs/codex/incremental_delta/。
+Codex incremental delta RCA 與 fix plan 正式從 plans/ 升格至 specs/_archive/codex/incremental_delta/。
 
 Plan 涵蓋：
 - End-to-end delta preservation（request → runtime transport → consumer）

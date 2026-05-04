@@ -1,6 +1,6 @@
 # 2026-05-04 — attachment-lifecycle v4 (image inline via preface trailing tier)
 
-Spec: [specs/attachment-lifecycle/](../../specs/attachment-lifecycle/)
+Spec: [specs/_archive/attachment-lifecycle/](../../specs/_archive/attachment-lifecycle/)
 Branch: `beta/attachment-lifecycle`
 Spec amendment commit (main): `02483e13d`
 Builds on: `prompt-cache-and-compaction-hardening` Phase B (preface trailing tier + 4-breakpoint cache plan)

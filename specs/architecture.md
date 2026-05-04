@@ -74,9 +74,9 @@ The frontend is built with Solid.js and uses a bottom-up dependency model:
 - **Promotion rule**: `/plans/` artifacts remain the active planning/build contract during execution. Outside beta finalize they do not automatically move into `/specs/`; however, the beta workflow now requires a post-merge closeout step: after the final `test/*` branch merge into `baseBranch`, the completed plan must be consolidated into the related semantic `/specs/` family in the authoritative docs repo/worktree.
 - **Beta closeout fail-fast**: if the target semantic `/specs/` family for that post-merge consolidation is ambiguous or absent, workflow must stop and request explicit user direction; silent fallback creation of isolated spec roots is prohibited.
 - **Current promoted package**: the completed builder quiz-guard / build-mode refactoring package was promoted from `/plans/20260321_build-mode-refactoring/`, then merged into the existing canonical semantic root `/specs/builder_framework/` because both roots describe the same builder framework topic; future work should use `/specs/builder_framework/` as the formal reference package.
-- **Promoted codex runtime package**: the completed `plans/codex-efficiency/` and `plans/aisdk-refactor/` tracks were later promoted and merged into `/specs/codex/provider_runtime/`.
-- **Promoted codex websocket package**: after user confirmation of completion, `plans/codex-websocket/` was promoted into `/specs/codex/websocket/` and removed from `/plans/`.
-- **Unified codex semantic root**: Codex protocol-observation material lives under `/specs/codex/protocol/`; `specs/codex/` is now the unified semantic root for codex-related specs.
+- **Promoted codex runtime package**: the completed `plans/codex-efficiency/` and `plans/aisdk-refactor/` tracks were later promoted and merged into `/specs/_archive/codex/provider_runtime/`.
+- **Promoted codex websocket package**: after user confirmation of completion, `plans/codex-websocket/` was promoted into `/specs/_archive/codex/websocket/` and removed from `/plans/`.
+- **Unified codex semantic root**: Codex protocol-observation material lives under `/specs/_archive/codex/protocol/`; `specs/_archive/codex/` is now the unified semantic root for codex-related specs.
 - **Legacy dated packages under `/specs/`**: these require explicit status-based triage; implemented packages belong in formalized spec roots, non-implemented packages belong in `/plans/`. Silent dual-root fallback is prohibited.
 
 ## plan-builder Skill Lifecycle
@@ -95,7 +95,7 @@ Launched 2026-04-18 to supersede the legacy `planner` skill (see `docs/events/ev
 - **Optional SSDLC profile**: enabled by setting `.state.json.profile` to `["ssdlc"]`. Activates three additional artifact requirements: `threat-model.md` (STRIDE anchored on C4 components), `data-classification.md` (PII flow traced to Sequence diagram messages), `compliance-map.md` (bidirectional Requirement ↔ external-control mapping for SOC 2 / ISO 27001 / GDPR / HIPAA / PCI-DSS).
 - **Prompt + script architecture**: all state lives in repo files, all operations are stateless transforms. The skill is deliberately not promoted to an MCP server because there is no in-memory state to share across agents and no cross-session coordination need. Scripts live in `~/projects/skills/plan-builder/scripts/`; shared libraries in `scripts/lib/`.
 - **Deprecation contract**: the legacy `planner` skill remains loaded with a deprecation banner for backward compatibility. Any legacy `plans/<slug>/` package remains usable until it is touched by plan-builder, at which point it is peacefully migrated. There is no bulk migration pass; migration is strictly on-touch.
-- **Dog-food reference**: the plan that produced this skill — `specs/plan-builder/` — was itself migrated from `plans/plan-builder/` by the freshly-built `plan-migrate.ts`, making it the first real migration test vector.
+- **Dog-food reference**: the plan that produced this skill — `specs/_archive/plan-builder/` — was itself migrated from `plans/plan-builder/` by the freshly-built `plan-migrate.ts`, making it the first real migration test vector.
 - **Future HLS layer (planned, not yet implemented)**: a separate skill (likely `hls-synthesizer`) will sit between plan-builder's `designed` state and `beta-workflow`'s build execution. It will produce pseudo-code artifacts (signature, pre/post conditions, step sequence, exception paths) that bridge the gap between architecture diagrams and target-language code. Will be added via plan-builder's own `extend` mode, serving as the first production demonstration of that mode.
 
 ## Tool Surface Runtime
@@ -109,13 +109,13 @@ Launched 2026-04-18 to supersede the legacy `planner` skill (see `docs/events/ev
 - Subagent completion resume is **collection-gated, not workflow-gated**: `packages/opencode/src/bus/subscribers/pending-notice-appender.ts` appends the pending notice and enqueues a critical `task_completion` / `task_failure` resume so the main agent always gets a turn to drain completed delegated work, then immediately asks `resumePendingContinuations` to resume that parent session instead of waiting for the next 5s supervisor heartbeat. `packages/opencode/src/session/workflow-runner.ts` lets these completion resumes bypass autorun disabled / workflow completed / blocked / waiting-user stop gates; only technical hard gates such as busy, retry, in-flight, kill-switch, and active supervisor lease can delay collection. After the result is collected into the system prompt, the AI decides in that turn whether to continue or stop.
 - The `packages/opencode/src/server/routes/session.ts` `/session/:sessionID/autonomous` route is the explicit runtime switch for this policy surface: it respects `body.enabled`, clears queued continuations when disabling, and only enqueues synthetic continuation messages when autorun is enabled.
 - Privileged self-update is a dedicated gateway-daemon path, not general shell privilege escalation. `packages/opencode/src/server/self-update.ts` probes `sudo -n -v` and only executes fixed argv actions for installing `/etc/opencode/webctl.sh`, installing `/usr/local/bin/opencode-gateway`, syncing `/usr/local/share/opencode/frontend`, and restarting `opencode-gateway.service`; every action is audited to `~/.local/state/opencode/self-update-audit.jsonl`. In `packages/opencode/src/server/routes/global.ts`, `/global/web/restart` with `targets:["gateway"]` uses this path in gateway-daemon mode: compile gateway from the resolved repo source, install fixed artifacts via non-interactive sudo, return the accepted response, then schedule the service restart. Non-sudoer daemons fail fast instead of attempting best-effort fallback.
-- **Verbal arm / disarm** (specs/autonomous-opt-in/ Phase 4-6, 2026-04-23): `packages/opencode/src/session/autorun/detector.ts` scans each ingested user message for configured trigger / disarm phrases (loaded from `/etc/opencode/tweaks.cfg` keys `autorun_trigger_phrases` / `autorun_disarm_phrases`, pipe-separated). A match flips `workflow.autonomous.enabled` via `Session.updateAutonomous`. `packages/opencode/src/session/autorun/observer.ts` subscribes to `KillSwitchChanged` and sweeps every armed root session to disarmed on activation. `packages/opencode/src/session/autorun/refill.ts` materializes the next phase of a session's active `specs/<slug>/tasks.md` (state=implementing, discovered under `Instance.directory/specs/*`) when an armed session drains its todolist; if no refill candidate, the session disarms with `stopReason: plan_drained`. The UI toggle removed in 2026-03-21 is not reintroduced — verbal trigger is the sole user-driven arm path.
+- **Verbal arm / disarm** (specs/_archive/autonomous-opt-in/ Phase 4-6, 2026-04-23): `packages/opencode/src/session/autorun/detector.ts` scans each ingested user message for configured trigger / disarm phrases (loaded from `/etc/opencode/tweaks.cfg` keys `autorun_trigger_phrases` / `autorun_disarm_phrases`, pipe-separated). A match flips `workflow.autonomous.enabled` via `Session.updateAutonomous`. `packages/opencode/src/session/autorun/observer.ts` subscribes to `KillSwitchChanged` and sweeps every armed root session to disarmed on activation. `packages/opencode/src/session/autorun/refill.ts` materializes the next phase of a session's active `specs/<slug>/tasks.md` (state=implementing, discovered under `Instance.directory/specs/*`) when an armed session drains its todolist; if no refill candidate, the session disarms with `stopReason: plan_drained`. The UI toggle removed in 2026-03-21 is not reintroduced — verbal trigger is the sole user-driven arm path.
 - Autonomous continuation no longer depends on `packages/opencode/src/session/prompt/runner.txt` or a completion-verify prompt contract. Armed sessions now enqueue only a minimal resume signal, and `packages/opencode/src/session/workflow-runner.ts` stops immediately when no actionable todo exists instead of hardcoding an "update the todolist" prompt.
 - `packages/mcp/system-manager/src/index.ts` session/dialog tools are DB-backed through the daemon session API boundary: session metadata/search/subagent listing/export/handover use `/api/v2/session` and `/api/v2/session/:id`, while dialog reads use `/api/v2/session/:id/message`. These routes resolve through `Session.listGlobal` / `Session.get` / `Session.messages` and the `MessageV2` `StorageRouter`, so the MCP tool does not read `storage/session/<sid>/info.json` or legacy message directories as a fallback. Undo/redo-style session mutations use `/session/:id/revert` and `/session/:id/unrevert` rather than editing session metadata files directly.
 
 ### Tool Self-Bounding (Layer 2 of context-management subsystem, 2026-04-29)
 
-Variable-size tools cap their own output to a per-invocation token budget before returning, so that no single tool result can dominate the AI's context window. Spec: `specs/tool-output-chunking/` Phase 1 (DD-2, R-1, INV-8). Lives behind a small contract:
+Variable-size tools cap their own output to a per-invocation token budget before returning, so that no single tool result can dominate the AI's context window. Spec: `specs/_archive/tool-output-chunking/` Phase 1 (DD-2, R-1, INV-8). Lives behind a small contract:
 
 - **`packages/plugin/src/tool.ts`** and **`packages/opencode/src/tool/tool.ts`** add an optional `outputBudget?: number` field to both the plugin-facing `ToolContext` and the internal `Tool.Context`. Optional preserves back-compat with older plugins; runtime tools rely on the helper rather than the field directly.
 - **`packages/opencode/src/tool/budget.ts`** is the canonical `ToolBudget` namespace. `ToolBudget.resolve(ctx, toolId)` returns a guaranteed `{tokens, source}` pair (`source` ∈ `ctx | tweaks-default | tweaks-task-override | tweaks-bash-override`). Token estimation is a deterministic `ceil(length/4)` to keep the slice loop fast and provider-agnostic.
@@ -239,7 +239,7 @@ truncate AND a paid kind remains in the chain, run() escalates
 provider-switched / manual all map to `false`. The 2026-04-27 infinite
 loop bug is structurally extinct.
 
-Phase A edge cleanup (2026-05-01, specs/compaction-improvements):
+Phase A edge cleanup (2026-05-01, specs/_archive/compaction-improvements):
 provider-switched compaction now exposes `SessionCompaction.kindChainFor`
 for tests and uses `narrative → replay-tail`, preserving the no-paid-kind
 rule while avoiding silent narrative-only failure. The prompt runloop
@@ -251,7 +251,7 @@ it logs the boundary state and stops before spawning another model round
 instead of throwing `No user message found in stream`.
 
 Phase B context-budget surfacing (2026-05-01,
-specs/compaction-improvements): prompt assembly appends a cache-safe
+specs/_archive/compaction-improvements): prompt assembly appends a cache-safe
 `<context_budget>` text envelope to the latest user message passed to the
 model. The envelope uses only the most recent non-empty server-confirmed
 assistant usage snapshot (`tokens.input`, `cache.read`) and labels status
@@ -261,7 +261,7 @@ self-heal nudges carry the same envelope, and subagent sessions inherit the
 same assembly path for their own session-local budget.
 
 Phase C trigger inventory and codex routing (2026-05-01,
-specs/compaction-improvements): `deriveObservedCondition` is now backed by
+specs/_archive/compaction-improvements): `deriveObservedCondition` is now backed by
 an explicit `TRIGGER_INVENTORY` precedence contract including
 `stall-recovery` and `predicted-cache-miss`. Stall recovery compacts after
 consecutive empty high-context assistant rounds without injecting a
@@ -278,7 +278,7 @@ compact_threshold }]`; the standalone `/responses/compact` hook remains kind
 `low-cost-server`.
 
 Phase D/E big-content boundary and telemetry (2026-05-01,
-specs/compaction-improvements): oversized boundary payloads are routed by
+specs/_archive/compaction-improvements): oversized boundary payloads are routed by
 session-scoped reference instead of being injected raw into the next model
 context. `MessageV2.AttachmentRefPart` (`type: "attachment_ref"`) is the
 message-stream pointer, while raw bytes live behind `SessionStorage.Router`
@@ -366,7 +366,7 @@ AI-collaborative digest of each chunk).
 
 ### Plan reference
 
-Full design: `specs/compaction-redesign/` (proposal.md, spec.md,
+Full design: `specs/_archive/compaction-redesign/` (proposal.md, spec.md,
 design.md, c4.json, sequence.json, idef0.json, grafcet.json,
 data-schema.json, tasks.md, handoff.md, errors.md, observability.md,
 invariants.md). Phase 13 is documented inline in tasks.md as Section 13.
@@ -374,9 +374,9 @@ Implementation history in `docs/events/`.
 
 ### Hybrid-LLM Compaction (Phase 2 of context-management subsystem, 2026-04-29)
 
-`hybrid_llm` (specs/tool-output-chunking/, refactor 2026-04-29) is a background enrichment post-step for `overflow / cache-aware / manual` triggers when `compaction_enable_hybrid_llm` is enabled. The foreground chain first commits a fast anchor (`narrative / replay-tail / low-cost-server / llm-agent`, provider-aware as described above); after success, `scheduleHybridEnrichment` may upgrade that anchor asynchronously. Maintenance triggers (`idle / rebind / continuation-invalidated / provider-switched`) are untouched — they don't need a paid LLM call.
+`hybrid_llm` (specs/_archive/tool-output-chunking/, refactor 2026-04-29) is a background enrichment post-step for `overflow / cache-aware / manual` triggers when `compaction_enable_hybrid_llm` is enabled. The foreground chain first commits a fast anchor (`narrative / replay-tail / low-cost-server / llm-agent`, provider-aware as described above); after success, `scheduleHybridEnrichment` may upgrade that anchor asynchronously. Maintenance triggers (`idle / rebind / continuation-invalidated / provider-switched`) are untouched — they don't need a paid LLM call.
 
-- **`SessionCompaction.Hybrid` namespace** (in `packages/opencode/src/session/compaction.ts`): types mirror `specs/tool-output-chunking/data-schema.json` (`Anchor` / `JournalEntry` / `PinnedZoneEntry` / `ContextMarkers` / `ContextStatus` / `LLMCompactRequest` / `CompactionEvent` / `ErrorCode`). Pure functions for validation + envelope wrapping + payload construction.
+- **`SessionCompaction.Hybrid` namespace** (in `packages/opencode/src/session/compaction.ts`): types mirror `specs/_archive/tool-output-chunking/data-schema.json` (`Anchor` / `JournalEntry` / `PinnedZoneEntry` / `ContextMarkers` / `ContextStatus` / `LLMCompactRequest` / `CompactionEvent` / `ErrorCode`). Pure functions for validation + envelope wrapping + payload construction.
 - **`Memory.Hybrid` accessors** (in `memory.ts`): selectors over the message stream — `getAnchorMessage` / `getJournalMessages` / `getPinnedToolMessages` / `recallMessage`. INV-10 single-source-of-truth preserved.
 - **`runLlmCompact` (single-pass core)**: builds the framing-prompt + user-payload from `LLMCompactRequest`, dispatches the LLM round through `SessionProcessor` (mirroring `runLlmCompactionAgent`), reads back assistant text, runs `validateAnchorBody` against `hybrid-llm-framing.md` §"Output validation". Returns a discriminated `LlmCompactResult`. When the request's input exceeds the model's per-request budget, dispatches to `runLlmCompactChunkAndMerge` (DD-3 internal mode).
 - **`runLlmCompactChunkAndMerge` (cold-start path)**: walks journal in chunks sized to fit the LLM's input budget. Each chunk's `LLM_compact` call takes the running digest as `priorAnchor` + that chunk as journal. Final iteration's output is validated and persisted as the actual anchor; intermediates are LLM-only scratch. Triggers on huge legacy sessions opening for the first time.
@@ -387,7 +387,7 @@ Implementation history in `docs/events/`.
 - **4 tweaks knobs** (`compaction_llm_timeout_ms` / `compaction_fallback_provider` / `compaction_phase2_max_anchor_tokens` / `compaction_pinned_zone_max_tokens_ratio`) configure the recovery ladder + Phase 2 + pinned cap. Sync accessor `Tweaks.compactionSync()` for the hot path.
 - **Tests**: 22 pure-function unit tests at `packages/opencode/test/session/compaction-hybrid.test.ts`. Integration tests against a live LLM are deferred to the cross-provider regression harness (Phase 2.18).
 
-Open work tracked in `specs/tool-output-chunking/tasks.md`: Phase 2.13 explicit 5-zone refactor (deferred to Phase 5 alongside Layer 5 override surface), Phase 2.15 pin cap forcing Phase 2 (deferred — depends on Phase 5 producer), Phase 2.18-2.20 cross-provider + failure-injection + daemon-restart tests (need LLM-stub harness), Phase 2.21 cache hit-rate post-merge gate (requires real-traffic telemetry over time), Phase 2.12 retire legacy kinds (deferred until telemetry shows hybrid_llm carries the load on real sessions for several days). Phase 3 (visibility) / Phase 4 (`compact_now`) / Phase 5 (pin/drop/recall override) are independent slices.
+Open work tracked in `specs/_archive/tool-output-chunking/tasks.md`: Phase 2.13 explicit 5-zone refactor (deferred to Phase 5 alongside Layer 5 override surface), Phase 2.15 pin cap forcing Phase 2 (deferred — depends on Phase 5 producer), Phase 2.18-2.20 cross-provider + failure-injection + daemon-restart tests (need LLM-stub harness), Phase 2.21 cache hit-rate post-merge gate (requires real-traffic telemetry over time), Phase 2.12 retire legacy kinds (deferred until telemetry shows hybrid_llm carries the load on real sessions for several days). Phase 3 (visibility) / Phase 4 (`compact_now`) / Phase 5 (pin/drop/recall override) are independent slices.
 
 ## Key Modules
 
@@ -472,14 +472,14 @@ Legacy all-in-one `opencode.json` continues to work unchanged — the split file
 
 - `packages/opencode/src/provider/transform.ts` Anthropic branch returns the `xhigh` variant (budget `min(32_000, model.limit.output - 1)`) for models whose id matches `claude-opus-4-N` with `N >= 7`, or whose `release_date >= "2026-03-19"`. Mirrors the OpenAI `xhigh` gate pattern.
 
-### Codex family rotation rule (plans/codex-rotation-hotfix, 2026-04-18; superseded in part by specs/provider-account-decoupling 2026-05-03)
+### Codex family rotation rule (plans/codex-rotation-hotfix, 2026-04-18; superseded in part by specs/_archive/provider-account-decoupling 2026-05-03)
 
 - Codex and openai share the ChatGPT subscription `wham/usage` endpoint. `RateLimitJudge.getBackoffStrategy` returns `"cockpit"` for both families; `fetchCockpitBackoff` treats them identically via the `COCKPIT_WHAM_USAGE_FAMILIES` set. The pure helper `evaluateWhamUsageQuota` drives per-candidate `isQuotaLimited` inside `rotation3d.buildFallbackCandidates`, so a codex account that drained its 5H or weekly window is skipped instead of blindly retried.
-- ~~`rotation3d.enforceCodexFamilyOnly`~~ **deleted 2026-05-03 by `specs/provider-account-decoupling/` DD-5.** Rotation comparisons are now pure equality on family-form `providerId`. Same-family containment is enforced structurally (registry only holds family entries; per-account state lives under `providers[family].accounts[accountId]`), not by a string-shape gate. Codex follows the same rotation policy as every other family.
+- ~~`rotation3d.enforceCodexFamilyOnly`~~ **deleted 2026-05-03 by `specs/_archive/provider-account-decoupling/` DD-5.** Rotation comparisons are now pure equality on family-form `providerId`. Same-family containment is enforced structurally (registry only holds family entries; per-account state lives under `providers[family].accounts[accountId]`), not by a string-shape gate. Codex follows the same rotation policy as every other family.
 - When `findFallback` returns null and the current vector is codex, `session/llm.ts::handleRateLimitFallback` throws `CodexFamilyExhausted` (NamedError defined in `rate-limit-judge.ts`). `session/processor.ts` wraps each in-catch-block `handleRateLimitFallback` call with a local try/catch that surfaces the error via `MessageV2.fromError` and sets session state to idle; the preflight call in the outer try block bubbles the throw into the existing catch-fallthrough path.
 - `account/rotation/backoff.ts::parseRateLimitReason` adds passive message-pattern guards for codex 5H / response-time-window / weekly-usage strings as a belt-and-suspenders when cockpit is unreachable, mapping them to `QUOTA_EXHAUSTED`.
 
-### Provider / Family / Account Naming (specs/provider-account-decoupling, 2026-05-03)
+### Provider / Family / Account Naming (specs/_archive/provider-account-decoupling, 2026-05-03)
 
 Three orthogonal dimensions are addressed throughout the dispatch chain:
 
@@ -847,7 +847,7 @@ Space {
 
 ## Session Read Cache + Rate Limit Layer
 
-Added 2026-04-19 via `specs/session-poll-cache/`. Defends the daemon against
+Added 2026-04-19 via `specs/_archive/session-poll-cache/`. Defends the daemon against
 high-frequency frontend polling on `GET /api/v2/session/{id}` and
 `GET /api/v2/session/{id}/message` without forcing clients to migrate off
 polling.
@@ -935,7 +935,7 @@ restart to apply changes (same model as `opencode.cfg`).
 
 ## Question Tool Abort Lifecycle
 
-Runtime SSOT for the `question` tool / `Question.ask` state machine. Added 2026-04-19 alongside [specs/question-tool-abort-fix/](question-tool-abort-fix/).
+Runtime SSOT for the `question` tool / `Question.ask` state machine. Added 2026-04-19 alongside [specs/_archive/question-tool-abort-fix/](question-tool-abort-fix/).
 
 ### Overview
 
@@ -989,14 +989,14 @@ Transitions:
 
 - sessionID prefix isolates cross-session state
 - content hash lets AI re-asks of the same question (new `request.id`) restore the user's draft automatically
-- FNV-1a sync chosen over async SHA-1 to avoid a createStore race where the user's fresh keystrokes would be overwritten when async hash resolves (see DD-2 v2 in `specs/question-tool-abort-fix/design.md`)
+- FNV-1a sync chosen over async SHA-1 to avoid a createStore race where the user's fresh keystrokes would be overwritten when async hash resolves (see DD-2 v2 in `specs/_archive/question-tool-abort-fix/design.md`)
 - Cache entry is written on `onCleanup` (only when `replied=false`) and cleared on `reply` / `reject` success
 
 ---
 
 ## Mandatory Skills Preload Pipeline
 
-Introduced by `specs/mandatory-skills-preload/` (2026-04-19, state=implementing as of 2026-04-20). Purpose: guarantee "must-be-present-every-round" skills are in system prompt without relying on AI to call the `skill()` tool, and without being subject to the 10-min summarize / 30-min unload idle-decay in `SkillLayerRegistry`.
+Introduced by `specs/_archive/mandatory-skills-preload/` (2026-04-19, state=implementing as of 2026-04-20). Purpose: guarantee "must-be-present-every-round" skills are in system prompt without relying on AI to call the `skill()` tool, and without being subject to the 10-min summarize / 30-min unload idle-decay in `SkillLayerRegistry`.
 
 ### Data flow
 
@@ -1072,13 +1072,13 @@ Dashboard "已載技能" panel should show pinned badges + source label for mand
 - `templates/AGENTS.md`, `templates/system_prompt.md`, `templates/global_constitution.md`, `packages/opencode/src/agent/prompt/coding.txt`, and `enablement.json` references all cleaned up.
 - Skills submodule commit `9103663` removes `agent-workflow/SKILL.md` and rewrites `code-thinker/SKILL.md`.
 
-See `specs/mandatory-skills-preload/design.md` DD-8/DD-10 and `docs/events/event_20260419_mandatory_skills_preload.md` for full decision trace.
+See `specs/_archive/mandatory-skills-preload/design.md` DD-8/DD-10 and `docs/events/event_20260419_mandatory_skills_preload.md` for full decision trace.
 
 ---
 
 ## Capability Layer vs Conversation Layer (Session Rebind Epoch)
 
-Introduced by `specs/session-rebind-capability-refresh/` (2026-04-20). Extends and refines the Mandatory Skills Preload Pipeline above.
+Introduced by `specs/_archive/session-rebind-capability-refresh/` (2026-04-20). Extends and refines the Mandatory Skills Preload Pipeline above.
 
 ### Layer boundary
 
@@ -1154,7 +1154,7 @@ UI `POST /session/:id/resume` triggers a bump + reinject without invoking the LL
 - `capability_layer.refresh_failed` (error/anomaly) — reinject threw; previous cache retained
 - `tool.refresh_loop_suspected` (warn/anomaly) — per-turn tool limit exceeded
 
-See `specs/session-rebind-capability-refresh/design.md` (15 DDs) for the full decision trace.
+See `specs/_archive/session-rebind-capability-refresh/design.md` (15 DDs) for the full decision trace.
 
 ## Tool Framework Contract
 
@@ -1185,7 +1185,7 @@ The session processor (`session/processor.ts`) persists tool-call arguments on t
 
 `normalizeQuestionInput` / `normalizeSingleQuestion` live in `packages/sdk/js/src/v2/question-normalize.ts` so both server runtime (`Question.normalize` re-exports from SDK) and client runtimes (webapp `QuestionDock` / `message-part.tsx`, TUI `session/index.tsx`) use the same pure implementation. Any future tool with cross-runtime shape coercion should follow the same pattern.
 
-See `specs/question-tool-input-normalization/` for the full RCA, design (DD-1…DD-6), and test vectors.
+See `specs/_archive/question-tool-input-normalization/` for the full RCA, design (DD-1…DD-6), and test vectors.
 
 ## UI Freshness Contract (session-ui-freshness)
 
@@ -1212,11 +1212,11 @@ See `specs/question-tool-input-normalization/` for the full RCA, design (DD-1…
 
 **Feature flag rollout**: `ui_session_freshness_enabled=0` (default) → `classifyFidelity` early-returns `"fresh"`, so every memo renders baseline (byte-equivalent to pre-plan `2fa1b0b2d~1`). Operators opt in by flipping the flag in `/etc/opencode/tweaks.cfg` and restarting the daemon. Retirement trigger is acceptance-based (not time-based): once R1–R6 pass with flag=1, a follow-up `amend` removes the flag and dead code.
 
-See `specs/session-ui-freshness/` for the full lifecycle, design decisions DD-1 through DD-8, error catalogue, and observability contract.
+See `specs/_archive/session-ui-freshness/` for the full lifecycle, design decisions DD-1 through DD-8, error catalogue, and observability contract.
 
 ## Daemon Lifecycle Authority
 
-安全自重啟契約（spec: `specs/safe-daemon-restart/`）。
+安全自重啟契約（spec: `specs/_archive/safe-daemon-restart/`）。
 
 **唯一權威**: Gateway（`/usr/local/bin/opencode-gateway`，source `daemon/opencode-gateway.c`）是 per-user bun daemon 的唯一 lifecycle owner。Daemon 不 fork 自己、不 exec 兄弟、不呼叫 `webctl.sh` 做 spawn/kill。
 
@@ -1312,14 +1312,14 @@ Violations = P0 (user-facing orchestrator hang).
 - `I-1` subagent status bar hydration after reload / multi-client
 - `I-4` mobile UX collapse on large sessions (next spec)
 
-See `specs/responsive-orchestrator/` for full documentation (proposal.md, spec.md, design.md DD-1..DD-11, IDEF0/GRAFCET, C4, sequence, tasks.md, handoff.md, errors.md, observability.md, test-vectors.json, issues.md).
+See `specs/_archive/responsive-orchestrator/` for full documentation (proposal.md, spec.md, design.md DD-1..DD-11, IDEF0/GRAFCET, C4, sequence, tasks.md, handoff.md, errors.md, observability.md, test-vectors.json, issues.md).
 
 ## Incoming Attachments Lifecycle (2026-05-03)
 
 Two specs together define this surface:
 
-1. **`specs/repo-incoming-attachments/`** — repo-anchored upload layout, per-file history journal, AttachmentRefPart carrier with `repo_path` + `sha256`. **STILL CURRENT** for the upload + history + AI-facing routing-hint parts (DD-1 / DD-2 / DD-6 / DD-7 / DD-8 / DD-12 / DD-13 / DD-14 / DD-17).
-2. **`specs/docxmcp-http-transport/`** — replaces the bind-mount-based dispatcher implementation with HTTP Streamable transport over Unix domain socket, per-user docker compose container, multipart `POST /files` + token-based tool args. **SUPERSEDED** in repo-incoming-attachments: DD-3 (mcp container `/state` mount), DD-5 (host staging dir), DD-11 (hard-link + break-on-write), DD-15 (EXDEV cross-fs fallback), DD-16 (host-side manifest sha integrity).
+1. **`specs/_archive/repo-incoming-attachments/`** — repo-anchored upload layout, per-file history journal, AttachmentRefPart carrier with `repo_path` + `sha256`. **STILL CURRENT** for the upload + history + AI-facing routing-hint parts (DD-1 / DD-2 / DD-6 / DD-7 / DD-8 / DD-12 / DD-13 / DD-14 / DD-17).
+2. **`specs/_archive/docxmcp-http-transport/`** — replaces the bind-mount-based dispatcher implementation with HTTP Streamable transport over Unix domain socket, per-user docker compose container, multipart `POST /files` + token-based tool args. **SUPERSEDED** in repo-incoming-attachments: DD-3 (mcp container `/state` mount), DD-5 (host staging dir), DD-11 (hard-link + break-on-write), DD-15 (EXDEV cross-fs fallback), DD-16 (host-side manifest sha integrity).
 
 The earlier description below (layout / layered model / dispatcher boundary / tool-write hook / drift safety net) is updated post-cutover to reflect the HTTP-transport reality.
 
@@ -1353,7 +1353,7 @@ The earlier description below (layout / layered model / dispatcher boundary / to
 
 **Decisions worth knowing system-wide (post-cutover):**
 
-From `specs/repo-incoming-attachments/`:
+From `specs/_archive/repo-incoming-attachments/`:
 - DD-1 fail-fast on no `session.project.path`.
 - DD-2 jsonl history per file at `incoming/.history/<filename>.jsonl`.
 - DD-12 filename sanitize (NFC + control strip + 256-byte cap).
@@ -1361,7 +1361,7 @@ From `specs/repo-incoming-attachments/`:
 - DD-14 result-path rewriting is a scoped string replacement.
 - DD-17 new uploads live in repo + JSON metadata in `AttachmentRefPart` (`repo_path` + `sha256`); legacy `attachments` table untouched and remains readable.
 
-From `specs/docxmcp-http-transport/`:
+From `specs/_archive/docxmcp-http-transport/`:
 - DD-1 transport: MCP Streamable HTTP framing carried over Unix domain socket.
 - DD-2 file API: multipart raw bytes (no base64), token returned.
 - DD-3 token format `tok_<32-char-base32>`.

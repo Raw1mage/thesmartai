@@ -19,22 +19,22 @@
 
 ## Decision
 
-- Promotion target：`specs/codex/websocket/`
+- Promotion target：`specs/_archive/codex/websocket/`
 - 原 `plans/codex-websocket/` 目錄在 promotion 後移除
 - `tasks.md` 在新 root 中保留為 completion ledger；Phase 1-3 視為完成，Phase 4 維持 shelved
 
 ## Files Moved
 
-- `plans/codex-websocket/` -> `specs/codex/websocket/`
+- `plans/codex-websocket/` -> `specs/_archive/codex/websocket/`
 
 ## Validation
 
-- `specs/codex/README.md` 已納入 `websocket/` 子主題
+- `specs/_archive/codex/README.md` 已納入 `websocket/` 子主題
 - `specs/architecture.md` 已記錄 websocket promotion
-- `specs/codex/websocket/tasks.md` 已從 execution checklist 正規化為 completed ledger
+- `specs/_archive/codex/websocket/tasks.md` 已從 execution checklist 正規化為 completed ledger
 - `plans/` 下已不再保留 `codex-websocket/` 目錄
 
 ## Notes
 
 - 本次是 promotion / taxonomy 更新，不重新聲稱執行期驗證已在本回合重跑。
-- `specs/codex/provider_runtime/` 仍是上位 runtime contract；`specs/codex/websocket/` 是其下已完成的 transport-specific formal spec。
+- `specs/_archive/codex/provider_runtime/` 仍是上位 runtime contract；`specs/_archive/codex/websocket/` 是其下已完成的 transport-specific formal spec。

@@ -1,6 +1,6 @@
 # Event 2026-05-03: prompt-cache-and-compaction-hardening Phase A landed
 
-Spec: [`specs/prompt-cache-and-compaction-hardening/`](../../specs/prompt-cache-and-compaction-hardening/)
+Spec: [`specs/_archive/prompt-cache-and-compaction-hardening/`](../../specs/_archive/prompt-cache-and-compaction-hardening/)
 Lifecycle: `implementing` → `verified`
 Beta worktree: `/home/pkcs12/projects/opencode-worktrees/prompt-cache-hardening` (retained for Phase B)
 Beta branch: `beta/prompt-cache-hardening` (retained for Phase B)
@@ -12,7 +12,7 @@ Merge commits on main:
 
 ## What landed
 
-5 design decisions, all additive, zero schema change. Phase B (system block static/preface split + 4-breakpoint allocator) is NOT in this drop and remains gated behind separate user approval per [tasks.md §8](../../specs/prompt-cache-and-compaction-hardening/tasks.md).
+5 design decisions, all additive, zero schema change. Phase B (system block static/preface split + 4-breakpoint allocator) is NOT in this drop and remains gated behind separate user approval per [tasks.md §8](../../specs/_archive/prompt-cache-and-compaction-hardening/tasks.md).
 
 ### DD-6 — Anchor sanitizer ([anchor-sanitizer.ts](../../packages/opencode/src/session/anchor-sanitizer.ts))
 
@@ -48,7 +48,7 @@ Per session, rolling sha256 window of size 3 over `system.join("\n")`, recorded 
 
 Why: AGENTS.md edits, account switches, and model swaps all invalidate prompt cache without conversation growing. Pre-fix, cache-aware compaction would fire for these and waste a compaction round on a non-conversation problem.
 
-## Validation gate ([tasks.md §6 + §7](../../specs/prompt-cache-and-compaction-hardening/tasks.md))
+## Validation gate ([tasks.md §6 + §7](../../specs/_archive/prompt-cache-and-compaction-hardening/tasks.md))
 
 | Step | Status | Evidence |
 |---|---|---|
@@ -94,7 +94,7 @@ Total Phase A coverage: 57 unit tests + 4 wiring tests = **61 tests / 117 expect
 - DD-6 end-to-end: trigger `/compact` manually; grep the persisted message stream for `<prior_context source="narrative">`.
 
 ### Phase B — gated, separate user approval required
-[tasks.md §8](../../specs/prompt-cache-and-compaction-hardening/tasks.md):
+[tasks.md §8](../../specs/_archive/prompt-cache-and-compaction-hardening/tasks.md):
 - B.1–B.4: ContextPrefaceBuilder + StaticSystemBuilder + structured PreloadProvider
 - B.5: transform.ts applyCaching → 4-breakpoint allocator
 - B.6: new plugin hook `experimental.chat.context.transform`

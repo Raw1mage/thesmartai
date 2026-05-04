@@ -69,7 +69,7 @@
 
 ## Handoff
 
-- Build agent MUST read `implementation-spec.md` first, then `proposal.md`, `spec.md`, `design.md`, `tasks.md`, `handoff.md`, plus `specs/codex/provider-hotfix/` (sibling package) + `specs/architecture.md` (Provider Universe Authority section).
+- Build agent MUST read `implementation-spec.md` first, then `proposal.md`, `spec.md`, `design.md`, `tasks.md`, `handoff.md`, plus `specs/_archive/codex/provider-hotfix/` (sibling package) + `specs/architecture.md` (Provider Universe Authority section).
 - Runtime todo MUST be materialized from `tasks.md` via `todowrite(mode=replan_adoption)` before coding.
 - Build agent MUST NOT resume from discussion memory — this plan package is the execution contract.
 - Every Phase is small and independent enough to land as its own commit on the beta branch. Validate at phase boundaries before moving on. Phase 3 is the highest-risk phase; do it AFTER Phase 1 + 2 land.

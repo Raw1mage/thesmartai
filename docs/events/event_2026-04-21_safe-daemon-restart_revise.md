@@ -1,6 +1,6 @@
 # Scope Revision — safe-daemon-restart (2026-04-21)
 
-Plan: `specs/safe-daemon-restart/`
+Plan: `specs/_archive/safe-daemon-restart/`
 Trigger: user clarified real self-restart scenario covers rebuild+install, not just signal-based respawn.
 
 ## What changed

@@ -1,6 +1,6 @@
 # Phase 2 Done — Hybrid-LLM Is Now Primary Compaction Kind
 
-**Spec**: `specs/tool-output-chunking/` (context-management subsystem)
+**Spec**: `specs/_archive/tool-output-chunking/` (context-management subsystem)
 **Phase**: 2 — Layer 1 hybrid-llm
 **Branch**: `beta/phase-1-context-management`
 **Tip**: `0436b2743`
@@ -63,7 +63,7 @@ Production observation 2026-04-29: the existing 90% overflow gate from compactio
 - **Phase 2.18 / 2.19 / 2.20** cross-provider regression / failure injection / daemon-restart tests: all need an LLM-stub harness or real provider mocks. Doable but a separate test-infrastructure chunk.
 - **Phase 2.21** cache hit-rate post-merge gate: requires real workload telemetry collected over time. Can't fabricate; verifies in production.
 
-These are tracked in `specs/tool-output-chunking/tasks.md` with `[!]` blocked-with-reason or `[-]` deferred-with-reason markers.
+These are tracked in `specs/_archive/tool-output-chunking/tasks.md` with `[!]` blocked-with-reason or `[-]` deferred-with-reason markers.
 
 ## Rollback path
 

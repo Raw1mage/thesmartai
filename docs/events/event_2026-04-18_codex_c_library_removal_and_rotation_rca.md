@@ -49,7 +49,7 @@ Explore agent 與人工 code review 指出：
 - **H4 — UI 雙渲染**（可能並存）：同 request ID 出現兩次應為 TUI reducer 重覆處理單一 error event，非真實雙發請求。
 - **H2/H3/H5** 不排除，由 Phase A log 數據驗證。
 
-待 Phase A log 收集後於 `specs/codex/revision/2026-04-18_subagent-rotation-rca/design.md` 補 `## RCA Findings` 段落並選定 fix。
+待 Phase A log 收集後於 `specs/_archive/codex/revision/2026-04-18_subagent-rotation-rca/design.md` 補 `## RCA Findings` 段落並選定 fix。
 
 ## 學到的教訓
 
@@ -57,6 +57,6 @@ Explore agent 與人工 code review 指出：
 
 ## 相關 spec
 
-- `specs/codex/revision/2026-04-18_codex-c-library-removal/`
-- `specs/codex/revision/2026-04-18_subagent-rotation-rca/`
-- `specs/codex/provider_runtime/design.md#DD-6`（新增交叉參考）
+- `specs/_archive/codex/revision/2026-04-18_codex-c-library-removal/`
+- `specs/_archive/codex/revision/2026-04-18_subagent-rotation-rca/`
+- `specs/_archive/codex/provider_runtime/design.md#DD-6`（新增交叉參考）

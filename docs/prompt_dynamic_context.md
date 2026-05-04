@@ -1,6 +1,6 @@
 # Dynamic Context Preface
 
-This document explains the user-role context preface introduced by **Phase B of `specs/prompt-cache-and-compaction-hardening`** (commits `1c7194055..21a08ad2e`, landed 2026-05-04). For the higher-level prompt structure see [prompt_injection.md](./prompt_injection.md).
+This document explains the user-role context preface introduced by **Phase B of `specs/_archive/prompt-cache-and-compaction-hardening`** (commits `1c7194055..21a08ad2e`, landed 2026-05-04). For the higher-level prompt structure see [prompt_injection.md](./prompt_injection.md).
 
 ---
 
@@ -131,4 +131,4 @@ Cache hit/miss events from provider response headers (`prompt.cache.{system,pref
 | Cache breakpoint allocator | `packages/opencode/src/provider/transform.ts applyCaching` |
 | Plugin hook type | `packages/plugin/src/index.ts experimental.chat.context.transform` |
 | Assembly orchestration | `packages/opencode/src/session/llm.ts` (the non-lite branch of LLM.stream) |
-| Spec package | `specs/prompt-cache-and-compaction-hardening/` |
+| Spec package | `specs/_archive/prompt-cache-and-compaction-hardening/` |

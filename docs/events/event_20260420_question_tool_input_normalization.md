@@ -28,11 +28,11 @@ output never left the preprocess layer. In parallel, session processor wrote
 `value.input` (raw) to tool part `state.input`, so even a fix at the tool
 layer wouldn't have surfaced to UI renderers.
 
-Full RCA in [specs/question-tool-input-normalization/proposal.md](../../specs/question-tool-input-normalization/proposal.md).
+Full RCA in [specs/_archive/question-tool-input-normalization/proposal.md](../../specs/_archive/question-tool-input-normalization/proposal.md).
 
 ## Fix
 
-Spec-driven via plan-builder (`specs/question-tool-input-normalization/`,
+Spec-driven via plan-builder (`specs/_archive/question-tool-input-normalization/`,
 planned → implementing → verified). Five phases, six decisions (DD-1…DD-6):
 
 **Phase 1 — Tool framework (DD-1)**  
@@ -72,8 +72,8 @@ single-source-of-truth pattern for the question normalizer.
 
 ## Related specs
 
-- `specs/question-tool-input-normalization/` — the full plan-builder package (proposal, spec, design, idef0/grafcet, c4/sequence, data-schema, tasks, handoff, test-vectors, errors, observability).
-- `specs/question-tool-abort-fix/` (living) — prior related spec for abort lifecycle + cache key + reason telemetry. Scope does not overlap.
+- `specs/_archive/question-tool-input-normalization/` — the full plan-builder package (proposal, spec, design, idef0/grafcet, c4/sequence, data-schema, tasks, handoff, test-vectors, errors, observability).
+- `specs/_archive/question-tool-abort-fix/` (living) — prior related spec for abort lifecycle + cache key + reason telemetry. Scope does not overlap.
 
 ## Test coverage summary
 

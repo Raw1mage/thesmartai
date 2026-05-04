@@ -2,7 +2,7 @@
 
 ## 需求
 
-Start `/home/pkcs12/projects/opencode/specs/compaction-improvements` and execute unless a critical blocker appears.
+Start `/home/pkcs12/projects/opencode/specs/_archive/compaction-improvements` and execute unless a critical blocker appears.
 
 ## 範圍(IN/OUT)
 
@@ -12,7 +12,7 @@ Start `/home/pkcs12/projects/opencode/specs/compaction-improvements` and execute
 
 ## 任務清單
 
-- Create missing design/planning/modeling artifacts for `specs/compaction-improvements/`.
+- Create missing design/planning/modeling artifacts for `specs/_archive/compaction-improvements/`.
 - Back up XDG whitelist config before implementation/test commands.
 - Execute Phase A first: provider-switched fallback, rebind token refresh, no-user boundary guard coverage.
 
@@ -25,7 +25,7 @@ Start `/home/pkcs12/projects/opencode/specs/compaction-improvements` and execute
 
 - DD-E1: Treat missing `tasks.md` as a planning blocker, not an implementation blocker; fill required artifacts before touching code.
 - DD-E2: Start with Phase A edge cleanup because it is lowest risk and reduces failure modes before predictive trigger changes.
-- DD-E3: Build paused after Phase C 3.1 because `proposal.md` still carried Open Questions Q1-Q26. These are now resolved in `specs/compaction-improvements/design.md` DD-6 and its Open Question Resolution Matrix; remaining Phase C/D/E work must follow those decisions.
+- DD-E3: Build paused after Phase C 3.1 because `proposal.md` still carried Open Questions Q1-Q26. These are now resolved in `specs/_archive/compaction-improvements/design.md` DD-6 and its Open Question Resolution Matrix; remaining Phase C/D/E work must follow those decisions.
 
 ## Verification
 
@@ -39,7 +39,7 @@ Start `/home/pkcs12/projects/opencode/specs/compaction-improvements` and execute
 - Architecture Sync: Updated `specs/architecture.md` Compaction Subsystem cost-chain / runloop guard notes for Phase A.
 - XDG Backup: `/home/pkcs12/.config/opencode.bak-20260501-0131-compaction-improvements` (whitelist snapshot only; manual restore only if requested).
 - Task 3.1 validation: trigger inventory contract and predicate evaluation tests passed before design-gate pause; DD-6 now captures Q1-Q26 decisions required for 3.2+.
-- Plan validation after DD-6: `bun run /home/pkcs12/projects/skills/plan-builder/scripts/plan-validate.ts specs/compaction-improvements` passed for state=implementing (13 artifacts).
+- Plan validation after DD-6: `bun run /home/pkcs12/projects/skills/plan-builder/scripts/plan-validate.ts specs/_archive/compaction-improvements` passed for state=implementing (13 artifacts).
 - Plan sync after DD-6: warned on unrelated beta diff paths `packages/opencode/src/session/resolve-tools.ts` and `packages/opencode/src/tool/tool-loader.ts`; no compaction spec drift action required for DD-6.
 - Main isolation check: `/home/pkcs12/projects/opencode` status contains only pre-existing `templates/skills` and SYSTEM backup files; no compaction files in main.
 - Task 3.2 validation: `bun test packages/opencode/test/session/compaction.test.ts packages/opencode/test/config/tweaks.test.ts packages/opencode/test/session/prompt-account-routing.test.ts` passed (64 pass, 0 fail) after adding predicted cache-miss and stall-recovery predicate coverage.

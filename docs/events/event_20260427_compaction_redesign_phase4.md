@@ -85,7 +85,7 @@ field referenced) — log-and-continue per §16.3 decision tree.
   helper; `run` entry point; `_writeAnchor` indirection; `__test__`
   accessor with `setAnchorWriter` / `resetAnchorWriter`.
 - `packages/opencode/src/session/compaction-run.test.ts` — new (18 cases).
-- `specs/compaction-redesign/tasks.md` — phase 4 boxes checked.
+- `specs/_archive/compaction-redesign/tasks.md` — phase 4 boxes checked.
 
 ## Remaining
 

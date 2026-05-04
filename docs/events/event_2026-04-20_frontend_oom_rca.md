@@ -31,7 +31,7 @@
 - 使用者回報：瀏覽器打開 webapp 後自動跳到最後一個 active session，tab 直接 Out of Memory
 - 觀察：daemon log 顯示 `totalPartChars=3035961` 單一 part 累積 3MB+ 文字、`updates=10000+` delta
 - 根因：AI SDK 每次 delta 會 rebuild 整段文字；SSE `message.part.updated` 把 rebuild 結果推到前端；前端對每次 rebuild 都 re-render
-- 已啟動 plan：`specs/frontend-session-lazyload/`（seven-state 已推到 `implementing`，beta 分支 4 個 commit：meta endpoint、tweaks.cfg keys、part-level tail-window + fold UI、scroll-spy + 動態 page size）
+- 已啟動 plan：`specs/_archive/frontend-session-lazyload/`（seven-state 已推到 `implementing`，beta 分支 4 個 commit：meta endpoint、tweaks.cfg keys、part-level tail-window + fold UI、scroll-spy + 動態 page size）
 
 ### I-2 Project storage 878 筆 /tmp 殭屍
 
@@ -111,7 +111,7 @@
 
 | Plan | State | 分支 | 說明 |
 |---|---|---|---|
-| `specs/frontend-session-lazyload/` | `implementing` | `beta/frontend-session-lazyload` → `test/frontend-session-lazyload` | Phase 1 (server meta + tweaks) + Phase 3 (part cap) + Phase 4 (scroll-spy + meta-driven page size) 已 commit；Phase 2 (escape hatch UI) 未做 |
+| `specs/_archive/frontend-session-lazyload/` | `implementing` | `beta/frontend-session-lazyload` → `test/frontend-session-lazyload` | Phase 1 (server meta + tweaks) + Phase 3 (part cap) + Phase 4 (scroll-spy + meta-driven page size) 已 commit；Phase 2 (escape hatch UI) 未做 |
 
 ## 尚未 commit 的狀態（test/frontend-session-lazyload working tree）
 

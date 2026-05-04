@@ -2,7 +2,7 @@
 
 ## Context
 
-- Feature spec: `specs/mandatory-skills-preload/` (state=implementing as of 2026-04-19)
+- Feature spec: `specs/_archive/mandatory-skills-preload/` (state=implementing as of 2026-04-19)
 - Root issue: `agent-workflow` skill 在 `templates/AGENTS.md:10` 雖被規定為 Main Agent bootstrap step 1，但 SkillLayerRegistry 有 10min summarize / 30min unload 的 idle-decay 機制。relevance 復活靠 substring match、實務上幾乎命中不到。使用者觀察到 dashboard 長期看不到 agent-workflow。
 - 同時 runloop 的 continuation 判準已收斂為「純 todolist 殘留」，把這條關鍵契約託付給會 decay 的 skill 是架構性錯誤。
 - 根本解：runtime 硬注入 + pin 必要 skill，繞過 AI 自律呼叫 `skill()` 的環節；並同步退役已功能性空殼化的 `agent-workflow`。

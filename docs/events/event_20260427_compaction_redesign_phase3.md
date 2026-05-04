@@ -58,7 +58,7 @@ of the feature. No data corruption pathway.
 - `bun test packages/opencode/src/session/compaction.test.ts` → 9 pass / 0 fail
 - Combined: 32 tests pass across 3 files
 - `bunx tsc --noEmit -p packages/opencode/tsconfig.json` → clean for new files
-- `plan-sync.ts specs/compaction-redesign/` → clean (will run before commit)
+- `plan-sync.ts specs/_archive/compaction-redesign/` → clean (will run before commit)
 
 ## Drift
 
@@ -86,5 +86,5 @@ fidelity.
   functions `captureTurnSummaryOnExit` + `extractFinalAssistantText`
   exported, capture call wired into runloop exit branch
 - `packages/opencode/src/session/prompt.turn-summary-capture.test.ts` — new (7 cases)
-- `specs/compaction-redesign/tasks.md` — phase 3 boxes (3.4 marked
+- `specs/_archive/compaction-redesign/tasks.md` — phase 3 boxes (3.4 marked
   in-progress with rationale; manual smoke deferred to phase 11)

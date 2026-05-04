@@ -91,7 +91,7 @@ Recommend: introduce phase 7b "LLM-agent extraction" before 7.1–7.3.
 
 - `packages/opencode/src/session/compaction.regression-2026-04-27.test.ts` —
   new (3 cases)
-- `specs/compaction-redesign/tasks.md` — 7.1–7.4 marked `[!]` blocked;
+- `specs/_archive/compaction-redesign/tasks.md` — 7.1–7.4 marked `[!]` blocked;
   7.5 marked `[x]`
 
 ## Recommended next steps

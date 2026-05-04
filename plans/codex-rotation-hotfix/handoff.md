@@ -3,7 +3,7 @@
 ## Execution Contract
 
 - Build agent MUST read `implementation-spec.md` first.
-- Build agent MUST read `proposal.md` / `spec.md` / `design.md` / `tasks.md` before coding, plus `specs/codex/provider-hotfix/` (sibling hotfix package) + `specs/architecture.md` (Provider Universe Authority section).
+- Build agent MUST read `proposal.md` / `spec.md` / `design.md` / `tasks.md` before coding, plus `specs/_archive/codex/provider-hotfix/` (sibling hotfix package) + `specs/architecture.md` (Provider Universe Authority section).
 - Runtime todo MUST be materialized from `tasks.md` via `todowrite(mode=replan_adoption)` before coding begins.
 - Build agent MUST NOT resume from discussion memory — this plan package is the execution contract.
 - User-visible progress and decision prompts must reuse the planner-derived todo naming.
@@ -15,7 +15,7 @@
 - `design.md` (DD-1 through DD-10)
 - `implementation-spec.md` (assumptions + stop gates + phase contract)
 - `tasks.md` (phase-by-phase checklist)
-- `../../specs/codex/provider-hotfix/README.md` (sibling codex hotfix; covers overlapping modules)
+- `../../specs/_archive/codex/provider-hotfix/README.md` (sibling codex hotfix; covers overlapping modules)
 - `../../specs/architecture.md` (Provider Universe Authority section + Config Resolution Boundary from recent edits)
 - `../manual-pin-bypass-preflight/plan.md` (precedent for honor-explicit-intent principle extended here to cross-provider boundary)
 

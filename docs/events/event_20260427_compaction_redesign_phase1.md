@@ -2,7 +2,7 @@
 
 ## Phase
 
-1 — Memory module skeleton + Storage path (per `specs/compaction-redesign/tasks.md`).
+1 — Memory module skeleton + Storage path (per `specs/_archive/compaction-redesign/tasks.md`).
 
 ## Done
 
@@ -50,7 +50,7 @@
   no consumer has been wired)
 - `bunx tsc --noEmit -p packages/opencode/tsconfig.json` → clean for the
   new files (no errors related to memory.ts / memory.test.ts)
-- `plan-sync.ts specs/compaction-redesign/` → clean (no drift)
+- `plan-sync.ts specs/_archive/compaction-redesign/` → clean (no drift)
 
 ## Drift
 
@@ -74,4 +74,4 @@ behaviour first changes (sessions start writing TurnSummary entries).
 
 - `packages/opencode/src/session/memory.ts` — new (270 lines)
 - `packages/opencode/src/session/memory.test.ts` — new (200 lines)
-- `specs/compaction-redesign/tasks.md` — phase 1 boxes checked
+- `specs/_archive/compaction-redesign/tasks.md` — phase 1 boxes checked

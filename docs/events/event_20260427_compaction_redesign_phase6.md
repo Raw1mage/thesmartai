@@ -100,7 +100,7 @@ remains additive (Memory written but never read in legacy branches).
   before legacy compaction-request branch in runloop
 - `packages/opencode/src/session/prompt.observed-condition.test.ts` —
   new (14 cases + 3 findMostRecentAnchor cases)
-- `specs/compaction-redesign/tasks.md` — phase 6 boxes (6.2/6.3/6.4
+- `specs/_archive/compaction-redesign/tasks.md` — phase 6 boxes (6.2/6.3/6.4
   marked in-progress as "wired with transitional bridge"; phase 7
   finalizes by deleting legacy)
 

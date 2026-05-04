@@ -43,7 +43,7 @@ XDG backup: `~/.config/opencode.bak-20260420-1829-session-ui-freshness/`
   - `packages/app/src/context/global-sync/event-reducer.test.ts` — 3 個既有 fixture 補
     `receivedAt`；新增 `describe("session-ui-freshness: ...")` 含 R1.S1 / R1.S2 / R1.S3
     三個 test case
-  - `specs/session-ui-freshness/tasks.md` — task 1.1-1.3 標 `- [x]`、加 scope 修正註記
+  - `specs/_archive/session-ui-freshness/tasks.md` — task 1.1-1.3 標 `- [x]`、加 scope 修正註記
 - **Drift**:
   - Scope 修正本身算 drift（proposal 提的 `State.session_monitor` 不存在）。處理方式：
     不退回 `revise` mode；在 tasks.md inline 標 "Scope 修正 2026-04-20"，由 Phase 3.4
@@ -79,7 +79,7 @@ XDG backup: `~/.config/opencode.bak-20260420-1829-session-ui-freshness/`
   - `templates/system/tweaks.cfg` — 新區段 + 3 key 註解 + 預設值
   - `packages/opencode/test/config/tweaks.test.ts` — 8 個新 test case
   - `packages/opencode/test/server/frontend-tweaks-route.test.ts` — 2 個新 test case
-  - `specs/session-ui-freshness/tasks.md` — 2.1 ~ 2.7 標 `- [x]`
+  - `specs/_archive/session-ui-freshness/tasks.md` — 2.1 ~ 2.7 標 `- [x]`
 - **Drift**: 無。
 - **Remaining**: 進 Phase 3（UI 消費 freshness）。先寫 `classifyFidelity` 共用 util（task 3.5），再做 3.1 / 3.2 / 3.3 / 3.4 的 memo 接線。
 
@@ -111,7 +111,7 @@ XDG backup: `~/.config/opencode.bak-20260420-1829-session-ui-freshness/`
   - `packages/app/src/pages/session/tool-page.tsx` — 同上 pattern
   - `packages/app/src/pages/session/monitor-helper.ts` — `EnrichedMonitorEntry` + `ProcessCard` 加 optional `receivedAt`；`buildProcessCards` 取 group max receivedAt
   - `packages/app/src/pages/session/use-status-monitor.ts` — `StampedMonitorItem` 型別 + poll 成功時對每個 item 戳時
-  - `specs/session-ui-freshness/tasks.md` — 3.1 ~ 3.7 標 `- [x]`
+  - `specs/_archive/session-ui-freshness/tasks.md` — 3.1 ~ 3.7 標 `- [x]`
 - **Drift**:
   - PromptInput 尚未消費 dock 物件的 `fidelity` 欄位（render 還沒被降級）。決定延至 Phase 4——那邊本來就要大改 PromptInput（移除 connectionStatus memo），順手把 fidelity 視覺加入更乾淨。紀錄在此以便追蹤。
 - **Remaining**: 進 Phase 4（DD-6 連線狀態退場 + PromptInput 順手接 activeChildDock.fidelity）。
@@ -131,7 +131,7 @@ XDG backup: `~/.config/opencode.bak-20260420-1829-session-ui-freshness/`
 - **Files changed**:
   - `packages/app/src/pages/session/session-prompt-dock.tsx` — prop 型別加 `fidelity?` + `receivedAt?`；dock 卡片套 opacity + "stale" hint；hard-stale 凍結 elapsed 顯示
   - `specs/architecture.md` — 新增「UI Freshness Contract」段（見 Phase 5.5）
-  - `specs/session-ui-freshness/tasks.md` — 4.1~4.5 標狀態
+  - `specs/_archive/session-ui-freshness/tasks.md` — 4.1~4.5 標狀態
 - **Drift**: 無（僅合併 Phase 3 標記的 dock drift）。
 - **Remaining**: 進 Phase 5（flag bypass 自動 verify + 手動驗收打包 + 架構文件同步 + 待 promote）。
 
@@ -155,6 +155,6 @@ XDG backup: `~/.config/opencode.bak-20260420-1829-session-ui-freshness/`
 - **Files changed**:
   - `specs/architecture.md` — 新增 `## UI Freshness Contract (session-ui-freshness)` 段
   - `docs/events/event_2026-04-20_session_ui_freshness_implementation.md` — Phase 1-5 summary 全落地
-  - `specs/session-ui-freshness/tasks.md` — 5.1/5.4/5.5 標 `- [x]`；5.2/5.3/5.6 標 `- [?]` 等使用者
+  - `specs/_archive/session-ui-freshness/tasks.md` — 5.1/5.4/5.5 標 `- [x]`；5.2/5.3/5.6 標 `- [?]` 等使用者
 - **Drift**: 無。
 - **Remaining**: 使用者手動驗收後 → `plan-promote --to verified` → fetch-back 到 main → 刪 `beta/session-ui-freshness` 分支。

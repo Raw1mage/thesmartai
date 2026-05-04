@@ -84,7 +84,7 @@ checkpoint exists, `lastMessageId` is honoured. No data loss.
   cases for DD-8.
 - `packages/opencode/src/session/compaction-run.test.ts` — drive-by
   fix to over-budget test for determinism.
-- `specs/compaction-redesign/tasks.md` — phase 8 boxes checked.
+- `specs/_archive/compaction-redesign/tasks.md` — phase 8 boxes checked.
 
 ## Remaining
 

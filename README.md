@@ -10,7 +10,7 @@ OpenCode CMS 是一套 **多帳號、多 Provider、多模型** 的 AI 編碼代
 
 ### A0 — 系統上下文（OpenCode CMS 全局）
 
-![A0 Context — OpenCode CMS Multi-Interface AI Agent Control Plane](specs/global-architecture/diagrams/opencode_a0_idef0.svg)
+![A0 Context — OpenCode CMS Multi-Interface AI Agent Control Plane](specs/_archive/global-architecture/diagrams/opencode_a0_idef0.svg)
 
 **A0 上下文圖**展示 OpenCode 的六大功能子系統及其資料流：
 
@@ -27,7 +27,7 @@ OpenCode CMS 是一套 **多帳號、多 Provider、多模型** 的 AI 編碼代
 
 ### A1 — Manage User Interface
 
-![A1 — Manage User Interface](specs/global-architecture/diagrams/opencode_a1_idef0.svg)
+![A1 — Manage User Interface](specs/_archive/global-architecture/diagrams/opencode_a1_idef0.svg)
 
 四種平行介面共用同一組後端 API：
 
@@ -41,7 +41,7 @@ OpenCode CMS 是一套 **多帳號、多 Provider、多模型** 的 AI 編碼代
 
 ### A2 — Process AI Sessions
 
-![A2 — Process AI Sessions](specs/global-architecture/diagrams/opencode_a2_idef0.svg)
+![A2 — Process AI Sessions](specs/_archive/global-architecture/diagrams/opencode_a2_idef0.svg)
 
 Session 是 OpenCode 的核心執行單元：
 
@@ -54,7 +54,7 @@ Session 是 OpenCode 的核心執行單元：
 
 #### A23 — Generate AI Response（分解）
 
-![A23 — Generate AI Response](specs/global-architecture/diagrams/opencode_a23_idef0.svg)
+![A23 — Generate AI Response](specs/_archive/global-architecture/diagrams/opencode_a23_idef0.svg)
 
 - **A231 Prepare streamText Call**：組裝 model/prompt/tools 參數
 - **A232 Evaluate Rate Control**：Rotation3D Rate Limit 判定
@@ -66,7 +66,7 @@ Session 是 OpenCode 的核心執行單元：
 
 ### A3 — Route Provider & Account
 
-![A3 — Route Provider and Account](specs/global-architecture/diagrams/opencode_a3_idef0.svg)
+![A3 — Route Provider and Account](specs/_archive/global-architecture/diagrams/opencode_a3_idef0.svg)
 
 三層帳號架構 + Rotation3D 多維路由：
 
@@ -78,7 +78,7 @@ Session 是 OpenCode 的核心執行單元：
 
 #### A34 — Execute Rotation3D Fallback（分解）
 
-![A34 — Execute Rotation3D Fallback](specs/global-architecture/diagrams/opencode_a34_idef0.svg)
+![A34 — Execute Rotation3D Fallback](specs/_archive/global-architecture/diagrams/opencode_a34_idef0.svg)
 
 - **A341 Evaluate Rotation Purpose**：判斷 coding/reasoning/image 用途
 - **A342 Build Candidate List**：依 FallbackStrategy 偏好排序候選
@@ -90,7 +90,7 @@ Session 是 OpenCode 的核心執行單元：
 
 ### A4 — Execute Tools & MCP
 
-![A4 — Execute Tools and MCP](specs/global-architecture/diagrams/opencode_a4_idef0.svg)
+![A4 — Execute Tools and MCP](specs/_archive/global-architecture/diagrams/opencode_a4_idef0.svg)
 
 工具系統採 dirty-flag + per-round 解析模式：
 
@@ -102,7 +102,7 @@ Session 是 OpenCode 的核心執行單元：
 
 #### A44 — Manage MCP App Lifecycle（分解）
 
-![A44 — Manage MCP App Lifecycle](specs/global-architecture/diagrams/opencode_a44_idef0.svg)
+![A44 — Manage MCP App Lifecycle](specs/_archive/global-architecture/diagrams/opencode_a44_idef0.svg)
 
 - **A441 Discover & Install**：enablement.json 定義掃描，McpAppManifest 解析
 - **A442 Configure App**：App Schema 驗證，組態寫入
@@ -114,7 +114,7 @@ Session 是 OpenCode 的核心執行單元：
 
 ### A5 — Orchestrate Autonomous Workflow
 
-![A5 — Orchestrate Autonomous Workflow](specs/global-architecture/diagrams/opencode_a5_idef0.svg)
+![A5 — Orchestrate Autonomous Workflow](specs/_archive/global-architecture/diagrams/opencode_a5_idef0.svg)
 
 確定性工作流控制，非 AI-based：
 
@@ -126,7 +126,7 @@ Session 是 OpenCode 的核心執行單元：
 
 #### A54 — Run Workflow Orchestration（分解）
 
-![A54 — Run Workflow Orchestration](specs/global-architecture/diagrams/opencode_a54_idef0.svg)
+![A54 — Run Workflow Orchestration](specs/_archive/global-architecture/diagrams/opencode_a54_idef0.svg)
 
 - **A541 Load Mission Context**：Todo 清單與 Plan 狀態載入
 - **A542 Evaluate Turn Outcome**：每輪結果判斷（continue/pause/complete）
@@ -138,7 +138,7 @@ Session 是 OpenCode 的核心執行單元：
 
 ### A6 — Manage System Infrastructure
 
-![A6 — Manage System Infrastructure](specs/global-architecture/diagrams/opencode_a6_idef0.svg)
+![A6 — Manage System Infrastructure](specs/_archive/global-architecture/diagrams/opencode_a6_idef0.svg)
 
 生產級基礎設施層：
 
@@ -151,7 +151,7 @@ Session 是 OpenCode 的核心執行單元：
 
 #### A62 — Manage Per-User Daemon（分解）
 
-![A62 — Manage Per-User Daemon](specs/global-architecture/diagrams/opencode_a62_idef0.svg)
+![A62 — Manage Per-User Daemon](specs/_archive/global-architecture/diagrams/opencode_a62_idef0.svg)
 
 - **A621 Acquire Gateway Lock**：PID 鎖取得、daemon.json 寫入
 - **A622 Register Signal Handlers**：SIGTERM/SIGINT/SIGUSR1 信號路由
@@ -167,13 +167,13 @@ Session 是 OpenCode 的核心執行單元：
 
 ### Session 執行流程
 
-![Session Execution GRAFCET](specs/global-architecture/diagrams/opencode_session_grafcet_Main.svg)
+![Session Execution GRAFCET](specs/_archive/global-architecture/diagrams/opencode_session_grafcet_Main.svg)
 
 **流程說明**：使用者訊息進入 session → 組裝 prompt → AI 生成回應 → 若有 tool calls 則執行並迴圈 → turn 完成後進入 compaction → 自主模式下由 Smart Runner Governor 判斷是否繼續、暫停或完成。
 
 ### Gateway 認證與代理流程
 
-![Gateway Authentication and Proxy GRAFCET](specs/global-architecture/diagrams/opencode_gateway_grafcet_Main.svg)
+![Gateway Authentication and Proxy GRAFCET](specs/_archive/global-architecture/diagrams/opencode_gateway_grafcet_Main.svg)
 
 **流程說明**：TCP 連線進入 → HTTP header 解析 → 依類型分流至 PAM 認證或 JWT 驗證 → 認證成功後 find/spawn per-user daemon → 建立 splice proxy 雙向轉發 → 連線結束清理資源。
 
@@ -351,12 +351,12 @@ templates/             XDG 部署模板
 ## 延伸文件
 
 - [系統架構總覽](specs/architecture.md)
-- [全局 IDEF0/GRAFCET 架構圖](specs/global-architecture/diagrams/)
-- [帳號管理規格](specs/account-management/)
-- [Agent Framework](specs/agent_framework/)
-- [MCP 子系統](specs/mcp_subsystem/)
-- [Daemonization](specs/daemonization/)
-- [Scheduler Channels](specs/scheduler-channels/)
-- [Codex 協議](specs/codex/)
-- [Google Auth 整合](specs/google-auth-integration/)
-- [Web App 規格](specs/webapp/)
+- [全局 IDEF0/GRAFCET 架構圖](specs/_archive/global-architecture/diagrams/)
+- [帳號管理規格](specs/_archive/account-management/)
+- [Agent Framework](specs/_archive/agent_framework/)
+- [MCP 子系統](specs/_archive/mcp_subsystem/)
+- [Daemonization](specs/_archive/daemonization/)
+- [Scheduler Channels](specs/_archive/scheduler-channels/)
+- [Codex 協議](specs/_archive/codex/)
+- [Google Auth 整合](specs/_archive/google-auth-integration/)
+- [Web App 規格](specs/_archive/webapp/)

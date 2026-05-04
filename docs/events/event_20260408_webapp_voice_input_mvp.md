@@ -1,9 +1,9 @@
 # Event: webapp voice input MVP
 
 Date: 2026-04-08 (closed 2026-04-10)
-Status: Completed — merged to main, plan closed to `specs/webapp/voice-input/`
+Status: Completed — merged to main, plan closed to `specs/_archive/webapp/voice-input/`
 Plan Root: `plans/20260408_webapp/` (closed)
-Spec: `specs/webapp/voice-input/spec.md`
+Spec: `specs/_archive/webapp/voice-input/spec.md`
 
 ## 需求
 

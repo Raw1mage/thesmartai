@@ -110,7 +110,7 @@ branching logic were deleted from the runloop.
 - `packages/opencode/src/session/processor.ts` (-1 markRebindCompaction call; drive-by typo fix)
 - `packages/opencode/src/session/index.ts` (+continuationInvalidatedAt schema field; +markContinuationInvalidated helper)
 - `specs/architecture.md` (+Compaction Subsystem section)
-- `specs/compaction-redesign/*` (full plan-builder package)
+- `specs/_archive/compaction-redesign/*` (full plan-builder package)
 
 ### Deleted (logical)
 - `pendingRebindCompaction` Set + `markRebindCompaction` + `consumeRebindCompaction` (compaction.ts)

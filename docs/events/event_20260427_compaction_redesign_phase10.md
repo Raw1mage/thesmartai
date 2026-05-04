@@ -99,7 +99,7 @@ changed.
 - `packages/opencode/src/server/routes/session.ts` — new GET
   `/:sessionID/memory` route; `/:sessionID/summarize` body gains
   `rich` flag.
-- `specs/compaction-redesign/tasks.md` — phase 10 boxes checked.
+- `specs/_archive/compaction-redesign/tasks.md` — phase 10 boxes checked.
 
 ## Remaining
 

@@ -1,7 +1,7 @@
 # Event: frontend-session-lazyload revise — finalize + UX baseline
 
 **Date**: 2026-04-22
-**Spec**: `specs/frontend-session-lazyload/` (state=living)
+**Spec**: `specs/_archive/frontend-session-lazyload/` (state=living)
 **Final main commit**: `8da3bbf2e`
 **Merge commit**: `8a4e2df4b` (test → main, --no-ff)
 

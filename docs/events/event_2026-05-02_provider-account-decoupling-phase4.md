@@ -1,6 +1,6 @@
 # 2026-05-02 — provider-account-decoupling phase 4 (getSDK three-arg)
 
-Spec: [specs/provider-account-decoupling/](../../specs/provider-account-decoupling/)
+Spec: [specs/_archive/provider-account-decoupling/](../../specs/_archive/provider-account-decoupling/)
 Branch: `beta/provider-account-decoupling`
 Builds on: phase 3 (Auth.get two-arg)
 

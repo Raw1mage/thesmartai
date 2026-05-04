@@ -24,9 +24,9 @@ Legacy planner skill:
 
 Dog-food migration:
 
-- `plans/plan-builder/` migrated to `specs/plan-builder/` via the new `plan-migrate.ts`. This was the first real migration executed by the new skill, proving on-touch peaceful migration works end-to-end.
+- `plans/plan-builder/` migrated to `specs/_archive/plan-builder/` via the new `plan-migrate.ts`. This was the first real migration executed by the new skill, proving on-touch peaceful migration works end-to-end.
 - Inferred state: `planned` (tasks.md had zero checked items).
-- Snapshot preserved at `specs/plan-builder/.archive/pre-migration-20260418/`.
+- Snapshot preserved at `specs/_archive/plan-builder/.archive/pre-migration-20260418/`.
 
 ## Key architectural decisions
 
@@ -54,4 +54,4 @@ Second bug: `ensureNewFormat()` tried `git mv` unconditionally, which fails for 
 
 ## Plan at completion
 
-`specs/plan-builder/` — state=planned, migrated from `plans/plan-builder/`. Remaining tasks per its own `tasks.md` are mostly Phase 7 (downstream sync) and Phase 8 (sync + per-part history extras). Skill is functional as of this launch event.
+`specs/_archive/plan-builder/` — state=planned, migrated from `plans/plan-builder/`. Remaining tasks per its own `tasks.md` are mostly Phase 7 (downstream sync) and Phase 8 (sync + per-part history extras). Skill is functional as of this launch event.

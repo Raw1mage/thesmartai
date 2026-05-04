@@ -45,7 +45,7 @@ the same SessionMemory).
   (added 7 new render tests on top of phase 1's 9)
 - `bun test packages/opencode/src/session/compaction.test.ts` → 9 pass /
   0 fail (existing tests unaffected)
-- `plan-sync.ts specs/compaction-redesign/` → clean (no drift)
+- `plan-sync.ts specs/_archive/compaction-redesign/` → clean (no drift)
 
 ## Drift
 
@@ -63,4 +63,4 @@ content from production sessions.
 - `packages/opencode/src/session/memory.ts` — added renderForLLM /
   renderForLLMSync / renderForHuman / renderForHumanSync
 - `packages/opencode/src/session/memory.test.ts` — 7 new render tests
-- `specs/compaction-redesign/tasks.md` — phase 2 boxes checked
+- `specs/_archive/compaction-redesign/tasks.md` — phase 2 boxes checked

@@ -2,7 +2,7 @@
 
 ## Summary
 
-Phase B (`specs/prompt-cache-and-compaction-hardening`) implementation complete on `beta/prompt-cache-hardening-phase-b`. Direct-ship architecture (no feature flag, sole path); validation gate green; ready for user finalize approval.
+Phase B (`specs/_archive/prompt-cache-and-compaction-hardening`) implementation complete on `beta/prompt-cache-hardening-phase-b`. Direct-ship architecture (no feature flag, sole path); validation gate green; ready for user finalize approval.
 
 ## Phase B commits (in beta worktree)
 
@@ -102,7 +102,7 @@ Plus 7 new test files (~50 new unit tests).
 
 ## Reference
 
-- Spec: [specs/prompt-cache-and-compaction-hardening/](../../specs/prompt-cache-and-compaction-hardening/) (state=living)
+- Spec: [specs/_archive/prompt-cache-and-compaction-hardening/](../../specs/_archive/prompt-cache-and-compaction-hardening/) (state=living)
 - Phase A landed event: [event_20260503_prompt-cache-hardening-phase-a-landed.md](./event_20260503_prompt-cache-hardening-phase-a-landed.md)
 - Recalibration v1 (2026-05-03): commit `660f652c4`
 - Recalibration v2 (2026-05-04, direct-ship): commit `5430bf32d`

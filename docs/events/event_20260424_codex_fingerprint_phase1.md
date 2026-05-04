@@ -1,7 +1,7 @@
 # Phase 1 slice summary — codex-fingerprint-alignment
 
 日期：2026-04-24
-Spec：`specs/codex-fingerprint-alignment/` (state=implementing)
+Spec：`specs/_archive/codex-fingerprint-alignment/` (state=implementing)
 分支：`beta/codex-fingerprint-alignment` @ `e25f82f1a`
 
 ## Phase

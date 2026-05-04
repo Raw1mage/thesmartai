@@ -1,6 +1,6 @@
 # 2026-05-02 — provider-account-decoupling phase 2 (registry shape rewrite)
 
-Spec: [specs/provider-account-decoupling/](../../specs/provider-account-decoupling/)
+Spec: [specs/_archive/provider-account-decoupling/](../../specs/_archive/provider-account-decoupling/)
 Branch: `beta/provider-account-decoupling`
 Builds on: phase 1 (event_2026-05-02_provider-account-decoupling-phase1.md)
 

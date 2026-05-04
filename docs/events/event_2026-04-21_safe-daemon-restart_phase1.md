@@ -1,6 +1,6 @@
 # Phase 1 — Gateway runtime-dir guarantee + orphan cleanup (C)
 
-Plan: `specs/safe-daemon-restart/`
+Plan: `specs/_archive/safe-daemon-restart/`
 Branch: `beta/safe-daemon-restart-20260421` on `/home/pkcs12/projects/opencode-beta`
 Date: 2026-04-21
 
