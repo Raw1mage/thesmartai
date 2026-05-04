@@ -1,0 +1,266 @@
+[
+  {
+    "StepNumber": 0,
+    "StepType": "initial",
+    "StepAction": "await_user_input_idle",
+    "ModuleRef": "A0",
+    "LinkInputType": [],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [14],
+    "LinkOutputNumber": [1],
+    "Condition": ["user_message_received"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 1,
+    "StepType": "normal",
+    "StepAction": "ingest_user_text_strip_synthetic",
+    "ModuleRef": "A21",
+    "LinkInputType": [],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [0],
+    "LinkOutputNumber": [2],
+    "Condition": ["user_text_extracted"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 2,
+    "StepType": "normal",
+    "StepAction": "preload_and_pin_mandatory_skills",
+    "ModuleRef": "A1",
+    "LinkInputType": [],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [3],
+    "Condition": ["skills_resolved && pin_complete"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 3,
+    "StepType": "normal",
+    "StepAction": "match_arm_disarm_phrase_and_update_workflow",
+    "ModuleRef": "A22",
+    "LinkInputType": [],
+    "LinkOutputType": "divergence_or",
+    "LinkInputNumber": [2],
+    "LinkOutputNumber": [4, 5],
+    "Condition": [
+      "workflow_autonomous_enabled == true",
+      "workflow_autonomous_enabled == false"
+    ],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 4,
+    "StepType": "normal",
+    "StepAction": "plan_continuation_armed_path",
+    "ModuleRef": "A24",
+    "LinkInputType": [],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [3],
+    "LinkOutputNumber": [6],
+    "Condition": ["parentID==null && nextActionableTodo!=null"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 5,
+    "StepType": "normal",
+    "StepAction": "treat_as_one_shot_user_turn",
+    "ModuleRef": "A24",
+    "LinkInputType": [],
+    "LinkOutputType": "convergence_or",
+    "LinkInputNumber": [3],
+    "LinkOutputNumber": [6],
+    "Condition": ["one_shot_ready"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 6,
+    "StepType": "normal",
+    "StepAction": "assemble_prompt_and_run_llm_step",
+    "ModuleRef": "A0",
+    "LinkInputType": ["convergence_or"],
+    "LinkOutputType": "divergence_or",
+    "LinkInputNumber": [4, 5, 13],
+    "LinkOutputNumber": [7, 8, 9, 10],
+    "Condition": [
+      "tool_call_task_dispatch",
+      "tool_call_question",
+      "assistant_finish_no_tool",
+      "tool_call_other_parallel"
+    ],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 7,
+    "StepType": "sub_grafcet",
+    "StepAction": "dispatch_subagent_async_and_continue_turn",
+    "ModuleRef": "A3",
+    "LinkInputType": [],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [6],
+    "LinkOutputNumber": [11],
+    "Condition": ["dispatched==true && parent_turn_returns"],
+    "SubGrafcet": [
+      {
+        "StepNumber": 70,
+        "StepType": "initial",
+        "StepAction": "queue_job_and_return_stub_result",
+        "ModuleRef": "A31",
+        "LinkInputType": [],
+        "LinkOutputType": "track",
+        "LinkInputNumber": [73],
+        "LinkOutputNumber": [71],
+        "Condition": ["job_registered_jobid"],
+        "SubGrafcet": []
+      },
+      {
+        "StepNumber": 71,
+        "StepType": "normal",
+        "StepAction": "tick_proc_scan_watchdog",
+        "ModuleRef": "A32",
+        "LinkInputType": [],
+        "LinkOutputType": "divergence_or",
+        "LinkInputNumber": [70],
+        "LinkOutputNumber": [72, 73],
+        "Condition": [
+          "disk_terminal || worker_dead || silent_kill",
+          "still_running"
+        ],
+        "SubGrafcet": []
+      },
+      {
+        "StepNumber": 72,
+        "StepType": "normal",
+        "StepAction": "emit_task_completed_and_append_pending_notice",
+        "ModuleRef": "A34",
+        "LinkInputType": [],
+        "LinkOutputType": "convergence_or",
+        "LinkInputNumber": [71],
+        "LinkOutputNumber": [73],
+        "Condition": ["pendingSubagentNotices_appended"],
+        "SubGrafcet": []
+      },
+      {
+        "StepNumber": 73,
+        "StepType": "normal",
+        "StepAction": "idle_until_next_parent_assemble",
+        "ModuleRef": "A36",
+        "LinkInputType": ["convergence_or"],
+        "LinkOutputType": "track",
+        "LinkInputNumber": [71, 72],
+        "LinkOutputNumber": [70],
+        "Condition": ["1"],
+        "SubGrafcet": []
+      }
+    ]
+  },
+  {
+    "StepNumber": 8,
+    "StepType": "normal",
+    "StepAction": "ask_question_block_and_wait_for_reply",
+    "ModuleRef": "A5",
+    "LinkInputType": [],
+    "LinkOutputType": "divergence_or",
+    "LinkInputNumber": [6],
+    "LinkOutputNumber": [11, 14],
+    "Condition": [
+      "reply_received_or_resolved",
+      "abort_signal_fired"
+    ],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 9,
+    "StepType": "normal",
+    "StepAction": "finalize_turn_no_more_tools",
+    "ModuleRef": "A0",
+    "LinkInputType": [],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [6],
+    "LinkOutputNumber": [12],
+    "Condition": ["assistant_finish_clean"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 10,
+    "StepType": "normal",
+    "StepAction": "execute_other_tools_in_parallel",
+    "ModuleRef": "A0",
+    "LinkInputType": [],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [6],
+    "LinkOutputNumber": [11],
+    "Condition": ["all_tool_results_ready"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 11,
+    "StepType": "normal",
+    "StepAction": "merge_tool_results_back_into_turn",
+    "ModuleRef": "A0",
+    "LinkInputType": ["convergence_or"],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [7, 8, 10],
+    "LinkOutputNumber": [12],
+    "Condition": ["tool_results_committed"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 12,
+    "StepType": "normal",
+    "StepAction": "check_subagent_quota_soft_wrapup_gate",
+    "ModuleRef": "A4",
+    "LinkInputType": ["convergence_or"],
+    "LinkOutputType": "divergence_or",
+    "LinkInputNumber": [9, 11],
+    "LinkOutputNumber": [13, 14],
+    "Condition": [
+      "isChildSession && quota_below_redline -> wrapup_next_turn",
+      "no_quota_trip"
+    ],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 13,
+    "StepType": "normal",
+    "StepAction": "plan_next_action_continue_or_stop",
+    "ModuleRef": "A24",
+    "LinkInputType": [],
+    "LinkOutputType": "divergence_or",
+    "LinkInputNumber": [12],
+    "LinkOutputNumber": [6, 14],
+    "Condition": [
+      "armed && (nextActionableTodo!=null || refill_active_plan)",
+      "stop_subagent_session_or_not_armed_or_todo_complete"
+    ],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 14,
+    "StepType": "normal",
+    "StepAction": "idle_session_until_user_or_heartbeat",
+    "ModuleRef": "A6",
+    "LinkInputType": ["convergence_or"],
+    "LinkOutputType": "divergence_or",
+    "LinkInputNumber": [8, 12, 13],
+    "LinkOutputNumber": [0, 15],
+    "Condition": [
+      "next_user_message",
+      "cron_heartbeat_dispatches_due_job"
+    ],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 15,
+    "StepType": "normal",
+    "StepAction": "scheduler_dispatch_job_inject_synthetic_user",
+    "ModuleRef": "A6",
+    "LinkInputType": [],
+    "LinkOutputType": "convergence_or",
+    "LinkInputNumber": [14],
+    "LinkOutputNumber": [0],
+    "Condition": ["job_dispatched && synthetic_message_seeded"],
+    "SubGrafcet": []
+  }
+]

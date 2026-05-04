@@ -1,0 +1,332 @@
+{
+  "diagram_title": "Provide MCP Tool Surface",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Load App Manifest",
+      "decomposition": {
+        "diagram_title": "Load App Manifest",
+        "node_reference": "A1",
+        "activities": [
+          {
+            "id": "A11",
+            "title": "Read Mcp Json File"
+          },
+          {
+            "id": "A12",
+            "title": "Validate Against Manifest Schema"
+          },
+          {
+            "id": "A13",
+            "title": "Infer Manifest From Source Tree"
+          },
+          {
+            "id": "A14",
+            "title": "Merge System And User Tiers"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a1in1",
+            "source": "EXTERNAL",
+            "target": "A11:input",
+            "label": "App Directory Path"
+          },
+          {
+            "id": "a1in2",
+            "source": "EXTERNAL",
+            "target": "A14:input",
+            "label": "/etc/opencode/mcp-apps.json (system)"
+          },
+          {
+            "id": "a1in3",
+            "source": "EXTERNAL",
+            "target": "A14:input",
+            "label": "~/.config/opencode/mcp-apps.json (user)"
+          },
+          {
+            "id": "a1c1",
+            "source": "EXTERNAL",
+            "target": "A12:control",
+            "label": "Zod McpAppManifest.Schema"
+          },
+          {
+            "id": "a1c2",
+            "source": "EXTERNAL",
+            "target": "A14:control",
+            "label": "System-Tier Wins On Id Collision"
+          },
+          {
+            "id": "a1f1",
+            "source": "A11:output",
+            "target": "A12:input",
+            "label": "Raw mcp.json Bytes"
+          },
+          {
+            "id": "a1f2",
+            "source": "A11:output",
+            "target": "A13:input",
+            "label": "ENOENT Signal"
+          },
+          {
+            "id": "a1f3",
+            "source": "A13:output",
+            "target": "A12:input",
+            "label": "Generated Manifest Draft"
+          },
+          {
+            "id": "a1f4",
+            "source": "A12:output",
+            "target": "A14:input",
+            "label": "Validated McpAppManifest"
+          },
+          {
+            "id": "a1err",
+            "source": "A12:output",
+            "target": "EXTERNAL",
+            "label": "McpManifestNotFoundError (no silent fallback)"
+          },
+          {
+            "id": "a1out",
+            "source": "A14:output",
+            "target": "EXTERNAL",
+            "label": "Merged App Catalog"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A2",
+      "title": "Register Tool Catalog",
+      "decomposition": {
+        "diagram_title": "Register Tool Catalog",
+        "node_reference": "A2",
+        "activities": [
+          {
+            "id": "A21",
+            "title": "Probe Tools Via Throwaway Stdio"
+          },
+          {
+            "id": "A22",
+            "title": "Lint Bind Mount Policy"
+          },
+          {
+            "id": "A23",
+            "title": "Build App Store Entry"
+          },
+          {
+            "id": "A24",
+            "title": "Persist Managed App State"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a2in1",
+            "source": "EXTERNAL",
+            "target": "A21:input",
+            "label": "Resolved Command And Env"
+          },
+          {
+            "id": "a2c1",
+            "source": "EXTERNAL",
+            "target": "A22:control",
+            "label": "Allowed Host Regex /run/user/<uid>/opencode/sockets/*"
+          },
+          {
+            "id": "a2c2",
+            "source": "EXTERNAL",
+            "target": "A23:control",
+            "label": "McpAppStore.AppEntry Shape (incl. modelProcess)"
+          },
+          {
+            "id": "a2c3",
+            "source": "EXTERNAL",
+            "target": "A24:control",
+            "label": "BUILTIN_CATALOG (currently empty)"
+          },
+          {
+            "id": "a2f1",
+            "source": "A21:output",
+            "target": "A23:input",
+            "label": "tools/list Snapshot"
+          },
+          {
+            "id": "a2f2",
+            "source": "A22:output",
+            "target": "A23:input",
+            "label": "Lint Verdict (pass | bind_mount_forbidden)"
+          },
+          {
+            "id": "a2f3",
+            "source": "A23:output",
+            "target": "A24:input",
+            "label": "Persisted Entry Record"
+          },
+          {
+            "id": "a2out1",
+            "source": "A24:output",
+            "target": "EXTERNAL",
+            "label": "managed-apps.json (FSM State)"
+          },
+          {
+            "id": "a2out2",
+            "source": "A23:output",
+            "target": "EXTERNAL",
+            "label": "mcp-apps.json Tier File (via sudoWrapper for system)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A3",
+      "title": "Connect Transport"
+    },
+    {
+      "id": "A4",
+      "title": "Dispatch Tool Call"
+    },
+    {
+      "id": "A5",
+      "title": "Synchronize Enablement Registry"
+    },
+    {
+      "id": "A6",
+      "title": "Unload Idle Apps (Proposed Seam)"
+    }
+  ],
+  "arrows": [
+    {
+      "id": "m_in1",
+      "source": "EXTERNAL",
+      "target": "A1:input",
+      "label": "App Directory + mcp-apps.json"
+    },
+    {
+      "id": "m_in2",
+      "source": "EXTERNAL",
+      "target": "A4:input",
+      "label": "Model Tool Call (name + args)"
+    },
+    {
+      "id": "m_in3",
+      "source": "EXTERNAL",
+      "target": "A3:input",
+      "label": "OAuth Tokens (gauth.json)"
+    },
+    {
+      "id": "m_c1",
+      "source": "EXTERNAL",
+      "target": "A1:control",
+      "label": "McpAppManifest.Schema"
+    },
+    {
+      "id": "m_c2",
+      "source": "EXTERNAL",
+      "target": "A2:control",
+      "label": "Bind-Mount Policy + AGENTS.md No-Silent-Fallback"
+    },
+    {
+      "id": "m_c3",
+      "source": "EXTERNAL",
+      "target": "A3:control",
+      "label": "transport: stdio | streamable-http | sse"
+    },
+    {
+      "id": "m_c4",
+      "source": "EXTERNAL",
+      "target": "A4:control",
+      "label": "relaxTokenFieldsForDispatcher + IncomingDispatcher Rules"
+    },
+    {
+      "id": "m_c5",
+      "source": "EXTERNAL",
+      "target": "A5:control",
+      "label": "Enablement Sync Invariant (runtime == template)"
+    },
+    {
+      "id": "m_c6",
+      "source": "EXTERNAL",
+      "target": "A6:control",
+      "label": "tweaks.cfg mcp.idle_unload_ms (proposed)"
+    },
+    {
+      "id": "m_mech1",
+      "source": "EXTERNAL",
+      "target": "A3:control",
+      "label": "Bun fetch unix:{socketPath} + parseUnixSocketUrl"
+    },
+    {
+      "id": "m_mech2",
+      "source": "EXTERNAL",
+      "target": "A4:control",
+      "label": "AI SDK dynamicTool + experimental_repairToolCall"
+    },
+    {
+      "id": "m12",
+      "source": "A1:output",
+      "target": "A2:input",
+      "label": "Validated Manifest + Tier-Merged Catalog"
+    },
+    {
+      "id": "m23",
+      "source": "A2:output",
+      "target": "A3:input",
+      "label": "App Entry (command | url, transport)"
+    },
+    {
+      "id": "m34",
+      "source": "A3:output",
+      "target": "A4:control",
+      "label": "Connected MCPClient + tools()"
+    },
+    {
+      "id": "m45",
+      "source": "A4:output",
+      "target": "A5:input",
+      "label": "Active Tool Names"
+    },
+    {
+      "id": "m25",
+      "source": "A2:output",
+      "target": "A5:input",
+      "label": "ManagedAppRegistry Capabilities"
+    },
+    {
+      "id": "m5_out",
+      "source": "A5:output",
+      "target": "A4:control",
+      "label": "enablement.json Snapshot Into LLM Prompt"
+    },
+    {
+      "id": "m_idle1",
+      "source": "A4:output",
+      "target": "A6:input",
+      "label": "lastUsedAt Signal (proposed wiring)"
+    },
+    {
+      "id": "m_idle2",
+      "source": "A6:output",
+      "target": "A3:control",
+      "label": "Disconnect Trigger (proposed)"
+    },
+    {
+      "id": "m_out1",
+      "source": "A4:output",
+      "target": "EXTERNAL",
+      "label": "Tool Result To Runloop (session/llm.ts)"
+    },
+    {
+      "id": "m_out2",
+      "source": "A4:output",
+      "target": "EXTERNAL",
+      "label": "Direct Render Side Channel (.opencode/mcp-output)"
+    },
+    {
+      "id": "m_out3",
+      "source": "A6:output",
+      "target": "EXTERNAL",
+      "label": "mcp.app.unloaded Bus Event (proposed)"
+    }
+  ]
+}

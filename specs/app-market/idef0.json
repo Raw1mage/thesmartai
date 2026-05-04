@@ -1,0 +1,127 @@
+{
+  "diagram_title": "Curate App Marketplace",
+  "node_reference": "A0",
+  "description": "Unified install/configure/enable surface for three MCP component kinds (mcp-server / managed-app / mcp-app) inside the webapp Admin Panel. Catalog endpoint /api/v2/mcp/market fans out across MCP.serverApps + ManagedAppRegistry.list + McpAppStore.listApps. Persisted in managed-apps.json plus two-tier mcp-apps.json. Shipped (live as of 2026-05-04).",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "List Available Apps",
+      "description": "GET /api/v2/mcp/market (server/routes/mcp.ts L29-L116) parallel-fans out the three sources and normalizes each entry to a MarketApp shape. Reads gauth.json so OAuth-expired apps surface needs_auth.",
+      "decomposition": {
+        "diagram_title": "List Available Apps",
+        "node_reference": "A1",
+        "activities": [
+          {
+            "id": "A11",
+            "title": "Fetch MCP Server Apps",
+            "description": "MCP.serverApps() (mcp/index.ts L811) returns ServerApp shape (L803) for stdio/HTTP servers declared in mcp.json."
+          },
+          {
+            "id": "A12",
+            "title": "Fetch Managed Apps",
+            "description": "ManagedAppRegistry.list() reads ~/.config/opencode/managed-apps.json. BUILTIN_CATALOG (mcp/app-registry.ts:272) is currently empty; mechanism on standby."
+          },
+          {
+            "id": "A13",
+            "title": "Fetch Store Apps",
+            "description": "McpAppStore.listApps().catch(()=>[]) merges /etc/opencode/mcp-apps.json (system, sudo opencode-app-install) with ~/.config/opencode/mcp-apps.json (user). System wins on id collision."
+          },
+          {
+            "id": "A14",
+            "title": "Normalize And Decorate",
+            "description": "Each entry mapped to MarketApp (kind, name, description, icon, status, tools, enabled, optional auth+error). gauth.json consulted to attach needs_auth / 'OAuth token expired' instead of silent failure."
+          }
+        ],
+        "arrows": [
+          {"id": "a1in1", "source": "EXTERNAL", "target": "A11:input", "label": "mcp.json"},
+          {"id": "a1in2", "source": "EXTERNAL", "target": "A12:input", "label": "managed-apps.json"},
+          {"id": "a1in3", "source": "EXTERNAL", "target": "A13:input", "label": "mcp-apps.json (system + user)"},
+          {"id": "a1c1", "source": "EXTERNAL", "target": "A11:control", "label": "Promise.all fan-out"},
+          {"id": "a1c2", "source": "EXTERNAL", "target": "A12:control", "label": "Promise.all fan-out"},
+          {"id": "a1c3", "source": "EXTERNAL", "target": "A13:control", "label": "Promise.all fan-out"},
+          {"id": "a1m1", "source": "A11:output", "target": "A14:input", "label": "serverApps"},
+          {"id": "a1m2", "source": "A12:output", "target": "A14:input", "label": "managedApps"},
+          {"id": "a1m3", "source": "A13:output", "target": "A14:input", "label": "storeApps"},
+          {"id": "a1c4", "source": "EXTERNAL", "target": "A14:control", "label": "gauth.json (OAuth token state)"},
+          {"id": "a1out1", "source": "A14:output", "target": "EXTERNAL", "label": "MarketApp[] JSON response"}
+        ]
+      }
+    },
+    {
+      "id": "A2",
+      "title": "Install App By Kind",
+      "description": "Kind-dependent install branch: mcp-server uses POST /:id/connect; managed-app uses POST /apps/:appId/install; mcp-app uses POST /store/apps (GitHub URL or local path) optionally preceded by POST /store/apps/preview dry-run.",
+      "decomposition": {
+        "diagram_title": "Install App By Kind",
+        "node_reference": "A2",
+        "activities": [
+          {
+            "id": "A21",
+            "title": "Connect MCP Server",
+            "description": "POST /:id/connect / /disconnect for stdio or HTTP servers from mcp.json."
+          },
+          {
+            "id": "A22",
+            "title": "Install Managed App",
+            "description": "POST /apps/:appId/install runs ManagedAppRegistry install state machine (mcp/app-registry.ts L119-L267 in mcp.ts)."
+          },
+          {
+            "id": "A23",
+            "title": "Preview Store App",
+            "description": "POST /store/apps/preview reads remote/local manifest dry-run; rejects bad manifest before commit."
+          },
+          {
+            "id": "A24",
+            "title": "Register Store App",
+            "description": "POST /store/apps via McpAppStore.cloneAndRegister (GitHub URL) or addApp (local path). Persists to ~/.config/opencode/mcp-apps.json."
+          }
+        ],
+        "arrows": [
+          {"id": "a2in1", "source": "EXTERNAL", "target": "A21:input", "label": "mcp-server id"},
+          {"id": "a2in2", "source": "EXTERNAL", "target": "A22:input", "label": "managed appId"},
+          {"id": "a2in3", "source": "EXTERNAL", "target": "A23:input", "label": "GitHub URL or local path"},
+          {"id": "a2c4", "source": "A23:output", "target": "A24:control", "label": "preview validated manifest"},
+          {"id": "a2mch1", "source": "EXTERNAL", "target": "A21:mechanism", "label": "stdio / HTTP transport"},
+          {"id": "a2mch2", "source": "EXTERNAL", "target": "A22:mechanism", "label": "ManagedAppRegistry"},
+          {"id": "a2mch4", "source": "EXTERNAL", "target": "A24:mechanism", "label": "McpAppStore"},
+          {"id": "a2out1", "source": "A21:output", "target": "EXTERNAL", "label": "ServerApp connected status"},
+          {"id": "a2out2", "source": "A22:output", "target": "EXTERNAL", "label": "managed_app.updated event"},
+          {"id": "a2out4", "source": "A24:output", "target": "EXTERNAL", "label": "store app registered, listed"}
+        ]
+      }
+    },
+    {
+      "id": "A3",
+      "title": "Configure App Settings",
+      "description": "POST /apps/:appId/config (managed) and /store/apps/:id/config (store, secrets). Settings dialog renders dynamic fields from settingsSchema returned by the catalog endpoint."
+    },
+    {
+      "id": "A4",
+      "title": "Authorize App OAuth",
+      "description": "GET /api/v2/mcp/apps/:appId/oauth/connect opens 600x700 popup; callback persists token, emits managed_app.updated. Token expiry surfaces as needs_auth + 'OAuth token expired'."
+    },
+    {
+      "id": "A5",
+      "title": "Uninstall App",
+      "description": "POST /apps/:appId/uninstall (managed), DELETE /store/apps/:id (store), POST /:id/disconnect (mcp-server). PATCH /store/apps/:id and POST /apps/:appId/disable provide the toggle-off path before uninstall."
+    }
+  ],
+  "arrows": [
+    {"id": "a0i1", "source": "EXTERNAL", "target": "A1:input", "label": "operator opens App Market dialog (layout.tsx:1065)"},
+    {"id": "a0c1", "source": "EXTERNAL", "target": "A1:control", "label": "GET /api/v2/mcp/market"},
+    {"id": "a0m1", "source": "A1:output", "target": "A2:input", "label": "MarketApp catalog (kind classifier)"},
+    {"id": "a0m1b", "source": "A1:output", "target": "EXTERNAL", "label": "rendered card grid (CARD_MIN_W=260, mobile single-col <767px)"},
+    {"id": "a0i2", "source": "EXTERNAL", "target": "A2:control", "label": "operator picks app + kind branch"},
+    {"id": "a0m2", "source": "A2:output", "target": "A3:input", "label": "installed app (settingsSchema)"},
+    {"id": "a0i3", "source": "EXTERNAL", "target": "A3:control", "label": "settings form submission"},
+    {"id": "a0m3", "source": "A3:output", "target": "A4:input", "label": "configured app needing OAuth"},
+    {"id": "a0c4", "source": "EXTERNAL", "target": "A4:control", "label": "needs_auth flag"},
+    {"id": "a0mch4", "source": "EXTERNAL", "target": "A4:mechanism", "label": "popup window + /oauth/callback"},
+    {"id": "a0o4a", "source": "A4:output", "target": "A1:control", "label": "managed_app.updated → refetch market"},
+    {"id": "a0i5", "source": "EXTERNAL", "target": "A5:input", "label": "operator confirms uninstall"},
+    {"id": "a0c5", "source": "EXTERNAL", "target": "A5:control", "label": "managedAppUsageHttpStatus 403/409/503 guard"},
+    {"id": "a0o5", "source": "A5:output", "target": "A1:control", "label": "removed entry → refetch market"},
+    {"id": "a0o1", "source": "A2:output", "target": "EXTERNAL", "label": "ready / connected status pill"},
+    {"id": "a0o2", "source": "A3:output", "target": "EXTERNAL", "label": "persisted config (managed-apps.json / mcp-apps.json)"}
+  ]
+}

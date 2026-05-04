@@ -1,0 +1,160 @@
+{
+  "diagram_title": "Govern Project Meta",
+  "node_reference": "A0",
+  "description": "Dev-time / meta layer of opencode: plan-builder skill (seven-state lifecycle + seven change modes), architecture documentation (architecture.md index + per-topic wiki + global-architecture snapshot + docs/events/), XDG/system config management with no-silent-fallback enumeration, and tweaks.cfg runtime knobs. Shipped (live as of 2026-05-04).",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Drive Plan Builder Lifecycle",
+      "description": "~/projects/skills/plan-builder/. SKILL.md judgment + 9 bun-executed scripts. Drives specs/<slug>/.state.json across proposed → designed → planned → implementing → verified → living → archived, applying change modes (new / promote / amend / revise / extend / refactor / sync / archive).",
+      "decomposition": {
+        "diagram_title": "Drive Plan Builder Lifecycle",
+        "node_reference": "A1",
+        "activities": [
+          {
+            "id": "A11",
+            "title": "Initialize Or Migrate Spec",
+            "description": "plan-init.ts creates specs/<slug>/proposal.md + .state.json. plan-migrate.ts (and ensureNewFormat() on every script entry) does on-touch peaceful migration from legacy plans/<slug>/ via inferState + cp snapshot to .archive/pre-migration-YYYYMMDD/ + git mv (preserves history)."
+          },
+          {
+            "id": "A12",
+            "title": "Validate State Artifacts",
+            "description": "plan-validate.ts is state-aware: checks only artifacts required for current state. Missing future-state artifacts are not blockers. plan-gaps.ts produces code-independence readiness report."
+          },
+          {
+            "id": "A13",
+            "title": "Promote Or Apply Mode",
+            "description": "plan-promote.ts handles forward state advance plus non-forward modes. amend (living→living), revise/extend (living→designed), refactor (living→proposed, auto-snapshot to .history/refactor-YYYY-MM-DD/), archive (living→archived). plan-rollback-refactor.ts reverses refactor."
+          },
+          {
+            "id": "A14",
+            "title": "Sync Drift Detection",
+            "description": "plan-sync.ts diffs git changes against data-schema.json fields, errors.md codes, test-vectors.json cases. Drift warned not blocked (exit 0). beta-workflow invokes after every task checkbox toggle. Even clean runs append {mode:sync, result:clean} to .state.json.history."
+          }
+        ],
+        "arrows": [
+          {"id": "a1in1", "source": "EXTERNAL", "target": "A11:input", "label": "operator slug + intent OR legacy plans/<slug>/ touch"},
+          {"id": "a1c1", "source": "EXTERNAL", "target": "A11:control", "label": "schemas/state.schema.json + inferState table"},
+          {"id": "a1m1", "source": "A11:output", "target": "A12:input", "label": "specs/<slug>/ skeleton + .state.json"},
+          {"id": "a1c2", "source": "EXTERNAL", "target": "A12:control", "label": "state-keyed required-artifact list"},
+          {"id": "a1m2", "source": "A12:output", "target": "A13:input", "label": "validation report"},
+          {"id": "a1c3", "source": "EXTERNAL", "target": "A13:control", "label": "mode classifier (objective rules)"},
+          {"id": "a1m3", "source": "A13:output", "target": "A14:input", "label": "advanced state + history entry"},
+          {"id": "a1c4", "source": "EXTERNAL", "target": "A14:control", "label": "git diff + data-schema/errors/test-vectors"},
+          {"id": "a1mch4", "source": "EXTERNAL", "target": "A14:mechanism", "label": "beta-workflow runner hook"},
+          {"id": "a1out1", "source": "A14:output", "target": "EXTERNAL", "label": "drift warnings + audit-trail entry"},
+          {"id": "a1out2", "source": "A13:output", "target": "EXTERNAL", "label": "promoted/archived spec package"}
+        ]
+      }
+    },
+    {
+      "id": "A2",
+      "title": "Maintain Architecture Documentation",
+      "description": "specs/architecture.md (~126KB cross-cutting index), per-topic wiki entries (compaction.md, session.md, provider.md, attachments.md, agent-runtime.md, meta.md), specs/_archive/global-architecture/ IDEF0+GRAFCET reverse-engineering snapshot (67 activities, 66 GRAFCET steps, 100% traceability), docs/events/event_YYYYMMDD_<topic>.md narrative log.",
+      "decomposition": {
+        "diagram_title": "Maintain Architecture Documentation",
+        "node_reference": "A2",
+        "activities": [
+          {
+            "id": "A21",
+            "title": "Update Cross-Cutting Index",
+            "description": "specs/architecture.md is no longer subsystem-authoritative — it is the index pointing to per-topic wiki entries. Architecture Sync checkpoints record 'Verified (No doc changes)' or link to updated topic file."
+          },
+          {
+            "id": "A22",
+            "title": "Project Living Specs As Wiki",
+            "description": "Each living-state package's source-of-truth claim is folded into specs/<topic>.md. Legacy folders remain under specs/<slug>/ until peacefully migrated to specs/_archive/."
+          },
+          {
+            "id": "A23",
+            "title": "Append Event Log",
+            "description": "docs/events/event_YYYYMMDD_<topic>.md narrative for incidents and architectural shifts. plan-builder phase summary ritual writes phase-boundary entries during implementing."
+          },
+          {
+            "id": "A24",
+            "title": "Refresh Global Snapshot On Demand",
+            "description": "specs/_archive/global-architecture/ is one-shot reverse engineering via miatdiagram skill. NOT regenerated per-change; updated only when user explicitly asks for a fresh codebase-wide snapshot."
+          }
+        ],
+        "arrows": [
+          {"id": "a2in1", "source": "EXTERNAL", "target": "A21:input", "label": "cross-cutting change PR"},
+          {"id": "a2m1", "source": "A21:output", "target": "A22:input", "label": "updated index + sync checkpoint"},
+          {"id": "a2in2", "source": "EXTERNAL", "target": "A22:input", "label": "specs/<slug>/ reaching living"},
+          {"id": "a2m2", "source": "A22:output", "target": "A23:input", "label": "wiki update event"},
+          {"id": "a2c3", "source": "EXTERNAL", "target": "A23:control", "label": "filename convention event_YYYYMMDD_<topic>.md"},
+          {"id": "a2in4", "source": "EXTERNAL", "target": "A24:input", "label": "explicit global-architecture refresh request"},
+          {"id": "a2mch4", "source": "EXTERNAL", "target": "A24:mechanism", "label": "miatdiagram skill"},
+          {"id": "a2out1", "source": "A21:output", "target": "EXTERNAL", "label": "current architecture.md"},
+          {"id": "a2out2", "source": "A22:output", "target": "EXTERNAL", "label": "current per-topic wiki"},
+          {"id": "a2out3", "source": "A23:output", "target": "EXTERNAL", "label": "appended event entry"},
+          {"id": "a2out4", "source": "A24:output", "target": "EXTERNAL", "label": "regenerated global snapshot"}
+        ]
+      }
+    },
+    {
+      "id": "A3",
+      "title": "Manage XDG And System Config",
+      "description": "Global.Path resolves XDG with OPENCODE_DATA_HOME pin (auto-set on NODE_ENV=test to per-pid tmpdir). Config.get() loadFile→LKG snapshot fallback (~/.local/state/opencode/config-lkg.json) with HTTP 503 not 500, structured body, no raw config text. loadSplit() isolates main/providers/mcp parse failures. providerAvailability derived from accounts.json + providers.json override; legacy disabled_providers read for one cycle. AGENTS.md backup whitelist mandatory before plan implementation; restore never automatic.",
+      "decomposition": {
+        "diagram_title": "Manage XDG And System Config",
+        "node_reference": "A3",
+        "activities": [
+          {
+            "id": "A31",
+            "title": "Resolve XDG Paths",
+            "description": "Global.Path in src/global/index.ts. Honours XDG_*_HOME; OPENCODE_DATA_HOME pins all four under <root>/{config,data,state,cache}. NODE_ENV=test auto-pins to per-pid tmpdir to prevent the 2026-04-18 accounts.json wipe recurring."
+          },
+          {
+            "id": "A32",
+            "title": "Load Config With LKG Fallback",
+            "description": "config.ts loadFile() throws JsonError → log.warn + read config-lkg.json (atomic-rename written on every successful load) → return {config, configStale:true}. server/app.ts onError converts ConfigJsonError/ConfigInvalidError to HTTP 503 with {code, path, line, column, hint} body."
+          },
+          {
+            "id": "A33",
+            "title": "Section-Isolate Sub-File Loads",
+            "description": "loadSplit({main, providers, mcp}). opencode.json must succeed (or LKG); providers.json failure → empty override + log.warn; mcp.json failure → MCP disabled + log.warn (lazy connect means daemon still boots)."
+          },
+          {
+            "id": "A34",
+            "title": "Backup Whitelist Snapshot",
+            "description": "Before plan implementation / first edit / first test command: snapshot whitelist (accounts.json mandatory + opencode/managed-apps/gauth/mcp/mcp-auth/openai-codex-accounts/models/providers/AGENTS + legacy ~/.local/share/opencode/accounts.json) to ~/.config/opencode.bak-YYYYMMDD-HHMM-<slug>/. Restore is never automatic — user requests explicitly."
+          }
+        ],
+        "arrows": [
+          {"id": "a3in1", "source": "EXTERNAL", "target": "A31:input", "label": "process env (XDG_*, OPENCODE_DATA_HOME, NODE_ENV)"},
+          {"id": "a3m1", "source": "A31:output", "target": "A32:input", "label": "resolved Global.Path.user"},
+          {"id": "a3in2", "source": "EXTERNAL", "target": "A32:input", "label": "opencode.json on disk"},
+          {"id": "a3c2", "source": "EXTERNAL", "target": "A32:control", "label": "AGENTS.md rule 1 (no silent fallback)"},
+          {"id": "a3m2", "source": "A32:output", "target": "A33:input", "label": "main config tree"},
+          {"id": "a3in3", "source": "EXTERNAL", "target": "A33:input", "label": "providers.json + mcp.json"},
+          {"id": "a3m3", "source": "A33:output", "target": "EXTERNAL", "label": "merged Config.Info"},
+          {"id": "a3in4", "source": "EXTERNAL", "target": "A34:input", "label": "plan slug + execution gate firing"},
+          {"id": "a3c4", "source": "EXTERNAL", "target": "A34:control", "label": "AGENTS.md backup whitelist policy"},
+          {"id": "a3out1", "source": "A32:output", "target": "EXTERNAL", "label": "HTTP 503 structured error or live config"},
+          {"id": "a3out2", "source": "A34:output", "target": "EXTERNAL", "label": "backup folder path (printed on completion)"}
+        ]
+      }
+    },
+    {
+      "id": "A4",
+      "title": "Tune Runtime Knobs Via tweaks",
+      "description": "/etc/opencode/tweaks.cfg INI-style operator tunables. Tweaks namespace at packages/opencode/src/config/tweaks.ts loadEffective() at module init. Missing file→defaults+log.info; invalid value→per-key default+log.warn; unknown key→log.warn skip; OPENCODE_TWEAKS_PATH env override. Cross-key invariants enforced (INV-7 tail_window_kb<=part_inline_cap_kb; ui_freshness_threshold_sec<hard_timeout; tool_output_budget_context_ratio<=1)."
+    }
+  ],
+  "arrows": [
+    {"id": "a0i1", "source": "EXTERNAL", "target": "A1:input", "label": "developer authors / revises spec"},
+    {"id": "a0c1", "source": "EXTERNAL", "target": "A1:control", "label": "SKILL.md + AGENTS.md rule set"},
+    {"id": "a0m1", "source": "A1:output", "target": "A2:input", "label": "spec reaching living state"},
+    {"id": "a0i2", "source": "EXTERNAL", "target": "A2:control", "label": "Architecture Sync checkpoint"},
+    {"id": "a0m2", "source": "A2:output", "target": "EXTERNAL", "label": "current wiki + event log"},
+    {"id": "a0i3", "source": "EXTERNAL", "target": "A3:input", "label": "user edits XDG / system files"},
+    {"id": "a0c3", "source": "EXTERNAL", "target": "A3:control", "label": "no-silent-fallback enumeration"},
+    {"id": "a0m3", "source": "A3:output", "target": "A4:input", "label": "merged Config.Info"},
+    {"id": "a0i4", "source": "EXTERNAL", "target": "A4:control", "label": "/etc/opencode/tweaks.cfg or OPENCODE_TWEAKS_PATH"},
+    {"id": "a0o4", "source": "A4:output", "target": "EXTERNAL", "label": "validated knob values to runtime"},
+    {"id": "a0fb1", "source": "A3:output", "target": "A1:control", "label": "backup whitelist gate satisfied → plan may enter implementing"},
+    {"id": "a0fb2", "source": "A1:output", "target": "A2:control", "label": "plan-builder phase summary triggers docs/events/ append"},
+    {"id": "a0o1", "source": "A1:output", "target": "EXTERNAL", "label": "lifecycle audit trail (.state.json.history)"},
+    {"id": "a0o3", "source": "A3:output", "target": "EXTERNAL", "label": "structured 503 on config error / runtime config"}
+  ]
+}

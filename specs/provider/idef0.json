@@ -1,0 +1,525 @@
+{
+  "diagram_title": "Route Provider Request",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Resolve Provider Family",
+      "description": "Validate family key against the registry shape and load the family's provider module (AI-SDK adapter or self-built). Anchors: provider/registry-shape.ts assertFamilyKey; provider.ts mergeProvider L1092.",
+      "decomposition": {
+        "diagram_title": "Resolve Provider Family",
+        "node_reference": "A1",
+        "activities": [
+          {
+            "id": "A11",
+            "title": "Assert Family Key"
+          },
+          {
+            "id": "A12",
+            "title": "Load Provider Module"
+          },
+          {
+            "id": "A13",
+            "title": "Reject Per-Account Slug"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a11_in_id",
+            "source": "EXTERNAL",
+            "target": "A11:input",
+            "label": "Incoming providerId",
+            "type": "input"
+          },
+          {
+            "id": "a11_ctl_known",
+            "source": "EXTERNAL",
+            "target": "A11:control",
+            "label": "knownFamilies set (Account.knownFamilies includeStorage:true)",
+            "type": "control"
+          },
+          {
+            "id": "a11_mech_assert",
+            "source": "EXTERNAL",
+            "target": "A11:mechanism",
+            "label": "assertFamilyKey() (registry-shape.ts)",
+            "type": "mechanism"
+          },
+          {
+            "id": "a11_to_a13",
+            "source": "A11:output",
+            "target": "A13:input",
+            "label": "Suspected per-account slug (codex-subscription-<x>)",
+            "type": "input"
+          },
+          {
+            "id": "a13_out_err",
+            "source": "A13:output",
+            "target": "EXTERNAL",
+            "label": "RegistryShapeError thrown",
+            "type": "output"
+          },
+          {
+            "id": "a11_to_a12",
+            "source": "A11:output",
+            "target": "A12:input",
+            "label": "Validated family key",
+            "type": "input"
+          },
+          {
+            "id": "a12_ctl_db",
+            "source": "EXTERNAL",
+            "target": "A12:control",
+            "label": "database registration (provider.ts L1218 / L1343 / L1459-L1605)",
+            "type": "control"
+          },
+          {
+            "id": "a12_mech_loaders",
+            "source": "EXTERNAL",
+            "target": "A12:mechanism",
+            "label": "CUSTOM_LOADERS + AI-SDK adapters (custom-loaders-def.ts, provider.ts switch)",
+            "type": "mechanism"
+          },
+          {
+            "id": "a12_out_family",
+            "source": "A12:output",
+            "target": "EXTERNAL",
+            "label": "Resolved family + Info{api.npm}",
+            "type": "output"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A2",
+      "title": "Select Account Identity",
+      "description": "Resolve (family, accountId) tuple via Auth.get; reject unknown family or no-active-account. Anchors: auth/index.ts L94; account/index.ts knownFamilies L272 / getActive L757.",
+      "decomposition": {
+        "diagram_title": "Select Account Identity",
+        "node_reference": "A2",
+        "activities": [
+          {
+            "id": "A21",
+            "title": "Lookup Active Account For Family"
+          },
+          {
+            "id": "A22",
+            "title": "Authenticate Tuple"
+          },
+          {
+            "id": "A23",
+            "title": "Refresh OAuth Token If Stale"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a21_in_family",
+            "source": "EXTERNAL",
+            "target": "A21:input",
+            "label": "Resolved family",
+            "type": "input"
+          },
+          {
+            "id": "a21_ctl_storage",
+            "source": "EXTERNAL",
+            "target": "A21:control",
+            "label": "accounts.json families.<family>.accounts (Storage L114)",
+            "type": "control"
+          },
+          {
+            "id": "a21_mech_getActive",
+            "source": "EXTERNAL",
+            "target": "A21:mechanism",
+            "label": "Account.getActive(family) (L757)",
+            "type": "mechanism"
+          },
+          {
+            "id": "a21_to_a22",
+            "source": "A21:output",
+            "target": "A22:input",
+            "label": "(family, accountId)",
+            "type": "input"
+          },
+          {
+            "id": "a22_mech_authget",
+            "source": "EXTERNAL",
+            "target": "A22:mechanism",
+            "label": "Auth.get(family, accountId) (auth/index.ts L94)",
+            "type": "mechanism"
+          },
+          {
+            "id": "a22_ctl_errors",
+            "source": "EXTERNAL",
+            "target": "A22:control",
+            "label": "UnknownFamilyError / NoActiveAccountError (no silent fallback)",
+            "type": "control"
+          },
+          {
+            "id": "a22_to_a23",
+            "source": "A22:output",
+            "target": "A23:input",
+            "label": "AuthRecord (token, expiresAt)",
+            "type": "input"
+          },
+          {
+            "id": "a23_out_authctx",
+            "source": "A23:output",
+            "target": "EXTERNAL",
+            "label": "AuthContext (token, originator scope)",
+            "type": "output"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A3",
+      "title": "Instantiate SDK Client",
+      "description": "Cache-keyed (family, accountId) SDK creation via getSDK; selects AI-SDK adapter by model.api.npm or self-built path (codex / claude-cli). Anchors: provider.ts getSDK L2115; codex-provider package; claude-provider package."
+    },
+    {
+      "id": "A4",
+      "title": "Build Request Headers",
+      "description": "Compose headers including authorization, originator, account routing, fingerprint betas, transport-specific add-ons. Anchors: codex-provider headers.ts buildHeaders; claude-provider protocol.ts assembleBetas L232.",
+      "decomposition": {
+        "diagram_title": "Build Request Headers",
+        "node_reference": "A4",
+        "activities": [
+          {
+            "id": "A41",
+            "title": "Assemble Family Fingerprint"
+          },
+          {
+            "id": "A42",
+            "title": "Inject Account Routing Headers"
+          },
+          {
+            "id": "A43",
+            "title": "Add Transport-Specific Headers"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a41_in_options",
+            "source": "EXTERNAL",
+            "target": "A41:input",
+            "label": "HeaderOptions (model, provider, flags)",
+            "type": "input"
+          },
+          {
+            "id": "a41_ctl_betaorder",
+            "source": "EXTERNAL",
+            "target": "A41:control",
+            "label": "Upstream push order (claude ZR1, codex CODEX_CLI_VERSION)",
+            "type": "control"
+          },
+          {
+            "id": "a41_mech_assemble",
+            "source": "EXTERNAL",
+            "target": "A41:mechanism",
+            "label": "assembleBetas / buildCodexUserAgent / ORIGINATOR",
+            "type": "mechanism"
+          },
+          {
+            "id": "a41_to_a42",
+            "source": "A41:output",
+            "target": "A42:input",
+            "label": "Base headers + anthropic-beta / User-Agent",
+            "type": "input"
+          },
+          {
+            "id": "a42_ctl_account",
+            "source": "EXTERNAL",
+            "target": "A42:control",
+            "label": "AuthContext + accountId (TitleCase ChatGPT-Account-Id)",
+            "type": "control"
+          },
+          {
+            "id": "a42_mech_buildHeaders",
+            "source": "EXTERNAL",
+            "target": "A42:mechanism",
+            "label": "buildHeaders(options) single entry (HTTP + WS)",
+            "type": "mechanism"
+          },
+          {
+            "id": "a42_to_a43",
+            "source": "A42:output",
+            "target": "A43:input",
+            "label": "Headers with auth + account routing",
+            "type": "input"
+          },
+          {
+            "id": "a43_ctl_transport",
+            "source": "EXTERNAL",
+            "target": "A43:control",
+            "label": "isWebSocket flag (transport-ws.ts L580 vs provider.ts L222)",
+            "type": "control"
+          },
+          {
+            "id": "a43_out_headers",
+            "source": "A43:output",
+            "target": "EXTERNAL",
+            "label": "Final headers (HTTP: Accept text/event-stream; WS: OpenAI-Beta responses_websockets)",
+            "type": "output"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A5",
+      "title": "Transform Request Payload",
+      "description": "Apply provider transform pipeline; place cache breakpoints (anthropic) or skip caching (codex/claude-cli native). Anchors: provider/transform.ts ProviderTransform L252; native opt-out L397; codex-compaction.ts buildContextManagement."
+    },
+    {
+      "id": "A6",
+      "title": "Dispatch And Stream Response",
+      "description": "Send via WS or HTTP, stream chunks, classify errors, update token usage and rate-limit telemetry, optionally fall back HTTP on WS failure. Anchors: codex-provider transport-ws.ts; provider.ts HTTP path L222; error.ts; rotation3d telemetry.",
+      "decomposition": {
+        "diagram_title": "Dispatch And Stream Response",
+        "node_reference": "A6",
+        "activities": [
+          {
+            "id": "A61",
+            "title": "Choose Transport"
+          },
+          {
+            "id": "A62",
+            "title": "Open Connection And Send Payload"
+          },
+          {
+            "id": "A63",
+            "title": "Stream And Classify Chunks"
+          },
+          {
+            "id": "A64",
+            "title": "Recover On Continuation Invalidated"
+          },
+          {
+            "id": "A65",
+            "title": "Update Usage And Rate-Limit Telemetry"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a61_in_payload",
+            "source": "EXTERNAL",
+            "target": "A61:input",
+            "label": "Transformed payload + headers",
+            "type": "input"
+          },
+          {
+            "id": "a61_ctl_sticky",
+            "source": "EXTERNAL",
+            "target": "A61:control",
+            "label": "Session WS sticky-fallback flag",
+            "type": "control"
+          },
+          {
+            "id": "a61_to_a62",
+            "source": "A61:output",
+            "target": "A62:input",
+            "label": "Transport choice (WS or HTTP)",
+            "type": "input"
+          },
+          {
+            "id": "a62_mech_transport",
+            "source": "EXTERNAL",
+            "target": "A62:mechanism",
+            "label": "transport-ws.ts upgrade (WS_BETA_HEADER) / fetch POST",
+            "type": "mechanism"
+          },
+          {
+            "id": "a62_to_a63",
+            "source": "A62:output",
+            "target": "A63:input",
+            "label": "Synthetic Response (text/event-stream)",
+            "type": "input"
+          },
+          {
+            "id": "a63_ctl_errors",
+            "source": "EXTERNAL",
+            "target": "A63:control",
+            "label": "WrappedWebsocketErrorEvent / HTTP status classifier (error.ts)",
+            "type": "control"
+          },
+          {
+            "id": "a63_mech_sse",
+            "source": "EXTERNAL",
+            "target": "A63:mechanism",
+            "label": "AI-SDK SSE consumer (uniform across HTTP/WS)",
+            "type": "mechanism"
+          },
+          {
+            "id": "a63_to_a64",
+            "source": "A63:output",
+            "target": "A64:input",
+            "label": "continuation-invalidated marker / 4xx-5xx",
+            "type": "input"
+          },
+          {
+            "id": "a64_ctl_bus",
+            "source": "EXTERNAL",
+            "target": "A64:control",
+            "label": "Bus event channel",
+            "type": "control"
+          },
+          {
+            "id": "a64_out_event",
+            "source": "A64:output",
+            "target": "EXTERNAL",
+            "label": "ContinuationInvalidated bus event + cache eviction",
+            "type": "output"
+          },
+          {
+            "id": "a63_to_a65",
+            "source": "A63:output",
+            "target": "A65:input",
+            "label": "Completion frames (usage, rate_limits)",
+            "type": "input"
+          },
+          {
+            "id": "a65_mech_telemetry",
+            "source": "EXTERNAL",
+            "target": "A65:mechanism",
+            "label": "rotation3d quota tracker; [WS-RATE-LIMITS] logger",
+            "type": "mechanism"
+          },
+          {
+            "id": "a65_out_stream",
+            "source": "A65:output",
+            "target": "EXTERNAL",
+            "label": "Streamed AI-SDK output + telemetry",
+            "type": "output"
+          }
+        ]
+      }
+    }
+  ],
+  "arrows": [
+    {
+      "id": "g_in_req",
+      "source": "EXTERNAL",
+      "target": "A1:input",
+      "label": "Provider request (model, providerId, prompt, tools)",
+      "type": "input"
+    },
+    {
+      "id": "g_ctl_bootguard",
+      "source": "EXTERNAL",
+      "target": "A1:control",
+      "label": "Migration boot guard (.migration-state.json version=1)",
+      "type": "control"
+    },
+    {
+      "id": "g_mech_registry",
+      "source": "EXTERNAL",
+      "target": "A1:mechanism",
+      "label": "Provider.providers registry + database (provider.ts)",
+      "type": "mechanism"
+    },
+    {
+      "id": "g_a1_a2",
+      "source": "A1:output",
+      "target": "A2:input",
+      "label": "Family + Info{api.npm, api.url}",
+      "type": "input"
+    },
+    {
+      "id": "g_ctl_accountsjson",
+      "source": "EXTERNAL",
+      "target": "A2:control",
+      "label": "accounts.json under ~/.config/opencode/",
+      "type": "control"
+    },
+    {
+      "id": "g_a2_a3",
+      "source": "A2:output",
+      "target": "A3:input",
+      "label": "(family, accountId, AuthContext)",
+      "type": "input"
+    },
+    {
+      "id": "g_ctl_modelapi",
+      "source": "EXTERNAL",
+      "target": "A3:control",
+      "label": "model.api.npm switch (AI-SDK adapter selection)",
+      "type": "control"
+    },
+    {
+      "id": "g_mech_getsdk",
+      "source": "EXTERNAL",
+      "target": "A3:mechanism",
+      "label": "getSDK(family, accountId, model) cache (provider.ts L2115)",
+      "type": "mechanism"
+    },
+    {
+      "id": "g_a3_a4",
+      "source": "A3:output",
+      "target": "A4:input",
+      "label": "SDK client + sdk.getModel handle",
+      "type": "input"
+    },
+    {
+      "id": "g_a3_a5",
+      "source": "A3:output",
+      "target": "A5:input",
+      "label": "ProviderTransform binding (subscription/native flag)",
+      "type": "input"
+    },
+    {
+      "id": "g_a2_a4",
+      "source": "A2:output",
+      "target": "A4:control",
+      "label": "AuthContext token + accountId for header injection",
+      "type": "control"
+    },
+    {
+      "id": "g_a4_a6",
+      "source": "A4:output",
+      "target": "A6:control",
+      "label": "Final request headers (HTTP or WS variant)",
+      "type": "control"
+    },
+    {
+      "id": "g_a5_a6",
+      "source": "A5:output",
+      "target": "A6:input",
+      "label": "Transformed payload (cache breakpoints applied or skipped)",
+      "type": "input"
+    },
+    {
+      "id": "g_mech_transports",
+      "source": "EXTERNAL",
+      "target": "A6:mechanism",
+      "label": "WebSocket transport adapter / HTTP fetch",
+      "type": "mechanism"
+    },
+    {
+      "id": "g_out_stream",
+      "source": "A6:output",
+      "target": "EXTERNAL",
+      "label": "Streamed AI-SDK output to runloop / session",
+      "type": "output"
+    },
+    {
+      "id": "g_out_telemetry",
+      "source": "A6:output",
+      "target": "EXTERNAL",
+      "label": "Token usage + rate-limit metrics to telemetry bus",
+      "type": "output"
+    },
+    {
+      "id": "g_fb_quota",
+      "source": "A6:output",
+      "target": "A2:control",
+      "label": "Quota-exhaustion signal (rotation3d candidate switch trigger)",
+      "type": "control"
+    },
+    {
+      "id": "g_fb_invalidate",
+      "source": "A6:output",
+      "target": "A5:control",
+      "label": "Continuation-invalidated → cache breakpoint eviction",
+      "type": "control"
+    }
+  ]
+}

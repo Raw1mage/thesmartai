@@ -1,0 +1,175 @@
+<svg width="1562" height="1900" viewBox="-280.8 -40.0 1562.4 1900.0" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="black" /></marker></defs>
+<rect x="-280.8" y="-40.0" width="1562.4" height="1900.0" fill="white" />
+<rect x="360.0" y="80.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<rect x="365.0" y="85.0" width="70.0" height="50.0" stroke="black" stroke-width="1" fill="none" />
+<text x="400" y="115.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">0</text>
+<line x1="440" y1="110.0" x2="480.0" y2="110.0" stroke="black" />
+<rect x="480.0" y="64.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="600.4" y="102.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">idle_no_</text>
+<text x="600.4" y="126.00000000000001" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">inflight</text>
+<line x1="400" y1="140.0" x2="400" y2="220" stroke="black" />
+<line x1="380" y1="180.0" x2="420" y2="180.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="184.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">request_received</text>
+<rect x="360.0" y="220.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="255.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">1</text>
+<line x1="440" y1="250.0" x2="480.0" y2="250.0" stroke="black" />
+<rect x="480.0" y="204.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="600.4" y="230.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">resolve_</text>
+<text x="600.4" y="254.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">family_via_</text>
+<text x="600.4" y="278.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">assertFamilyKey</text>
+<line x1="400" y1="280.0" x2="400" y2="360" stroke="black" />
+<line x1="380" y1="320.0" x2="420" y2="320.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="324.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">family_in_knownFamilies</text>
+<rect x="360.0" y="360.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="395.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">2</text>
+<line x1="440" y1="390.0" x2="480.0" y2="390.0" stroke="black" />
+<rect x="480.0" y="344.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="600.4" y="370.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">select_account_</text>
+<text x="600.4" y="394.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">via_Auth_get_</text>
+<text x="600.4" y="418.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">two_arg</text>
+<line x1="400" y1="420.0" x2="400" y2="500" stroke="black" />
+<line x1="380" y1="460.0" x2="420" y2="460.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="464.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">accountId_present_and_active</text>
+<rect x="360.0" y="500.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="535.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">3</text>
+<line x1="440" y1="530.0" x2="480.0" y2="530.0" stroke="black" />
+<rect x="480.0" y="484.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="600.4" y="510.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">instantiate_sdk_</text>
+<text x="600.4" y="534.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">via_getSDK_family_</text>
+<text x="600.4" y="558.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">accountId_model</text>
+<line x1="400" y1="560.0" x2="400" y2="640" stroke="black" />
+<line x1="380" y1="600.0" x2="420" y2="600.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="604.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">sdk_client_ready</text>
+<rect x="360.0" y="640.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="675.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">4</text>
+<line x1="440" y1="670.0" x2="480.0" y2="670.0" stroke="black" />
+<rect x="480.0" y="624.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="600.4" y="650.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">build_headers_</text>
+<text x="600.4" y="674.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">buildHeaders_</text>
+<text x="600.4" y="697.9999999999999" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">or_assembleBetas</text>
+<line x1="400" y1="700.0" x2="400" y2="780" stroke="black" />
+<line x1="380" y1="740.0" x2="420" y2="740.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="744.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">headers_finalized</text>
+<rect x="360.0" y="780.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="815.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">5</text>
+<line x1="440" y1="810.0" x2="480.0" y2="810.0" stroke="black" />
+<rect x="480.0" y="764.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="600.4" y="790.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">transform_payload_</text>
+<text x="600.4" y="814.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">apply_caching_</text>
+<text x="600.4" y="837.9999999999999" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">or_skip_native</text>
+<line x1="400" y1="840.0" x2="400" y2="920" stroke="black" />
+<line x1="380" y1="880.0" x2="420" y2="880.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="884.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">payload_transform_complete</text>
+<rect x="360.0" y="920.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="955.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">6</text>
+<line x1="440" y1="950.0" x2="480.0" y2="950.0" stroke="black" />
+<rect x="480.0" y="904.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="600.4" y="930.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">choose_</text>
+<text x="600.4" y="954.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">transport_</text>
+<text x="600.4" y="977.9999999999999" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">ws_or_http</text>
+<line x1="400" y1="980" x2="400" y2="1020" stroke="black" />
+<line x1="119.60000000000001" y1="1020" x2="680.3999999999999" y2="1020" stroke="black" stroke-width="1.5" />
+<line x1="159.60000000000002" y1="1020" x2="159.60000000000002" y2="1060" stroke="black" />
+<line x1="139.60000000000002" y1="1060" x2="179.60000000000002" y2="1060" stroke="black" stroke-width="2" />
+<text x="135.6" y="1064" font-style="italic" font-size="11" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">ws_enabled_and_not_sticky_fallback</text>
+<line x1="159.60000000000002" y1="1060" x2="159.60000000000002" y2="1100" stroke="black" marker-end="url(#arrow)" />
+<line x1="640.3999999999999" y1="1020" x2="640.3999999999999" y2="1060" stroke="black" />
+<line x1="620.3999999999999" y1="1060" x2="660.3999999999999" y2="1060" stroke="black" stroke-width="2" />
+<text x="664.4" y="1064" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">http_or_ws_sticky_fallback</text>
+<line x1="640.3999999999999" y1="1060" x2="640.3999999999999" y2="1100" stroke="black" marker-end="url(#arrow)" />
+<rect x="119.60000000000002" y="1100.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="159.60000000000002" y="1135.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">7</text>
+<line x1="199.60000000000002" y1="1130.0" x2="239.60000000000002" y2="1130.0" stroke="black" />
+<rect x="239.60000000000002" y="1084.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="360.0" y="1110.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">dispatch_via_websocket_</text>
+<text x="360.0" y="1134.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">upgrade_responses_</text>
+<text x="360.0" y="1158.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">websockets_2026_02_06</text>
+<line x1="159.60000000000002" y1="1160.0" x2="159.60000000000002" y2="1240" stroke="black" />
+<line x1="139.60000000000002" y1="1200.0" x2="179.60000000000002" y2="1200.0" stroke="black" stroke-width="2" />
+<text x="183.6" y="1204.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">ws_handshake_ok</text>
+<rect x="600.3999999999999" y="1100.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="640.3999999999999" y="1135.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">8</text>
+<line x1="680.3999999999999" y1="1130.0" x2="720.3999999999999" y2="1130.0" stroke="black" />
+<rect x="720.3999999999999" y="1084.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="840.7999999999998" y="1110.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">dispatch_via_</text>
+<text x="840.7999999999998" y="1134.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">http_post_text_</text>
+<text x="840.7999999999998" y="1158.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">event_stream</text>
+<line x1="640.3999999999999" y1="1160.0" x2="640.3999999999999" y2="1240" stroke="black" />
+<line x1="620.3999999999999" y1="1200.0" x2="660.3999999999999" y2="1200.0" stroke="black" stroke-width="2" />
+<text x="664.4" y="1204.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">http_response_opened</text>
+<line x1="119.60000000000001" y1="1240" x2="680.3999999999999" y2="1240" stroke="black" stroke-width="1.5" />
+<line x1="159.60000000000002" y1="1240" x2="159.60000000000002" y2="1240" stroke="black" />
+<line x1="640.3999999999999" y1="1240" x2="640.3999999999999" y2="1240" stroke="black" />
+<line x1="400" y1="1240" x2="400" y2="1280" stroke="black" marker-end="url(#arrow)" />
+<rect x="360.0" y="1280.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="1315.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">9</text>
+<line x1="440" y1="1310.0" x2="480.0" y2="1310.0" stroke="black" />
+<rect x="480.0" y="1264.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="600.4" y="1302.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">stream_chunks_</text>
+<text x="600.4" y="1326.0000000000002" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">classify_errors</text>
+<line x1="400" y1="1340" x2="400" y2="1380" stroke="black" />
+<line x1="-120.80000000000005" y1="1380" x2="920.7999999999998" y2="1380" stroke="black" stroke-width="1.5" />
+<line x1="-80.80000000000005" y1="1380" x2="-80.80000000000005" y2="1420" stroke="black" />
+<line x1="-100.80000000000005" y1="1420" x2="-60.800000000000054" y2="1420" stroke="black" stroke-width="2" />
+<text x="-104.80000000000005" y="1424" font-style="italic" font-size="11" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">chunk_completion_frame</text>
+<line x1="-80.80000000000005" y1="1420" x2="-80.80000000000005" y2="1460" stroke="black" marker-end="url(#arrow)" />
+<line x1="399.99999999999994" y1="1380" x2="399.99999999999994" y2="1420" stroke="black" />
+<line x1="379.99999999999994" y1="1420" x2="419.99999999999994" y2="1420" stroke="black" stroke-width="2" />
+<text x="375.99999999999994" y="1424" font-style="italic" font-size="11" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">rate_limit_or_quota_hit</text>
+<line x1="399.99999999999994" y1="1420" x2="399.99999999999994" y2="1460" stroke="black" marker-end="url(#arrow)" />
+<line x1="880.7999999999998" y1="1380" x2="880.7999999999998" y2="1420" stroke="black" />
+<line x1="860.7999999999998" y1="1420" x2="900.7999999999998" y2="1420" stroke="black" stroke-width="2" />
+<text x="904.8" y="1424" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">continuation_invalidated_or_4xx5xx</text>
+<line x1="880.7999999999998" y1="1420" x2="880.7999999999998" y2="1460" stroke="black" marker-end="url(#arrow)" />
+<rect x="-120.80000000000005" y="1460.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="-80.80000000000005" y="1495.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">10</text>
+<line x1="-40.800000000000054" y1="1490.0" x2="-0.800000000000054" y2="1490.0" stroke="black" />
+<rect x="-0.800000000000054" y="1444.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="119.59999999999994" y="1470.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">update_token_</text>
+<text x="119.59999999999994" y="1494.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">usage_and_rate_</text>
+<text x="119.59999999999994" y="1518.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">limit_telemetry</text>
+<line x1="-80.80000000000005" y1="1520.0" x2="-80.80000000000005" y2="1600" stroke="black" />
+<line x1="-100.80000000000005" y1="1560.0" x2="-60.800000000000054" y2="1560.0" stroke="black" stroke-width="2" />
+<text x="-56.800000000000054" y="1564.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">telemetry_committed</text>
+<rect x="359.99999999999994" y="1460.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="399.99999999999994" y="1495.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">11</text>
+<line x1="439.99999999999994" y1="1490.0" x2="479.99999999999994" y2="1490.0" stroke="black" />
+<rect x="479.9999999999999" y="1444.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="600.3999999999999" y="1470.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">rotate_account_</text>
+<text x="600.3999999999999" y="1494.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">or_backoff_via_</text>
+<text x="600.3999999999999" y="1518.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">rotation3d</text>
+<line x1="399.99999999999994" y1="1520.0" x2="399.99999999999994" y2="1600" stroke="black" />
+<line x1="379.99999999999994" y1="1560.0" x2="419.99999999999994" y2="1560.0" stroke="black" stroke-width="2" />
+<text x="423.9999999999999" y="1564.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">candidate_pool_exhausted_or_backoff_done</text>
+<rect x="840.7999999999998" y="1460.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="880.7999999999998" y="1495.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">13</text>
+<line x1="920.7999999999998" y1="1490.0" x2="960.7999999999998" y2="1490.0" stroke="black" />
+<rect x="960.7999999999998" y="1444.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="1081.1999999999998" y="1470.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">emit_continuation_</text>
+<text x="1081.1999999999998" y="1494.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">invalidated_bus_</text>
+<text x="1081.1999999999998" y="1518.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">event_and_evict_cache</text>
+<line x1="880.7999999999998" y1="1520.0" x2="880.7999999999998" y2="1600" stroke="black" />
+<line x1="860.7999999999998" y1="1560.0" x2="900.7999999999998" y2="1560.0" stroke="black" stroke-width="2" />
+<text x="904.8" y="1564.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">bus_event_emitted_and_cache_evicted</text>
+<line x1="-120.80000000000005" y1="1600" x2="920.7999999999998" y2="1600" stroke="black" stroke-width="1.5" />
+<line x1="-80.80000000000005" y1="1600" x2="-80.80000000000005" y2="1600" stroke="black" />
+<line x1="399.99999999999994" y1="1600" x2="399.99999999999994" y2="1600" stroke="black" />
+<line x1="880.7999999999998" y1="1600" x2="880.7999999999998" y2="1600" stroke="black" />
+<line x1="400" y1="1600" x2="400" y2="1640" stroke="black" marker-end="url(#arrow)" />
+<rect x="360.0" y="1640.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="1675.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">12</text>
+<line x1="440" y1="1670.0" x2="480.0" y2="1670.0" stroke="black" />
+<rect x="480.0" y="1624.0" width="240.79999999999998" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="600.4" y="1650.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">return_to_</text>
+<text x="600.4" y="1674.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">idle_release_</text>
+<text x="600.4" y="1698.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">inflight</text>
+<line x1="400" y1="1700.0" x2="400" y2="1780" stroke="black" />
+<line x1="380" y1="1740.0" x2="420" y2="1740.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="1744.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">1</text>
+<line x1="400" y1="1780" x2="400" y2="1780.0" stroke="black" />
+<line x1="400" y1="1780.0" x2="-200.80000000000007" y2="1780.0" stroke="black" />
+<line x1="-200.80000000000007" y1="1780.0" x2="-200.80000000000007" y2="40.0" stroke="black" />
+<line x1="-200.80000000000007" y1="40.0" x2="400" y2="40.0" stroke="black" />
+<line x1="400" y1="40.0" x2="400" y2="80.0" stroke="black" marker-end="url(#arrow)" />
+</svg>

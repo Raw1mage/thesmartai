@@ -1,0 +1,140 @@
+<svg width="981" height="2020" viewBox="200.0 -40.0 981.4 2020.0" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="black" /></marker></defs>
+<rect x="200.0" y="-40.0" width="981.4" height="2020.0" fill="white" />
+<rect x="360.0" y="80.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<rect x="365.0" y="85.0" width="70.0" height="50.0" stroke="black" stroke-width="1" fill="none" />
+<text x="400" y="115.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">0</text>
+<line x1="440" y1="110.0" x2="479.99999999999994" y2="110.0" stroke="black" />
+<rect x="479.99999999999994" y="64.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="90.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">Gateway splice loop serving</text>
+<text x="790.6999999999999" y="114.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">authenticated clients to per-</text>
+<text x="790.6999999999999" y="138.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">user daemon at steady state</text>
+<line x1="400" y1="140.0" x2="400" y2="220" stroke="black" />
+<line x1="380" y1="180.0" x2="420" y2="180.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="184.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">restart_self MCP tool invoked by AI</text>
+<rect x="360.0" y="220.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="255.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">1</text>
+<line x1="440" y1="250.0" x2="479.99999999999994" y2="250.0" stroke="black" />
+<rect x="479.99999999999994" y="204.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="230.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">Daemon route /api/v2/global/web/</text>
+<text x="790.6999999999999" y="254.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">restart receives JWT-authenticated</text>
+<text x="790.6999999999999" y="278.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">POST with targets and reason</text>
+<line x1="400" y1="280.0" x2="400" y2="360" stroke="black" />
+<line x1="380" y1="320.0" x2="420" y2="320.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="324.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">JWT verified and body parsed</text>
+<rect x="360.0" y="360.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="395.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">2</text>
+<line x1="440" y1="390.0" x2="479.99999999999994" y2="390.0" stroke="black" />
+<rect x="479.99999999999994" y="344.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="370.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">resolveRestartRuntimeMode</text>
+<text x="790.6999999999999" y="394.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">classifies runtime as</text>
+<text x="790.6999999999999" y="418.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">gateway-daemon or legacy</text>
+<line x1="400" y1="420.0" x2="400" y2="500" stroke="black" />
+<line x1="380" y1="460.0" x2="420" y2="460.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="464.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">isGatewayDaemon true and targets includes gateway</text>
+<rect x="360.0" y="500.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="535.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">3</text>
+<line x1="440" y1="530.0" x2="479.99999999999994" y2="530.0" stroke="black" />
+<rect x="479.99999999999994" y="484.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="510.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">Branch dispatched: gateway-target compileGatewayForSelfUpdate,</text>
+<text x="790.6999999999999" y="534.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">daemon/frontend-target spawn webctl.sh restart --graceful with</text>
+<text x="790.6999999999999" y="558.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">OPENCODE_RESTART_TXID, legacy spawn webctl.sh restart --graceful</text>
+<line x1="400" y1="560.0" x2="400" y2="640" stroke="black" />
+<line x1="380" y1="600.0" x2="420" y2="600.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="604.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">worker spawned with OPENCODE_RESTART_ERROR_LOG_FILE set</text>
+<rect x="360.0" y="640.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="675.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">4</text>
+<line x1="440" y1="670.0" x2="479.99999999999994" y2="670.0" stroke="black" />
+<rect x="479.99999999999994" y="624.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="650.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">webctl.sh do_restart fingerprints daemon</text>
+<text x="790.6999999999999" y="674.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">source, frontend bundle, and gateway C</text>
+<text x="790.6999999999999" y="697.9999999999999" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">binary against installed artifacts</text>
+<line x1="400" y1="700.0" x2="400" y2="780" stroke="black" />
+<line x1="380" y1="740.0" x2="420" y2="740.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="744.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">dirty layer set computed</text>
+<rect x="360.0" y="780.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="815.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">5</text>
+<line x1="440" y1="810.0" x2="479.99999999999994" y2="810.0" stroke="black" />
+<rect x="479.99999999999994" y="764.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="790.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">Rebuild and install only dirty</text>
+<text x="790.6999999999999" y="814.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">layers via do_build_binary, do_</text>
+<text x="790.6999999999999" y="837.9999999999999" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">build_frontend, do_compile_gateway</text>
+<line x1="400" y1="840.0" x2="400" y2="920" stroke="black" />
+<line x1="380" y1="880.0" x2="420" y2="880.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="884.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">all builds exit zero</text>
+<rect x="360.0" y="920.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="955.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">6</text>
+<line x1="440" y1="950.0" x2="479.99999999999994" y2="950.0" stroke="black" />
+<rect x="479.99999999999994" y="904.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="930.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">Worker exits zero, route handler</text>
+<text x="790.6999999999999" y="954.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">responds 200 with mode=controlled_</text>
+<text x="790.6999999999999" y="977.9999999999999" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">restart and recoveryDeadlineMs=30000</text>
+<line x1="400" y1="980.0" x2="400" y2="1060" stroke="black" />
+<line x1="380" y1="1020.0" x2="420" y2="1020.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="1024.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">targets did not include gateway</text>
+<rect x="360.0" y="1060.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="1095.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">7</text>
+<line x1="440" y1="1090.0" x2="479.99999999999994" y2="1090.0" stroke="black" />
+<rect x="479.99999999999994" y="1044.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="1070.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">Daemon path: setTimeout 300ms, then Daemon.</text>
+<text x="790.6999999999999" y="1094.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">removeDiscovery unlinks daemon.json daemon.</text>
+<text x="790.6999999999999" y="1118.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">pid daemon.sock and process.exit(0)</text>
+<line x1="400" y1="1120.0" x2="400" y2="1200" stroke="black" />
+<line x1="380" y1="1160.0" x2="420" y2="1160.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="1164.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">daemon process terminated</text>
+<rect x="360.0" y="1200.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="1235.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">9</text>
+<line x1="440" y1="1230.0" x2="479.99999999999994" y2="1230.0" stroke="black" />
+<rect x="479.99999999999994" y="1184.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="1210.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">Next authenticated request hits gateway</text>
+<text x="790.6999999999999" y="1234.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">find_or_create_daemon and detects</text>
+<text x="790.6999999999999" y="1258.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">stale daemon.json or missing socket</text>
+<line x1="400" y1="1260.0" x2="400" y2="1340" stroke="black" />
+<line x1="380" y1="1300.0" x2="420" y2="1300.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="1304.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">adopt probe failed</text>
+<rect x="360.0" y="1340.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="1375.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">10</text>
+<line x1="440" y1="1370.0" x2="479.99999999999994" y2="1370.0" stroke="black" />
+<rect x="479.99999999999994" y="1324.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="1350.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">Self-heal escalation: read daemon.lock</text>
+<text x="790.6999999999999" y="1374.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">JSON, validate /proc/&lt;pid&gt; uid match,</text>
+<text x="790.6999999999999" y="1398.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">SIGTERM, 1s waitpid, SIGKILL, unlink socket path</text>
+<line x1="400" y1="1400.0" x2="400" y2="1480" stroke="black" />
+<line x1="380" y1="1440.0" x2="420" y2="1440.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="1444.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">orphan-cleanup result exited or killed logged</text>
+<rect x="360.0" y="1480.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="1515.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">11</text>
+<line x1="440" y1="1510.0" x2="479.99999999999994" y2="1510.0" stroke="black" />
+<rect x="479.99999999999994" y="1464.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="1490.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">Gateway re-creates /run/user/&lt;uid&gt;/opencode</text>
+<text x="790.6999999999999" y="1514.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">mode 0700, parses OPENCODE_BIN argv,</text>
+<text x="790.6999999999999" y="1538.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">fork+setsid+initgroups+setgid+setuid+execvp daemon</text>
+<line x1="400" y1="1540.0" x2="400" y2="1620" stroke="black" />
+<line x1="380" y1="1580.0" x2="420" y2="1580.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="1584.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">forked daemon child pid logged</text>
+<rect x="360.0" y="1620.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="1655.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">12</text>
+<line x1="440" y1="1650.0" x2="479.99999999999994" y2="1650.0" stroke="black" />
+<rect x="479.99999999999994" y="1604.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="1630.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">New daemon Server.listenUnix binds</text>
+<text x="790.6999999999999" y="1654.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">socket and writes daemon.json daemon.</text>
+<text x="790.6999999999999" y="1678.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">pid via Daemon.writeDiscovery</text>
+<line x1="400" y1="1680.0" x2="400" y2="1760" stroke="black" />
+<line x1="380" y1="1720.0" x2="420" y2="1720.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="1724.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">/api/v2/global/health probe returns 200</text>
+<rect x="360.0" y="1760.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="1795.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">13</text>
+<line x1="440" y1="1790.0" x2="479.99999999999994" y2="1790.0" stroke="black" />
+<rect x="479.99999999999994" y="1744.0" width="621.4" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="790.6999999999999" y="1770.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">Gateway resumes splice proxy to fresh</text>
+<text x="790.6999999999999" y="1794.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">daemon, client SSE reconnect absorbs the</text>
+<text x="790.6999999999999" y="1818.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">503 window, system back to steady state</text>
+<line x1="400" y1="1820.0" x2="400" y2="1900" stroke="black" />
+<line x1="380" y1="1860.0" x2="420" y2="1860.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="1864.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">bidirectional splice established</text>
+<line x1="400" y1="1900" x2="400" y2="1900.0" stroke="black" />
+<line x1="400" y1="1900.0" x2="280" y2="1900.0" stroke="black" />
+<line x1="280" y1="1900.0" x2="280" y2="40.0" stroke="black" />
+<line x1="280" y1="40.0" x2="400" y2="40.0" stroke="black" />
+<line x1="400" y1="40.0" x2="400" y2="80.0" stroke="black" marker-end="url(#arrow)" />
+</svg>

@@ -1,0 +1,711 @@
+{
+  "diagram_title": "Run Agent Loop",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Preload Mandatory Skills",
+      "description": "Resolve sentinel blocks from project AGENTS.md, global AGENTS.md, and (for coding subagent only) coding.txt; preload + pin Skills via SkillLayerRegistry. Shipped: mandatory-skills.ts, capability-layer-loader.ts loadAndPinAll. Missing skills log skill.mandatory_missing without throwing.",
+      "decomposition": {
+        "diagram_title": "Preload Mandatory Skills",
+        "node_reference": "A1",
+        "activities": [
+          {
+            "id": "A11",
+            "title": "Parse Sentinel Blocks"
+          },
+          {
+            "id": "A12",
+            "title": "Resolve Source Priority"
+          },
+          {
+            "id": "A13",
+            "title": "Discover Skill Manifests"
+          },
+          {
+            "id": "A14",
+            "title": "Pin And Record Loaded"
+          },
+          {
+            "id": "A15",
+            "title": "Emit Missing Anomaly"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a1_in_session",
+            "source": "EXTERNAL",
+            "target": "A12:input",
+            "label": "Session + Agent Identity"
+          },
+          {
+            "id": "a1_mech_parser",
+            "source": "EXTERNAL",
+            "target": "A11:mechanism",
+            "label": "mandatory-skills.ts parseSentinelBlocks"
+          },
+          {
+            "id": "a1_ctrl_grammar",
+            "source": "EXTERNAL",
+            "target": "A11:control",
+            "label": "<!-- opencode:mandatory-skills --> Grammar"
+          },
+          {
+            "id": "a1_in_files",
+            "source": "EXTERNAL",
+            "target": "A11:input",
+            "label": "AGENTS.md + coding.txt Bytes"
+          },
+          {
+            "id": "a1_parse_to_resolve",
+            "source": "A11:output",
+            "target": "A12:control",
+            "label": "Bullet Lists Per Source"
+          },
+          {
+            "id": "a1_ctrl_priority",
+            "source": "EXTERNAL",
+            "target": "A12:control",
+            "label": "Priority: project > global > coding.txt"
+          },
+          {
+            "id": "a1_mech_resolver",
+            "source": "EXTERNAL",
+            "target": "A12:mechanism",
+            "label": "resolveMandatoryList (mandatory-skills.ts)"
+          },
+          {
+            "id": "a1_resolve_to_discover",
+            "source": "A12:output",
+            "target": "A13:input",
+            "label": "Deduped Skill Name List"
+          },
+          {
+            "id": "a1_mech_discover",
+            "source": "EXTERNAL",
+            "target": "A13:mechanism",
+            "label": "Skill Discovery API"
+          },
+          {
+            "id": "a1_discover_to_pin",
+            "source": "A13:output",
+            "target": "A14:input",
+            "label": "Discovered Manifests"
+          },
+          {
+            "id": "a1_discover_to_missing",
+            "source": "A13:output",
+            "target": "A15:input",
+            "label": "Missing Skill Name + searchedPaths"
+          },
+          {
+            "id": "a1_mech_pin",
+            "source": "EXTERNAL",
+            "target": "A14:mechanism",
+            "label": "SkillLayerRegistry.recordLoaded + pin"
+          },
+          {
+            "id": "a1_ctrl_keeprule",
+            "source": "EXTERNAL",
+            "target": "A14:control",
+            "label": "keepRule mandatory:agents_md / mandatory:coding_txt"
+          },
+          {
+            "id": "a1_pin_out",
+            "source": "A14:output",
+            "target": "EXTERNAL",
+            "label": "Pinned Skills (Idle-Decay Exempt)"
+          },
+          {
+            "id": "a1_missing_out",
+            "source": "A15:output",
+            "target": "EXTERNAL",
+            "label": "skill.mandatory_missing Anomaly Event"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A2",
+      "title": "Resolve Autonomous Mode",
+      "description": "Parse user message for verbal arm/disarm phrases and gate auto-continuation. PARTIAL: only verbal arm/disarm shipped. autonomous-opt-in R1 (spec-binding), R2 (non-empty todo at arm), R3b (question-based arm from plan-promote) NOT in code. Continuation engine: workflow-runner.planAutonomousNextAction. Subagents auto-stop with reason subagent_session.",
+      "decomposition": {
+        "diagram_title": "Resolve Autonomous Mode",
+        "node_reference": "A2",
+        "activities": [
+          {
+            "id": "A21",
+            "title": "Extract User Text"
+          },
+          {
+            "id": "A22",
+            "title": "Match Arm Or Disarm Phrase"
+          },
+          {
+            "id": "A23",
+            "title": "Update Workflow Autonomous Flag"
+          },
+          {
+            "id": "A24",
+            "title": "Plan Continuation Or Stop"
+          },
+          {
+            "id": "A25",
+            "title": "Inject Resume Synthetic Message"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a2_in_msg",
+            "source": "EXTERNAL",
+            "target": "A21:input",
+            "label": "Incoming User Message Parts"
+          },
+          {
+            "id": "a2_mech_extract",
+            "source": "EXTERNAL",
+            "target": "A21:mechanism",
+            "label": "autorun/detector.ts extractUserText"
+          },
+          {
+            "id": "a2_extract_to_match",
+            "source": "A21:output",
+            "target": "A22:input",
+            "label": "Synthetic-Stripped User Text"
+          },
+          {
+            "id": "a2_ctrl_phrases",
+            "source": "EXTERNAL",
+            "target": "A22:control",
+            "label": "Tweaks.autorunSync triggerPhrases / disarmPhrases"
+          },
+          {
+            "id": "a2_mech_detect",
+            "source": "EXTERNAL",
+            "target": "A22:mechanism",
+            "label": "detectAutorunIntent (case-insensitive substring)"
+          },
+          {
+            "id": "a2_match_to_update",
+            "source": "A22:output",
+            "target": "A23:input",
+            "label": "Arm / Disarm Verdict"
+          },
+          {
+            "id": "a2_mech_update",
+            "source": "EXTERNAL",
+            "target": "A23:mechanism",
+            "label": "Session.updateAutonomous"
+          },
+          {
+            "id": "a2_ctrl_default",
+            "source": "EXTERNAL",
+            "target": "A23:control",
+            "label": "Session.defaultWorkflow Initial Disarmed"
+          },
+          {
+            "id": "a2_update_to_plan",
+            "source": "A23:output",
+            "target": "A24:control",
+            "label": "workflow.autonomous.enabled"
+          },
+          {
+            "id": "a2_in_turn",
+            "source": "EXTERNAL",
+            "target": "A24:input",
+            "label": "Turn Boundary + parentID + Todo Status"
+          },
+          {
+            "id": "a2_mech_plan",
+            "source": "EXTERNAL",
+            "target": "A24:mechanism",
+            "label": "workflow-runner.ts planAutonomousNextAction (L568)"
+          },
+          {
+            "id": "a2_ctrl_subagent",
+            "source": "EXTERNAL",
+            "target": "A24:control",
+            "label": "Subagent Never Auto-Continues (reason: subagent_session)"
+          },
+          {
+            "id": "a2_plan_stop",
+            "source": "A24:output",
+            "target": "EXTERNAL",
+            "label": "Stop {not_armed | subagent_session | todo_complete}"
+          },
+          {
+            "id": "a2_plan_to_inject",
+            "source": "A24:output",
+            "target": "A25:input",
+            "label": "Continue Verdict + Active Todo"
+          },
+          {
+            "id": "a2_ctrl_resume",
+            "source": "EXTERNAL",
+            "target": "A25:control",
+            "label": "AUTONOMOUS_RESUME_TEXT (workflow-runner.ts:28)"
+          },
+          {
+            "id": "a2_mech_inject",
+            "source": "EXTERNAL",
+            "target": "A25:mechanism",
+            "label": "prompt.ts continuation dispatch (L2262-2302)"
+          },
+          {
+            "id": "a2_inject_out",
+            "source": "A25:output",
+            "target": "EXTERNAL",
+            "label": "Synthetic Continue Message For Next Turn"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A3",
+      "title": "Dispatch Subagent",
+      "description": "Async fire-and-forget subagent dispatch via task tool; results delivered back via PendingSubagentNotice on parent's NEXT prompt assemble (no message stream pollution). Shipped: tool/task.ts, TaskCompletedEvent, proc-scan watchdog (L2239-2469), cancel-task tool. Bridge-silence watchdog NOT yet wired (subagent hang pattern).",
+      "decomposition": {
+        "diagram_title": "Dispatch Subagent",
+        "node_reference": "A3",
+        "activities": [
+          {
+            "id": "A31",
+            "title": "Queue Subagent Job"
+          },
+          {
+            "id": "A32",
+            "title": "Run Proc Scan Watchdog"
+          },
+          {
+            "id": "A33",
+            "title": "Detect Terminal Or Death"
+          },
+          {
+            "id": "A34",
+            "title": "Emit Task Completed Event"
+          },
+          {
+            "id": "A35",
+            "title": "Append Pending Subagent Notice"
+          },
+          {
+            "id": "A36",
+            "title": "Render Notice On Next Assemble"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a3_in_call",
+            "source": "EXTERNAL",
+            "target": "A31:input",
+            "label": "task() Tool Call (parent assistant turn)"
+          },
+          {
+            "id": "a3_mech_queue",
+            "source": "EXTERNAL",
+            "target": "A31:mechanism",
+            "label": "tool/task.ts dispatch lane"
+          },
+          {
+            "id": "a3_ctrl_lane",
+            "source": "EXTERNAL",
+            "target": "A31:control",
+            "label": "Lane Concurrency (Global, Not Channel-Scoped)"
+          },
+          {
+            "id": "a3_queue_stub",
+            "source": "A31:output",
+            "target": "EXTERNAL",
+            "label": "Tool Result {dispatched:true} (parent turn returns)"
+          },
+          {
+            "id": "a3_queue_to_watch",
+            "source": "A31:output",
+            "target": "A32:input",
+            "label": "Job Registered jobId + childSessionID"
+          },
+          {
+            "id": "a3_mech_watch",
+            "source": "EXTERNAL",
+            "target": "A32:mechanism",
+            "label": "setInterval poll task.ts:2346 (unified)"
+          },
+          {
+            "id": "a3_ctrl_watch",
+            "source": "EXTERNAL",
+            "target": "A32:control",
+            "label": "Disk Grace + Silent Threshold + Proc State"
+          },
+          {
+            "id": "a3_watch_to_detect",
+            "source": "A32:output",
+            "target": "A33:input",
+            "label": "Tick Sample (disk + pid + lastEvent)"
+          },
+          {
+            "id": "a3_mech_detect",
+            "source": "EXTERNAL",
+            "target": "A33:mechanism",
+            "label": "Conditions: disk_terminal | worker_dead | silent_kill"
+          },
+          {
+            "id": "a3_detect_to_emit",
+            "source": "A33:output",
+            "target": "A34:input",
+            "label": "Status {success|error|canceled|rate_limited|quota_low|worker_dead|silent_kill}"
+          },
+          {
+            "id": "a3_mech_emit",
+            "source": "EXTERNAL",
+            "target": "A34:mechanism",
+            "label": "TaskCompletedEvent (task.ts:274)"
+          },
+          {
+            "id": "a3_emit_to_notice",
+            "source": "A34:output",
+            "target": "A35:input",
+            "label": "Event Payload (jobId, finish, elapsedMs, rotateHint)"
+          },
+          {
+            "id": "a3_mech_notice",
+            "source": "EXTERNAL",
+            "target": "A35:mechanism",
+            "label": "info.json#pendingSubagentNotices append"
+          },
+          {
+            "id": "a3_ctrl_clean",
+            "source": "EXTERNAL",
+            "target": "A35:control",
+            "label": "DD: Never Append To messages/ Stream"
+          },
+          {
+            "id": "a3_notice_to_render",
+            "source": "A35:output",
+            "target": "A36:input",
+            "label": "Pending Notice Queued On Parent Session"
+          },
+          {
+            "id": "a3_mech_assemble",
+            "source": "EXTERNAL",
+            "target": "A36:mechanism",
+            "label": "Prompt Assembler addendum + pop"
+          },
+          {
+            "id": "a3_render_out",
+            "source": "A36:output",
+            "target": "EXTERNAL",
+            "label": "System-Prompt Addendum For Parent's Next Turn"
+          },
+          {
+            "id": "a3_in_cancel",
+            "source": "EXTERNAL",
+            "target": "A33:control",
+            "label": "cancel_task / cancelByJobId (task.ts:814)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A4",
+      "title": "Enforce Subagent Quota",
+      "description": "PARTIAL. Soft wrap-up only: probe quota after each subagent stream; if hourlyRemaining < red-line, set quotaLowExitRequested and dispatch ONE final wrap-up turn, then finish:'quota_low'. Hard mid-turn cancel gate from subagent-quota-safety-gate spec NOT in code. Anchor: processor.ts:1357-1399; knob subagent_quota_low_red_line_percent (tweaks.ts:468)."
+    },
+    {
+      "id": "A5",
+      "title": "Handle Question Tool",
+      "description": "z.preprocess(Question.normalize) handles flat-single + string-options shapes; Question.ask wires AbortSignal lifecycle (pre-aborted/late-abort/manual-reply-wins); webapp QuestionDock uses FNV-1a 32-bit canonical-JSON cache key for restore-on-reask. Shipped end-to-end.",
+      "decomposition": {
+        "diagram_title": "Handle Question Tool",
+        "node_reference": "A5",
+        "activities": [
+          {
+            "id": "A51",
+            "title": "Normalize Question Input"
+          },
+          {
+            "id": "A52",
+            "title": "Register Pending Entry"
+          },
+          {
+            "id": "A53",
+            "title": "Wire Abort Signal"
+          },
+          {
+            "id": "A54",
+            "title": "Hash Cache Key And Restore"
+          },
+          {
+            "id": "A55",
+            "title": "Resolve Reply Or Reject"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a5_in_args",
+            "source": "EXTERNAL",
+            "target": "A51:input",
+            "label": "Raw question Tool Args"
+          },
+          {
+            "id": "a5_mech_norm",
+            "source": "EXTERNAL",
+            "target": "A51:mechanism",
+            "label": "z.preprocess(Question.normalize) (tool/question.ts L25-57)"
+          },
+          {
+            "id": "a5_ctrl_hint",
+            "source": "EXTERNAL",
+            "target": "A51:control",
+            "label": "SCHEMA_HINT On Validation Miss"
+          },
+          {
+            "id": "a5_norm_to_pending",
+            "source": "A51:output",
+            "target": "A52:input",
+            "label": "Canonical {questions:[{question,options,multiple}]}"
+          },
+          {
+            "id": "a5_mech_pending",
+            "source": "EXTERNAL",
+            "target": "A52:mechanism",
+            "label": "Question.ask pending[id] + Bus.publish(question.asked)"
+          },
+          {
+            "id": "a5_pending_to_abort",
+            "source": "A52:output",
+            "target": "A53:input",
+            "label": "Pending Entry + Caller AbortSignal"
+          },
+          {
+            "id": "a5_mech_abort",
+            "source": "EXTERNAL",
+            "target": "A53:mechanism",
+            "label": "question/index.ts:122-200 abort wiring"
+          },
+          {
+            "id": "a5_ctrl_reason",
+            "source": "EXTERNAL",
+            "target": "A53:control",
+            "label": "signal.reason: manual-stop / rate-limit-fallback / watchdog labels"
+          },
+          {
+            "id": "a5_pending_to_cache",
+            "source": "A52:output",
+            "target": "A54:input",
+            "label": "Question Content Bytes"
+          },
+          {
+            "id": "a5_mech_cache",
+            "source": "EXTERNAL",
+            "target": "A54:mechanism",
+            "label": "components/question-cache-key.ts canonicalJson + fnv1a32"
+          },
+          {
+            "id": "a5_ctrl_session",
+            "source": "EXTERNAL",
+            "target": "A54:control",
+            "label": "Cache Scope: (sessionID, contentHash)"
+          },
+          {
+            "id": "a5_cache_out",
+            "source": "A54:output",
+            "target": "EXTERNAL",
+            "label": "Restored Draft Or Empty Store"
+          },
+          {
+            "id": "a5_abort_to_resolve",
+            "source": "A53:output",
+            "target": "A55:input",
+            "label": "Abort Or Late-Abort Signal"
+          },
+          {
+            "id": "a5_in_reply",
+            "source": "EXTERNAL",
+            "target": "A55:input",
+            "label": "User Reply From QuestionDock"
+          },
+          {
+            "id": "a5_mech_resolve",
+            "source": "EXTERNAL",
+            "target": "A55:mechanism",
+            "label": "Bus.publish(Event.Rejected) Or Resolve Promise"
+          },
+          {
+            "id": "a5_resolve_out",
+            "source": "A55:output",
+            "target": "EXTERNAL",
+            "label": "RejectedError Or Reply Back To Tool"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A6",
+      "title": "Drive Scheduler Heartbeat",
+      "description": "Durable cron scheduler with boot-recovery, skip-to-next, retry backoff. Generic Scheduler is for in-process periodics (telemetry, idle-MCP-unload). Channels portion of scheduler-channels spec NOT built; current kill-switch is workspace-scoped, not channel-scoped. Anchors: cron/heartbeat.ts L86-155, cron/retry.ts L113-172, scheduler/index.ts."
+    },
+    {
+      "id": "A7",
+      "title": "Refill From Active Plan",
+      "description": "autorun/refill drains active spec tasks.md by reading active spec slug, finding next un-checked task line, and seeding it as the next continuation message. Acts only when autonomy is armed AND nextActionableTodo returns null but spec has remaining tasks."
+    }
+  ],
+  "arrows": [
+    {
+      "id": "x_in_user",
+      "source": "EXTERNAL",
+      "target": "A2:input",
+      "label": "User Message (Verbal Trigger Candidate)"
+    },
+    {
+      "id": "x_in_user_to_loop",
+      "source": "EXTERNAL",
+      "target": "A1:input",
+      "label": "Session Identity + Agent Selection"
+    },
+    {
+      "id": "x_ctrl_agent_registry",
+      "source": "EXTERNAL",
+      "target": "A1:control",
+      "label": "Agent.list / defaultAgent (agent/agent.ts L297, L306)"
+    },
+    {
+      "id": "x_ctrl_tweaks",
+      "source": "EXTERNAL",
+      "target": "A2:control",
+      "label": "tweaks.cfg autorun_*_phrases"
+    },
+    {
+      "id": "x_skills_to_loop",
+      "source": "A1:output",
+      "target": "A2:control",
+      "label": "Pinned Skills Snapshot"
+    },
+    {
+      "id": "x_mode_to_dispatch",
+      "source": "A2:output",
+      "target": "A3:control",
+      "label": "Autonomy Verdict (Armed / Not-Armed)"
+    },
+    {
+      "id": "x_dispatch_to_quota",
+      "source": "A3:output",
+      "target": "A4:input",
+      "label": "Subagent Stream Boundary (TaskCompletedEvent)"
+    },
+    {
+      "id": "x_ctrl_quota_knob",
+      "source": "EXTERNAL",
+      "target": "A4:control",
+      "label": "subagent_quota_low_red_line_percent (tweaks.ts:468)"
+    },
+    {
+      "id": "x_mech_quota",
+      "source": "EXTERNAL",
+      "target": "A4:mechanism",
+      "label": "processor.ts:1357-1399 + getOpenAIQuota"
+    },
+    {
+      "id": "x_quota_to_dispatch",
+      "source": "A4:output",
+      "target": "A3:control",
+      "label": "quotaLowExitRequested -> Final Wrap-Up Turn"
+    },
+    {
+      "id": "x_quota_to_notice",
+      "source": "A4:output",
+      "target": "A3:input",
+      "label": "rotateHint {directive: rotate-before-redispatch}"
+    },
+    {
+      "id": "x_loop_to_question",
+      "source": "EXTERNAL",
+      "target": "A5:input",
+      "label": "LLM Calls question() Tool"
+    },
+    {
+      "id": "x_question_to_loop",
+      "source": "A5:output",
+      "target": "EXTERNAL",
+      "label": "Reply Or RejectedError Returned To Tool Caller"
+    },
+    {
+      "id": "x_mech_heartbeat",
+      "source": "EXTERNAL",
+      "target": "A6:mechanism",
+      "label": "cron/heartbeat.ts boot-recovery + minute tick"
+    },
+    {
+      "id": "x_ctrl_stale",
+      "source": "EXTERNAL",
+      "target": "A6:control",
+      "label": "STALE_THRESHOLD_MS=5min + retry backoff"
+    },
+    {
+      "id": "x_heartbeat_out",
+      "source": "A6:output",
+      "target": "EXTERNAL",
+      "label": "Cron Job Dispatch (cron/delivery.ts)"
+    },
+    {
+      "id": "x_killswitch",
+      "source": "EXTERNAL",
+      "target": "A6:control",
+      "label": "Kill-Switch (Workspace-Scoped, Channels Not Built)"
+    },
+    {
+      "id": "x_refill_to_mode",
+      "source": "A7:output",
+      "target": "A2:input",
+      "label": "Synthetic Resume Text From tasks.md"
+    },
+    {
+      "id": "x_mode_to_refill",
+      "source": "A2:output",
+      "target": "A7:control",
+      "label": "Armed AND nextActionableTodo Null"
+    },
+    {
+      "id": "x_mech_refill",
+      "source": "EXTERNAL",
+      "target": "A7:mechanism",
+      "label": "session/autorun/refill"
+    },
+    {
+      "id": "x_in_active_spec",
+      "source": "EXTERNAL",
+      "target": "A7:input",
+      "label": "Active Spec Slug + tasks.md"
+    },
+    {
+      "id": "x_loop_out_assistant",
+      "source": "A2:output",
+      "target": "EXTERNAL",
+      "label": "Assistant Turn Output (Stream)"
+    },
+    {
+      "id": "x_loop_out_dispatch",
+      "source": "A3:output",
+      "target": "EXTERNAL",
+      "label": "Subagent Worker Spawned Asynchronously"
+    },
+    {
+      "id": "ctx_in_user",
+      "source": "EXTERNAL",
+      "target": "A0:input",
+      "label": "User Prompt + Tool Replies"
+    },
+    {
+      "id": "ctx_ctl_tweaks",
+      "source": "EXTERNAL",
+      "target": "A0:control",
+      "label": "tweaks.cfg + AGENTS.md Sentinels + Agent Registry"
+    },
+    {
+      "id": "ctx_out_assistant",
+      "source": "A0:output",
+      "target": "EXTERNAL",
+      "label": "Assistant Stream + Tool Calls + Subagent Side-Effects"
+    }
+  ]
+}

@@ -1,0 +1,396 @@
+{
+  "diagram_title": "Manage Account Identity",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Add Account",
+      "decomposition": {
+        "diagram_title": "Add Account",
+        "node_reference": "A1",
+        "activities": [
+          {
+            "id": "A11",
+            "title": "Resolve Provider Key"
+          },
+          {
+            "id": "A12",
+            "title": "Run Identity Resolution Chain"
+          },
+          {
+            "id": "A13",
+            "title": "Dedup By Token Or Api Key"
+          },
+          {
+            "id": "A14",
+            "title": "Generate Account Id With Suffix"
+          },
+          {
+            "id": "A15",
+            "title": "Persist Through Mutex Storage"
+          },
+          {
+            "id": "A16",
+            "title": "Publish Account Added Event"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a1_in_creds",
+            "source": "EXTERNAL",
+            "target": "A11:input",
+            "label": "Auth.set Credential Payload"
+          },
+          {
+            "id": "a1_ctrl_dd2",
+            "source": "EXTERNAL",
+            "target": "A11:control",
+            "label": "DD-2 Strict Family Dispatch"
+          },
+          {
+            "id": "a1_mech_resolve",
+            "source": "EXTERNAL",
+            "target": "A11:mechanism",
+            "label": "Account.resolveProviderOrSelf"
+          },
+          {
+            "id": "a1_key_to_chain",
+            "source": "A11:output",
+            "target": "A12:input",
+            "label": "Canonical Provider Key"
+          },
+          {
+            "id": "a1_ctrl_chain",
+            "source": "EXTERNAL",
+            "target": "A12:control",
+            "label": "Email Username Tokenhash Order"
+          },
+          {
+            "id": "a1_mech_jwt",
+            "source": "EXTERNAL",
+            "target": "A12:mechanism",
+            "label": "auth/index.ts L206 Auth.set"
+          },
+          {
+            "id": "a1_identity_to_dedup",
+            "source": "A12:output",
+            "target": "A13:input",
+            "label": "Resolved Identity Slug"
+          },
+          {
+            "id": "a1_mech_dedup",
+            "source": "EXTERNAL",
+            "target": "A13:mechanism",
+            "label": "Account.deduplicateByToken Existing Scan"
+          },
+          {
+            "id": "a1_dedup_hit_to_persist",
+            "source": "A13:output",
+            "target": "A15:input",
+            "label": "Existing Record Update Patch"
+          },
+          {
+            "id": "a1_dedup_miss_to_genid",
+            "source": "A13:output",
+            "target": "A14:input",
+            "label": "New Identity Needs Id"
+          },
+          {
+            "id": "a1_mech_genid",
+            "source": "EXTERNAL",
+            "target": "A14:mechanism",
+            "label": "Account.generateId Suffix Loop"
+          },
+          {
+            "id": "a1_id_to_persist",
+            "source": "A14:output",
+            "target": "A15:input",
+            "label": "Fresh Account Id"
+          },
+          {
+            "id": "a1_ctrl_strict",
+            "source": "EXTERNAL",
+            "target": "A15:control",
+            "label": "No Silent Overwrite Invariant"
+          },
+          {
+            "id": "a1_mech_storage",
+            "source": "EXTERNAL",
+            "target": "A15:mechanism",
+            "label": "Account.add withMutex accounts.json"
+          },
+          {
+            "id": "a1_persist_to_bus",
+            "source": "A15:output",
+            "target": "A16:input",
+            "label": "Persisted Sanitized Info"
+          },
+          {
+            "id": "a1_mech_bus",
+            "source": "EXTERNAL",
+            "target": "A16:mechanism",
+            "label": "Bus.publish AccountAdded"
+          },
+          {
+            "id": "a1_out_bus",
+            "source": "A16:output",
+            "target": "EXTERNAL",
+            "label": "account.added Event"
+          },
+          {
+            "id": "a1_out_record",
+            "source": "A15:output",
+            "target": "EXTERNAL",
+            "label": "Stored Account Record"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A2",
+      "title": "Authenticate Account For Request",
+      "decomposition": {
+        "diagram_title": "Authenticate Account For Request",
+        "node_reference": "A2",
+        "activities": [
+          {
+            "id": "A21",
+            "title": "Validate Family Is Known"
+          },
+          {
+            "id": "A22",
+            "title": "Select Active Or Rotated Account"
+          },
+          {
+            "id": "A23",
+            "title": "Refresh Or Reuse Token"
+          },
+          {
+            "id": "A24",
+            "title": "Materialize Auth Header"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a2_in_req",
+            "source": "EXTERNAL",
+            "target": "A21:input",
+            "label": "Auth.get family accountId"
+          },
+          {
+            "id": "a2_ctrl_unknown",
+            "source": "EXTERNAL",
+            "target": "A21:control",
+            "label": "UnknownFamilyError On Miss"
+          },
+          {
+            "id": "a2_mech_known",
+            "source": "EXTERNAL",
+            "target": "A21:mechanism",
+            "label": "Account.knownFamilies"
+          },
+          {
+            "id": "a2_known_to_select",
+            "source": "A21:output",
+            "target": "A22:input",
+            "label": "Validated Family Key"
+          },
+          {
+            "id": "a2_ctrl_active",
+            "source": "EXTERNAL",
+            "target": "A22:control",
+            "label": "NoActiveAccountError No Silent First Pick"
+          },
+          {
+            "id": "a2_mech_rotation",
+            "source": "EXTERNAL",
+            "target": "A22:mechanism",
+            "label": "Account.getNextAvailable rotation3d"
+          },
+          {
+            "id": "a2_select_to_refresh",
+            "source": "A22:output",
+            "target": "A23:input",
+            "label": "Chosen Account Info"
+          },
+          {
+            "id": "a2_ctrl_codex_stale",
+            "source": "EXTERNAL",
+            "target": "A23:control",
+            "label": "Codex Stale OAuth Degrades Silently"
+          },
+          {
+            "id": "a2_mech_refresh",
+            "source": "EXTERNAL",
+            "target": "A23:mechanism",
+            "label": "OAuth Refresh Token Exchange"
+          },
+          {
+            "id": "a2_refresh_to_header",
+            "source": "A23:output",
+            "target": "A24:input",
+            "label": "Live Access Token"
+          },
+          {
+            "id": "a2_mech_accountToAuth",
+            "source": "EXTERNAL",
+            "target": "A24:mechanism",
+            "label": "Auth.accountToAuth L49"
+          },
+          {
+            "id": "a2_out_auth",
+            "source": "A24:output",
+            "target": "EXTERNAL",
+            "label": "Provider Auth Header"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A3",
+      "title": "Normalize Identity On Load"
+    },
+    {
+      "id": "A4",
+      "title": "Bind Identity To Linux User"
+    },
+    {
+      "id": "A5",
+      "title": "Remove Account With Revoke"
+    }
+  ],
+  "arrows": [
+    {
+      "id": "m_in_add_req",
+      "source": "EXTERNAL",
+      "target": "A1:input",
+      "label": "CLI Or TUI Login Request"
+    },
+    {
+      "id": "m_ctrl_strict_storage",
+      "source": "EXTERNAL",
+      "target": "A1:control",
+      "label": "Account.add Refuses Silent Overwrite"
+    },
+    {
+      "id": "m_mech_authset",
+      "source": "EXTERNAL",
+      "target": "A1:mechanism",
+      "label": "auth/index.ts Auth.set"
+    },
+    {
+      "id": "m_added_to_normalize",
+      "source": "A1:output",
+      "target": "A3:input",
+      "label": "Newly Persisted Account"
+    },
+    {
+      "id": "m_in_dispatch",
+      "source": "EXTERNAL",
+      "target": "A2:input",
+      "label": "Provider Dispatch Auth.get"
+    },
+    {
+      "id": "m_ctrl_dd8",
+      "source": "EXTERNAL",
+      "target": "A2:control",
+      "label": "DD-8 Family AccountId Separate"
+    },
+    {
+      "id": "m_normalize_feeds_dispatch",
+      "source": "A3:output",
+      "target": "A2:control",
+      "label": "Canonical Family Map"
+    },
+    {
+      "id": "m_in_load",
+      "source": "EXTERNAL",
+      "target": "A3:input",
+      "label": "accounts.json On Disk State"
+    },
+    {
+      "id": "m_ctrl_normalize",
+      "source": "EXTERNAL",
+      "target": "A3:control",
+      "label": "Managed App Stripper Registry"
+    },
+    {
+      "id": "m_mech_normalize",
+      "source": "EXTERNAL",
+      "target": "A3:mechanism",
+      "label": "Account.normalizeIdentities L1122"
+    },
+    {
+      "id": "m_normalize_report",
+      "source": "A3:output",
+      "target": "EXTERNAL",
+      "label": "NormalizeIdentitiesReport"
+    },
+    {
+      "id": "m_in_google",
+      "source": "EXTERNAL",
+      "target": "A4:input",
+      "label": "Google OAuth Verified Email"
+    },
+    {
+      "id": "m_ctrl_bindings",
+      "source": "EXTERNAL",
+      "target": "A4:control",
+      "label": "google-bindings.json 1to1 Cardinality"
+    },
+    {
+      "id": "m_mech_binding",
+      "source": "EXTERNAL",
+      "target": "A4:mechanism",
+      "label": "GoogleBinding.bind unbind lookup"
+    },
+    {
+      "id": "m_bind_to_dispatch",
+      "source": "A4:output",
+      "target": "A2:control",
+      "label": "Bound Linux User Identity"
+    },
+    {
+      "id": "m_out_binding_status",
+      "source": "A4:output",
+      "target": "EXTERNAL",
+      "label": "Per User Daemon Route Decision"
+    },
+    {
+      "id": "m_in_remove_req",
+      "source": "EXTERNAL",
+      "target": "A5:input",
+      "label": "Remove Account Command"
+    },
+    {
+      "id": "m_ctrl_codex_revoke",
+      "source": "EXTERNAL",
+      "target": "A5:control",
+      "label": "Codex Revoke Before Delete Fail Closed"
+    },
+    {
+      "id": "m_mech_logoutCodex",
+      "source": "EXTERNAL",
+      "target": "A5:mechanism",
+      "label": "plugin/codex-auth.ts logoutCodex"
+    },
+    {
+      "id": "m_remove_to_normalize",
+      "source": "A5:output",
+      "target": "A3:input",
+      "label": "Post Remove State Reload"
+    },
+    {
+      "id": "m_remove_event",
+      "source": "A5:output",
+      "target": "EXTERNAL",
+      "label": "account.removed Bus Event"
+    },
+    {
+      "id": "m_out_auth_header",
+      "source": "A2:output",
+      "target": "EXTERNAL",
+      "label": "Authenticated Provider Request"
+    }
+  ]
+}

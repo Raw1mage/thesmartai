@@ -1,0 +1,161 @@
+{
+  "diagram_title": "Serve Web Frontend",
+  "node_reference": "A0",
+  "description": "SolidJS SPA at packages/app/, built and refreshed by webctl.sh, exposed via the C gateway through two-layer route registration (web_registry.json + web_routes.conf), surfacing the Admin Panel and rich rendering plus dual-path voice input. Shipped (live as of 2026-05-04).",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Build And Refresh Bundle",
+      "description": "webctl.sh dev-start / build-frontend / web-refresh orchestration. Vite produces packages/app/dist/, deployed to /usr/local/share/opencode/frontend/.",
+      "decomposition": {
+        "diagram_title": "Build And Refresh Bundle",
+        "node_reference": "A1",
+        "activities": [
+          {
+            "id": "A11",
+            "title": "Spawn Dev Servers",
+            "description": "webctl.sh do_dev_start (~L1162): bun --conditions=browser backend on OPENCODE_PORT=1080 plus Vite frontend on OPENCODE_FRONTEND_DEV_PORT=3000."
+          },
+          {
+            "id": "A12",
+            "title": "Run Vite Production Build",
+            "description": "webctl.sh do_build_frontend (~L1934) → packages/app/dist/."
+          },
+          {
+            "id": "A13",
+            "title": "Deploy And Bounce Gateway",
+            "description": "webctl.sh web-refresh copies dist/ to /usr/local/share/opencode/frontend/ and restarts opencode-gateway.service so OPENCODE_FRONTEND_PATH is re-read."
+          }
+        ],
+        "arrows": [
+          {"id": "a1in1", "source": "EXTERNAL", "target": "A11:input", "label": "packages/app/ source"},
+          {"id": "a1in2", "source": "EXTERNAL", "target": "A11:control", "label": "OPENCODE_PORT / OPENCODE_FRONTEND_DEV_PORT env"},
+          {"id": "a1in3", "source": "EXTERNAL", "target": "A11:mechanism", "label": "bun + Vite dev"},
+          {"id": "a1m1", "source": "A11:output", "target": "A12:input", "label": "validated source tree"},
+          {"id": "a1c2", "source": "EXTERNAL", "target": "A12:control", "label": "vite.config.ts + tsconfig"},
+          {"id": "a1mch2", "source": "EXTERNAL", "target": "A12:mechanism", "label": "vite build"},
+          {"id": "a1m2", "source": "A12:output", "target": "A13:input", "label": "packages/app/dist/"},
+          {"id": "a1c3", "source": "EXTERNAL", "target": "A13:control", "label": "OPENCODE_FRONTEND_PATH (opencode.cfg)"},
+          {"id": "a1mch3", "source": "EXTERNAL", "target": "A13:mechanism", "label": "systemctl + cp"},
+          {"id": "a1out1", "source": "A11:output", "target": "EXTERNAL", "label": "live HMR session"},
+          {"id": "a1out2", "source": "A13:output", "target": "EXTERNAL", "label": "deployed dist served by gateway"}
+        ]
+      }
+    },
+    {
+      "id": "A2",
+      "title": "Register Gateway Route",
+      "description": "Two-layer route registration: ~/.config/web_registry.json declares user-level entries, /etc/opencode/web_routes.conf is the system-level table mutated by webctl.sh publish-route over /run/opencode-gateway/ctl.sock.",
+      "decomposition": {
+        "diagram_title": "Register Gateway Route",
+        "node_reference": "A2",
+        "activities": [
+          {
+            "id": "A21",
+            "title": "Update User Registry",
+            "description": "Edit ~/.config/web_registry.json (entryName, projectRoot, publicBasePath, host, primaryPort, webctlPath, enabled, access)."
+          },
+          {
+            "id": "A22",
+            "title": "Publish System Route",
+            "description": "webctl.sh publish-route writes <prefix> <host> <port> <owner_uid> [auth] into /etc/opencode/web_routes.conf via gateway ctl.sock admin command."
+          },
+          {
+            "id": "A23",
+            "title": "Reload Gateway Table",
+            "description": "Gateway reads conf at start and on SIGHUP, longest-prefix matches incoming requests."
+          },
+          {
+            "id": "A24",
+            "title": "Probe Route Health",
+            "description": "server/routes/web-route.ts tcpProbe(host, port, timeoutMs) feeds the UI per-route health badge."
+          }
+        ],
+        "arrows": [
+          {"id": "a2in1", "source": "EXTERNAL", "target": "A21:input", "label": "entry declaration"},
+          {"id": "a2c1", "source": "EXTERNAL", "target": "A21:control", "label": "registry schema"},
+          {"id": "a2m1", "source": "A21:output", "target": "A22:input", "label": "registered entry"},
+          {"id": "a2mch2", "source": "EXTERNAL", "target": "A22:mechanism", "label": "ctl.sock admin socket"},
+          {"id": "a2m2", "source": "A22:output", "target": "A23:input", "label": "web_routes.conf line"},
+          {"id": "a2c3", "source": "EXTERNAL", "target": "A23:control", "label": "SIGHUP / startup signal"},
+          {"id": "a2m3", "source": "A23:output", "target": "A24:input", "label": "active route"},
+          {"id": "a2mch4", "source": "EXTERNAL", "target": "A24:mechanism", "label": "tcpProbe() helper"},
+          {"id": "a2out1", "source": "A23:output", "target": "EXTERNAL", "label": "splice-ready prefix"},
+          {"id": "a2out2", "source": "A24:output", "target": "EXTERNAL", "label": "health status JSON"}
+        ]
+      }
+    },
+    {
+      "id": "A3",
+      "title": "Render SPA Shell",
+      "description": "src/app.tsx router root with AppShellProviders (Settings/Permission/Layout/Notification/Models/Command/Highlights), authenticated by WebAuthProvider + AuthGate. Routes: /, /system/tasks/:jobId?, /:dir/session/:id?, terminal-popout, tool detail.",
+      "decomposition": {
+        "diagram_title": "Render SPA Shell",
+        "node_reference": "A3",
+        "activities": [
+          {
+            "id": "A31",
+            "title": "Authenticate Session",
+            "description": "WebAuthProvider + AuthGate verify gateway-issued oc_jwt cookie; cross-user login redirect clears localStorage."
+          },
+          {
+            "id": "A32",
+            "title": "Mount Provider Stack",
+            "description": "AppShellProviders wraps Settings → Permission → Layout → Notification → Models → Command → Highlights (app.tsx L102-L141)."
+          },
+          {
+            "id": "A33",
+            "title": "Resolve Route And Render",
+            "description": "@solidjs/router resolves URL to Home / TaskList / Session / tool detail / terminal-popout (AppInterface at app.tsx L243)."
+          },
+          {
+            "id": "A34",
+            "title": "Render Rich Markdown",
+            "description": "pages/session/markdown-file-viewer.ts detects Mermaid via three fence patterns and renders via mermaid v11.12.0; rich-markdown-surface.tsx + message-file-links.ts make path:line clickable, opening the file tab and updating selected-line state."
+          }
+        ],
+        "arrows": [
+          {"id": "a3in1", "source": "EXTERNAL", "target": "A31:input", "label": "browser request + oc_jwt"},
+          {"id": "a3c1", "source": "EXTERNAL", "target": "A31:control", "label": "PAM/JWT policy"},
+          {"id": "a3m1", "source": "A31:output", "target": "A32:input", "label": "authenticated session"},
+          {"id": "a3c2", "source": "EXTERNAL", "target": "A32:control", "label": "AppShellProviders order"},
+          {"id": "a3m2", "source": "A32:output", "target": "A33:input", "label": "ready provider tree"},
+          {"id": "a3c3", "source": "EXTERNAL", "target": "A33:control", "label": "URL + router config"},
+          {"id": "a3m3", "source": "A33:output", "target": "A34:input", "label": "session message stream"},
+          {"id": "a3mch4", "source": "EXTERNAL", "target": "A34:mechanism", "label": "mermaid 11.12.0"},
+          {"id": "a3out1", "source": "A33:output", "target": "EXTERNAL", "label": "rendered route"},
+          {"id": "a3out2", "source": "A34:output", "target": "EXTERNAL", "label": "rich markdown + clickable links"},
+          {"id": "a3fb1", "source": "A34:output", "target": "A33:control", "label": "open-file-tab event"}
+        ]
+      }
+    },
+    {
+      "id": "A4",
+      "title": "Drive Admin Panel",
+      "description": "/admin three-in-one surface combining provider/model management (dialog-manage-models.tsx), accounts.json multi-account view, and App Market dialog. Opened from pages/layout.tsx (L1065)."
+    },
+    {
+      "id": "A5",
+      "title": "Capture Voice Input",
+      "description": "Dual-path: desktop SpeechRecognition (utils/speech.ts) with smart-punctuation; mobile MediaRecorder 1s chunks (utils/audio-recorder.ts + transcribe.ts) → POST /api/v2/session/:id/transcribe (server/routes/session.ts ~L2563). Both converge on applyVoiceTranscript() → prompt.set(). voicePath() picked once at mount; no silent re-evaluation."
+    }
+  ],
+  "arrows": [
+    {"id": "a0i1", "source": "EXTERNAL", "target": "A1:input", "label": "packages/app/ source tree"},
+    {"id": "a0i2", "source": "EXTERNAL", "target": "A1:control", "label": "/etc/opencode/opencode.cfg (OPENCODE_FRONTEND_PATH)"},
+    {"id": "a0m1", "source": "A1:output", "target": "A2:input", "label": "deployed dist + entry metadata"},
+    {"id": "a0i3", "source": "EXTERNAL", "target": "A2:control", "label": "publish-route command"},
+    {"id": "a0m2", "source": "A2:output", "target": "A3:input", "label": "splice-ready prefix"},
+    {"id": "a0i4", "source": "EXTERNAL", "target": "A3:input", "label": "browser HTTP request"},
+    {"id": "a0i5", "source": "EXTERNAL", "target": "A3:control", "label": "oc_jwt cookie"},
+    {"id": "a0m3", "source": "A3:output", "target": "A4:input", "label": "rendered admin chrome"},
+    {"id": "a0m4", "source": "A3:output", "target": "A5:input", "label": "active prompt-input.tsx"},
+    {"id": "a0i6", "source": "EXTERNAL", "target": "A5:control", "label": "voicePath() runtime decision"},
+    {"id": "a0i7", "source": "EXTERNAL", "target": "A5:mechanism", "label": "SpeechRecognition / MediaRecorder + transcribe API"},
+    {"id": "a0i8", "source": "EXTERNAL", "target": "A4:control", "label": "operator clicks Manage Models / Accounts / App Market"},
+    {"id": "a0o1", "source": "A3:output", "target": "EXTERNAL", "label": "rendered SPA pages"},
+    {"id": "a0o2", "source": "A4:output", "target": "EXTERNAL", "label": "config / catalog mutations"},
+    {"id": "a0o3", "source": "A5:output", "target": "EXTERNAL", "label": "voice-derived prompt text"},
+    {"id": "a0fb1", "source": "A4:output", "target": "A2:control", "label": "App Market may register new sibling routes"}
+  ]
+}

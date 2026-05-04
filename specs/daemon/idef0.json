@@ -1,0 +1,542 @@
+{
+  "diagram_title": "Operate Gateway And Daemon Process",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Route HTTP Through Gateway",
+      "decomposition": {
+        "diagram_title": "Route HTTP Through Gateway",
+        "node_reference": "A1",
+        "activities": [
+          {
+            "id": "A11",
+            "title": "Accept TCP Connection On Port 1080"
+          },
+          {
+            "id": "A12",
+            "title": "Buffer Pending Request Until Header Complete"
+          },
+          {
+            "id": "A13",
+            "title": "Authenticate Via PAM Pthread"
+          },
+          {
+            "id": "A14",
+            "title": "Issue And Verify JWT Cookie"
+          },
+          {
+            "id": "A15",
+            "title": "Dispatch Gateway Owned Routes"
+          },
+          {
+            "id": "A16",
+            "title": "Splice Bytes To Daemon Socket"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a1in1",
+            "source": "EXTERNAL",
+            "target": "A11:input",
+            "label": "Browser TCP Stream From Nginx"
+          },
+          {
+            "id": "a1in2",
+            "source": "EXTERNAL",
+            "target": "A11:control",
+            "label": "epoll EpollCtx Discriminated Union"
+          },
+          {
+            "id": "a1in3",
+            "source": "EXTERNAL",
+            "target": "A11:mechanism",
+            "label": "opencode-gateway Single Process"
+          },
+          {
+            "id": "a1mc1",
+            "source": "EXTERNAL",
+            "target": "A12:control",
+            "label": "MAX_CONNS=1024 Cap And 30s No-Progress Timeout"
+          },
+          {
+            "id": "a1f1",
+            "source": "A11:output",
+            "target": "A12:input",
+            "label": "Accepted Connection Slot"
+          },
+          {
+            "id": "a1f2",
+            "source": "A12:output",
+            "target": "A13:input",
+            "label": "Parsed HTTP Header With Cookie"
+          },
+          {
+            "id": "a1mc2",
+            "source": "EXTERNAL",
+            "target": "A13:control",
+            "label": "google-bindings.json And /etc/pam.d Stack"
+          },
+          {
+            "id": "a1mc3",
+            "source": "EXTERNAL",
+            "target": "A13:mechanism",
+            "label": "PAM Worker Pthread Plus eventfd AUTH_NOTIFY"
+          },
+          {
+            "id": "a1f3",
+            "source": "A13:output",
+            "target": "A14:input",
+            "label": "PAM Verdict And UID"
+          },
+          {
+            "id": "a1mc4",
+            "source": "EXTERNAL",
+            "target": "A14:control",
+            "label": "/run/opencode-gateway/jwt.key HMAC-SHA256 Secret"
+          },
+          {
+            "id": "a1f4",
+            "source": "A14:output",
+            "target": "A15:input",
+            "label": "Authenticated Request With UID Claim"
+          },
+          {
+            "id": "a1mc5",
+            "source": "EXTERNAL",
+            "target": "A15:control",
+            "label": "/etc/opencode/web_routes.conf Longest Prefix Table"
+          },
+          {
+            "id": "a1f5",
+            "source": "A15:output",
+            "target": "A16:input",
+            "label": "Routed Request Targeting Per-User Daemon"
+          },
+          {
+            "id": "a1f6",
+            "source": "A15:output",
+            "target": "EXTERNAL",
+            "label": "Login HTML Or Health 200 Response"
+          },
+          {
+            "id": "a1mc6",
+            "source": "EXTERNAL",
+            "target": "A16:mechanism",
+            "label": "splice(2) Zero-Copy SPLICE_CLIENT SPLICE_DAEMON"
+          },
+          {
+            "id": "a1f7",
+            "source": "EXTERNAL",
+            "target": "A16:control",
+            "label": "Daemon Discovery File daemon.json"
+          },
+          {
+            "id": "a1out1",
+            "source": "A16:output",
+            "target": "EXTERNAL",
+            "label": "Bidirectional Bytes To Per-User Daemon Socket"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A2",
+      "title": "Spawn Per-User Daemon",
+      "decomposition": {
+        "diagram_title": "Spawn Per-User Daemon",
+        "node_reference": "A2",
+        "activities": [
+          {
+            "id": "A21",
+            "title": "Resolve Runtime Directory For UID"
+          },
+          {
+            "id": "A22",
+            "title": "Prepare Runtime Dir Before Fork"
+          },
+          {
+            "id": "A23",
+            "title": "Parse OPENCODE_BIN Argv"
+          },
+          {
+            "id": "A24",
+            "title": "Fork And Drop Privileges Via setuid"
+          },
+          {
+            "id": "A25",
+            "title": "Bind Unix Socket And Write Discovery"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a2in1",
+            "source": "EXTERNAL",
+            "target": "A21:input",
+            "label": "find_or_create_daemon Request With UID"
+          },
+          {
+            "id": "a2c1",
+            "source": "EXTERNAL",
+            "target": "A21:control",
+            "label": "Order /run/user/<uid>, XDG_RUNTIME_DIR, /tmp/opencode-<uid>"
+          },
+          {
+            "id": "a2f1",
+            "source": "A21:output",
+            "target": "A22:input",
+            "label": "Resolved Runtime Path"
+          },
+          {
+            "id": "a2c2",
+            "source": "EXTERNAL",
+            "target": "A22:control",
+            "label": "chown <uid>:<gid> chmod 0700 As Root"
+          },
+          {
+            "id": "a2f2",
+            "source": "A22:output",
+            "target": "A24:input",
+            "label": "Owned Runtime Directory"
+          },
+          {
+            "id": "a2in2",
+            "source": "EXTERNAL",
+            "target": "A23:input",
+            "label": "OPENCODE_BIN Env String"
+          },
+          {
+            "id": "a2c3",
+            "source": "EXTERNAL",
+            "target": "A23:control",
+            "label": "parse_opencode_argv Forbids sh -c"
+          },
+          {
+            "id": "a2f3",
+            "source": "A23:output",
+            "target": "A24:control",
+            "label": "Argv Array For execvp"
+          },
+          {
+            "id": "a2m1",
+            "source": "EXTERNAL",
+            "target": "A24:mechanism",
+            "label": "fork+setsid+initgroups+setgid+setuid+execvp"
+          },
+          {
+            "id": "a2f4",
+            "source": "A24:output",
+            "target": "A25:input",
+            "label": "Per-User Daemon Process"
+          },
+          {
+            "id": "a2c4",
+            "source": "EXTERNAL",
+            "target": "A25:control",
+            "label": "Server.listenUnix --unix-socket=<path>"
+          },
+          {
+            "id": "a2out1",
+            "source": "A25:output",
+            "target": "EXTERNAL",
+            "label": "daemon.sock daemon.pid daemon.json In XDG Runtime Dir"
+          },
+          {
+            "id": "a2out2",
+            "source": "A24:output",
+            "target": "EXTERNAL",
+            "label": "SIGCHLD Exit Status Logged"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A3",
+      "title": "Coordinate Daemon Lifecycle"
+    },
+    {
+      "id": "A4",
+      "title": "Restart Self Through webctl Pipeline",
+      "decomposition": {
+        "diagram_title": "Restart Self Through webctl Pipeline",
+        "node_reference": "A4",
+        "activities": [
+          {
+            "id": "A41",
+            "title": "Receive restart_self MCP Call"
+          },
+          {
+            "id": "A42",
+            "title": "Resolve Restart Runtime Mode"
+          },
+          {
+            "id": "A43",
+            "title": "Smart Detect Dirty Layers"
+          },
+          {
+            "id": "A44",
+            "title": "Rebuild And Install Dirty Layers"
+          },
+          {
+            "id": "A45",
+            "title": "Hand Off To Self Termination"
+          },
+          {
+            "id": "A46",
+            "title": "Report Failure With Error Log Path"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a4in1",
+            "source": "EXTERNAL",
+            "target": "A41:input",
+            "label": "system-manager:restart_self Tool Invocation"
+          },
+          {
+            "id": "a4c1",
+            "source": "EXTERNAL",
+            "target": "A41:control",
+            "label": "AGENTS.md Daemon Lifecycle Authority"
+          },
+          {
+            "id": "a4f1",
+            "source": "A41:output",
+            "target": "A42:input",
+            "label": "POST /api/v2/global/web/restart With JWT"
+          },
+          {
+            "id": "a4c2",
+            "source": "EXTERNAL",
+            "target": "A42:control",
+            "label": "isGatewayDaemon Plus Targets List"
+          },
+          {
+            "id": "a4f2",
+            "source": "A42:output",
+            "target": "A43:input",
+            "label": "Gateway-Daemon Or Legacy Branch"
+          },
+          {
+            "id": "a4c3",
+            "source": "EXTERNAL",
+            "target": "A43:control",
+            "label": "Content Fingerprint Of Source Layers"
+          },
+          {
+            "id": "a4f3",
+            "source": "A43:output",
+            "target": "A44:input",
+            "label": "Dirty Layer Set"
+          },
+          {
+            "id": "a4m1",
+            "source": "EXTERNAL",
+            "target": "A44:mechanism",
+            "label": "webctl.sh restart --graceful Plus compileGatewayForSelfUpdate"
+          },
+          {
+            "id": "a4f4ok",
+            "source": "A44:output",
+            "target": "A45:input",
+            "label": "Build Success Plus Installed Artifacts"
+          },
+          {
+            "id": "a4f4err",
+            "source": "A44:output",
+            "target": "A46:input",
+            "label": "webctl Non-Zero Exit"
+          },
+          {
+            "id": "a4c4",
+            "source": "EXTERNAL",
+            "target": "A45:control",
+            "label": "300ms setTimeout Then process.exit(0)"
+          },
+          {
+            "id": "a4out1",
+            "source": "A45:output",
+            "target": "EXTERNAL",
+            "label": "Daemon Removed Discovery, Gateway Will Self-Heal"
+          },
+          {
+            "id": "a4out2",
+            "source": "A46:output",
+            "target": "EXTERNAL",
+            "label": "WEB_RESTART_FAILED With txid And errorLogPath"
+          },
+          {
+            "id": "a4out3",
+            "source": "A45:output",
+            "target": "EXTERNAL",
+            "label": "200 OK Response Before Exit"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A5",
+      "title": "Self-Heal Orphan Daemon"
+    },
+    {
+      "id": "A6",
+      "title": "Onboard Multi-User Sessions"
+    },
+    {
+      "id": "A7",
+      "title": "Enforce Daemon Spawn Denylist"
+    }
+  ],
+  "arrows": [
+    {
+      "id": "m1",
+      "source": "EXTERNAL",
+      "target": "A1:input",
+      "label": "Browser HTTPS Request Via Nginx"
+    },
+    {
+      "id": "m2",
+      "source": "EXTERNAL",
+      "target": "A1:control",
+      "label": "/etc/opencode/opencode.cfg EnvironmentFile"
+    },
+    {
+      "id": "m3",
+      "source": "EXTERNAL",
+      "target": "A1:mechanism",
+      "label": "opencode-gateway.service Running As Root"
+    },
+    {
+      "id": "m4",
+      "source": "A1:output",
+      "target": "A3:input",
+      "label": "find_or_create_daemon UID Lookup"
+    },
+    {
+      "id": "m5",
+      "source": "A3:output",
+      "target": "A2:input",
+      "label": "Adopt Failed, Spawn Required"
+    },
+    {
+      "id": "m6",
+      "source": "A3:output",
+      "target": "A1:control",
+      "label": "Adopted daemon.sock Path"
+    },
+    {
+      "id": "m7",
+      "source": "A2:output",
+      "target": "A3:input",
+      "label": "New Discovery File Triple"
+    },
+    {
+      "id": "m8",
+      "source": "A3:output",
+      "target": "EXTERNAL",
+      "label": "daemon.lock JSON PID In ~/.config/opencode/"
+    },
+    {
+      "id": "m9",
+      "source": "EXTERNAL",
+      "target": "A3:control",
+      "label": "process.kill(pid,0) Liveness Plus /proc/<pid>/uid Check"
+    },
+    {
+      "id": "m10",
+      "source": "EXTERNAL",
+      "target": "A4:input",
+      "label": "AI Calls system-manager:restart_self"
+    },
+    {
+      "id": "m11",
+      "source": "EXTERNAL",
+      "target": "A4:control",
+      "label": "AGENTS.md Plus webctl.sh Smart-Detect"
+    },
+    {
+      "id": "m12",
+      "source": "A4:output",
+      "target": "A2:input",
+      "label": "Daemon Self-Exit Triggers Respawn"
+    },
+    {
+      "id": "m13",
+      "source": "A4:output",
+      "target": "EXTERNAL",
+      "label": "errorLogPath Or 200 Accepted Response"
+    },
+    {
+      "id": "m14",
+      "source": "A1:output",
+      "target": "A5:input",
+      "label": "Adopt Probe Found Stale Or Mismatched Holder"
+    },
+    {
+      "id": "m15",
+      "source": "EXTERNAL",
+      "target": "A5:control",
+      "label": "SIGTERM 1s waitpid SIGKILL Escalation"
+    },
+    {
+      "id": "m16",
+      "source": "A5:output",
+      "target": "A2:input",
+      "label": "Cleared Lock And Socket Path Ready"
+    },
+    {
+      "id": "m17",
+      "source": "A5:output",
+      "target": "EXTERNAL",
+      "label": "orphan-detected And orphan-cleanup Log Lines"
+    },
+    {
+      "id": "m18",
+      "source": "EXTERNAL",
+      "target": "A6:input",
+      "label": "First Login For System Account"
+    },
+    {
+      "id": "m19",
+      "source": "EXTERNAL",
+      "target": "A6:control",
+      "label": "/etc/opencode/google-bindings.json Mapping"
+    },
+    {
+      "id": "m20",
+      "source": "A6:output",
+      "target": "A2:control",
+      "label": "Authorized UID For Spawn"
+    },
+    {
+      "id": "m21",
+      "source": "A6:output",
+      "target": "EXTERNAL",
+      "label": "Login Redirect Clears localStorage On User Switch"
+    },
+    {
+      "id": "m22",
+      "source": "EXTERNAL",
+      "target": "A7:input",
+      "label": "AI Bash Tool Command"
+    },
+    {
+      "id": "m23",
+      "source": "EXTERNAL",
+      "target": "A7:control",
+      "label": "DAEMON_SPAWN_DENYLIST Four Regex Rules In tool/bash.ts"
+    },
+    {
+      "id": "m24",
+      "source": "A7:output",
+      "target": "EXTERNAL",
+      "label": "FORBIDDEN_DAEMON_SPAWN Throw Plus denylist-block Log"
+    },
+    {
+      "id": "m25",
+      "source": "A7:output",
+      "target": "A4:control",
+      "label": "Forces AI To Use restart_self Path"
+    }
+  ]
+}

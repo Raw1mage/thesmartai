@@ -1,0 +1,153 @@
+<svg width="1320" height="1620" viewBox="-200.0 -40.0 1320.0 1620.0" xmlns="http://www.w3.org/2000/svg">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="black" /></marker></defs>
+<rect x="-200.0" y="-40.0" width="1320.0" height="1620.0" fill="white" />
+<rect x="360.0" y="80.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<rect x="365.0" y="85.0" width="70.0" height="50.0" stroke="black" stroke-width="1" fill="none" />
+<text x="400" y="115.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">0</text>
+<line x1="440" y1="110.0" x2="480.0" y2="110.0" stroke="black" />
+<rect x="480.0" y="64.0" width="160.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="560.0" y="90.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">admin_</text>
+<text x="560.0" y="114.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">panel_</text>
+<text x="560.0" y="138.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">idle</text>
+<line x1="400" y1="140.0" x2="400" y2="220" stroke="black" />
+<line x1="380" y1="180.0" x2="420" y2="180.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="184.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">operator_opens_DialogAppMarket_from_layout_L1065</text>
+<rect x="360.0" y="220.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="255.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">1</text>
+<line x1="440" y1="250.0" x2="480.0" y2="250.0" stroke="black" />
+<rect x="480.0" y="204.0" width="160.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="560.0" y="230.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">fetch_</text>
+<text x="560.0" y="254.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">market_</text>
+<text x="560.0" y="278.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">catalog</text>
+<line x1="400" y1="280.0" x2="400" y2="360" stroke="black" />
+<line x1="380" y1="320.0" x2="420" y2="320.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="324.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">GET_mcp_market_returned_MarketApp_array</text>
+<rect x="360.0" y="360.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="395.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">2</text>
+<line x1="440" y1="390.0" x2="480.0" y2="390.0" stroke="black" />
+<rect x="480.0" y="344.0" width="160.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="560.0" y="370.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">render_</text>
+<text x="560.0" y="394.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">unified_</text>
+<text x="560.0" y="418.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">card_grid</text>
+<line x1="400" y1="420.0" x2="400" y2="500" stroke="black" />
+<line x1="380" y1="460.0" x2="420" y2="460.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="464.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">operator_selects_app_or_clicks_add</text>
+<rect x="360.0" y="500.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="535.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">3</text>
+<line x1="440" y1="530.0" x2="480.0" y2="530.0" stroke="black" />
+<rect x="480.0" y="484.0" width="160.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="560.0" y="510.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">classify_</text>
+<text x="560.0" y="534.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">kind_</text>
+<text x="560.0" y="558.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">branch</text>
+<line x1="400" y1="560" x2="400" y2="600" stroke="black" />
+<line x1="-40.0" y1="600" x2="840.0" y2="600" stroke="black" stroke-width="1.5" />
+<line x1="0.0" y1="600" x2="0.0" y2="640" stroke="black" />
+<line x1="-20.0" y1="640" x2="20.0" y2="640" stroke="black" stroke-width="2" />
+<text x="-24.0" y="644" font-style="italic" font-size="11" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">kind==mcp_server</text>
+<line x1="0.0" y1="640" x2="0.0" y2="680" stroke="black" marker-end="url(#arrow)" />
+<line x1="400.0" y1="600" x2="400.0" y2="640" stroke="black" />
+<line x1="380.0" y1="640" x2="420.0" y2="640" stroke="black" stroke-width="2" />
+<text x="424.0" y="644" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">kind==managed_app</text>
+<line x1="400.0" y1="640" x2="400.0" y2="680" stroke="black" marker-end="url(#arrow)" />
+<line x1="800.0" y1="600" x2="800.0" y2="640" stroke="black" />
+<line x1="780.0" y1="640" x2="820.0" y2="640" stroke="black" stroke-width="2" />
+<text x="824.0" y="644" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">kind==mcp_app</text>
+<line x1="800.0" y1="640" x2="800.0" y2="680" stroke="black" marker-end="url(#arrow)" />
+<rect x="-40.0" y="680.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="0.0" y="715.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">4</text>
+<line x1="40.0" y1="710.0" x2="80.0" y2="710.0" stroke="black" />
+<rect x="80.0" y="664.0" width="160.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="160.0" y="690.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">connect_</text>
+<text x="160.0" y="714.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">mcp_</text>
+<text x="160.0" y="737.9999999999999" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">server</text>
+<line x1="0.0" y1="740.0" x2="0.0" y2="820" stroke="black" />
+<line x1="-20.0" y1="780.0" x2="20.0" y2="780.0" stroke="black" stroke-width="2" />
+<text x="24.0" y="784.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">server_status_connected</text>
+<rect x="360.0" y="680.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400.0" y="715.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">5</text>
+<line x1="440.0" y1="710.0" x2="480.0" y2="710.0" stroke="black" />
+<rect x="480.0" y="664.0" width="160.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="560.0" y="702.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">install_</text>
+<text x="560.0" y="726.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">managed_app</text>
+<line x1="400.0" y1="740.0" x2="400.0" y2="820" stroke="black" />
+<line x1="380.0" y1="780.0" x2="420.0" y2="780.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="784.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">managed_app_install_succeeded_AND_runtimeStatus_set</text>
+<rect x="760.0" y="680.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="800.0" y="715.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">6</text>
+<line x1="840.0" y1="710.0" x2="880.0" y2="710.0" stroke="black" />
+<rect x="880.0" y="664.0" width="160.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="960.0" y="690.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">preview_</text>
+<text x="960.0" y="714.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">and_register_</text>
+<text x="960.0" y="737.9999999999999" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">store_app</text>
+<line x1="800.0" y1="740.0" x2="800.0" y2="820" stroke="black" />
+<line x1="780.0" y1="780.0" x2="820.0" y2="780.0" stroke="black" stroke-width="2" />
+<text x="824.0" y="784.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">preview_ok_AND_addApp_or_cloneAndRegister_persisted</text>
+<line x1="-40.0" y1="820" x2="840.0" y2="820" stroke="black" stroke-width="1.5" />
+<line x1="0.0" y1="820" x2="0.0" y2="820" stroke="black" />
+<line x1="400.0" y1="820" x2="400.0" y2="820" stroke="black" />
+<line x1="800.0" y1="820" x2="800.0" y2="820" stroke="black" />
+<line x1="400" y1="820" x2="400" y2="860" stroke="black" marker-end="url(#arrow)" />
+<rect x="360.0" y="860.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="895.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">7</text>
+<line x1="440" y1="890.0" x2="480.0" y2="890.0" stroke="black" />
+<rect x="480.0" y="844.0" width="160.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="560.0" y="882.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">configure_</text>
+<text x="560.0" y="906.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">app_settings</text>
+<line x1="400" y1="920" x2="400" y2="960" stroke="black" />
+<line x1="160.0" y1="960" x2="640.0" y2="960" stroke="black" stroke-width="1.5" />
+<line x1="200.0" y1="960" x2="200.0" y2="1000" stroke="black" />
+<line x1="180.0" y1="1000" x2="220.0" y2="1000" stroke="black" stroke-width="2" />
+<text x="176.0" y="1004" font-style="italic" font-size="11" text-anchor="end" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">needs_oauth==true</text>
+<line x1="200.0" y1="1000" x2="200.0" y2="1040" stroke="black" marker-end="url(#arrow)" />
+<line x1="600.0" y1="960" x2="600.0" y2="1000" stroke="black" />
+<line x1="580.0" y1="1000" x2="620.0" y2="1000" stroke="black" stroke-width="2" />
+<text x="624.0" y="1004" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">needs_oauth==false</text>
+<line x1="600.0" y1="1000" x2="600.0" y2="1040" stroke="black" marker-end="url(#arrow)" />
+<rect x="160.0" y="1040.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="200.0" y="1075.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">8</text>
+<line x1="240.0" y1="1070.0" x2="280.0" y2="1070.0" stroke="black" />
+<rect x="280.0" y="1024.0" width="160.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="360.0" y="1062.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">authorize_</text>
+<text x="360.0" y="1086.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">oauth_popup</text>
+<line x1="200.0" y1="1100.0" x2="200.0" y2="1180" stroke="black" />
+<line x1="180.0" y1="1140.0" x2="220.0" y2="1140.0" stroke="black" stroke-width="2" />
+<text x="224.0" y="1144.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">oauth_callback_persisted_token_AND_managed_app_updated_emitted</text>
+<rect x="560.0" y="1040.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="600.0" y="1075.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">9</text>
+<line x1="640.0" y1="1070.0" x2="680.0" y2="1070.0" stroke="black" />
+<rect x="680.0" y="1024.0" width="160.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="760.0" y="1050.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">enable_</text>
+<text x="760.0" y="1074.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">app_</text>
+<text x="760.0" y="1098.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">directly</text>
+<line x1="600.0" y1="1100.0" x2="600.0" y2="1180" stroke="black" />
+<line x1="580.0" y1="1140.0" x2="620.0" y2="1140.0" stroke="black" stroke-width="2" />
+<text x="624.0" y="1144.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">enabled_flag_set_true</text>
+<line x1="160.0" y1="1180" x2="640.0" y2="1180" stroke="black" stroke-width="1.5" />
+<line x1="200.0" y1="1180" x2="200.0" y2="1180" stroke="black" />
+<line x1="600.0" y1="1180" x2="600.0" y2="1180" stroke="black" />
+<line x1="400" y1="1180" x2="400" y2="1220" stroke="black" marker-end="url(#arrow)" />
+<rect x="360.0" y="1220.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="1255.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">10</text>
+<line x1="440" y1="1250.0" x2="480.0" y2="1250.0" stroke="black" />
+<rect x="480.0" y="1204.0" width="160.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="560.0" y="1230.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">refetch_</text>
+<text x="560.0" y="1254.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">and_show_</text>
+<text x="560.0" y="1278.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">status_pill</text>
+<line x1="400" y1="1280.0" x2="400" y2="1360" stroke="black" />
+<line x1="380" y1="1320.0" x2="420" y2="1320.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="1324.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">status_pill_in_{connected,ready,enabled}</text>
+<rect x="360.0" y="1360.0" width="80" height="60" stroke="black" stroke-width="1.5" fill="white" />
+<text x="400" y="1395.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-weight="bold" font-size="14">11</text>
+<line x1="440" y1="1390.0" x2="480.0" y2="1390.0" stroke="black" />
+<rect x="480.0" y="1344.0" width="160.0" height="92.0" stroke="black" stroke-width="1.2" fill="white" />
+<text x="560.0" y="1382.0" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">wait_or_</text>
+<text x="560.0" y="1406.0000000000002" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" font-size="11">uninstall</text>
+<line x1="400" y1="1420.0" x2="400" y2="1500" stroke="black" />
+<line x1="380" y1="1460.0" x2="420" y2="1460.0" stroke="black" stroke-width="2" />
+<text x="424.0" y="1464.0" font-style="italic" font-size="11" text-anchor="start" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif">dialog_closed_or_uninstall_completed</text>
+<line x1="400" y1="1500" x2="400" y2="1500.0" stroke="black" />
+<line x1="400" y1="1500.0" x2="-120.0" y2="1500.0" stroke="black" />
+<line x1="-120.0" y1="1500.0" x2="-120.0" y2="40.0" stroke="black" />
+<line x1="-120.0" y1="40.0" x2="400" y2="40.0" stroke="black" />
+<line x1="400" y1="40.0" x2="400" y2="80.0" stroke="black" marker-end="url(#arrow)" />
+</svg>

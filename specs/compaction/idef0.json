@@ -1,0 +1,526 @@
+{
+  "diagram_title": "Compact Session Context",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Evaluate Trigger Condition",
+      "decomposition": {
+        "diagram_title": "Evaluate Trigger Condition",
+        "node_reference": "A1",
+        "activities": [
+          {
+            "id": "A11",
+            "title": "Check Cooldown Window"
+          },
+          {
+            "id": "A12",
+            "title": "Detect Manual Compaction Request"
+          },
+          {
+            "id": "A13",
+            "title": "Detect Continuation Invalidation"
+          },
+          {
+            "id": "A14",
+            "title": "Detect Identity Drift"
+          },
+          {
+            "id": "A15",
+            "title": "Detect Token Pressure"
+          },
+          {
+            "id": "A16",
+            "title": "Diagnose Cache Miss Kind"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a1_in_msgs",
+            "source": "EXTERNAL",
+            "target": "A11:input",
+            "label": "Session Messages"
+          },
+          {
+            "id": "a1_in_anchor",
+            "source": "EXTERNAL",
+            "target": "A11:input",
+            "label": "Most Recent Anchor Time"
+          },
+          {
+            "id": "a1_ctrl_cooldown_ms",
+            "source": "EXTERNAL",
+            "target": "A11:control",
+            "label": "Cooldown Window Ms"
+          },
+          {
+            "id": "a1_out_proceed",
+            "source": "A11:output",
+            "target": "A12:input",
+            "label": "Cooldown Cleared Flag"
+          },
+          {
+            "id": "a1_in_compact_req",
+            "source": "EXTERNAL",
+            "target": "A12:input",
+            "label": "Compaction Request Part"
+          },
+          {
+            "id": "a1_out_manual",
+            "source": "A12:output",
+            "target": "A13:input",
+            "label": "Manual Or Overflow Tag"
+          },
+          {
+            "id": "a1_in_invalidated",
+            "source": "EXTERNAL",
+            "target": "A13:input",
+            "label": "ContinuationInvalidatedAt Timestamp"
+          },
+          {
+            "id": "a1_out_ci",
+            "source": "A13:output",
+            "target": "A14:input",
+            "label": "Continuation Invalidated Tag"
+          },
+          {
+            "id": "a1_in_pinned",
+            "source": "EXTERNAL",
+            "target": "A14:input",
+            "label": "Pinned Provider And Account"
+          },
+          {
+            "id": "a1_out_drift",
+            "source": "A14:output",
+            "target": "A15:input",
+            "label": "Provider Switched Tag"
+          },
+          {
+            "id": "a1_in_tokens",
+            "source": "EXTERNAL",
+            "target": "A15:input",
+            "label": "Last Assistant Token Counts"
+          },
+          {
+            "id": "a1_ctrl_tweaks",
+            "source": "EXTERNAL",
+            "target": "A15:control",
+            "label": "Compaction Tweaks Cfg"
+          },
+          {
+            "id": "a1_out_overflow",
+            "source": "A15:output",
+            "target": "A16:input",
+            "label": "Overflow Or Stall Tag"
+          },
+          {
+            "id": "a1_in_hashes",
+            "source": "EXTERNAL",
+            "target": "A16:input",
+            "label": "Recent System Block Hashes"
+          },
+          {
+            "id": "a1_out_observed",
+            "source": "A16:output",
+            "target": "EXTERNAL",
+            "label": "Observed Condition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A2",
+      "title": "Select Compaction Kind Chain",
+      "decomposition": {
+        "diagram_title": "Select Compaction Kind Chain",
+        "node_reference": "A2",
+        "activities": [
+          {
+            "id": "A21",
+            "title": "Look Up Base Chain Per Observed"
+          },
+          {
+            "id": "A22",
+            "title": "Resolve Provider Aware Reorder"
+          },
+          {
+            "id": "A23",
+            "title": "Apply Manual Rich Override"
+          },
+          {
+            "id": "A24",
+            "title": "Emit Kind Chain Telemetry"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a2_in_observed",
+            "source": "EXTERNAL",
+            "target": "A21:input",
+            "label": "Observed Condition"
+          },
+          {
+            "id": "a2_ctrl_table",
+            "source": "EXTERNAL",
+            "target": "A21:control",
+            "label": "KIND_CHAIN Table"
+          },
+          {
+            "id": "a2_out_base",
+            "source": "A21:output",
+            "target": "A22:input",
+            "label": "Base Chain"
+          },
+          {
+            "id": "a2_in_model",
+            "source": "EXTERNAL",
+            "target": "A22:input",
+            "label": "Active Model And Subscription Flag"
+          },
+          {
+            "id": "a2_ctrl_threshold",
+            "source": "EXTERNAL",
+            "target": "A22:control",
+            "label": "CodexServerPriorityRatio"
+          },
+          {
+            "id": "a2_out_resolved",
+            "source": "A22:output",
+            "target": "A23:input",
+            "label": "Resolved Chain"
+          },
+          {
+            "id": "a2_in_intent",
+            "source": "EXTERNAL",
+            "target": "A23:input",
+            "label": "Intent Flag"
+          },
+          {
+            "id": "a2_out_final",
+            "source": "A23:output",
+            "target": "A24:input",
+            "label": "Final Kind Chain"
+          },
+          {
+            "id": "a2_out_chain",
+            "source": "A24:output",
+            "target": "EXTERNAL",
+            "label": "Kind Chain To Executor"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A3",
+      "title": "Execute Kind Chain",
+      "decomposition": {
+        "diagram_title": "Execute Kind Chain",
+        "node_reference": "A3",
+        "activities": [
+          {
+            "id": "A31",
+            "title": "Try Narrative Kind"
+          },
+          {
+            "id": "A32",
+            "title": "Try Replay Tail Kind"
+          },
+          {
+            "id": "A33",
+            "title": "Try Low Cost Server Kind"
+          },
+          {
+            "id": "A34",
+            "title": "Try LLM Agent Kind"
+          },
+          {
+            "id": "A35",
+            "title": "Escalate Truncated Local Result"
+          },
+          {
+            "id": "A36",
+            "title": "Abort On Chain Exhaustion"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a3_in_chain",
+            "source": "EXTERNAL",
+            "target": "A31:input",
+            "label": "Kind Chain"
+          },
+          {
+            "id": "a3_in_memory",
+            "source": "EXTERNAL",
+            "target": "A31:input",
+            "label": "Turn Summary Store"
+          },
+          {
+            "id": "a3_ctrl_target",
+            "source": "EXTERNAL",
+            "target": "A31:control",
+            "label": "Target Prompt Tokens"
+          },
+          {
+            "id": "a3_out_narrative",
+            "source": "A31:output",
+            "target": "A35:input",
+            "label": "Narrative Attempt Result"
+          },
+          {
+            "id": "a3_in_tail",
+            "source": "EXTERNAL",
+            "target": "A32:input",
+            "label": "Conversation Tail Snapshot"
+          },
+          {
+            "id": "a3_out_replay",
+            "source": "A32:output",
+            "target": "A35:input",
+            "label": "Replay Tail Attempt Result"
+          },
+          {
+            "id": "a3_in_codex",
+            "source": "EXTERNAL",
+            "target": "A33:input",
+            "label": "Codex Previous Response Id"
+          },
+          {
+            "id": "a3_out_lowcost",
+            "source": "A33:output",
+            "target": "A35:input",
+            "label": "Low Cost Server Attempt Result"
+          },
+          {
+            "id": "a3_in_llm_input",
+            "source": "EXTERNAL",
+            "target": "A34:input",
+            "label": "Subagent Prompt Bundle"
+          },
+          {
+            "id": "a3_out_llm",
+            "source": "A34:output",
+            "target": "A35:input",
+            "label": "LLM Agent Attempt Result"
+          },
+          {
+            "id": "a3_out_winner",
+            "source": "A35:output",
+            "target": "EXTERNAL",
+            "label": "Summary Text Or Inline Anchor"
+          },
+          {
+            "id": "a3_out_abort",
+            "source": "A36:output",
+            "target": "EXTERNAL",
+            "label": "Stop Result"
+          },
+          {
+            "id": "a3_in_exhausted",
+            "source": "A35:output",
+            "target": "A36:input",
+            "label": "Chain Exhausted Flag"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A4",
+      "title": "Write Sanitized Anchor"
+    },
+    {
+      "id": "A5",
+      "title": "Inject Synthetic Continue"
+    },
+    {
+      "id": "A6",
+      "title": "Apply Cache Layout And Static System",
+      "decomposition": {
+        "diagram_title": "Apply Cache Layout And Static System",
+        "node_reference": "A6",
+        "activities": [
+          {
+            "id": "A61",
+            "title": "Build Static System Block"
+          },
+          {
+            "id": "A62",
+            "title": "Emit Context Preface Parts"
+          },
+          {
+            "id": "A63",
+            "title": "Place Cache Breakpoints"
+          },
+          {
+            "id": "A64",
+            "title": "Record System Block Hash"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a6_in_tuple",
+            "source": "EXTERNAL",
+            "target": "A61:input",
+            "label": "L1 L2 L3c L5 L6 L7 L8 Tuple"
+          },
+          {
+            "id": "a6_out_block",
+            "source": "A61:output",
+            "target": "A63:input",
+            "label": "Static System Block"
+          },
+          {
+            "id": "a6_in_dynamic",
+            "source": "EXTERNAL",
+            "target": "A62:input",
+            "label": "Cwd Skills Date Routing Inputs"
+          },
+          {
+            "id": "a6_out_preface",
+            "source": "A62:output",
+            "target": "A63:input",
+            "label": "Context Preface Parts"
+          },
+          {
+            "id": "a6_ctrl_provider",
+            "source": "EXTERNAL",
+            "target": "A63:control",
+            "label": "Provider Family"
+          },
+          {
+            "id": "a6_out_msgs",
+            "source": "A63:output",
+            "target": "EXTERNAL",
+            "label": "Messages With BP1 To BP4"
+          },
+          {
+            "id": "a6_out_hash_in",
+            "source": "A61:output",
+            "target": "A64:input",
+            "label": "Static Block Bytes"
+          },
+          {
+            "id": "a6_out_hash",
+            "source": "A64:output",
+            "target": "EXTERNAL",
+            "label": "Recorded System Block Hash"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A7",
+      "title": "Record Telemetry And Post Compaction"
+    }
+  ],
+  "arrows": [
+    {
+      "id": "m_in_session",
+      "source": "EXTERNAL",
+      "target": "A1:input",
+      "label": "Session State Snapshot"
+    },
+    {
+      "id": "m_in_step",
+      "source": "EXTERNAL",
+      "target": "A1:input",
+      "label": "Runloop Step Counter"
+    },
+    {
+      "id": "m_ctrl_tweaks",
+      "source": "EXTERNAL",
+      "target": "A1:control",
+      "label": "Tweaks Cfg And AGENTS Md"
+    },
+    {
+      "id": "m_a1_a2",
+      "source": "A1:output",
+      "target": "A2:input",
+      "label": "Observed Condition"
+    },
+    {
+      "id": "m_ctrl_a2",
+      "source": "EXTERNAL",
+      "target": "A2:control",
+      "label": "Active Provider And Subscription"
+    },
+    {
+      "id": "m_a2_a3",
+      "source": "A2:output",
+      "target": "A3:input",
+      "label": "Resolved Kind Chain"
+    },
+    {
+      "id": "m_in_memory",
+      "source": "EXTERNAL",
+      "target": "A3:input",
+      "label": "Memory And Shared Context"
+    },
+    {
+      "id": "m_a3_a4",
+      "source": "A3:output",
+      "target": "A4:input",
+      "label": "Summary Text"
+    },
+    {
+      "id": "m_ctrl_a4",
+      "source": "EXTERNAL",
+      "target": "A4:control",
+      "label": "Anchor Sanitizer Rules"
+    },
+    {
+      "id": "m_a4_a5",
+      "source": "A4:output",
+      "target": "A5:input",
+      "label": "Anchor Message Id"
+    },
+    {
+      "id": "m_ctrl_a5",
+      "source": "EXTERNAL",
+      "target": "A5:control",
+      "label": "INJECT_CONTINUE Table"
+    },
+    {
+      "id": "m_a5_a6",
+      "source": "A5:output",
+      "target": "A6:input",
+      "label": "Updated Message Stream"
+    },
+    {
+      "id": "m_a4_a6",
+      "source": "A4:output",
+      "target": "A6:input",
+      "label": "Anchor With Skill Snapshot"
+    },
+    {
+      "id": "m_a6_out",
+      "source": "A6:output",
+      "target": "EXTERNAL",
+      "label": "Cache Optimized Prompt"
+    },
+    {
+      "id": "m_a3_a7",
+      "source": "A3:output",
+      "target": "A7:input",
+      "label": "Per Kind Attempt Outcomes"
+    },
+    {
+      "id": "m_a4_a7",
+      "source": "A4:output",
+      "target": "A7:input",
+      "label": "Anchor Created At"
+    },
+    {
+      "id": "m_a7_out",
+      "source": "A7:output",
+      "target": "EXTERNAL",
+      "label": "Telemetry And Cooldown Signal"
+    },
+    {
+      "id": "m_a3_stop",
+      "source": "A3:output",
+      "target": "EXTERNAL",
+      "label": "Stop Verdict When Chain Exhausted"
+    }
+  ]
+}

@@ -145,7 +145,7 @@ Layers 1 (hybrid-llm compaction), 3 (context visibility), 4 (`compact_now` tool)
 - Manual runtime policy remains an explicit operator boundary: builder may prepare syncback metadata, but it must not invent or auto-run runtime commands.
 - Destructive finalize execution now has a builder-native execute path, but it is still explicit-approval-only and cleanup remains conservative by default.
 - Drift remediation execute is implemented only for explicit approval-confirmed rebase flow and fails fast on dirty beta state or rebase conflicts; no silent history rewrite or implicit conflict recovery is allowed.
-- `packages/mcp/branch-cicd/src/beta-tool.ts` and the `beta-workflow` skill remain advisory/migration assets only: they may help operators or continuations understand the beta surface, but they are not build-admission authorities and must not be treated as enforcement boundaries.
+- `packages/mcp/branch-cicd/src/beta-tool.ts` remains a historical/migration reference only and is retired from the app-market dashboard. Builder-native beta workflow surfaces are the operational path for beta execution; `beta-tool` must not be treated as a build-admission authority or dashboard capability.
 
 ## Account Management (3-Tier Architecture)
 
@@ -565,9 +565,9 @@ Both Google apps share a single OAuth token stored at `~/.config/opencode/gauth.
   - TUI sidebar `Changes` and webapp changes sidebar use workspace-level git status (`file.status`) when the UX is explicitly about current workdir uncommitted files.
 - These two sources must not be silently conflated; session attribution and workdir cleanliness are separate contracts.
 
-## beta-tool MCP Architecture
+## Retired beta-tool MCP Architecture
 
-- `packages/mcp/branch-cicd` adds a standalone stdio MCP server published as capability `beta-tool`.
+- `packages/mcp/branch-cicd` originally added a standalone stdio MCP server published as capability `beta-tool`; it is now retained only as historical/migration source material and filtered from `/api/v2/mcp/market`.
 - Public tools are exactly `newbeta`, `syncback`, and `merge`.
 - The package resolves project context before mutating git state: canonical repo root, authoritative base branch, deterministic beta worktree root, and runtime policy.
 - The package is project-aware rather than `cms`-hard-coded: this repo resolves a `webctl.sh` runtime adapter, while non-matching repos must provide explicit runtime policy or complete a bounded clarification step.

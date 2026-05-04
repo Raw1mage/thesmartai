@@ -1,0 +1,79 @@
+<svg width="1985.1" height="841.8" viewBox="-412.6 -170.0 1985.1 841.8" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="black" /></marker>
+<marker id="call_arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 M 0 2 L 6 5 L 0 8" fill="none" stroke="black" stroke-width="1" /></marker>
+</defs>
+<rect x="-412.6" y="-170.0" width="1985.1" height="841.8" fill="white" />
+<rect x="130.0" y="120.0" width="200.0" height="160.0" stroke="black" fill="white" stroke-width="1.5" data-id="A21" />
+<text x="230.0" y="162.3" text-anchor="middle" font-size="20" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A21" >A21</text>
+<text x="230.0" y="200.9" text-anchor="middle" font-size="22" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A21" >DETECT REBIND</text>
+<text x="230.0" y="242.1" text-anchor="middle" font-size="22" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A21" >TRIGGER</text>
+<rect x="450.0" y="120.0" width="200.0" height="160.0" stroke="black" fill="white" stroke-width="1.5" data-id="A22" />
+<text x="550.0" y="159.4" text-anchor="middle" font-size="22" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A22" >A22</text>
+<text x="550.0" y="200.9" text-anchor="middle" font-size="24" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A22" >APPLY REBIND</text>
+<text x="550.0" y="245.9" text-anchor="middle" font-size="24" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A22" >RATE LIMIT</text>
+<rect x="790.0" y="120.0" width="200.0" height="160.0" stroke="black" fill="white" stroke-width="1.5" data-id="A23" />
+<text x="890.0" y="158.0" text-anchor="middle" font-size="23" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A23" >A23</text>
+<text x="890.0" y="200.8" text-anchor="middle" font-size="25" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A23" >BUMP EPOCH</text>
+<text x="890.0" y="247.7" text-anchor="middle" font-size="25" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A23" >REGISTRY</text>
+<rect x="130.0" y="420.0" width="200.0" height="160.0" stroke="black" fill="white" stroke-width="1.5" data-id="A24" />
+<text x="230.0" y="451.2" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A24" >A24</text>
+<text x="230.0" y="484.1" text-anchor="middle" font-size="18" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A24" >REINJECT</text>
+<text x="230.0" y="517.8" text-anchor="middle" font-size="18" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A24" >CAPABILITY</text>
+<text x="230.0" y="551.6" text-anchor="middle" font-size="18" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A24" >SNAPSHOT</text>
+<rect x="450.0" y="420.0" width="200.0" height="160.0" stroke="black" fill="white" stroke-width="1.5" data-id="A25" />
+<text x="550.0" y="468.1" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A25" >A25</text>
+<text x="550.0" y="501.0" text-anchor="middle" font-size="18" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A25" >INVALIDATE</text>
+<text x="550.0" y="534.7" text-anchor="middle" font-size="18" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A25" >CAPABILITY CACHE</text>
+<rect x="40.0" y="40.0" width="1080.0" height="621.8" stroke="black" fill="none" stroke-width="2" />
+<rect x="456.0" y="-160.0" width="248.0" height="110.0" stroke="black" fill="white" stroke-width="1.5" data-id="A2" />
+<text x="580.0" y="-134.0" text-anchor="middle" font-size="14" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A2" >A2</text>
+<text x="580.0" y="-104.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A2" >REFRESH</text>
+<text x="580.0" y="-74.0" text-anchor="middle" font-size="16" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A2" >CAPABILITY LAYER</text>
+<line x1="456.0" y1="-160.0" x2="40.0" y2="40.0" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<line x1="704.0" y1="-160.0" x2="1120.0" y2="40.0" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<line x1="456.0" y1="-50.0" x2="40.0" y2="661.8" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<line x1="704.0" y1="-50.0" x2="1120.0" y2="661.8" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<path d="M 330.0 200.0 L 450.0 200.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_detect_to_rate" data-waypoints="330.0,200.0 450.0,200.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 650.0 173.3 L 790.0 173.3" stroke="black" stroke-width="1.2" data-arrow-id="a2_rate_to_bump" data-waypoints="650.0,173.3 790.0,173.3" marker-end="url(#arrow)" fill="none" />
+<path d="M 990.0 240.0 L 1020.0 240.0 Q 1030.0 240.0 1030.0 250.0 L 1030.0 320.0 Q 1030.0 330.0 1020.0 330.0 L 100.0 330.0 Q 90.0 330.0 90.0 340.0 L 90.0 490.0 Q 90.0 500.0 100.0 500.0 L 130.0 500.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_bump_to_reinject" data-waypoints="990.0,240.0 1030.0,240.0 1030.0,330.0 90.0,330.0 90.0,500.0 130.0,500.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 990.0 200.0 L 1060.0 200.0 Q 1070.0 200.0 1070.0 210.0 L 1070.0 360.0 Q 1070.0 370.0 1060.0 370.0 L 420.0 370.0 Q 410.0 370.0 410.0 380.0 L 410.0 490.0 Q 410.0 500.0 420.0 500.0 L 450.0 500.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_bump_to_invalidate" data-waypoints="990.0,200.0 1070.0,200.0 1070.0,370.0 410.0,370.0 410.0,500.0 450.0,500.0" marker-end="url(#arrow)" fill="none" />
+<path d="M -10.0 200.0 L 130.0 200.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_in_signal" data-waypoints="-10.0,200.0 130.0,200.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 230.0 84.2 L 230.0 120.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_ctrl_triggers" data-waypoints="230.0,84.2 230.0,120.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 230.0 315.8 L 230.0 280.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_mech_detect" data-waypoints="230.0,315.8 230.0,280.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 550.0 84.2 L 550.0 120.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_ctrl_rate" data-waypoints="550.0,84.2 550.0,120.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 650.0 226.7 L 710.0 226.7 Q 720.0 226.7 720.0 216.7 L 720.0 90.0 Q 720.0 80.0 730.0 80.0 L 1170.0 80.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_rate_storm" data-waypoints="650.0,226.7 720.0,226.7 720.0,80.0 1170.0,80.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 890.0 315.8 L 890.0 280.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_mech_bump" data-waypoints="890.0,315.8 890.0,280.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 990.0 160.0 L 1170.0 160.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_bump_event" data-waypoints="990.0,160.0 1170.0,160.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 230.0 384.2 L 230.0 420.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_ctrl_busy" data-waypoints="230.0,384.2 230.0,420.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 230.0 615.8 L 230.0 580.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_mech_reinject" data-waypoints="230.0,615.8 230.0,580.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 330.0 500.0 L 360.0 500.0 Q 370.0 500.0 370.0 510.0 L 370.0 611.8 Q 370.0 621.8 380.0 621.8 L 1170.0 621.8" stroke="black" stroke-width="1.2" data-arrow-id="a2_out_snapshot" data-waypoints="330.0,500.0 370.0,500.0 370.0,621.8 1170.0,621.8" marker-end="url(#arrow)" fill="none" />
+<path d="M 550.0 615.8 L 550.0 580.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_mech_loader" data-waypoints="550.0,615.8 550.0,580.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 650.0 500.0 L 1170.0 500.0" stroke="black" stroke-width="1.2" data-arrow-id="a2_out_invalidated" data-waypoints="650.0,500.0 1170.0,500.0" marker-end="url(#arrow)" fill="none" />
+<text x="230.0" y="78.2" font-size="14" text-anchor="middle" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_ctrl_triggers">RebindTrigger Enum (6 Values)</text>
+<text x="224.0" y="296.0" font-size="14" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_mech_detect">session</text>
+<text x="236.0" y="296.0" font-size="14" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_mech_detect">rebind-epoch.ts</text>
+<text x="550.0" y="78.2" font-size="14" text-anchor="middle" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_ctrl_rate">REBIND_RATE_LIMIT 5 Per 1000ms</text>
+<text x="884.0" y="296.0" font-size="12" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_mech_bump">bumpEpoch</text>
+<text x="896.0" y="296.0" font-size="12" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_mech_bump">(rebind-epoch.ts L132)</text>
+<text x="230.0" y="378.2" font-size="14" text-anchor="middle" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_ctrl_busy">DD-5 Busy Session Skip</text>
+<text x="230.0" y="631.8" font-size="14" text-anchor="middle" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_mech_reinject">capability-layer.ts reinject</text>
+<text x="546.0" y="596.0" font-size="14" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_mech_loader">capability-layer-loader.ts</text>
+<text x="390.0" y="195.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_detect_to_rate">Trigger</text>
+<text x="390.0" y="212.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_detect_to_rate">Candidate</text>
+<text x="720.0" y="165.3" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_rate_to_bump" >Allowed Trigger</text>
+<text x="550.0" y="348.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_bump_to_reinject" >New Epoch (Session Idle)</text>
+<text x="550.0" y="388.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_bump_to_invalidate" >New Epoch (Cache Key)</text>
+<text x="-14.0" y="165.0" font-size="20" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_in_signal">Trigger Signal</text>
+<text x="-14.0" y="191.0" font-size="20" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_in_signal">(Resume / Switch</text>
+<text x="-14.0" y="217.0" font-size="20" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_in_signal">/ Reload / Tool</text>
+<text x="-14.0" y="243.0" font-size="20" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_in_signal">/ Mtime / Boot)</text>
+<text x="1174.0" y="84.0" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_rate_storm">session.rebind_storm Anomaly Event</text>
+<text x="1174.0" y="151.0" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_bump_event">session.rebind</text>
+<text x="1174.0" y="177.0" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_bump_event">Workflow Event</text>
+<text x="1174.0" y="599.8" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_out_snapshot">Layers + Pinned</text>
+<text x="1174.0" y="625.8" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_out_snapshot">+ Missing Skills</text>
+<text x="1174.0" y="651.8" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_out_snapshot">+ Failures</text>
+<text x="1174.0" y="491.0" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_out_invalidated">Cache Miss On</text>
+<text x="1174.0" y="517.0" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a2_out_invalidated">Next Lookup</text>
+</svg>

@@ -1,0 +1,91 @@
+<svg width="1687.4" height="717.6" viewBox="-229.7 -171.8 1687.4 717.6" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="black" /></marker>
+<marker id="call_arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 M 0 2 L 6 5 L 0 8" fill="none" stroke="black" stroke-width="1" /></marker>
+</defs>
+<rect x="-229.7" y="-171.8" width="1687.4" height="717.6" fill="white" />
+<rect x="130.0" y="120.0" width="200.0" height="120.0" stroke="black" fill="white" stroke-width="1.5" data-id="A31" />
+<text x="230.0" y="149.6" text-anchor="middle" font-size="15" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A31" >A31</text>
+<text x="230.0" y="181.0" text-anchor="middle" font-size="17" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A31" >QUEUE</text>
+<text x="230.0" y="212.9" text-anchor="middle" font-size="17" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A31" >SUBAGENT JOB</text>
+<rect x="510.0" y="120.0" width="200.0" height="120.0" stroke="black" fill="white" stroke-width="1.5" data-id="A32" />
+<text x="610.0" y="149.6" text-anchor="middle" font-size="15" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A32" >A32</text>
+<text x="610.0" y="181.0" text-anchor="middle" font-size="17" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A32" >RUN PROC</text>
+<text x="610.0" y="212.9" text-anchor="middle" font-size="17" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A32" >SCAN WATCHDOG</text>
+<rect x="898.0" y="120.0" width="200.0" height="120.0" stroke="black" fill="white" stroke-width="1.5" data-id="A33" />
+<text x="998.0" y="149.6" text-anchor="middle" font-size="15" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A33" >A33</text>
+<text x="998.0" y="181.0" text-anchor="middle" font-size="17" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A33" >DETECT TERMINAL</text>
+<text x="998.0" y="212.9" text-anchor="middle" font-size="17" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A33" >OR DEATH</text>
+<rect x="130.0" y="340.0" width="200.0" height="120.0" stroke="black" fill="white" stroke-width="1.5" data-id="A34" />
+<text x="230.0" y="369.6" text-anchor="middle" font-size="15" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A34" >A34</text>
+<text x="230.0" y="401.0" text-anchor="middle" font-size="17" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A34" >EMIT TASK</text>
+<text x="230.0" y="432.9" text-anchor="middle" font-size="17" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A34" >COMPLETED EVENT</text>
+<rect x="510.0" y="340.0" width="200.0" height="120.0" stroke="black" fill="white" stroke-width="1.5" data-id="A35" />
+<text x="610.0" y="369.6" text-anchor="middle" font-size="15" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A35" >A35</text>
+<text x="610.0" y="401.0" text-anchor="middle" font-size="17" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A35" >APPEND PENDING</text>
+<text x="610.0" y="432.9" text-anchor="middle" font-size="17" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A35" >SUBAGENT NOTICE</text>
+<rect x="898.0" y="340.0" width="200.0" height="120.0" stroke="black" fill="white" stroke-width="1.5" data-id="A36" />
+<text x="998.0" y="369.6" text-anchor="middle" font-size="15" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A36" >A36</text>
+<text x="998.0" y="401.0" text-anchor="middle" font-size="17" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A36" >RENDER NOTICE</text>
+<text x="998.0" y="432.9" text-anchor="middle" font-size="17" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A36" >ON NEXT ASSEMBLE</text>
+<rect x="40.0" y="38.2" width="1148.0" height="497.6" stroke="black" fill="none" stroke-width="2" />
+<rect x="494.0" y="-161.8" width="240.0" height="110.0" stroke="black" fill="white" stroke-width="1.5" data-id="A3" />
+<text x="614.0" y="-122.8" text-anchor="middle" font-size="18" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A3" >A3</text>
+<text x="614.0" y="-87.1" text-anchor="middle" font-size="20" font-weight="bold" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-id="A3" >DISPATCH SUBAGENT</text>
+<line x1="494.0" y1="-161.8" x2="40.0" y2="38.2" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<line x1="734.0" y1="-161.8" x2="1188.0" y2="38.2" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<line x1="494.0" y1="-51.8" x2="40.0" y2="535.8" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<line x1="734.0" y1="-51.8" x2="1188.0" y2="535.8" stroke="red" stroke-dasharray="5,5" stroke-width="1.0" opacity="0.6" />
+<path d="M 330.0 160.0 L 510.0 160.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_queue_to_watch" data-waypoints="330.0,160.0 510.0,160.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 710.0 180.0 L 898.0 180.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_watch_to_detect" data-waypoints="710.0,180.0 898.0,180.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 330.0 400.0 L 510.0 400.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_emit_to_notice" data-waypoints="330.0,400.0 510.0,400.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 710.0 400.0 L 898.0 400.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_notice_to_render" data-waypoints="710.0,400.0 898.0,400.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 1098.0 180.0 L 1128.0 180.0 Q 1138.0 180.0 1138.0 190.0 L 1138.0 280.0 Q 1138.0 290.0 1128.0 290.0 L 100.0 290.0 Q 90.0 290.0 90.0 300.0 L 90.0 390.0 Q 90.0 400.0 100.0 400.0 L 130.0 400.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_detect_to_emit" data-waypoints="1098.0,180.0 1138.0,180.0 1138.0,290.0 90.0,290.0 90.0,400.0 130.0,400.0" marker-end="url(#arrow)" fill="none" />
+<path d="M -10.0 180.0 L 130.0 180.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_in_call" data-waypoints="-10.0,180.0 130.0,180.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 230.0 275.8 L 230.0 240.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_mech_queue" data-waypoints="230.0,275.8 230.0,240.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 230.0 84.2 L 230.0 120.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_ctrl_lane" data-waypoints="230.0,84.2 230.0,120.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 330.0 200.0 L 410.0 200.0 Q 420.0 200.0 420.0 190.0 L 420.0 88.2 Q 420.0 78.2 430.0 78.2 L 1238.0 78.2" stroke="black" stroke-width="1.2" data-arrow-id="a3_queue_stub" data-waypoints="330.0,200.0 420.0,200.0 420.0,78.2 1238.0,78.2" marker-end="url(#arrow)" fill="none" />
+<path d="M 610.0 275.8 L 610.0 240.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_mech_watch" data-waypoints="610.0,275.8 610.0,240.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 610.0 84.2 L 610.0 120.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_ctrl_watch" data-waypoints="610.0,84.2 610.0,120.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 998.0 275.8 L 998.0 240.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_mech_detect" data-waypoints="998.0,275.8 998.0,240.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 230.0 495.8 L 230.0 460.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_mech_emit" data-waypoints="230.0,495.8 230.0,460.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 610.0 495.8 L 610.0 460.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_mech_notice" data-waypoints="610.0,495.8 610.0,460.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 610.0 304.2 L 610.0 340.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_ctrl_clean" data-waypoints="610.0,304.2 610.0,340.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 998.0 495.8 L 998.0 460.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_mech_assemble" data-waypoints="998.0,495.8 998.0,460.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 1098.0 400.0 L 1238.0 400.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_render_out" data-waypoints="1098.0,400.0 1238.0,400.0" marker-end="url(#arrow)" fill="none" />
+<path d="M 998.0 84.2 L 998.0 120.0" stroke="black" stroke-width="1.2" data-arrow-id="a3_in_cancel" data-waypoints="998.0,84.2 998.0,120.0" marker-end="url(#arrow)" fill="none" />
+<text x="224.0" y="256.0" font-size="14" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_mech_queue">tool/task.ts</text>
+<text x="236.0" y="256.0" font-size="14" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_mech_queue">dispatch lane</text>
+<text x="230.0" y="78.2" font-size="14" text-anchor="middle" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_ctrl_lane">Lane Concurrency (Global, Not Channel-Scoped)</text>
+<text x="604.0" y="256.0" font-size="14" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_mech_watch">setInterval poll</text>
+<text x="616.0" y="256.0" font-size="14" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_mech_watch">task.ts:2346 (unified)</text>
+<text x="604.0" y="114.0" font-size="14" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_ctrl_watch">Disk Grace + Silent</text>
+<text x="616.0" y="114.0" font-size="14" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_ctrl_watch">Threshold + Proc State</text>
+<text x="992.0" y="256.0" font-size="10" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_mech_detect">Conditions: disk_terminal</text>
+<text x="1004.0" y="256.0" font-size="10" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_mech_detect">| worker_dead | silent_kill</text>
+<text x="230.0" y="511.8" font-size="14" text-anchor="middle" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_mech_emit">TaskCompletedEvent (task.ts:274)</text>
+<text x="610.0" y="511.8" font-size="14" text-anchor="middle" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_mech_notice">info.json#pendingSubagentNotices append</text>
+<text x="604.0" y="334.0" font-size="14" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_ctrl_clean">DD: Never Append</text>
+<text x="616.0" y="334.0" font-size="14" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_ctrl_clean">To messages/ Stream</text>
+<text x="998.0" y="511.8" font-size="14" text-anchor="middle" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_mech_assemble">Prompt Assembler addendum + pop</text>
+<text x="992.0" y="114.0" font-size="14" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_in_cancel">cancel_task</text>
+<text x="1004.0" y="114.0" font-size="14" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_in_cancel">cancelByJobId (task.ts:814)</text>
+<text x="420.0" y="155.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_queue_to_watch">Job Registered jobId</text>
+<text x="420.0" y="172.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_queue_to_watch">+ childSessionID</text>
+<text x="804.0" y="175.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_watch_to_detect">Tick Sample (disk</text>
+<text x="804.0" y="192.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_watch_to_detect">+ pid + lastEvent)</text>
+<text x="409.7" y="400.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_emit_to_notice"><tspan x="409.7" dy="0">Event Payload</tspan><tspan x="409.7" dy="16.0">(jobId</tspan><tspan x="409.7" dy="16.0">finish</tspan><tspan x="409.7" dy="16.0">elapsedMs</tspan><tspan x="409.7" dy="16.0">rotateHint)</tspan></text>
+<text x="804.0" y="395.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_notice_to_render">Pending Notice Queued</text>
+<text x="804.0" y="412.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_notice_to_render">On Parent Session</text>
+<text x="614.0" y="308.0" font-size="14" font-weight="bold" fill="black" text-anchor="middle" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_detect_to_emit" >Status {success|error|canceled|rate_limited|quota_low|worker_dead|silent_kill}</text>
+<text x="-14.0" y="158.0" font-size="20" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_in_call">task() Tool</text>
+<text x="-14.0" y="184.0" font-size="20" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_in_call">Call (parent</text>
+<text x="-14.0" y="210.0" font-size="20" text-anchor="end" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_in_call">assistant turn)</text>
+<text x="1242.0" y="43.2" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_queue_stub">Tool Result</text>
+<text x="1242.0" y="69.2" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_queue_stub">{dispatched:true}</text>
+<text x="1242.0" y="95.2" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_queue_stub">(parent turn</text>
+<text x="1242.0" y="121.2" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_queue_stub">returns)</text>
+<text x="1242.0" y="378.0" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_render_out">System-Prompt</text>
+<text x="1242.0" y="404.0" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_render_out">Addendum For</text>
+<text x="1242.0" y="430.0" font-size="20" text-anchor="start" font-weight="bold" fill="black" font-family="'Times New Roman', 'BiauKai', 'DFKai-SB', '標楷體', 'KaiTi', serif" data-arrow-id="a3_render_out">Parent&#x27;s Next Turn</text>
+</svg>

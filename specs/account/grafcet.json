@@ -1,0 +1,152 @@
+[
+  {
+    "StepNumber": 0,
+    "StepType": "initial",
+    "StepAction": "account_storage_idle",
+    "ModuleRef": "A0",
+    "LinkInputType": [],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [11],
+    "LinkOutputNumber": [1],
+    "Condition": ["auth_set_invoked_by_cli_tui_or_route"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 1,
+    "StepType": "normal",
+    "StepAction": "resolve_canonical_provider_key",
+    "ModuleRef": "A11",
+    "LinkInputType": [],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [0],
+    "LinkOutputNumber": [2],
+    "Condition": ["family_is_known_via_resolveProviderOrSelf"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 2,
+    "StepType": "normal",
+    "StepAction": "validate_credential_shape_and_branch",
+    "ModuleRef": "A12",
+    "LinkInputType": [],
+    "LinkOutputType": "divergence_or",
+    "LinkInputNumber": [1],
+    "LinkOutputNumber": [3, 4],
+    "Condition": [
+      "info_type_equals_api",
+      "info_type_equals_oauth"
+    ],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 3,
+    "StepType": "normal",
+    "StepAction": "scan_existing_for_apikey_match",
+    "ModuleRef": "A13",
+    "LinkInputType": [],
+    "LinkOutputType": "convergence_or",
+    "LinkInputNumber": [2],
+    "LinkOutputNumber": [6],
+    "Condition": ["apikey_dedup_done"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 4,
+    "StepType": "normal",
+    "StepAction": "run_identity_chain_email_username_tokenhash",
+    "ModuleRef": "A12",
+    "LinkInputType": [],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [2],
+    "LinkOutputNumber": [5],
+    "Condition": ["identity_slug_resolved"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 5,
+    "StepType": "normal",
+    "StepAction": "dedup_by_base_token_or_email_collision",
+    "ModuleRef": "A13",
+    "LinkInputType": [],
+    "LinkOutputType": "convergence_or",
+    "LinkInputNumber": [4],
+    "LinkOutputNumber": [6],
+    "Condition": ["oauth_dedup_done"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 6,
+    "StepType": "normal",
+    "StepAction": "decide_update_existing_or_generate_id",
+    "ModuleRef": "A14",
+    "LinkInputType": ["convergence_or"],
+    "LinkOutputType": "divergence_or",
+    "LinkInputNumber": [3, 5],
+    "LinkOutputNumber": [7, 8],
+    "Condition": [
+      "existing_record_found",
+      "no_match_generate_new_id_with_suffix"
+    ],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 7,
+    "StepType": "normal",
+    "StepAction": "patch_existing_record_in_place",
+    "ModuleRef": "A15",
+    "LinkInputType": [],
+    "LinkOutputType": "convergence_or",
+    "LinkInputNumber": [6],
+    "LinkOutputNumber": [9],
+    "Condition": ["account_update_persisted"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 8,
+    "StepType": "normal",
+    "StepAction": "account_add_under_mutex",
+    "ModuleRef": "A15",
+    "LinkInputType": [],
+    "LinkOutputType": "convergence_or",
+    "LinkInputNumber": [6],
+    "LinkOutputNumber": [9],
+    "Condition": ["accounts_json_atomic_write_ok"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 9,
+    "StepType": "normal",
+    "StepAction": "normalize_identity_and_strip_managed_apps",
+    "ModuleRef": "A3",
+    "LinkInputType": ["convergence_or"],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [7, 8],
+    "LinkOutputNumber": [10],
+    "Condition": ["normalize_report_emitted_or_noop"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 10,
+    "StepType": "normal",
+    "StepAction": "publish_account_added_bus_event",
+    "ModuleRef": "A16",
+    "LinkInputType": [],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [9],
+    "LinkOutputNumber": [11],
+    "Condition": ["bus_account_added_published"],
+    "SubGrafcet": []
+  },
+  {
+    "StepNumber": 11,
+    "StepType": "normal",
+    "StepAction": "return_account_record_to_caller",
+    "ModuleRef": "A1",
+    "LinkInputType": [],
+    "LinkOutputType": "track",
+    "LinkInputNumber": [10],
+    "LinkOutputNumber": [0],
+    "Condition": ["caller_received_account_id_idle_again"],
+    "SubGrafcet": []
+  }
+]

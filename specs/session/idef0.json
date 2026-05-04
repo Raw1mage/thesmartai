@@ -1,0 +1,542 @@
+{
+  "diagram_title": "Manage Session Lifecycle",
+  "node_reference": "A0",
+  "activities": [
+    {
+      "id": "A1",
+      "title": "Persist Session State",
+      "decomposition": {
+        "diagram_title": "Persist Session State",
+        "node_reference": "A1",
+        "activities": [
+          {
+            "id": "A11",
+            "title": "Route Storage Tier"
+          },
+          {
+            "id": "A12",
+            "title": "Write Sqlite Backend"
+          },
+          {
+            "id": "A13",
+            "title": "Read Legacy Tree"
+          },
+          {
+            "id": "A14",
+            "title": "Drain Legacy In Background"
+          },
+          {
+            "id": "A15",
+            "title": "Verify Integrity And Migrations"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a1_in_msg",
+            "source": "EXTERNAL",
+            "target": "A11:input",
+            "label": "Message Write Or Read Request"
+          },
+          {
+            "id": "a1_ctrl_dd13",
+            "source": "EXTERNAL",
+            "target": "A11:control",
+            "label": "DD-13 No Silent Reroute Rule"
+          },
+          {
+            "id": "a1_mech_router",
+            "source": "EXTERNAL",
+            "target": "A11:mechanism",
+            "label": "storage/router.ts detectFormat"
+          },
+          {
+            "id": "a1_route_sqlite",
+            "source": "A11:output",
+            "target": "A12:input",
+            "label": "Sqlite Tier Selected"
+          },
+          {
+            "id": "a1_route_legacy",
+            "source": "A11:output",
+            "target": "A13:input",
+            "label": "Legacy Tier Authoritative"
+          },
+          {
+            "id": "a1_mech_sqlite",
+            "source": "EXTERNAL",
+            "target": "A12:mechanism",
+            "label": "storage/sqlite.ts SqliteStore WAL"
+          },
+          {
+            "id": "a1_ctrl_pool",
+            "source": "EXTERNAL",
+            "target": "A12:control",
+            "label": "ConnectionPool Cached Handle"
+          },
+          {
+            "id": "a1_mech_legacy",
+            "source": "EXTERNAL",
+            "target": "A13:mechanism",
+            "label": "storage/legacy.ts LegacyStore Walk"
+          },
+          {
+            "id": "a1_legacy_to_drain",
+            "source": "A13:output",
+            "target": "A14:input",
+            "label": "Legacy Backlog Detected"
+          },
+          {
+            "id": "a1_mech_dream",
+            "source": "EXTERNAL",
+            "target": "A14:mechanism",
+            "label": "storage/dreaming.ts DreamingWorker"
+          },
+          {
+            "id": "a1_ctrl_idle",
+            "source": "EXTERNAL",
+            "target": "A14:control",
+            "label": "IDLE_THRESHOLD_MS 5000"
+          },
+          {
+            "id": "a1_dream_to_sqlite",
+            "source": "A14:output",
+            "target": "A12:input",
+            "label": "Migrated Session Atomic Rename"
+          },
+          {
+            "id": "a1_sqlite_to_integrity",
+            "source": "A12:output",
+            "target": "A15:input",
+            "label": "First Open Or Migration Pending"
+          },
+          {
+            "id": "a1_mech_integrity",
+            "source": "EXTERNAL",
+            "target": "A15:mechanism",
+            "label": "storage/integrity.ts PRAGMA integrity_check"
+          },
+          {
+            "id": "a1_integrity_event",
+            "source": "A15:output",
+            "target": "EXTERNAL",
+            "label": "session.storage.corrupted Bus Event"
+          },
+          {
+            "id": "a1_out_persisted",
+            "source": "A12:output",
+            "target": "EXTERNAL",
+            "label": "Persisted Message Or Loaded Slice"
+          },
+          {
+            "id": "a1_out_legacy_read",
+            "source": "A13:output",
+            "target": "EXTERNAL",
+            "label": "Loaded Legacy Slice"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A2",
+      "title": "Refresh Capability Layer",
+      "decomposition": {
+        "diagram_title": "Refresh Capability Layer",
+        "node_reference": "A2",
+        "activities": [
+          {
+            "id": "A21",
+            "title": "Detect Rebind Trigger"
+          },
+          {
+            "id": "A22",
+            "title": "Apply Rebind Rate Limit"
+          },
+          {
+            "id": "A23",
+            "title": "Bump Epoch Registry"
+          },
+          {
+            "id": "A24",
+            "title": "Reinject Capability Snapshot"
+          },
+          {
+            "id": "A25",
+            "title": "Invalidate Capability Cache"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a2_in_signal",
+            "source": "EXTERNAL",
+            "target": "A21:input",
+            "label": "Trigger Signal (Resume / Switch / Reload / Tool / Mtime / Boot)"
+          },
+          {
+            "id": "a2_ctrl_triggers",
+            "source": "EXTERNAL",
+            "target": "A21:control",
+            "label": "RebindTrigger Enum (6 Values)"
+          },
+          {
+            "id": "a2_mech_detect",
+            "source": "EXTERNAL",
+            "target": "A21:mechanism",
+            "label": "session/rebind-epoch.ts"
+          },
+          {
+            "id": "a2_detect_to_rate",
+            "source": "A21:output",
+            "target": "A22:input",
+            "label": "Trigger Candidate"
+          },
+          {
+            "id": "a2_ctrl_rate",
+            "source": "EXTERNAL",
+            "target": "A22:control",
+            "label": "REBIND_RATE_LIMIT 5 Per 1000ms"
+          },
+          {
+            "id": "a2_rate_storm",
+            "source": "A22:output",
+            "target": "EXTERNAL",
+            "label": "session.rebind_storm Anomaly Event"
+          },
+          {
+            "id": "a2_rate_to_bump",
+            "source": "A22:output",
+            "target": "A23:input",
+            "label": "Allowed Trigger"
+          },
+          {
+            "id": "a2_mech_bump",
+            "source": "EXTERNAL",
+            "target": "A23:mechanism",
+            "label": "bumpEpoch (rebind-epoch.ts L132)"
+          },
+          {
+            "id": "a2_bump_event",
+            "source": "A23:output",
+            "target": "EXTERNAL",
+            "label": "session.rebind Workflow Event"
+          },
+          {
+            "id": "a2_bump_to_reinject",
+            "source": "A23:output",
+            "target": "A24:input",
+            "label": "New Epoch (Session Idle)"
+          },
+          {
+            "id": "a2_bump_to_invalidate",
+            "source": "A23:output",
+            "target": "A25:input",
+            "label": "New Epoch (Cache Key)"
+          },
+          {
+            "id": "a2_ctrl_busy",
+            "source": "EXTERNAL",
+            "target": "A24:control",
+            "label": "DD-5 Busy Session Skip"
+          },
+          {
+            "id": "a2_mech_reinject",
+            "source": "EXTERNAL",
+            "target": "A24:mechanism",
+            "label": "capability-layer.ts reinject"
+          },
+          {
+            "id": "a2_out_snapshot",
+            "source": "A24:output",
+            "target": "EXTERNAL",
+            "label": "Layers + Pinned + Missing Skills + Failures"
+          },
+          {
+            "id": "a2_mech_loader",
+            "source": "EXTERNAL",
+            "target": "A25:mechanism",
+            "label": "capability-layer-loader.ts"
+          },
+          {
+            "id": "a2_out_invalidated",
+            "source": "A25:output",
+            "target": "EXTERNAL",
+            "label": "Cache Miss On Next Lookup"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A3",
+      "title": "Cache Http Polls"
+    },
+    {
+      "id": "A4",
+      "title": "Stream Frontend Updates",
+      "decomposition": {
+        "diagram_title": "Stream Frontend Updates",
+        "node_reference": "A4",
+        "activities": [
+          {
+            "id": "A41",
+            "title": "Hydrate Tail On Attach"
+          },
+          {
+            "id": "A42",
+            "title": "Subscribe SSE Stream"
+          },
+          {
+            "id": "A43",
+            "title": "Load Older Slice On Scroll"
+          },
+          {
+            "id": "A44",
+            "title": "Reduce Append Versus Rebuild"
+          },
+          {
+            "id": "A45",
+            "title": "Fold Oversized Parts"
+          }
+        ],
+        "arrows": [
+          {
+            "id": "a4_in_route",
+            "source": "EXTERNAL",
+            "target": "A41:input",
+            "label": "Session Route Entered"
+          },
+          {
+            "id": "a4_ctrl_tail",
+            "source": "EXTERNAL",
+            "target": "A41:control",
+            "label": "session_tail_mobile / session_tail_desktop"
+          },
+          {
+            "id": "a4_mech_sync",
+            "source": "EXTERNAL",
+            "target": "A41:mechanism",
+            "label": "context/sync.tsx fetchSessionMeta"
+          },
+          {
+            "id": "a4_tail_to_sse",
+            "source": "A41:output",
+            "target": "A42:input",
+            "label": "Tail Hydrated Store"
+          },
+          {
+            "id": "a4_mech_sse",
+            "source": "EXTERNAL",
+            "target": "A42:mechanism",
+            "label": "server/app.ts SSE Handler"
+          },
+          {
+            "id": "a4_ctrl_after",
+            "source": "EXTERNAL",
+            "target": "A42:control",
+            "label": "Events After Subscription Only"
+          },
+          {
+            "id": "a4_sse_to_reduce",
+            "source": "A42:output",
+            "target": "A44:input",
+            "label": "PartUpdated Or Rebuild Event"
+          },
+          {
+            "id": "a4_in_scroll",
+            "source": "EXTERNAL",
+            "target": "A43:input",
+            "label": "Scroll-Up Sentinel"
+          },
+          {
+            "id": "a4_ctrl_cursor",
+            "source": "EXTERNAL",
+            "target": "A43:control",
+            "label": "before=<id> Cursor Param"
+          },
+          {
+            "id": "a4_mech_lazyload",
+            "source": "EXTERNAL",
+            "target": "A43:mechanism",
+            "label": "loadOlderMessages (sync.tsx L321)"
+          },
+          {
+            "id": "a4_older_to_reduce",
+            "source": "A43:output",
+            "target": "A44:input",
+            "label": "Older Slice Prepended"
+          },
+          {
+            "id": "a4_mech_reducer",
+            "source": "EXTERNAL",
+            "target": "A44:mechanism",
+            "label": "global-sync/event-reducer.ts"
+          },
+          {
+            "id": "a4_ctrl_prefix",
+            "source": "EXTERNAL",
+            "target": "A44:control",
+            "label": "Prefix-Match Heuristic"
+          },
+          {
+            "id": "a4_reduce_to_fold",
+            "source": "A44:output",
+            "target": "A45:input",
+            "label": "Reconciled Parts"
+          },
+          {
+            "id": "a4_ctrl_caps",
+            "source": "EXTERNAL",
+            "target": "A45:control",
+            "label": "part_inline_cap_kb 64 / Stream 500KB Hard Cap"
+          },
+          {
+            "id": "a4_mech_fold",
+            "source": "EXTERNAL",
+            "target": "A45:mechanism",
+            "label": "FoldableMarkdown / data.expandPart"
+          },
+          {
+            "id": "a4_out_render",
+            "source": "A45:output",
+            "target": "EXTERNAL",
+            "label": "Rendered Timeline"
+          }
+        ]
+      }
+    },
+    {
+      "id": "A5",
+      "title": "Submit User Message"
+    },
+    {
+      "id": "A6",
+      "title": "Detect UI Freshness"
+    }
+  ],
+  "arrows": [
+    {
+      "id": "x_in_user",
+      "source": "EXTERNAL",
+      "target": "A5:input",
+      "label": "User Prompt + Attachments"
+    },
+    {
+      "id": "x_ctrl_tweaks",
+      "source": "EXTERNAL",
+      "target": "A1:control",
+      "label": "tweaks.cfg Storage Keys"
+    },
+    {
+      "id": "x_ctrl_tweaks_cache",
+      "source": "EXTERNAL",
+      "target": "A3:control",
+      "label": "tweaks.cfg Cache + RateLimit Keys"
+    },
+    {
+      "id": "x_ctrl_tweaks_ui",
+      "source": "EXTERNAL",
+      "target": "A6:control",
+      "label": "ui_freshness_threshold_sec / hard_timeout_sec"
+    },
+    {
+      "id": "x_mech_post",
+      "source": "EXTERNAL",
+      "target": "A5:mechanism",
+      "label": "prompt-input/submit.ts (single fetch + AbortController)"
+    },
+    {
+      "id": "x_submit_to_persist",
+      "source": "A5:output",
+      "target": "A1:input",
+      "label": "User Message Record"
+    },
+    {
+      "id": "x_submit_to_runloop",
+      "source": "A5:output",
+      "target": "EXTERNAL",
+      "label": "Dispatch To Runloop"
+    },
+    {
+      "id": "x_persist_to_cache",
+      "source": "A1:output",
+      "target": "A3:input",
+      "label": "Updated Message Or Session State"
+    },
+    {
+      "id": "x_bus_to_cache",
+      "source": "EXTERNAL",
+      "target": "A3:input",
+      "label": "Session.Event.Updated / MessageV2.Event.*"
+    },
+    {
+      "id": "x_mech_cache",
+      "source": "EXTERNAL",
+      "target": "A3:mechanism",
+      "label": "server/session-cache.ts (LRU + version + ETag)"
+    },
+    {
+      "id": "x_cache_to_stream",
+      "source": "A3:output",
+      "target": "A4:input",
+      "label": "200 Body Or 304 Not Modified"
+    },
+    {
+      "id": "x_rebind_to_capability",
+      "source": "EXTERNAL",
+      "target": "A2:input",
+      "label": "Trigger From Boot / Resume / Switch / Reload / Tool / Mtime"
+    },
+    {
+      "id": "x_capability_to_persist",
+      "source": "A2:output",
+      "target": "A1:control",
+      "label": "Pinned Skills + Mandatory Skills Snapshot"
+    },
+    {
+      "id": "x_capability_to_cache",
+      "source": "A2:output",
+      "target": "A3:control",
+      "label": "Epoch Bump Invalidation"
+    },
+    {
+      "id": "x_stream_to_fresh",
+      "source": "A4:output",
+      "target": "A6:input",
+      "label": "receivedAt Stamp Per Store Entry"
+    },
+    {
+      "id": "x_mech_fresh",
+      "source": "EXTERNAL",
+      "target": "A6:mechanism",
+      "label": "utils/freshness.ts + use-freshness-clock.ts"
+    },
+    {
+      "id": "x_fresh_to_render",
+      "source": "A6:output",
+      "target": "EXTERNAL",
+      "label": "Fidelity Class (fresh / stale / hard-stale)"
+    },
+    {
+      "id": "x_fresh_to_reload",
+      "source": "A6:output",
+      "target": "A4:control",
+      "label": "Stale Forces Tail Refetch"
+    },
+    {
+      "id": "x_fresh_to_rebind",
+      "source": "A6:output",
+      "target": "A2:input",
+      "label": "Idle Boundary -> session_resume Trigger"
+    },
+    {
+      "id": "x_persist_out",
+      "source": "A1:output",
+      "target": "EXTERNAL",
+      "label": "Persisted Snapshot To Disk"
+    },
+    {
+      "id": "x_stream_out",
+      "source": "A4:output",
+      "target": "EXTERNAL",
+      "label": "Rendered Session UI"
+    }
+  ]
+}
